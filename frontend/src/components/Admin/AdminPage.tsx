@@ -2,18 +2,19 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { Post } from '../../types';
-import { Calendar, Share2, Users, Settings, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import './Admin.css';
 
 export function AdminPage() {
-  const [stats, setStats] = useState({ total: 0, scheduled: 0, published: 0, failed: 0, accounts: 0, users: 0 });
+  const [stats, setStats] = useState({ total: 0, scheduled: 0, published: 0, failed: 0, accounts: 0, users: 0, teams: 0 });
 
   useEffect(() => {
     Promise.all([
       api.getPosts({}),
       api.getAccounts(),
       api.getUsers(),
-    ]).then(([posts, accounts, users]) => {
+      api.getTeams(),
+    ]).then(([posts, accounts, users, teams]) => {
       setStats({
         total: posts.length,
         scheduled: posts.filter((p: Post) => p.status === 'scheduled').length,
@@ -21,6 +22,7 @@ export function AdminPage() {
         failed: posts.filter((p: Post) => p.status === 'failed').length,
         accounts: accounts.length,
         users: users.length,
+        teams: teams.length,
       });
     });
   }, []);
@@ -87,6 +89,14 @@ export function AdminPage() {
           <div>
             <h3>Users</h3>
             <p>{stats.users} registered</p>
+          </div>
+        </Link>
+
+        <Link to="/admin/teams" className="admin-link-card">
+          <UsersRound size={24} />
+          <div>
+            <h3>Teams</h3>
+            <p>{stats.teams} team{stats.teams !== 1 ? 's' : ''}</p>
           </div>
         </Link>
 

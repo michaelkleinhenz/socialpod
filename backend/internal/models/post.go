@@ -31,8 +31,9 @@ type PostResult struct {
 }
 
 type Post struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	UserID       primitive.ObjectID `bson:"userId" json:"userId"`
+	ID           primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	UserID       primitive.ObjectID  `bson:"userId" json:"userId"`
+	TeamID       *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
 	Content      string             `bson:"content" json:"content"`
 	ImageURLs    []string           `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`
 	Platforms    []Platform         `bson:"platforms" json:"platforms"`

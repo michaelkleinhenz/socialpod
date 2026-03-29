@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"socialmedia/internal/database"
+	"socialmedia/internal/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -35,7 +36,6 @@ func GenerateToken(userID string, isAdmin bool, secret string) (string, error) {
 
 func AuthRequired(secret string, db *database.MongoDB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for API token first (Bearer token in Authorization header)
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization required"})
@@ -44,6 +44,9 @@ func AuthRequired(secret string, db *database.MongoDB) gin.HandlerFunc {
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
 		// Try JWT first
 		claims := &Claims{}
@@ -54,28 +57,45 @@ func AuthRequired(secret string, db *database.MongoDB) gin.HandlerFunc {
 		if err == nil && token.Valid {
 			c.Set("userId", claims.UserID)
 			c.Set("isAdmin", claims.IsAdmin)
+			// Look up user's team
+			if uid, uerr := primitive.ObjectIDFromHex(claims.UserID); uerr == nil {
+				var u models.User
+				if uerr = db.Users().FindOne(ctx, bson.M{"_id": uid}).Decode(&u); uerr == nil && u.TeamID != nil {
+					c.Set("teamId", u.TeamID.Hex())
+				}
+			}
 			c.Next()
 			return
 		}
 
-		// Try API token
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		var user struct {
-			ID      primitive.ObjectID `bson:"_id"`
-			IsAdmin bool               `bson:"isAdmin"`
-		}
+		// Try user API token
+		var user models.User
 		err = db.Users().FindOne(ctx, bson.M{"apiToken": tokenStr}).Decode(&user)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
+		if err == nil {
+			c.Set("userId", user.ID.Hex())
+			c.Set("isAdmin", user.IsAdmin)
+			if user.TeamID != nil {
+				c.Set("teamId", user.TeamID.Hex())
+			}
+			c.Next()
 			return
 		}
 
-		c.Set("userId", user.ID.Hex())
-		c.Set("isAdmin", user.IsAdmin)
-		c.Next()
+		// Try team API token
+		var team models.Team
+		err = db.Teams().FindOne(ctx, bson.M{"apiToken": tokenStr}).Decode(&team)
+		if err == nil {
+			c.Set("teamId", team.ID.Hex())
+			c.Set("isAdmin", false)
+			// Use a sentinel userId for team-token auth
+			c.Set("userId", team.ID.Hex())
+			c.Set("isTeamToken", true)
+			c.Next()
+			return
+		}
+
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		c.Abort()
 	}
 }
 

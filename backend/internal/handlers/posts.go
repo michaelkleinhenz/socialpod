@@ -43,6 +43,17 @@ type UpdatePostInput struct {
 	Status      *models.PostStatus `json:"status,omitempty"`
 }
 
+// postFilter returns a bson filter scoped to the user's team (if any) or user.
+func postFilter(c *gin.Context) bson.M {
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		return bson.M{"teamId": tid}
+	}
+	userID, _ := c.Get("userId")
+	uid, _ := primitive.ObjectIDFromHex(userID.(string))
+	return bson.M{"userId": uid}
+}
+
 func (h *PostHandler) Create(c *gin.Context) {
 	var input CreatePostInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -77,6 +88,12 @@ func (h *PostHandler) Create(c *gin.Context) {
 		UpdatedAt:   time.Now(),
 	}
 
+	// If user belongs to a team, assign post to team
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		post.TeamID = &tid
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -91,10 +108,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 }
 
 func (h *PostHandler) List(c *gin.Context) {
-	userID, _ := c.Get("userId")
-	objID, _ := primitive.ObjectIDFromHex(userID.(string))
-
-	filter := bson.M{"userId": objID}
+	filter := postFilter(c)
 
 	// Optional date range filtering
 	if start := c.Query("start"); start != "" {
@@ -151,14 +165,14 @@ func (h *PostHandler) Get(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("userId")
-	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+	filter := postFilter(c)
+	filter["_id"] = postID
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var post models.Post
-	err = h.DB.Posts().FindOne(ctx, bson.M{"_id": postID, "userId": objID}).Decode(&post)
+	err = h.DB.Posts().FindOne(ctx, filter).Decode(&post)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
@@ -180,8 +194,8 @@ func (h *PostHandler) Update(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("userId")
-	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+	filter := postFilter(c)
+	filter["_id"] = postID
 
 	update := bson.M{"updatedAt": time.Now()}
 
@@ -212,7 +226,7 @@ func (h *PostHandler) Update(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Posts().UpdateOne(ctx, bson.M{"_id": postID, "userId": objID}, bson.M{"$set": update})
+	result, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
@@ -230,13 +244,13 @@ func (h *PostHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("userId")
-	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+	filter := postFilter(c)
+	filter["_id"] = postID
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Posts().DeleteOne(ctx, bson.M{"_id": postID, "userId": objID})
+	result, err := h.DB.Posts().DeleteOne(ctx, filter)
 	if err != nil || result.DeletedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
@@ -306,14 +320,14 @@ func (h *PostHandler) Reschedule(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("userId")
-	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+	filter := postFilter(c)
+	filter["_id"] = postID
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	result, err := h.DB.Posts().UpdateOne(ctx,
-		bson.M{"_id": postID, "userId": objID},
+		filter,
 		bson.M{"$set": bson.M{"scheduledAt": scheduledAt, "updatedAt": time.Now()}},
 	)
 	if err != nil || result.MatchedCount == 0 {

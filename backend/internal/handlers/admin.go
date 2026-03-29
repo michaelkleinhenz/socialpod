@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -348,6 +350,169 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 
 	user.ID = result.InsertedID.(primitive.ObjectID)
 	c.JSON(http.StatusCreated, user)
+}
+
+// Teams
+
+func (h *AdminHandler) ListTeams(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := h.DB.Teams().Find(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch teams"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var teams []models.Team
+	cursor.All(ctx, &teams)
+	if teams == nil {
+		teams = []models.Team{}
+	}
+
+	// Attach member list for each team
+	type teamWithMembers struct {
+		models.Team
+		Members []models.User `json:"members"`
+	}
+	var result []teamWithMembers
+	for _, t := range teams {
+		cur, _ := h.DB.Users().Find(ctx, bson.M{"teamId": t.ID})
+		var members []models.User
+		if cur != nil {
+			cur.All(ctx, &members)
+			cur.Close(ctx)
+		}
+		if members == nil {
+			members = []models.User{}
+		}
+		result = append(result, teamWithMembers{Team: t, Members: members})
+	}
+	if result == nil {
+		result = []teamWithMembers{}
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+type CreateTeamInput struct {
+	Name string `json:"name" binding:"required"`
+}
+
+func (h *AdminHandler) CreateTeam(c *gin.Context) {
+	var input CreateTeamInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	team := models.Team{
+		Name:      input.Name,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.Teams().InsertOne(ctx, team)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create team"})
+		return
+	}
+
+	team.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, team)
+}
+
+func (h *AdminHandler) DeleteTeam(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Remove team assignment from all members
+	h.DB.Users().UpdateMany(ctx, bson.M{"teamId": id}, bson.M{"$unset": bson.M{"teamId": ""}})
+
+	result, err := h.DB.Teams().DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil || result.DeletedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Team deleted"})
+}
+
+type SetTeamMembersInput struct {
+	UserIDs []string `json:"userIds" binding:"required"`
+}
+
+func (h *AdminHandler) SetTeamMembers(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input SetTeamMembersInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Verify team exists
+	count, _ := h.DB.Teams().CountDocuments(ctx, bson.M{"_id": teamID})
+	if count == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	// Remove all current members from this team
+	h.DB.Users().UpdateMany(ctx, bson.M{"teamId": teamID}, bson.M{"$unset": bson.M{"teamId": ""}})
+
+	// Add new members
+	for _, uid := range input.UserIDs {
+		if objID, err := primitive.ObjectIDFromHex(uid); err == nil {
+			h.DB.Users().UpdateOne(ctx, bson.M{"_id": objID}, bson.M{
+				"$set": bson.M{"teamId": teamID, "updatedAt": time.Now()},
+			})
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Team members updated"})
+}
+
+func (h *AdminHandler) GenerateTeamToken(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	bytes := make([]byte, 32)
+	rand.Read(bytes)
+	apiToken := "st_" + hex.EncodeToString(bytes)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{
+		"$set": bson.M{"apiToken": apiToken, "updatedAt": time.Now()},
+	})
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"apiToken": apiToken})
 }
 
 func (h *AdminHandler) DeleteUser(c *gin.Context) {

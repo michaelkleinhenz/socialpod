@@ -155,7 +155,27 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	// Include team name if user belongs to a team
+	response := gin.H{
+		"id":        user.ID,
+		"email":     user.Email,
+		"name":      user.Name,
+		"isAdmin":   user.IsAdmin,
+		"teamId":    user.TeamID,
+		"createdAt": user.CreatedAt,
+		"updatedAt": user.UpdatedAt,
+	}
+	if user.APIToken != "" {
+		response["apiToken"] = user.APIToken
+	}
+	if user.TeamID != nil {
+		var team models.Team
+		if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": *user.TeamID}).Decode(&team); err == nil {
+			response["teamName"] = team.Name
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *AuthHandler) GenerateAPIToken(c *gin.Context) {

@@ -9,6 +9,7 @@ import { AdminPage } from './components/Admin/AdminPage';
 import { AccountsPage } from './components/Admin/AccountsPage';
 import { SettingsPage } from './components/Admin/SettingsPage';
 import { UsersPage } from './components/Admin/UsersPage';
+import { TeamsPage } from './components/Admin/TeamsPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
 import { LogPage } from './components/Log/LogPage';
 import './styles/global.css';
@@ -36,6 +37,7 @@ function AppRoutes() {
       <Route path="/admin/accounts" element={<ProtectedRoute adminOnly><Layout><AccountsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/settings" element={<ProtectedRoute adminOnly><Layout><SettingsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin/teams" element={<ProtectedRoute adminOnly><Layout><TeamsPage /></Layout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

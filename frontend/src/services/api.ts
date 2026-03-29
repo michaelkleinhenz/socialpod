@@ -172,6 +172,33 @@ class ApiClient {
   getRegistrationStatus() {
     return this.request<{ allowed: boolean; firstUser: boolean }>('/auth/registration-status');
   }
+
+  // Teams
+  getTeams() {
+    return this.request<any[]>('/admin/teams');
+  }
+
+  createTeam(data: { name: string }) {
+    return this.request<any>('/admin/teams', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteTeam(id: string) {
+    return this.request<any>(`/admin/teams/${id}`, { method: 'DELETE' });
+  }
+
+  setTeamMembers(id: string, userIds: string[]) {
+    return this.request<any>(`/admin/teams/${id}/members`, {
+      method: 'PUT',
+      body: JSON.stringify({ userIds }),
+    });
+  }
+
+  generateTeamToken(id: string) {
+    return this.request<{ apiToken: string }>(`/admin/teams/${id}/token`, { method: 'POST' });
+  }
 }
 
 export const api = new ApiClient();

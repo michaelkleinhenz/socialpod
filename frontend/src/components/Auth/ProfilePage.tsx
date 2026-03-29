@@ -1,13 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
-import { Key, Copy, RefreshCw } from 'lucide-react';
+import { Key, Copy, RefreshCw, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-export function ProfilePage() {
-  const { user } = useAuth();
-  const [apiToken, setApiToken] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
 
   const generateToken = async () => {
     setGenerating(true);
@@ -54,6 +49,18 @@ export function ProfilePage() {
             </span>
           </div>
         </div>
+
+        {user?.teamName && (
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <UsersRound size={14} /> Team
+            </label>
+            <div style={{ fontSize: 16, color: 'var(--text-primary)' }}>{user.teamName}</div>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Shared calendar and API token with your team
+            </span>
+          </div>
+        )}
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
 

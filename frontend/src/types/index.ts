@@ -3,7 +3,18 @@ export interface User {
   email: string;
   name: string;
   isAdmin: boolean;
+  teamId?: string;
+  teamName?: string;
   apiToken?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  apiToken?: string;
+  members: User[];
   createdAt: string;
   updatedAt: string;
 }

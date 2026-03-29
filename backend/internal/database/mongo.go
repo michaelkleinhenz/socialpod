@@ -48,9 +48,14 @@ func (m *MongoDB) ensureIndexes() {
 
 	m.Posts().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 		{Keys: bson.D{{Key: "scheduledAt", Value: 1}}},
 		{Keys: bson.D{{Key: "status", Value: 1}}},
 		{Keys: bson.D{{Key: "scheduledAt", Value: 1}, {Key: "status", Value: 1}}},
+	})
+
+	m.Teams().Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "apiToken", Value: 1}},
 	})
 
 	log.Println("MongoDB indexes ensured")
@@ -66,6 +71,10 @@ func (m *MongoDB) Posts() *mongo.Collection {
 
 func (m *MongoDB) SocialAccounts() *mongo.Collection {
 	return m.Database.Collection("social_accounts")
+}
+
+func (m *MongoDB) Teams() *mongo.Collection {
+	return m.Database.Collection("teams")
 }
 
 func (m *MongoDB) Settings() *mongo.Collection {

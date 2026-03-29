@@ -92,6 +92,11 @@ func main() {
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.POST("/users", adminHandler.CreateUser)
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
+		admin.GET("/teams", adminHandler.ListTeams)
+		admin.POST("/teams", adminHandler.CreateTeam)
+		admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
+		admin.PUT("/teams/:id/members", adminHandler.SetTeamMembers)
+		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
 	}
 
 	// Serve embedded frontend (SPA with index.html fallback)
