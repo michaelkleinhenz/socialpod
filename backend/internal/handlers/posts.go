@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -68,9 +70,11 @@ func postFilter(c *gin.Context) bson.M {
 }
 
 func (h *PostHandler) Create(c *gin.Context) {
+	// Accept multipart/form-data: "data" field holds the JSON payload,
+	// optional "images" fields hold image files to upload in the same request.
 	var input CreatePostInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.Unmarshal([]byte(c.PostForm("data")), &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post data: " + err.Error()})
 		return
 	}
 
@@ -94,6 +98,21 @@ func (h *PostHandler) Create(c *gin.Context) {
 		status = input.Status
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Upload any attached image files and append their URLs to the post.
+	if form, err := c.MultipartForm(); err == nil {
+		for _, fh := range form.File["images"] {
+			url, uploadErr := h.saveUpload(ctx, fh)
+			if uploadErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
+				return
+			}
+			input.ImageURLs = append(input.ImageURLs, url)
+		}
+	}
+
 	post := models.Post{
 		UserID:      objID,
 		Content:     input.Content,
@@ -107,14 +126,10 @@ func (h *PostHandler) Create(c *gin.Context) {
 		UpdatedAt:   time.Now(),
 	}
 
-	// If user belongs to a team, assign post to team
 	if teamID, ok := c.Get("teamId"); ok {
 		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
 		post.TeamID = &tid
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	result, err := h.DB.Posts().InsertOne(ctx, post)
 	if err != nil {
@@ -208,8 +223,8 @@ func (h *PostHandler) Update(c *gin.Context) {
 	}
 
 	var input UpdatePostInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.Unmarshal([]byte(c.PostForm("data")), &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post data: " + err.Error()})
 		return
 	}
 
@@ -239,6 +254,21 @@ func (h *PostHandler) Update(c *gin.Context) {
 	filter := postFilter(c)
 	filter["_id"] = postID
 
+	// Upload any attached image files and append their URLs.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if form, err := c.MultipartForm(); err == nil {
+		for _, fh := range form.File["images"] {
+			url, uploadErr := h.saveUpload(ctx, fh)
+			if uploadErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
+				return
+			}
+			input.ImageURLs = append(input.ImageURLs, url)
+		}
+	}
+
 	update := bson.M{"updatedAt": time.Now()}
 
 	if input.Content != nil {
@@ -264,9 +294,6 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.Status != nil {
 		update["status"] = *input.Status
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	result, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || result.MatchedCount == 0 {
@@ -301,57 +328,64 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Post deleted"})
 }
 
-func (h *PostHandler) UploadImage(c *gin.Context) {
-	file, header, err := c.Request.FormFile("image")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
-		return
-	}
-	defer file.Close()
-
-	ext := filepath.Ext(header.Filename)
+// saveUpload validates and stores a multipart file in MongoDB, returning its URL.
+func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) (string, error) {
+	ext := filepath.Ext(fh.Filename)
 	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
 	if !allowed[ext] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type"})
-		return
+		return "", fmt.Errorf("unsupported file type %s", ext)
+	}
+	if fh.Size > 10*1024*1024 {
+		return "", fmt.Errorf("file too large (max 10MB)")
 	}
 
-	if header.Size > 10*1024*1024 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File too large (max 10MB)"})
-		return
-	}
-
-	data, err := io.ReadAll(file)
+	f, err := fh.Open()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
-		return
+		return "", err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return "", err
 	}
 
 	contentTypes := map[string]string{
 		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 		".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
 	}
-
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	upload := models.Upload{
+	_, err = h.DB.Uploads().InsertOne(ctx, models.Upload{
 		Filename:    filename,
 		ContentType: contentTypes[ext],
 		Data:        data,
 		Size:        int64(len(data)),
 		CreatedAt:   time.Now(),
+	})
+	if err != nil {
+		return "", err
+	}
+	return "/api/uploads/" + filename, nil
+}
+
+// UploadImage handles the standalone POST /api/upload endpoint (used by
+// the Adobe Express onPublish callback to upload design exports).
+func (h *PostHandler) UploadImage(c *gin.Context) {
+	_, fh, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err = h.DB.Uploads().InsertOne(ctx, upload)
+	url, err := h.saveUpload(ctx, fh)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	url := "/api/uploads/" + filename
-	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filename})
+	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filepath.Base(url)})
 }
 
 func (h *PostHandler) ServeImage(c *gin.Context) {

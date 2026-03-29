@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform } from '../../types';
@@ -14,7 +14,7 @@ let _ccClientId = '';
 interface Props {
   post?: Post | null;
   defaultDate?: Date | null;
-  onSave: (data: any) => void;
+  onSave: (data: any, files?: File[]) => void;
   onDelete?: () => void;
   onClose: () => void;
 }
@@ -32,11 +32,16 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
   );
-  const [imageUrls, setImageUrls] = useState<string[]>(post?.imageUrls || []);
+  // Unified image list: existing server URLs and local File objects not yet uploaded.
+  type ImageItem = { kind: 'url'; url: string } | { kind: 'file'; file: File };
+  const [images, setImages] = useState<ImageItem[]>(
+    (post?.imageUrls || []).map(url => ({ kind: 'url' as const, url }))
+  );
+  // Cache for object URLs so we don't create a new one on every render.
+  const objUrlCache = useRef<Map<File, string>>(new Map());
   const [tags, setTags] = useState<string[]>(post?.tags || []);
   const [tagInput, setTagInput] = useState('');
   const [status, setStatus] = useState(post?.status || 'scheduled');
-  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
@@ -50,9 +55,9 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
     return () => {
-      // Clean up in case the component unmounts while Adobe is open.
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
+      objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
 
@@ -112,8 +117,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
                 const res = await fetch(dataUrl);
                 const blob = await res.blob();
                 const file = new File([blob], 'design.png', { type: 'image/png' });
-                const uploaded = await api.uploadImage(file);
-                setImageUrls(prev => [...prev, uploaded.url]);
+                setImages(prev => [...prev, { kind: 'file' as const, file }]);
                 toast.success('Design added');
               } catch {
                 toast.error('Failed to save design');
@@ -157,24 +161,33 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const overLimit = charCount > charLimit;
   const charClass = overLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
-  const handleImageUpload = async (files: FileList | null) => {
+  const handleImageUpload = (files: FileList | null) => {
     if (!files) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const res = await api.uploadImage(file);
-        setImageUrls(prev => [...prev, res.url]);
-      }
-    } catch {
-      toast.error('Upload failed');
-    } finally {
-      setUploading(false);
-    }
+    setImages(prev => [
+      ...prev,
+      ...Array.from(files).map(file => ({ kind: 'file' as const, file })),
+    ]);
   };
 
   const removeImage = (idx: number) => {
-    setImageUrls(prev => prev.filter((_, i) => i !== idx));
+    setImages(prev => {
+      const item = prev[idx];
+      if (item.kind === 'file') {
+        const cached = objUrlCache.current.get(item.file);
+        if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(item.file); }
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
   };
+
+  // Returns a displayable URL for any ImageItem without leaking object URLs.
+  const previewUrl = useMemo(() => (item: ImageItem) => {
+    if (item.kind === 'url') return item.url.startsWith('/') ? apiUrl + item.url : item.url;
+    if (!objUrlCache.current.has(item.file)) {
+      objUrlCache.current.set(item.file, URL.createObjectURL(item.file));
+    }
+    return objUrlCache.current.get(item.file)!;
+  }, [apiUrl]);
 
   const addTag = () => {
     const tag = tagInput.trim().replace(/^#/, '');
@@ -189,16 +202,15 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
     if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
 
+    const imageUrls = images.filter(i => i.kind === 'url').map(i => (i as { kind: 'url'; url: string }).url);
+    const imageFiles = images.filter(i => i.kind === 'file').map(i => (i as { kind: 'file'; file: File }).file);
+
     setSaving(true);
     try {
-      await onSave({
-        content,
-        platforms,
-        scheduledAt: new Date(scheduledAt).toISOString(),
-        imageUrls,
-        tags,
-        status,
-      });
+      await onSave(
+        { content, platforms, scheduledAt: new Date(scheduledAt).toISOString(), imageUrls, tags, status },
+        imageFiles.length > 0 ? imageFiles : undefined,
+      );
     } finally {
       setSaving(false);
     }
@@ -252,11 +264,11 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
           {/* Images */}
           <div className="editor-images">
-            {imageUrls.length > 0 && (
+            {images.length > 0 && (
               <div className="image-preview-grid">
-                {imageUrls.map((url, i) => (
+                {images.map((item, i) => (
                   <div key={i} className="image-preview">
-                    <img src={url.startsWith('/') ? apiUrl + url : url} alt="" />
+                    <img src={previewUrl(item)} alt="" />
                     <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
                   </div>
                 ))}
@@ -320,8 +332,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
         <div className="editor-footer">
           <div className="footer-left">
-            <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Image size={16} /> {uploading ? 'Uploading...' : 'Upload'}
+            <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
+              <Image size={16} /> Upload
             </button>
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>

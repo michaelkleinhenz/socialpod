@@ -85,18 +85,18 @@ class ApiClient {
     return this.request<any[]>(`/posts${qs ? '?' + qs : ''}`);
   }
 
-  createPost(data: any) {
-    return this.request<any>('/posts', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createPost(data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('images', f));
+    return this.request<any>('/posts', { method: 'POST', body: form });
   }
 
-  updatePost(id: string, data: any) {
-    return this.request<any>(`/posts/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updatePost(id: string, data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('images', f));
+    return this.request<any>(`/posts/${id}`, { method: 'PUT', body: form });
   }
 
   deletePost(id: string) {
