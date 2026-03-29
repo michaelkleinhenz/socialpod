@@ -1,0 +1,10 @@
+.env
+node_modules/
+dist/
+uploads/
+*.exe
+*.dll
+*.so
+*.dylib
+__debug_bin*
+.DS_Store

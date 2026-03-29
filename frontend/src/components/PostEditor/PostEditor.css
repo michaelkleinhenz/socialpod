@@ -1,0 +1,65 @@
+.post-editor-modal {
+  max-width: 620px;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.post-textarea {
+  min-height: 140px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.tag-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.footer-left, .footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-images {
+  margin-top: -8px;
+}
+
+/* Platform selector in editor */
+.post-editor-modal .platform-selector {
+  margin-bottom: 0;
+}
+
+.post-editor-modal .form-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

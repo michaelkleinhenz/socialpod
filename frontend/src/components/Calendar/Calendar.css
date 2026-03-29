@@ -1,0 +1,237 @@
+.calendar-page {
+  padding: 24px;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-nav h1 {
+  min-width: 220px;
+  text-align: center;
+}
+
+.calendar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.filter-group .select {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.calendar-header-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-header-cell {
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.calendar-body {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.droppable-day {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.droppable-day:nth-child(7n) {
+  border-right: none;
+}
+
+.droppable-day.drag-over .calendar-day {
+  background: var(--accent-muted) !important;
+}
+
+.calendar-day {
+  min-height: 120px;
+  padding: 8px;
+  transition: background 0.15s;
+}
+
+.calendar-day:hover {
+  background: var(--bg-hover);
+}
+
+.calendar-day.other-month {
+  opacity: 0.35;
+}
+
+.calendar-day.today {
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.day-number {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.day-number.today-badge {
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.add-post-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.calendar-day:hover .add-post-btn {
+  opacity: 1;
+}
+
+.add-post-btn:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.day-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Calendar Post */
+.calendar-post {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-primary);
+}
+
+.calendar-post:hover {
+  background: var(--bg-tertiary);
+  transform: translateX(1px);
+}
+
+.calendar-post.dragging {
+  box-shadow: var(--shadow-lg);
+  transform: rotate(2deg);
+}
+
+.calendar-post.scheduled { border-left-color: var(--accent); }
+.calendar-post.published { border-left-color: var(--success); }
+.calendar-post.draft { border-left-color: var(--text-muted); }
+.calendar-post.failed { border-left-color: var(--danger); }
+
+.post-time {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.post-preview {
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin: 2px 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.post-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.platform-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.platform-dot.bluesky { background: var(--bluesky); }
+.platform-dot.instagram { background: var(--instagram); }
+
+.calendar-loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@media (max-width: 1024px) {
+  .calendar-day {
+    min-height: 80px;
+    padding: 4px;
+  }
+  .day-number { font-size: 11px; width: 24px; height: 24px; }
+  .post-preview { display: none; }
+  .calendar-post { padding: 3px 6px; }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .calendar-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .filter-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}

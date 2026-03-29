@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Zap } from 'lucide-react';
@@ -31,7 +31,7 @@ export function LoginPage() {
           <div className="logo-icon large">
             <Zap size={28} />
           </div>
-          <h1>PostFlow</h1>
+          <h1>SocialPod</h1>
           <p>Sign in to manage your social media</p>
         </div>
 

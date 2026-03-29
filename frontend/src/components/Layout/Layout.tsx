@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Calendar, Settings, Users, Share2, LogOut, User, Zap } from 'lucide-react';
@@ -26,7 +26,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="logo-icon">
               <Zap size={20} />
             </div>
-            <span className="logo-text">PostFlow</span>
+            <span className="logo-text">SocialPod</span>
           </div>
         </div>
 

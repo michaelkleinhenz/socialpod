@@ -1,0 +1,228 @@
+import { useState, useEffect, useCallback } from 'react';
+import {
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
+  format, addMonths, subMonths, isSameMonth, isSameDay, isToday, parseISO,
+} from 'date-fns';
+import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { api } from '../../services/api';
+import type { Post } from '../../types';
+import { PostEditor } from '../PostEditor/PostEditor';
+import { CalendarPost } from './CalendarPost';
+import { DraggablePost } from './DraggablePost';
+import { DroppableDay } from './DroppableDay';
+import { ChevronLeft, ChevronRight, Plus, Filter } from 'lucide-react';
+import toast from 'react-hot-toast';
+import './Calendar.css';
+
+export function CalendarPage() {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [filterPlatform, setFilterPlatform] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: calStart, end: calEnd });
+
+  const fetchPosts = useCallback(async () => {
+    try {
+      const start = calStart.toISOString();
+      const end = calEnd.toISOString();
+      const data = await api.getPosts({ start, end, platform: filterPlatform, status: filterStatus });
+      setPosts(data);
+    } catch {
+      toast.error('Failed to load posts');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentDate, filterPlatform, filterStatus]);
+
+  useEffect(() => { fetchPosts(); }, [fetchPosts]);
+
+  const getPostsForDay = (day: Date) =>
+    posts.filter(p => isSameDay(parseISO(p.scheduledAt), day))
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const postId = active.id as string;
+    const targetDate = over.id as string;
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    const oldDate = parseISO(post.scheduledAt);
+    const newDate = new Date(targetDate);
+    // Keep the same time, change the date
+    newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), 0, 0);
+
+    if (isSameDay(oldDate, newDate)) return;
+
+    try {
+      const updated = await api.reschedulePost(postId, newDate.toISOString());
+      setPosts(prev => prev.map(p => p.id === postId ? updated : p));
+      toast.success(`Moved to ${format(newDate, 'MMM d')}`);
+    } catch {
+      toast.error('Failed to reschedule');
+    }
+  };
+
+  const handleCreatePost = (day?: Date) => {
+    setEditingPost(null);
+    setSelectedDate(day || null);
+    setEditorOpen(true);
+  };
+
+  const handleEditPost = (post: Post) => {
+    setEditingPost(post);
+    setSelectedDate(null);
+    setEditorOpen(true);
+  };
+
+  const handleSavePost = async (data: any) => {
+    try {
+      if (editingPost) {
+        const updated = await api.updatePost(editingPost.id, data);
+        setPosts(prev => prev.map(p => p.id === editingPost.id ? updated : p));
+        toast.success('Post updated');
+      } else {
+        const created = await api.createPost(data);
+        setPosts(prev => [...prev, created]);
+        toast.success('Post created');
+      }
+      setEditorOpen(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      await api.deletePost(postId);
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      setEditorOpen(false);
+      toast.success('Post deleted');
+    } catch {
+      toast.error('Failed to delete');
+    }
+  };
+
+  const draggedPost = activeId ? posts.find(p => p.id === activeId) : null;
+
+  return (
+    <div className="page calendar-page">
+      <div className="page-header">
+        <div className="calendar-nav">
+          <button className="btn btn-ghost" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+            <ChevronLeft size={20} />
+          </button>
+          <h1>{format(currentDate, 'MMMM yyyy')}</h1>
+          <button className="btn btn-ghost" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+            <ChevronRight size={20} />
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setCurrentDate(new Date())}>
+            Today
+          </button>
+        </div>
+
+        <div className="calendar-actions">
+          <div className="filter-group">
+            <Filter size={14} />
+            <select className="select" style={{ width: 120 }} value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)}>
+              <option value="">All platforms</option>
+              <option value="bluesky">Bluesky</option>
+              <option value="instagram">Instagram</option>
+            </select>
+            <select className="select" style={{ width: 120 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="">All status</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="published">Published</option>
+              <option value="draft">Draft</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+          <button className="btn btn-primary" onClick={() => handleCreatePost()}>
+            <Plus size={18} /> New Post
+          </button>
+        </div>
+      </div>
+
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="calendar-grid">
+          <div className="calendar-header-row">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+              <div key={d} className="calendar-header-cell">{d}</div>
+            ))}
+          </div>
+
+          <div className="calendar-body">
+            {days.map(day => {
+              const dayPosts = getPostsForDay(day);
+              const dateStr = format(day, 'yyyy-MM-dd');
+
+              return (
+                <DroppableDay key={dateStr} id={dateStr}>
+                  <div
+                    className={`calendar-day ${!isSameMonth(day, currentDate) ? 'other-month' : ''} ${isToday(day) ? 'today' : ''}`}
+                    onDoubleClick={() => handleCreatePost(day)}
+                  >
+                    <div className="day-header">
+                      <span className={`day-number ${isToday(day) ? 'today-badge' : ''}`}>
+                        {format(day, 'd')}
+                      </span>
+                      {isSameMonth(day, currentDate) && (
+                        <button className="add-post-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                          <Plus size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="day-posts">
+                      {dayPosts.map(post => (
+                        <DraggablePost key={post.id} id={post.id}>
+                          <CalendarPost post={post} onClick={() => handleEditPost(post)} />
+                        </DraggablePost>
+                      ))}
+                    </div>
+                  </div>
+                </DroppableDay>
+              );
+            })}
+          </div>
+        </div>
+
+        <DragOverlay>
+          {draggedPost && <CalendarPost post={draggedPost} onClick={() => {}} isDragging />}
+        </DragOverlay>
+      </DndContext>
+
+      {loading && <div className="calendar-loading"><div className="spinner" /></div>}
+
+      {editorOpen && (
+        <PostEditor
+          post={editingPost}
+          defaultDate={selectedDate}
+          onSave={handleSavePost}
+          onDelete={editingPost ? () => handleDeletePost(editingPost.id) : undefined}
+          onClose={() => setEditorOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
