@@ -30,6 +30,7 @@ type AppSettings struct {
 	AppURL                string             `bson:"appUrl" json:"appUrl"`
 	InstagramAppID        string             `bson:"instagramAppId" json:"instagramAppId"`
 	InstagramAppSecret    string             `bson:"instagramAppSecret" json:"-"`
+	WebhookVerifyToken    string             `bson:"webhookVerifyToken" json:"webhookVerifyToken"`
 	DefaultPostTime       string             `bson:"defaultPostTime" json:"defaultPostTime"` // HH:MM
 	AutoPublish           bool               `bson:"autoPublish" json:"autoPublish"`
 	AllowSelfRegistration bool               `bson:"allowSelfRegistration" json:"allowSelfRegistration"`

@@ -9,6 +9,7 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>({
     appUrl: '',
     instagramAppId: '',
+    webhookVerifyToken: '',
     defaultPostTime: '09:00',
     autoPublish: false,
     allowSelfRegistration: true,
@@ -29,6 +30,7 @@ export function SettingsPage() {
         defaultPostTime: settings.defaultPostTime,
         autoPublish: settings.autoPublish,
         allowSelfRegistration: settings.allowSelfRegistration,
+        webhookVerifyToken: settings.webhookVerifyToken,
       };
       if (igSecret) data.instagramAppSecret = igSecret;
       const updated = await api.updateSettings(data);
@@ -124,6 +126,19 @@ export function SettingsPage() {
               value={igSecret}
               onChange={e => setIgSecret(e.target.value)}
             />
+          </div>
+
+          <div className="form-group">
+            <label>Webhook Verify Token</label>
+            <input
+              className="input"
+              placeholder="Token for Instagram webhook verification"
+              value={settings.webhookVerifyToken}
+              onChange={e => setSettings(s => ({ ...s, webhookVerifyToken: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Enter any secret string here, then use the same value when configuring the webhook callback URL in the Meta App Dashboard. Webhook URL: <code>{settings.appUrl}/api/webhooks/instagram</code>
+            </span>
           </div>
         </div>
 

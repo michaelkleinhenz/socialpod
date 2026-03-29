@@ -148,6 +148,7 @@ type UpdateSettingsInput struct {
 	AppURL                *string `json:"appUrl,omitempty"`
 	InstagramAppID        *string `json:"instagramAppId,omitempty"`
 	InstagramAppSecret    *string `json:"instagramAppSecret,omitempty"`
+	WebhookVerifyToken    *string `json:"webhookVerifyToken,omitempty"`
 	DefaultPostTime       *string `json:"defaultPostTime,omitempty"`
 	AutoPublish           *bool   `json:"autoPublish,omitempty"`
 	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
@@ -181,6 +182,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.AllowSelfRegistration != nil {
 		update["allowSelfRegistration"] = *input.AllowSelfRegistration
+	}
+	if input.WebhookVerifyToken != nil {
+		update["webhookVerifyToken"] = *input.WebhookVerifyToken
 	}
 
 	upsert := true
@@ -248,6 +252,34 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 
 	_ = result
 	c.Redirect(http.StatusFound, "/admin/accounts?instagram=connected")
+}
+
+func (h *AdminHandler) InstagramWebhookVerify(c *gin.Context) {
+	mode := c.Query("hub.mode")
+	token := c.Query("hub.verify_token")
+	challenge := c.Query("hub.challenge")
+
+	if mode != "subscribe" || token == "" || challenge == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+	if err != nil || settings.WebhookVerifyToken == "" || settings.WebhookVerifyToken != token {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
+		return
+	}
+
+	c.String(http.StatusOK, challenge)
+}
+
+func (h *AdminHandler) InstagramWebhookEvent(c *gin.Context) {
+	// Accept and acknowledge webhook events from Meta
+	c.JSON(http.StatusOK, gin.H{"status": "received"})
 }
 
 func (h *AdminHandler) ListUsers(c *gin.Context) {

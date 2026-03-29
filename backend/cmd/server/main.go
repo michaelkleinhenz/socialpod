@@ -59,6 +59,8 @@ func main() {
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
+		api.GET("/webhooks/instagram", adminHandler.InstagramWebhookVerify)
+		api.POST("/webhooks/instagram", adminHandler.InstagramWebhookEvent)
 	}
 
 	// Authenticated routes
