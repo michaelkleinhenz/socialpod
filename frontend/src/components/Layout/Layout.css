@@ -107,11 +107,11 @@
   min-height: 100vh;
 }
 
-/* While Adobe Express is open its iframe is appended to <body> with no
-   explicit z-index. Drop the sidebar behind it so the editor is fully
-   visible and interactive across the whole viewport. */
+/* While Adobe Express is open, hide the sidebar so it can't interfere
+   with the full-viewport Adobe editor (the CSS z-index injection in
+   PostEditor handles stacking for any remaining elements). */
 body.adobe-express-open .sidebar {
-  z-index: 0;
+  display: none;
 }
 
 @media (max-width: 768px) {

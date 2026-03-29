@@ -49,16 +49,44 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
-    // Clean up body class if the component unmounts while Adobe is open.
-    return () => { document.body.classList.remove('adobe-express-open'); };
+    return () => {
+      // Clean up in case the component unmounts while Adobe is open.
+      document.body.classList.remove('adobe-express-open');
+      document.getElementById('adobe-zindex-fix')?.remove();
+    };
   }, []);
 
   const launchAdobeExpress = useCallback(async () => {
     if (!adobeClientId) return;
     setAdobeLoading(true);
 
+    // Hide the PostEditor overlay and sidebar BEFORE any async work so
+    // the Adobe auth/editor UI is never blocked by our overlay.
+    setAdobeActive(true);
+    document.body.classList.add('adobe-express-open');
+
+    // Inject CSS so the Adobe SDK's body-level container (appended outside
+    // #root) always stacks above the sidebar and any other positioned element,
+    // regardless of which class/id the SDK uses internally.
+    if (!document.getElementById('adobe-zindex-fix')) {
+      const s = document.createElement('style');
+      s.id = 'adobe-zindex-fix';
+      s.textContent = 'body > div:not(#root) { z-index: 9999 !important; }';
+      document.head.appendChild(s);
+    }
+
+    const closeAdobe = () => {
+      setAdobeActive(false);
+      document.body.classList.remove('adobe-express-open');
+      document.getElementById('adobe-zindex-fix')?.remove();
+    };
+
     try {
       // Re-initialize only if the client ID changed or SDK was never loaded.
+      // The SDK is pre-loaded via <script defer> in index.html so the OAuth
+      // popup (which redirects back to this app's origin) can complete the
+      // auth handshake via postMessage. The dynamic import here is a fallback
+      // for environments where the script tag hasn't executed yet.
       if (!_ccEditor || _ccClientId !== adobeClientId) {
         if (!(window as any).CCEverywhere) {
           await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
@@ -71,12 +99,6 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         _ccClientId = adobeClientId;
       }
 
-      // Hide the PostEditor overlay and lower the sidebar so the Adobe iframe
-      // (which has no explicit z-index and is appended to <body>) is fully
-      // visible and interactive. Both are restored in every exit path below.
-      setAdobeActive(true);
-      document.body.classList.add('adobe-express-open');
-
       _ccEditor.create(
         {
           canvasSize: platforms.includes('instagram')
@@ -87,8 +109,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           callbacks: {
             // SDK v4 passes a single publishParams argument (not intent + params).
             onPublish: async (publishParams: any) => {
-              setAdobeActive(false);
-              document.body.classList.remove('adobe-express-open');
+              closeAdobe();
               const dataUrl = publishParams?.asset?.[0]?.data;
               if (!dataUrl) { toast.error('No image data received'); return; }
               try {
@@ -102,13 +123,9 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
                 toast.error('Failed to save design');
               }
             },
-            onCancel: () => {
-              setAdobeActive(false);
-              document.body.classList.remove('adobe-express-open');
-            },
+            onCancel: closeAdobe,
             onError: (err: any) => {
-              setAdobeActive(false);
-              document.body.classList.remove('adobe-express-open');
+              closeAdobe();
               toast.error('Adobe Express error: ' + err.toString());
             },
           },
@@ -123,8 +140,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         ],
       );
     } catch {
-      setAdobeActive(false);
-      document.body.classList.remove('adobe-express-open');
+      closeAdobe();
       toast.error('Failed to open Adobe Express');
     } finally {
       setAdobeLoading(false);
