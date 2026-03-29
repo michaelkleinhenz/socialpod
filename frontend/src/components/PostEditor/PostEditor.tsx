@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Hash } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -33,12 +33,70 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [status, setStatus] = useState(post?.status || 'scheduled');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [adobeClientId, setAdobeClientId] = useState('');
+  const [adobeLoading, setAdobeLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<any>(null);
 
   useEffect(() => {
     textareaRef.current?.focus();
+    api.getPublicSettings().then(s => {
+      if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
+    }).catch(() => {});
   }, []);
+
+  const launchAdobeExpress = useCallback(async () => {
+    if (!adobeClientId) return;
+    setAdobeLoading(true);
+
+    try {
+      if (!editorRef.current) {
+        await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
+        const { editor } = await (window as any).CCEverywhere.initialize({
+          clientId: adobeClientId,
+          appName: 'SocialPod',
+        }, { loginMode: 'delayed' });
+        editorRef.current = editor;
+      }
+
+      editorRef.current.create(
+        { canvasSize: platforms.includes('instagram') ? 'InstagramSquare' : 'custom',
+          ...(platforms.includes('instagram') ? {} : { width: 1200, height: 675 }) },
+        {
+          callbacks: {
+            onPublish: async (_intent: any, publishParams: any) => {
+              const dataUrl = publishParams.asset[0].data;
+              try {
+                const res = await fetch(dataUrl);
+                const blob = await res.blob();
+                const file = new File([blob], 'design.png', { type: 'image/png' });
+                const uploaded = await api.uploadImage(file);
+                setImageUrls(prev => [...prev, uploaded.url]);
+                toast.success('Design added');
+              } catch {
+                toast.error('Failed to save design');
+              }
+            },
+            onCancel: () => {},
+            onError: (err: any) => { toast.error('Adobe Express error: ' + err.toString()); },
+          },
+        },
+        [
+          {
+            id: 'save-to-post',
+            label: 'Add to Post',
+            action: { target: 'publish' },
+            style: { uiType: 'button' },
+          },
+        ],
+      );
+    } catch (err: any) {
+      toast.error('Failed to open Adobe Express');
+    } finally {
+      setAdobeLoading(false);
+    }
+  }, [adobeClientId, platforms]);
 
   const togglePlatform = (p: Platform) => {
     setPlatforms(prev =>
@@ -218,8 +276,13 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         <div className="editor-footer">
           <div className="footer-left">
             <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Image size={16} /> {uploading ? 'Uploading...' : 'Image'}
+              <Image size={16} /> {uploading ? 'Uploading...' : 'Upload'}
             </button>
+            {adobeClientId && (
+              <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>
+                <Wand2 size={16} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+              </button>
+            )}
             {onDelete && (
               <button className="btn btn-danger btn-sm" onClick={onDelete}>
                 <Trash2 size={16} /> Delete

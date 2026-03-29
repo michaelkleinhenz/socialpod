@@ -173,6 +173,10 @@ class ApiClient {
     return this.request<{ allowed: boolean; firstUser: boolean }>('/auth/registration-status');
   }
 
+  getPublicSettings() {
+    return this.request<{ adobeExpressClientId: string }>('/settings/public');
+  }
+
   // Teams
   getTeams() {
     return this.request<any[]>('/admin/teams');

@@ -10,6 +10,7 @@ export function SettingsPage() {
     appUrl: '',
     instagramAppId: '',
     webhookVerifyToken: '',
+    adobeExpressClientId: '',
     defaultPostTime: '09:00',
     autoPublish: false,
     allowSelfRegistration: true,
@@ -31,6 +32,7 @@ export function SettingsPage() {
         autoPublish: settings.autoPublish,
         allowSelfRegistration: settings.allowSelfRegistration,
         webhookVerifyToken: settings.webhookVerifyToken,
+        adobeExpressClientId: settings.adobeExpressClientId,
       };
       if (igSecret) data.instagramAppSecret = igSecret;
       const updated = await api.updateSettings(data);
@@ -138,6 +140,25 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Enter any secret string here, then use the same value when configuring the webhook callback URL in the Meta App Dashboard. Webhook URL: <code>{settings.appUrl}/api/webhooks/instagram</code>
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>Adobe Express</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>Adobe Express Client ID</label>
+            <input
+              className="input"
+              placeholder="Your Adobe Express Embed SDK Client ID"
+              value={settings.adobeExpressClientId}
+              onChange={e => setSettings(s => ({ ...s, adobeExpressClientId: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
             </span>
           </div>
         </div>

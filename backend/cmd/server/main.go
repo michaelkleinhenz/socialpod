@@ -59,6 +59,7 @@ func main() {
 		})
 		api.GET("/webhooks/instagram", adminHandler.InstagramWebhookVerify)
 		api.POST("/webhooks/instagram", adminHandler.InstagramWebhookEvent)
+		api.GET("/settings/public", adminHandler.GetPublicSettings)
 	}
 
 	// Authenticated routes

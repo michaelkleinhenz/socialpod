@@ -129,6 +129,18 @@ func (h *AdminHandler) ToggleAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, account)
 }
 
+func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	c.JSON(http.StatusOK, gin.H{
+		"adobeExpressClientId": settings.AdobeExpressClientID,
+	})
+}
+
 func (h *AdminHandler) GetSettings(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -151,6 +163,7 @@ type UpdateSettingsInput struct {
 	InstagramAppID        *string `json:"instagramAppId,omitempty"`
 	InstagramAppSecret    *string `json:"instagramAppSecret,omitempty"`
 	WebhookVerifyToken    *string `json:"webhookVerifyToken,omitempty"`
+	AdobeExpressClientID  *string `json:"adobeExpressClientId,omitempty"`
 	DefaultPostTime       *string `json:"defaultPostTime,omitempty"`
 	AutoPublish           *bool   `json:"autoPublish,omitempty"`
 	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
@@ -187,6 +200,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.WebhookVerifyToken != nil {
 		update["webhookVerifyToken"] = *input.WebhookVerifyToken
+	}
+	if input.AdobeExpressClientID != nil {
+		update["adobeExpressClientId"] = *input.AdobeExpressClientID
 	}
 
 	upsert := true
