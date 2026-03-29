@@ -12,7 +12,7 @@ cp .env.example .env
 # 2. Build and start
 make up
 
-# 3. Open http://localhost:3000
+# 3. Open http://localhost:8080
 #    The first registered user becomes the admin.
 ```
 
@@ -32,22 +32,19 @@ All configuration is done via environment variables in `.env`:
 | `MONGO_PASSWORD` | `socialmedia_secret` | MongoDB root password |
 | `MONGO_DATABASE` | `socialmedia` | MongoDB database name |
 | `JWT_SECRET` | `change-me-in-production` | Secret for signing JWT tokens — **change this** |
-| `APP_URL` | `http://localhost:3000` | Public URL of the app (used for Instagram OAuth) |
-| `API_PORT` | `8080` | Backend API port |
-| `FRONTEND_PORT` | `3000` | Frontend port |
-| `VITE_API_URL` | `http://localhost:8080` | API URL the frontend calls |
+| `APP_URL` | `http://localhost:8080` | Public URL of the app (used for Instagram OAuth) |
+| `APP_PORT` | `8080` | Port the app listens on |
 
 ### Production Deployment
 
 For a publicly accessible deployment:
 
-1. Set `APP_URL` to your public domain (e.g. `https://postflow.example.com`).
-2. Set `VITE_API_URL` to your public API URL (e.g. `https://postflow.example.com` if using the nginx proxy, or `https://api.postflow.example.com`).
-3. Generate a strong `JWT_SECRET` (e.g. `openssl rand -hex 32`).
-4. Change `MONGO_PASSWORD` to a strong password.
-5. Place a reverse proxy (Caddy, Traefik, etc.) in front for TLS.
+1. Set `APP_URL` to your public domain (e.g. `https://socialpod.example.com`).
+2. Generate a strong `JWT_SECRET` (e.g. `openssl rand -hex 32`).
+3. Change `MONGO_PASSWORD` to a strong password.
+4. Place a reverse proxy (Caddy, Traefik, etc.) in front for TLS.
 
-The included nginx config proxies `/api/` requests to the backend, so in production you typically only need to expose port 3000 (or 80/443 via your reverse proxy).
+The app ships as a single binary that serves both the API and the frontend UI on the same port.
 
 ---
 
@@ -245,16 +242,16 @@ curl http://localhost:8080/api/health
 
 | Command | Description |
 |---|---|
-| `make up` | Build and start all services |
+| `make up` | Build and start all services via Docker Compose |
 | `make down` | Stop all services |
 | `make restart` | Restart all services |
 | `make build` | Build Docker images without starting |
 | `make logs` | Follow container logs |
 | `make clean` | Stop services and remove volumes (deletes data) |
-| `make backend` | Build only the Go backend (local) |
-| `make frontend` | Build only the React frontend (local) |
-| `make dev-backend` | Run the Go backend locally (requires local MongoDB) |
-| `make dev-frontend` | Run the React dev server locally |
+| `make backend` | Build frontend + Go binary locally |
+| `make frontend` | Build only the React frontend locally |
+| `make dev` | Build frontend, embed it, and run the Go server locally |
+| `make dev-frontend` | Run the Vite dev server (standalone, for frontend development) |
 | `make mongo` | Start only the MongoDB container |
 | `make status` | Show running containers |
 
@@ -263,29 +260,29 @@ curl http://localhost:8080/api/health
 ## Architecture
 
 ```
-┌────────────┐     ┌──────────────┐     ┌──────────┐
-│  Frontend   │────▶│   Backend    │────▶│ MongoDB  │
-│  React/TS   │     │   Go / Gin   │     │          │
-│  Port 3000  │     │   Port 8080  │     │ Port     │
-│  (nginx)    │     │              │     │ 27017    │
-└────────────┘     └──────┬───────┘     └──────────┘
-                          │
-                   ┌──────┴───────┐
-                   │  Scheduler   │
-                   │  (30s tick)  │
-                   └──────┬───────┘
-                          │
-              ┌───────────┼───────────┐
-              ▼                       ▼
-       ┌─────────────┐       ┌──────────────┐
-       │   Bluesky    │       │  Instagram   │
-       │   AT Proto   │       │  Graph API   │
-       └─────────────┘       └──────────────┘
+                    ┌──────────────────────┐     ┌──────────┐
+                    │   SocialPod Binary   │     │ MongoDB  │
+                    │   (Go / Gin)         │────▶│          │
+                    │                      │     │ Port     │
+                    │  ┌── API (/api/*)    │     │ 27017    │
+                    │  ├── Frontend (SPA)  │     └──────────┘
+                    │  └── Scheduler       │
+                    │      Port 8080       │
+                    └──────────┬───────────┘
+                               │
+                   ┌───────────┼───────────┐
+                   ▼                       ▼
+            ┌─────────────┐       ┌──────────────┐
+            │   Bluesky    │       │  Instagram   │
+            │   AT Proto   │       │  Graph API   │
+            └─────────────┘       └──────────────┘
 ```
 
-- **Frontend** (nginx) serves the React SPA and proxies `/api/` to the backend.
-- **Backend** handles auth, CRUD, file uploads, and runs the scheduler.
-- **Scheduler** checks every 30 seconds for posts past their `scheduledAt` time with status `scheduled`, and publishes them to the configured platforms.
+The React frontend is built at compile time and embedded into the Go binary via `//go:embed`. A single binary serves the API, the SPA, uploaded files, and runs the background scheduler — all on one port.
+
+- **API** routes live under `/api/*`.
+- **Frontend** is served for all other routes, with SPA fallback to `index.html`.
+- **Scheduler** checks every 30 seconds for posts past their `scheduledAt` time and publishes them.
 
 ---
 

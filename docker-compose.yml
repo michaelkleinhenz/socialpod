@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mongodb:
     image: mongo:7
@@ -17,37 +15,25 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       mongodb:
         condition: service_healthy
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "${APP_PORT:-8080}:8080"
     environment:
       MONGO_URI: mongodb://${MONGO_USER:-socialmedia}:${MONGO_PASSWORD:-socialmedia_secret}@mongodb:27017/?authSource=admin
       MONGO_DATABASE: ${MONGO_DATABASE:-socialmedia}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost:8080}
       API_PORT: "8080"
       UPLOAD_DIR: /app/uploads
     volumes:
       - uploads:/app/uploads
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "${FRONTEND_PORT:-3000}:80"
 
 volumes:
   mongo_data:

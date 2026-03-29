@@ -18,10 +18,6 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      - name: Build
-        run: go build ./...
-        working-directory: backend
-
       - name: Vet
         run: go vet ./...
         working-directory: backend
@@ -61,8 +57,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build backend image
-        run: docker build -t socialpod-backend ./backend
-
-      - name: Build frontend image
-        run: docker build -t socialpod-frontend ./frontend
+      - name: Build image
+        run: docker build -t socialpod .

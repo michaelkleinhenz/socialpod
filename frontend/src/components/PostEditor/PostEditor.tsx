@@ -96,7 +96,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     }
   };
 
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+  const apiUrl = import.meta.env.VITE_API_URL || '';
 
   return (
     <div className="modal-overlay" onClick={onClose}>

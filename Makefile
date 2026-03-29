@@ -1,4 +1,4 @@
-.PHONY: up down restart build logs clean backend frontend dev-backend dev-frontend mongo status
+.PHONY: up down restart build logs clean frontend backend dev mongo status
 
 # Docker Compose targets
 up:
@@ -26,15 +26,17 @@ status:
 mongo:
 	docker compose up -d mongodb
 
-# Local builds (no Docker)
-backend:
+# Local builds
+frontend:
+	cd frontend && npm ci && npm run build
+
+backend: frontend
+	cp -r frontend/dist backend/cmd/server/dist
 	cd backend && go build -o bin/server ./cmd/server
 
-frontend:
-	cd frontend && npm run build
-
-# Local dev servers (requires MongoDB running — use `make mongo` first)
-dev-backend:
+# Local dev (requires MongoDB running — use `make mongo` first)
+dev: frontend
+	cp -r frontend/dist backend/cmd/server/dist
 	cd backend && go run ./cmd/server
 
 dev-frontend:

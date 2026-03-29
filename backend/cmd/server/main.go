@@ -90,6 +90,9 @@ func main() {
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
 	}
 
+	// Serve embedded frontend (SPA with index.html fallback)
+	serveFrontend(r)
+
 	log.Printf("Server starting on port %s", cfg.APIPort)
 	r.Run(":" + cfg.APIPort)
 }
