@@ -58,6 +58,11 @@ func (m *MongoDB) ensureIndexes() {
 		Keys: bson.D{{Key: "apiToken", Value: 1}},
 	})
 
+	m.Uploads().Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "filename", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -75,6 +80,10 @@ func (m *MongoDB) SocialAccounts() *mongo.Collection {
 
 func (m *MongoDB) Teams() *mongo.Collection {
 	return m.Database.Collection("teams")
+}
+
+func (m *MongoDB) Uploads() *mongo.Collection {
+	return m.Database.Collection("uploads")
 }
 
 func (m *MongoDB) Settings() *mongo.Collection {

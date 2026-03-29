@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -143,26 +142,24 @@ func (s *BlueskyService) createSession(account *models.SocialAccount) (*bskySess
 
 func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imageURLs []string) ([]map[string]interface{}, error) {
 	var images []map[string]interface{}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	for _, url := range imageURLs {
 		if len(images) >= 4 { // Bluesky max 4 images
 			break
 		}
 
-		// Read local file
-		localPath := strings.TrimPrefix(url, "/api/uploads/")
-		uploadDir := os.Getenv("UPLOAD_DIR")
-		if uploadDir == "" {
-			uploadDir = "./uploads"
-		}
-		filePath := uploadDir + "/" + localPath
-
-		data, err := os.ReadFile(filePath)
+		// Read from database
+		filename := strings.TrimPrefix(url, "/api/uploads/")
+		var upload models.Upload
+		err := s.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
 		if err != nil {
 			continue
 		}
 
 		// Resize if over Bluesky's 1MB blob limit
-		data, contentType := ResizeImageIfNeeded(data, localPath)
+		data, contentType := ResizeImageIfNeeded(upload.Data, filename)
 
 		req, _ := http.NewRequest("POST", pdsHost+"/xrpc/com.atproto.repo.uploadBlob",
 			bytes.NewReader(data))

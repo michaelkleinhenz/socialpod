@@ -33,10 +33,6 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       APP_URL: ${APP_URL:-http://localhost:8080}
       API_PORT: "8080"
-      UPLOAD_DIR: /app/uploads
-    volumes:
-      - uploads:/app/uploads
 
 volumes:
   mongo_data:
-  uploads:

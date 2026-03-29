@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -19,8 +18,7 @@ import (
 )
 
 type PostHandler struct {
-	DB        *database.MongoDB
-	UploadDir string
+	DB *database.MongoDB
 }
 
 type CreatePostInput struct {
@@ -267,7 +265,6 @@ func (h *PostHandler) UploadImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Validate file type
 	ext := filepath.Ext(header.Filename)
 	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
 	if !allowed[ext] {
@@ -275,28 +272,59 @@ func (h *PostHandler) UploadImage(c *gin.Context) {
 		return
 	}
 
-	// Max 10MB
 	if header.Size > 10*1024*1024 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File too large (max 10MB)"})
 		return
 	}
 
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+		return
+	}
+
+	contentTypes := map[string]string{
+		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+		".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+	}
+
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	destPath := filepath.Join(h.UploadDir, filename)
+	upload := models.Upload{
+		Filename:    filename,
+		ContentType: contentTypes[ext],
+		Data:        data,
+		Size:        int64(len(data)),
+		CreatedAt:   time.Now(),
+	}
 
-	os.MkdirAll(h.UploadDir, 0o755)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	dest, err := os.Create(destPath)
+	_, err = h.DB.Uploads().InsertOne(ctx, upload)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
 		return
 	}
-	defer dest.Close()
-
-	io.Copy(dest, file)
 
 	url := "/api/uploads/" + filename
 	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filename})
+}
+
+func (h *PostHandler) ServeImage(c *gin.Context) {
+	filename := c.Param("filename")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var upload models.Upload
+	err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	c.Data(http.StatusOK, upload.ContentType, upload.Data)
 }
 
 func (h *PostHandler) Reschedule(c *gin.Context) {

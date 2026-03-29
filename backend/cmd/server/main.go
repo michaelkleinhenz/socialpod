@@ -40,12 +40,9 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Serve uploads
-	r.Static("/api/uploads", cfg.UploadDir)
-
 	// Handlers
 	authHandler := &handlers.AuthHandler{DB: db, Secret: cfg.JWTSecret}
-	postHandler := &handlers.PostHandler{DB: db, UploadDir: cfg.UploadDir}
+	postHandler := &handlers.PostHandler{DB: db}
 	igService := &services.InstagramService{DB: db}
 	adminHandler := &handlers.AdminHandler{DB: db, Instagram: igService}
 
@@ -56,6 +53,7 @@ func main() {
 		api.POST("/auth/login", authHandler.Login)
 		api.GET("/auth/registration-status", authHandler.RegistrationStatus)
 		api.GET("/auth/instagram/callback", adminHandler.InstagramCallback)
+		api.GET("/uploads/:filename", postHandler.ServeImage)
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
