@@ -172,10 +172,20 @@
 .calendar-post.draft { border-left-color: var(--text-muted); }
 .calendar-post.failed { border-left-color: var(--danger); }
 
+.post-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .post-time {
   font-weight: 600;
   color: var(--text-secondary);
   font-size: 10px;
+}
+
+.post-status-icon {
+  flex-shrink: 0;
 }
 
 .post-preview {

@@ -10,6 +10,7 @@ import { AccountsPage } from './components/Admin/AccountsPage';
 import { SettingsPage } from './components/Admin/SettingsPage';
 import { UsersPage } from './components/Admin/UsersPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
+import { LogPage } from './components/Log/LogPage';
 import './styles/global.css';
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
@@ -29,6 +30,7 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <RegisterPage />} />
       <Route path="/" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
+      <Route path="/log" element={<ProtectedRoute><Layout><LogPage /></Layout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Layout><ProfilePage /></Layout></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute adminOnly><Layout><AdminPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/accounts" element={<ProtectedRoute adminOnly><Layout><AccountsPage /></Layout></ProtectedRoute>} />
