@@ -46,9 +46,13 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     );
   };
 
-  const charLimit = platforms.includes('bluesky') ? BLUESKY_LIMIT : INSTAGRAM_LIMIT;
+  const charLimit = platforms.length === 0 ? INSTAGRAM_LIMIT : Math.min(
+    ...(platforms.includes('bluesky') ? [BLUESKY_LIMIT] : []),
+    ...(platforms.includes('instagram') ? [INSTAGRAM_LIMIT] : []),
+  );
   const charCount = content.length;
-  const charClass = charCount > charLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
+  const overLimit = charCount > charLimit;
+  const charClass = overLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
   const handleImageUpload = async (files: FileList | null) => {
     if (!files) return;
@@ -80,6 +84,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const handleSubmit = async () => {
     if (!content.trim()) { toast.error('Content is required'); return; }
     if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
+    if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
 
     setSaving(true);
     try {
@@ -223,7 +228,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           </div>
           <div className="footer-right">
             <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || overLimit}>
               <Send size={16} /> {saving ? 'Saving...' : post ? 'Update' : 'Schedule'}
             </button>
           </div>

@@ -41,6 +41,21 @@ type UpdatePostInput struct {
 	Status      *models.PostStatus `json:"status,omitempty"`
 }
 
+const (
+	blueskyCharLimit   = 300
+	instagramCharLimit = 2200
+)
+
+func contentLimit(platforms []models.Platform) int {
+	limit := instagramCharLimit
+	for _, p := range platforms {
+		if p == models.PlatformBluesky && blueskyCharLimit < limit {
+			limit = blueskyCharLimit
+		}
+	}
+	return limit
+}
+
 // postFilter returns a bson filter scoped to the user's team (if any) or user.
 func postFilter(c *gin.Context) bson.M {
 	if teamID, ok := c.Get("teamId"); ok {
@@ -61,6 +76,12 @@ func (h *PostHandler) Create(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
+	limit := contentLimit(input.Platforms)
+	if len([]rune(input.Content)) > limit {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Content exceeds %d character limit", limit)})
+		return
+	}
 
 	scheduledAt, err := time.Parse(time.RFC3339, input.ScheduledAt)
 	if err != nil {
@@ -190,6 +211,29 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Validate content length against platform limits
+	if input.Content != nil || input.Platforms != nil {
+		platforms := input.Platforms
+		if platforms == nil {
+			// Fetch existing post to get current platforms
+			ctx0, cancel0 := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel0()
+			pf := postFilter(c)
+			pf["_id"] = postID
+			var existing models.Post
+			if err := h.DB.Posts().FindOne(ctx0, pf).Decode(&existing); err == nil {
+				platforms = existing.Platforms
+			}
+		}
+		if input.Content != nil && platforms != nil {
+			limit := contentLimit(platforms)
+			if len([]rune(*input.Content)) > limit {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Content exceeds %d character limit", limit)})
+				return
+			}
+		}
 	}
 
 	filter := postFilter(c)
