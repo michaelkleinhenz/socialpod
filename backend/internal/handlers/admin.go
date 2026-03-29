@@ -149,9 +149,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 	err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
 	if err != nil {
 		settings = models.AppSettings{
-			AppURL:          "http://localhost:3000",
-			DefaultPostTime: "09:00",
-			AutoPublish:     false,
+			AppURL: "http://localhost:3000",
 		}
 	}
 
@@ -164,8 +162,6 @@ type UpdateSettingsInput struct {
 	InstagramAppSecret    *string `json:"instagramAppSecret,omitempty"`
 	WebhookVerifyToken    *string `json:"webhookVerifyToken,omitempty"`
 	AdobeExpressClientID  *string `json:"adobeExpressClientId,omitempty"`
-	DefaultPostTime       *string `json:"defaultPostTime,omitempty"`
-	AutoPublish           *bool   `json:"autoPublish,omitempty"`
 	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
 }
 
@@ -188,12 +184,6 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.InstagramAppSecret != nil {
 		update["instagramAppSecret"] = *input.InstagramAppSecret
-	}
-	if input.DefaultPostTime != nil {
-		update["defaultPostTime"] = *input.DefaultPostTime
-	}
-	if input.AutoPublish != nil {
-		update["autoPublish"] = *input.AutoPublish
 	}
 	if input.AllowSelfRegistration != nil {
 		update["allowSelfRegistration"] = *input.AllowSelfRegistration

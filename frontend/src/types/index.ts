@@ -75,8 +75,6 @@ export interface AppSettings {
   instagramAppId: string;
   webhookVerifyToken: string;
   adobeExpressClientId: string;
-  defaultPostTime: string;
-  autoPublish: boolean;
   allowSelfRegistration: boolean;
   updatedAt?: string;
 }

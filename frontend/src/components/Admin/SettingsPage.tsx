@@ -11,8 +11,6 @@ export function SettingsPage() {
     instagramAppId: '',
     webhookVerifyToken: '',
     adobeExpressClientId: '',
-    defaultPostTime: '09:00',
-    autoPublish: false,
     allowSelfRegistration: true,
   });
   const [igSecret, setIgSecret] = useState('');
@@ -28,8 +26,6 @@ export function SettingsPage() {
       const data: any = {
         appUrl: settings.appUrl,
         instagramAppId: settings.instagramAppId,
-        defaultPostTime: settings.defaultPostTime,
-        autoPublish: settings.autoPublish,
         allowSelfRegistration: settings.allowSelfRegistration,
         webhookVerifyToken: settings.webhookVerifyToken,
         adobeExpressClientId: settings.adobeExpressClientId,
@@ -66,27 +62,6 @@ export function SettingsPage() {
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Public URL where this app is reachable (used for Instagram OAuth callback)
             </span>
-          </div>
-
-          <div className="form-group">
-            <label>Default Post Time</label>
-            <input
-              type="time"
-              className="input"
-              value={settings.defaultPostTime}
-              onChange={e => setSettings(s => ({ ...s, defaultPostTime: e.target.value }))}
-            />
-          </div>
-
-          <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={settings.autoPublish}
-                onChange={e => setSettings(s => ({ ...s, autoPublish: e.target.checked }))}
-              />
-              Auto-publish scheduled posts
-            </label>
           </div>
 
           <div className="form-group">
