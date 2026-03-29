@@ -4,6 +4,11 @@ import { api } from '../../services/api';
 import { Key, Copy, RefreshCw, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+export function ProfilePage() {
+  const { user } = useAuth();
+  const [apiToken, setApiToken] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
   const generateToken = async () => {
     setGenerating(true);
     try {
