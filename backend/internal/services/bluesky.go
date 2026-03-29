@@ -161,12 +161,8 @@ func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imag
 			continue
 		}
 
-		contentType := "image/jpeg"
-		if strings.HasSuffix(localPath, ".png") {
-			contentType = "image/png"
-		} else if strings.HasSuffix(localPath, ".webp") {
-			contentType = "image/webp"
-		}
+		// Resize if over Bluesky's 1MB blob limit
+		data, contentType := ResizeImageIfNeeded(data, localPath)
 
 		req, _ := http.NewRequest("POST", pdsHost+"/xrpc/com.atproto.repo.uploadBlob",
 			bytes.NewReader(data))
