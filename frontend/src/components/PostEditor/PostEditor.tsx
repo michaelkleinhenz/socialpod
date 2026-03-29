@@ -62,8 +62,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
       editorRef.current.create(
         { canvasSize: platforms.includes('instagram')
-            ? { width: 1080, height: 1080 }
-            : { width: 1200, height: 675 } },
+            ? { width: 1080, height: 1080, unit: 'px' }
+            : { width: 1200, height: 675, unit: 'px' } },
         {
           callbacks: {
             onPublish: async (_intent: any, publishParams: any) => {
