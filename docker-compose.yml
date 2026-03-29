@@ -26,7 +26,9 @@ services:
     ports:
       - "${APP_PORT:-8080}:8080"
     environment:
-      MONGO_URI: mongodb://${MONGO_USER:-socialmedia}:${MONGO_PASSWORD:-socialmedia_secret}@mongodb:27017/?authSource=admin
+      MONGO_HOST: ${MONGO_HOST:-mongodb:27017}
+      MONGO_USER: ${MONGO_USER:-socialmedia}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-socialmedia_secret}
       MONGO_DATABASE: ${MONGO_DATABASE:-socialmedia}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       APP_URL: ${APP_URL:-http://localhost:8080}

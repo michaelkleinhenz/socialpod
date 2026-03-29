@@ -18,6 +18,10 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      - name: Create frontend embed placeholder
+        run: mkdir -p cmd/server/dist && echo '<!doctype html>' > cmd/server/dist/index.html
+        working-directory: backend
+
       - name: Vet
         run: go vet ./...
         working-directory: backend
