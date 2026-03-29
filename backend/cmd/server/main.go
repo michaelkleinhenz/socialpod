@@ -43,6 +43,7 @@ func main() {
 	// Handlers
 	authHandler := &handlers.AuthHandler{DB: db, Secret: cfg.JWTSecret}
 	postHandler := &handlers.PostHandler{DB: db}
+	suffixHandler := &handlers.SuffixHandler{DB: db}
 	igService := &services.InstagramService{DB: db}
 	adminHandler := &handlers.AdminHandler{DB: db, Instagram: igService}
 
@@ -76,6 +77,12 @@ func main() {
 		auth.DELETE("/posts/:id", postHandler.Delete)
 		auth.PATCH("/posts/:id/reschedule", postHandler.Reschedule)
 		auth.POST("/upload", postHandler.UploadImage)
+
+		// Suffixes
+		auth.GET("/suffixes", suffixHandler.List)
+		auth.POST("/suffixes", suffixHandler.Create)
+		auth.PUT("/suffixes/:id", suffixHandler.Update)
+		auth.DELETE("/suffixes/:id", suffixHandler.Delete)
 	}
 
 	// Admin routes

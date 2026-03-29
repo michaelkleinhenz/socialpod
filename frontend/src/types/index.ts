@@ -41,6 +41,16 @@ export interface Post {
   results?: PostResult[];
   tags?: string[];
   accountIds?: Record<string, string>;
+  suffixIds?: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Suffix {
+  id: string;
+  userId: string;
+  name: string;
+  content: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -31,6 +31,7 @@ type CreatePostInput struct {
 	AccountIDs  map[string]string `json:"accountIds,omitempty"`
 	ImageURLs   []string          `json:"imageUrls,omitempty"`
 	Status      models.PostStatus `json:"status,omitempty"`
+	SuffixIDs   map[string]string `json:"suffixIds,omitempty"`
 }
 
 type UpdatePostInput struct {
@@ -41,6 +42,7 @@ type UpdatePostInput struct {
 	AccountIDs  map[string]string  `json:"accountIds,omitempty"`
 	ImageURLs   []string           `json:"imageUrls,omitempty"`
 	Status      *models.PostStatus `json:"status,omitempty"`
+	SuffixIDs   map[string]string  `json:"suffixIds"`
 }
 
 const (
@@ -122,6 +124,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 		Tags:        input.Tags,
 		AccountIDs:  input.AccountIDs,
 		ImageURLs:   input.ImageURLs,
+		SuffixIDs:   input.SuffixIDs,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -293,6 +296,9 @@ func (h *PostHandler) Update(c *gin.Context) {
 	}
 	if input.Status != nil {
 		update["status"] = *input.Status
+	}
+	if input.SuffixIDs != nil {
+		update["suffixIds"] = input.SuffixIDs
 	}
 
 	result, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})

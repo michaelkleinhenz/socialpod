@@ -177,6 +177,29 @@ class ApiClient {
     return this.request<{ adobeExpressClientId: string }>('/settings/public');
   }
 
+  // Suffixes
+  getSuffixes() {
+    return this.request<any[]>('/suffixes');
+  }
+
+  createSuffix(data: { name: string; content: string }) {
+    return this.request<any>('/suffixes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateSuffix(id: string, data: { name?: string; content?: string }) {
+    return this.request<any>(`/suffixes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteSuffix(id: string) {
+    return this.request<any>(`/suffixes/${id}`, { method: 'DELETE' });
+  }
+
   // Teams
   getTeams() {
     return this.request<any[]>('/admin/teams');

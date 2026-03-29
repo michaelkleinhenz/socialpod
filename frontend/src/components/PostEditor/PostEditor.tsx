@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform } from '../../types';
+import type { Post, Platform, Suffix } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
@@ -42,6 +42,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [tags, setTags] = useState<string[]>(post?.tags || []);
   const [tagInput, setTagInput] = useState('');
   const [status, setStatus] = useState(post?.status || 'scheduled');
+  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
+  const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
   const [saving, setSaving] = useState(false);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
@@ -54,6 +56,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
+    api.getSuffixes().then(setSuffixes).catch(() => {});
     return () => {
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
@@ -153,9 +156,19 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     );
   };
 
-  const charLimit = platforms.length === 0 ? INSTAGRAM_LIMIT : Math.min(
-    ...(platforms.includes('bluesky') ? [BLUESKY_LIMIT] : []),
-    ...(platforms.includes('instagram') ? [INSTAGRAM_LIMIT] : []),
+  const suffixLen = (platform: Platform) => {
+    const id = suffixIds[platform];
+    if (!id) return 0;
+    const s = suffixes.find(x => x.id === id);
+    return s ? s.content.length + 1 : 0; // +1 for newline separator
+  };
+
+  const effectiveLimit = (platform: Platform) =>
+    (platform === 'bluesky' ? BLUESKY_LIMIT : INSTAGRAM_LIMIT) - suffixLen(platform);
+
+  const charLimit = platforms.length === 0 ? effectiveLimit('instagram') : Math.min(
+    ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
+    ...(platforms.includes('instagram') ? [effectiveLimit('instagram')] : []),
   );
   const charCount = content.length;
   const overLimit = charCount > charLimit;
@@ -208,7 +221,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     setSaving(true);
     try {
       await onSave(
-        { content, platforms, scheduledAt: new Date(scheduledAt).toISOString(), imageUrls, tags, status },
+        { content, platforms, scheduledAt: new Date(scheduledAt).toISOString(), imageUrls, tags, status, suffixIds },
         imageFiles.length > 0 ? imageFiles : undefined,
       );
     } finally {
@@ -246,6 +259,56 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               Instagram
             </div>
           </div>
+
+          {/* Suffix selectors */}
+          {suffixes.length > 0 && (platforms.includes('bluesky') || platforms.includes('instagram')) && (
+            <div className="suffix-selectors">
+              {platforms.includes('bluesky') && (
+                <div className="suffix-selector-row">
+                  <label className="suffix-label">
+                    <span className="platform-dot bluesky" /> Bluesky suffix
+                  </label>
+                  <select
+                    className="select suffix-select"
+                    value={suffixIds['bluesky'] || ''}
+                    onChange={e => setSuffixIds(prev => {
+                      const next = { ...prev };
+                      if (e.target.value) next['bluesky'] = e.target.value;
+                      else delete next['bluesky'];
+                      return next;
+                    })}
+                  >
+                    <option value="">None</option>
+                    {suffixes.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {platforms.includes('instagram') && (
+                <div className="suffix-selector-row">
+                  <label className="suffix-label">
+                    <span className="platform-dot instagram" /> Instagram suffix
+                  </label>
+                  <select
+                    className="select suffix-select"
+                    value={suffixIds['instagram'] || ''}
+                    onChange={e => setSuffixIds(prev => {
+                      const next = { ...prev };
+                      if (e.target.value) next['instagram'] = e.target.value;
+                      else delete next['instagram'];
+                      return next;
+                    })}
+                  >
+                    <option value="">None</option>
+                    {suffixes.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Content */}
           <div className="form-group">

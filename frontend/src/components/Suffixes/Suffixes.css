@@ -1,0 +1,87 @@
+.page-subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.suffix-form-card {
+  margin-bottom: 16px;
+}
+
+.suffix-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.suffix-form-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.suffix-char-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.suffix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suffix-card {
+  padding: 16px;
+}
+
+.suffix-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.suffix-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.suffix-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.suffix-content {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.suffix-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.suffix-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.suffix-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 40px 20px;
+  font-size: 14px;
+}
