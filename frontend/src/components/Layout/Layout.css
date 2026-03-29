@@ -107,6 +107,13 @@
   min-height: 100vh;
 }
 
+/* While Adobe Express is open its iframe is appended to <body> with no
+   explicit z-index. Drop the sidebar behind it so the editor is fully
+   visible and interactive across the whole viewport. */
+body.adobe-express-open .sidebar {
+  z-index: 0;
+}
+
 @media (max-width: 768px) {
   .sidebar {
     width: 64px;

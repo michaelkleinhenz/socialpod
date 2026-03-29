@@ -40,6 +40,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [saving, setSaving] = useState(false);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
+  const [adobeActive, setAdobeActive] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -48,6 +49,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
+    // Clean up body class if the component unmounts while Adobe is open.
+    return () => { document.body.classList.remove('adobe-express-open'); };
   }, []);
 
   const launchAdobeExpress = useCallback(async () => {
@@ -62,13 +65,17 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         }
         const { editor } = await (window as any).CCEverywhere.initialize(
           { clientId: adobeClientId, appName: 'SocialPod' },
-          // loginMode: 'auto' handles the auth flow once and persists the session.
-          // containerConfig.zIndex keeps the Adobe iframe above the sidebar (z-index 50).
-          { loginMode: 'auto', containerConfig: { zIndex: 300 } },
+          { loginMode: 'delayed' },
         );
         _ccEditor = editor;
         _ccClientId = adobeClientId;
       }
+
+      // Hide the PostEditor overlay and lower the sidebar so the Adobe iframe
+      // (which has no explicit z-index and is appended to <body>) is fully
+      // visible and interactive. Both are restored in every exit path below.
+      setAdobeActive(true);
+      document.body.classList.add('adobe-express-open');
 
       _ccEditor.create(
         {
@@ -80,6 +87,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           callbacks: {
             // SDK v4 passes a single publishParams argument (not intent + params).
             onPublish: async (publishParams: any) => {
+              setAdobeActive(false);
+              document.body.classList.remove('adobe-express-open');
               const dataUrl = publishParams?.asset?.[0]?.data;
               if (!dataUrl) { toast.error('No image data received'); return; }
               try {
@@ -93,8 +102,15 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
                 toast.error('Failed to save design');
               }
             },
-            onCancel: () => {},
-            onError: (err: any) => { toast.error('Adobe Express error: ' + err.toString()); },
+            onCancel: () => {
+              setAdobeActive(false);
+              document.body.classList.remove('adobe-express-open');
+            },
+            onError: (err: any) => {
+              setAdobeActive(false);
+              document.body.classList.remove('adobe-express-open');
+              toast.error('Adobe Express error: ' + err.toString());
+            },
           },
         },
         [
@@ -107,6 +123,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         ],
       );
     } catch {
+      setAdobeActive(false);
+      document.body.classList.remove('adobe-express-open');
       toast.error('Failed to open Adobe Express');
     } finally {
       setAdobeLoading(false);
@@ -177,7 +195,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined} onClick={onClose}>
       <div className="modal post-editor-modal" onClick={e => e.stopPropagation()}>
         <div className="editor-header">
           <h2>{post ? 'Edit Post' : 'New Post'}</h2>
