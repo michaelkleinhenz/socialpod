@@ -61,8 +61,9 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
       }
 
       editorRef.current.create(
-        { canvasSize: platforms.includes('instagram') ? 'InstagramSquare' : 'custom',
-          ...(platforms.includes('instagram') ? {} : { width: 1200, height: 675 }) },
+        { canvasSize: platforms.includes('instagram')
+            ? { width: 1080, height: 1080 }
+            : { width: 1200, height: 675 } },
         {
           callbacks: {
             onPublish: async (_intent: any, publishParams: any) => {
