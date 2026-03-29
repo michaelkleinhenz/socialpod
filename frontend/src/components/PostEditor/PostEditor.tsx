@@ -6,6 +6,11 @@ import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
+// Module-level cache so the SDK is initialized once per page load and login
+// state persists across PostEditor open/close cycles.
+let _ccEditor: any = null;
+let _ccClientId = '';
+
 interface Props {
   post?: Post | null;
   defaultDate?: Date | null;
@@ -37,7 +42,6 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [adobeLoading, setAdobeLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const editorRef = useRef<any>(null);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -51,23 +55,33 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     setAdobeLoading(true);
 
     try {
-      if (!editorRef.current) {
-        await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
-        const { editor } = await (window as any).CCEverywhere.initialize({
-          clientId: adobeClientId,
-          appName: 'SocialPod',
-        }, { loginMode: 'delayed' });
-        editorRef.current = editor;
+      // Re-initialize only if the client ID changed or SDK was never loaded.
+      if (!_ccEditor || _ccClientId !== adobeClientId) {
+        if (!(window as any).CCEverywhere) {
+          await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
+        }
+        const { editor } = await (window as any).CCEverywhere.initialize(
+          { clientId: adobeClientId, appName: 'SocialPod' },
+          // loginMode: 'auto' handles the auth flow once and persists the session.
+          // containerConfig.zIndex keeps the Adobe iframe above the sidebar (z-index 50).
+          { loginMode: 'auto', containerConfig: { zIndex: 300 } },
+        );
+        _ccEditor = editor;
+        _ccClientId = adobeClientId;
       }
 
-      editorRef.current.create(
-        { canvasSize: platforms.includes('instagram')
+      _ccEditor.create(
+        {
+          canvasSize: platforms.includes('instagram')
             ? { width: 1080, height: 1080, unit: 'px' }
-            : { width: 1200, height: 675, unit: 'px' } },
+            : { width: 1200, height: 675, unit: 'px' },
+        },
         {
           callbacks: {
-            onPublish: async (_intent: any, publishParams: any) => {
-              const dataUrl = publishParams.asset[0].data;
+            // SDK v4 passes a single publishParams argument (not intent + params).
+            onPublish: async (publishParams: any) => {
+              const dataUrl = publishParams?.asset?.[0]?.data;
+              if (!dataUrl) { toast.error('No image data received'); return; }
               try {
                 const res = await fetch(dataUrl);
                 const blob = await res.blob();
@@ -92,7 +106,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           },
         ],
       );
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to open Adobe Express');
     } finally {
       setAdobeLoading(false);
