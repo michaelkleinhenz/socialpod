@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
@@ -132,7 +133,38 @@ func (s *InstagramService) postCarousel(ctx context.Context, account *models.Soc
 	return s.publishContainer(account, container.ID)
 }
 
+func (s *InstagramService) waitForContainer(account *models.SocialAccount, containerID string) error {
+	for i := 0; i < 30; i++ {
+		resp, err := http.Get(fmt.Sprintf(
+			"%s/%s?fields=status_code&access_token=%s",
+			igGraphAPI, containerID, account.AccessToken))
+		if err != nil {
+			return err
+		}
+
+		var status struct {
+			StatusCode string `json:"status_code"`
+		}
+		json.NewDecoder(resp.Body).Decode(&status)
+		resp.Body.Close()
+
+		switch status.StatusCode {
+		case "FINISHED":
+			return nil
+		case "ERROR":
+			return fmt.Errorf("container processing failed")
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("container processing timed out")
+}
+
 func (s *InstagramService) publishContainer(account *models.SocialAccount, containerID string) (string, error) {
+	if err := s.waitForContainer(account, containerID); err != nil {
+		return "", err
+	}
+
 	params := url.Values{
 		"creation_id":  {containerID},
 		"access_token": {account.AccessToken},
