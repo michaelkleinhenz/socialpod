@@ -83,10 +83,6 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
     try {
       // Re-initialize only if the client ID changed or SDK was never loaded.
-      // The SDK is pre-loaded via <script defer> in index.html so the OAuth
-      // popup (which redirects back to this app's origin) can complete the
-      // auth handshake via postMessage. The dynamic import here is a fallback
-      // for environments where the script tag hasn't executed yet.
       if (!_ccEditor || _ccClientId !== adobeClientId) {
         if (!(window as any).CCEverywhere) {
           await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
@@ -107,8 +103,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         },
         {
           callbacks: {
-            // SDK v4 passes a single publishParams argument (not intent + params).
-            onPublish: async (publishParams: any) => {
+            // v4 still passes two arguments: (intent, publishParams).
+            onPublish: async (_intent: any, publishParams: any) => {
               closeAdobe();
               const dataUrl = publishParams?.asset?.[0]?.data;
               if (!dataUrl) { toast.error('No image data received'); return; }
