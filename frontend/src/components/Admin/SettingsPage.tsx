@@ -11,6 +11,7 @@ export function SettingsPage() {
     instagramAppId: '',
     defaultPostTime: '09:00',
     autoPublish: false,
+    allowSelfRegistration: true,
   });
   const [igSecret, setIgSecret] = useState('');
   const [saving, setSaving] = useState(false);
@@ -27,6 +28,7 @@ export function SettingsPage() {
         instagramAppId: settings.instagramAppId,
         defaultPostTime: settings.defaultPostTime,
         autoPublish: settings.autoPublish,
+        allowSelfRegistration: settings.allowSelfRegistration,
       };
       if (igSecret) data.instagramAppSecret = igSecret;
       const updated = await api.updateSettings(data);
@@ -81,6 +83,20 @@ export function SettingsPage() {
               />
               Auto-publish scheduled posts
             </label>
+          </div>
+
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.allowSelfRegistration}
+                onChange={e => setSettings(s => ({ ...s, allowSelfRegistration: e.target.checked }))}
+              />
+              Allow self-registration
+            </label>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              When disabled, only admins can create new user accounts
+            </span>
           </div>
         </div>
 

@@ -54,6 +54,7 @@ func main() {
 	{
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)
+		api.GET("/auth/registration-status", authHandler.RegistrationStatus)
 		api.GET("/auth/instagram/callback", adminHandler.InstagramCallback)
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -87,6 +88,7 @@ func main() {
 		admin.PUT("/settings", adminHandler.UpdateSettings)
 		admin.GET("/instagram/auth-url", adminHandler.InstagramAuthURL)
 		admin.GET("/users", adminHandler.ListUsers)
+		admin.POST("/users", adminHandler.CreateUser)
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
 	}
 

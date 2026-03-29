@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../services/api';
 import { Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Auth.css';
@@ -11,6 +12,36 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(true);
+
+  useEffect(() => {
+    api.getRegistrationStatus()
+      .then(res => setAllowed(res.allowed))
+      .catch(() => setAllowed(true))
+      .finally(() => setChecking(false));
+  }, []);
+
+  if (checking) return <div className="loading-screen"><div className="spinner" /></div>;
+  if (!allowed) return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-header">
+          <div className="logo-icon large">
+            <Zap size={28} />
+          </div>
+          <h1>SocialPod</h1>
+          <p>Registration is currently disabled</p>
+        </div>
+        <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+          Contact an administrator to get an account.
+        </p>
+        <p className="auth-footer">
+          Already have an account? <Link to="/login">Sign in</Link>
+        </p>
+      </div>
+    </div>
+  );
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

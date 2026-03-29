@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AdminHandler struct {
@@ -144,11 +145,12 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 }
 
 type UpdateSettingsInput struct {
-	AppURL             *string `json:"appUrl,omitempty"`
-	InstagramAppID     *string `json:"instagramAppId,omitempty"`
-	InstagramAppSecret *string `json:"instagramAppSecret,omitempty"`
-	DefaultPostTime    *string `json:"defaultPostTime,omitempty"`
-	AutoPublish        *bool   `json:"autoPublish,omitempty"`
+	AppURL                *string `json:"appUrl,omitempty"`
+	InstagramAppID        *string `json:"instagramAppId,omitempty"`
+	InstagramAppSecret    *string `json:"instagramAppSecret,omitempty"`
+	DefaultPostTime       *string `json:"defaultPostTime,omitempty"`
+	AutoPublish           *bool   `json:"autoPublish,omitempty"`
+	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -176,6 +178,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.AutoPublish != nil {
 		update["autoPublish"] = *input.AutoPublish
+	}
+	if input.AllowSelfRegistration != nil {
+		update["allowSelfRegistration"] = *input.AllowSelfRegistration
 	}
 
 	upsert := true
@@ -263,6 +268,54 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, users)
+}
+
+type CreateUserInput struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+	Name     string `json:"name" binding:"required"`
+	IsAdmin  bool   `json:"isAdmin"`
+}
+
+func (h *AdminHandler) CreateUser(c *gin.Context) {
+	var input CreateUserInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	count, _ := h.DB.Users().CountDocuments(ctx, bson.M{"email": input.Email})
+	if count > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user := models.User{
+		Email:     input.Email,
+		Password:  string(hash),
+		Name:      input.Name,
+		IsAdmin:   input.IsAdmin,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	result, err := h.DB.Users().InsertOne(ctx, user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	user.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, user)
 }
 
 func (h *AdminHandler) DeleteUser(c *gin.Context) {

@@ -43,6 +43,20 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// First user is always allowed (becomes admin)
+	totalUsers, _ := h.DB.Users().CountDocuments(ctx, bson.M{})
+	isFirstUser := totalUsers == 0
+
+	if !isFirstUser {
+		// Check if self-registration is allowed
+		var settings models.AppSettings
+		err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+		if err == nil && !settings.AllowSelfRegistration {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Self-registration is disabled. Contact an administrator."})
+			return
+		}
+	}
+
 	// Check if user exists
 	count, _ := h.DB.Users().CountDocuments(ctx, bson.M{"email": input.Email})
 	if count > 0 {
@@ -56,15 +70,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// First user is admin
-	totalUsers, _ := h.DB.Users().CountDocuments(ctx, bson.M{})
-	isAdmin := totalUsers == 0
-
 	user := models.User{
 		Email:     input.Email,
 		Password:  string(hash),
 		Name:      input.Name,
-		IsAdmin:   isAdmin,
+		IsAdmin:   isFirstUser,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -82,6 +92,23 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		"token": token,
 		"user":  user,
 	})
+}
+
+func (h *AuthHandler) RegistrationStatus(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	totalUsers, _ := h.DB.Users().CountDocuments(ctx, bson.M{})
+	if totalUsers == 0 {
+		c.JSON(http.StatusOK, gin.H{"allowed": true, "firstUser": true})
+		return
+	}
+
+	var settings models.AppSettings
+	err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+	allowed := err != nil || settings.AllowSelfRegistration
+
+	c.JSON(http.StatusOK, gin.H{"allowed": allowed, "firstUser": false})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {

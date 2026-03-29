@@ -158,8 +158,19 @@ class ApiClient {
     return this.request<any[]>('/admin/users');
   }
 
+  createUser(data: { email: string; password: string; name: string; isAdmin: boolean }) {
+    return this.request<any>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   deleteUser(id: string) {
     return this.request<any>(`/admin/users/${id}`, { method: 'DELETE' });
+  }
+
+  getRegistrationStatus() {
+    return this.request<{ allowed: boolean; firstUser: boolean }>('/auth/registration-status');
   }
 }
 

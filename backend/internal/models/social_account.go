@@ -32,5 +32,6 @@ type AppSettings struct {
 	InstagramAppSecret    string             `bson:"instagramAppSecret" json:"-"`
 	DefaultPostTime       string             `bson:"defaultPostTime" json:"defaultPostTime"` // HH:MM
 	AutoPublish           bool               `bson:"autoPublish" json:"autoPublish"`
+	AllowSelfRegistration bool               `bson:"allowSelfRegistration" json:"allowSelfRegistration"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

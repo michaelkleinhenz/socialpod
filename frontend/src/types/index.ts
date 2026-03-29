@@ -54,6 +54,7 @@ export interface AppSettings {
   instagramAppId: string;
   defaultPostTime: string;
   autoPublish: boolean;
+  allowSelfRegistration: boolean;
   updatedAt?: string;
 }
 
