@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-socialmedia}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-socialmedia_secret}
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      MONGO_URI: mongodb://${MONGO_USER:-socialmedia}:${MONGO_PASSWORD:-socialmedia_secret}@mongodb:27017/?authSource=admin
+      MONGO_DATABASE: ${MONGO_DATABASE:-socialmedia}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      API_PORT: "8080"
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  mongo_data:
+  uploads:
