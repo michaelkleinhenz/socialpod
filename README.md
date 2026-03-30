@@ -135,10 +135,18 @@ From your Meta app dashboard → **Instagram → Basic Display**:
 
 ### Instagram Post Requirements
 
-- Instagram **requires at least one image** per post — text-only posts are not supported.
-- Single image posts and carousels (up to 10 images) are supported.
-- Captions up to 2,200 characters.
-- Images must be publicly accessible (the app URL must be reachable from Instagram's servers).
+SocialPod supports three Instagram content types, selected via the `postType` field:
+
+| Post Type | Media Required | Description |
+|---|---|---|
+| `post` (default) | 1–10 images | Regular feed post or carousel |
+| `story` | 1 image or video | Instagram Story (disappears after 24h) |
+| `reel` | 1 video (MP4) | Instagram Reel — appears in the Reels tab |
+
+Additional requirements:
+- Instagram **requires at least one media file** per post — text-only posts are not supported.
+- Captions up to 2,200 characters (not applicable to Stories).
+- Media files must be publicly accessible (the `APP_URL` must be reachable from Instagram's servers).
 - The long-lived access token expires after ~60 days. You will need to reconnect the account when it expires.
 
 ### Instagram Scopes Requested
@@ -223,6 +231,18 @@ curl -X POST http://localhost:8080/api/posts \
   -F 'data={"content":"Photo post","platforms":["instagram"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
   -F "images=@photo.jpg"
 
+# Create an Instagram Story (postType="story", requires one image or video)
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"","platforms":["instagram"],"postType":"story","scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
+  -F "images=@story.jpg"
+
+# Create an Instagram Reel (postType="reel", requires one MP4 video)
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Check out this reel!","platforms":["instagram"],"postType":"reel","scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
+  -F "images=@reel.mp4"
+
 # Create a post with a suffix
 curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
@@ -236,10 +256,10 @@ curl "http://localhost:8080/api/posts?start=2025-01-01T00:00:00Z&end=2025-12-31T
 curl http://localhost:8080/api/posts/{id} \
   -H "Authorization: Bearer sm_..."
 
-# Update a post (multipart/form-data, same as create)
+# Update a post (multipart/form-data, same as create; only provided fields are changed)
 curl -X PUT http://localhost:8080/api/posts/{id} \
   -H "Authorization: Bearer sm_..." \
-  -F 'data={"content":"Updated content"}'
+  -F 'data={"content":"Updated content","postType":"reel"}'
 
 # Reschedule a post
 curl -X PATCH http://localhost:8080/api/posts/{id}/reschedule \
@@ -287,6 +307,23 @@ curl -X POST http://localhost:8080/api/upload \
 
 Include returned URLs in the `imageUrls` array of the post `data` field, or attach binary files directly as `images` fields.
 
+#### Post Data Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `content` | string | Yes* | Post text (*not required for Stories) |
+| `platforms` | array | Yes | `["bluesky"]`, `["instagram"]`, or both |
+| `postType` | string | No | `post` (default), `story`, or `reel` |
+| `scheduledAt` | string | Yes | ISO 8601 datetime (e.g. `2025-06-01T09:00:00Z`) |
+| `status` | string | No | `scheduled` (default) or `draft` |
+| `imageUrls` | array | No | Pre-uploaded image/video URLs |
+| `firstComment` | string | No | Posted as the first comment after publishing |
+| `suffixIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
+| `accountIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` — specific account to use |
+| `tags` | array | No | Tags for internal organisation |
+
+> **Note on `postType`**: `story` and `reel` are Instagram-only. Reels require an MP4 video file. Stories accept an image or video. The `content` field is used as the caption for Reels and is ignored for Stories.
+
 #### Health Check
 
 ```bash
@@ -306,6 +343,8 @@ SocialPod ships with a native **n8n community node** located in the `n8n-nodes-s
 |---|---|
 | **Post** | Create, Get, List, Update, Delete, Reschedule |
 | **Suffix** | Create, List, Update, Delete |
+
+The **Post → Create** and **Post → Update** operations include a **Post Type** field with three options: `Post` (default), `Reel`, and `Story`. Set this to `Reel` or `Story` when scheduling Instagram Reels or Stories. Attach the corresponding video or image file via the **Binary Image Property** or **Image URLs** fields.
 
 ### Installation
 

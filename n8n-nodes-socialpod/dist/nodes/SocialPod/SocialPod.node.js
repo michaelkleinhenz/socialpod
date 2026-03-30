@@ -145,6 +145,19 @@ class SocialPod {
                     description: 'ISO 8601 datetime when the post should be published',
                 },
                 {
+                    displayName: 'Post Type',
+                    name: 'postType',
+                    type: 'options',
+                    displayOptions: { show: { resource: ['post'], operation: ['create'] } },
+                    options: [
+                        { name: 'Post', value: 'post' },
+                        { name: 'Reel', value: 'reel' },
+                        { name: 'Story', value: 'story' },
+                    ],
+                    default: 'post',
+                    description: 'Type of content to publish. Reels and Stories are Instagram-only and require a video or image file.',
+                },
+                {
                     displayName: 'Status',
                     name: 'status',
                     type: 'options',
@@ -211,6 +224,18 @@ class SocialPod {
                             type: 'string',
                             typeOptions: { rows: 4 },
                             default: '',
+                        },
+                        {
+                            displayName: 'Post Type',
+                            name: 'postType',
+                            type: 'options',
+                            options: [
+                                { name: 'Post', value: 'post' },
+                                { name: 'Reel', value: 'reel' },
+                                { name: 'Story', value: 'story' },
+                            ],
+                            default: 'post',
+                            description: 'Type of content to publish. Reels and Stories are Instagram-only.',
                         },
                         {
                             displayName: 'Platforms',
@@ -395,9 +420,10 @@ class SocialPod {
                         const content = this.getNodeParameter('content', i);
                         const platforms = this.getNodeParameter('platforms', i);
                         const scheduledAt = this.getNodeParameter('scheduledAt', i);
+                        const postType = this.getNodeParameter('postType', i);
                         const status = this.getNodeParameter('status', i);
                         const extra = this.getNodeParameter('additionalFields', i, {});
-                        const body = { content, platforms, scheduledAt, status };
+                        const body = { content, platforms, scheduledAt, postType, status };
                         if (extra.imageUrls)
                             body.imageUrls = parseList(extra.imageUrls);
                         const suffixIds = {};
@@ -453,6 +479,8 @@ class SocialPod {
                         const body = {};
                         if (fields.content !== undefined && fields.content !== '')
                             body.content = fields.content;
+                        if (fields.postType !== undefined && fields.postType !== '')
+                            body.postType = fields.postType;
                         if (fields.scheduledAt !== undefined && fields.scheduledAt !== '')
                             body.scheduledAt = fields.scheduledAt;
                         if (fields.status !== undefined && fields.status !== '')

@@ -41,6 +41,7 @@ type CreatePostInput struct {
 
 type UpdatePostInput struct {
 	Content      *string            `json:"content,omitempty"`
+	PostType     *models.PostType   `json:"postType,omitempty"`
 	FirstComment *string            `json:"firstComment,omitempty"`
 	Platforms    []models.Platform  `json:"platforms,omitempty"`
 	ScheduledAt  *string            `json:"scheduledAt,omitempty"`
@@ -291,6 +292,9 @@ func (h *PostHandler) Update(c *gin.Context) {
 
 	if input.Content != nil {
 		update["content"] = *input.Content
+	}
+	if input.PostType != nil {
+		update["postType"] = *input.PostType
 	}
 	if input.FirstComment != nil {
 		update["firstComment"] = *input.FirstComment
