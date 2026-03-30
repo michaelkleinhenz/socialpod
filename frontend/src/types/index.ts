@@ -34,6 +34,7 @@ export interface Post {
   id: string;
   userId: string;
   content: string;
+  firstComment?: string;
   imageUrls?: string[];
   platforms: Platform[];
   scheduledAt: string;

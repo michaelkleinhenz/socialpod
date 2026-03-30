@@ -22,23 +22,25 @@ type PostHandler struct {
 }
 
 type CreatePostInput struct {
-	Content     string            `json:"content" binding:"required"`
-	Platforms   []models.Platform `json:"platforms" binding:"required"`
-	ScheduledAt string            `json:"scheduledAt" binding:"required"`
-	Tags        []string          `json:"tags,omitempty"`
-	AccountIDs  map[string]string `json:"accountIds,omitempty"`
-	ImageURLs   []string          `json:"imageUrls,omitempty"`
-	Status      models.PostStatus `json:"status,omitempty"`
+	Content      string            `json:"content" binding:"required"`
+	FirstComment string            `json:"firstComment,omitempty"`
+	Platforms    []models.Platform `json:"platforms" binding:"required"`
+	ScheduledAt  string            `json:"scheduledAt" binding:"required"`
+	Tags         []string          `json:"tags,omitempty"`
+	AccountIDs   map[string]string `json:"accountIds,omitempty"`
+	ImageURLs    []string          `json:"imageUrls,omitempty"`
+	Status       models.PostStatus `json:"status,omitempty"`
 }
 
 type UpdatePostInput struct {
-	Content     *string            `json:"content,omitempty"`
-	Platforms   []models.Platform  `json:"platforms,omitempty"`
-	ScheduledAt *string            `json:"scheduledAt,omitempty"`
-	Tags        []string           `json:"tags,omitempty"`
-	AccountIDs  map[string]string  `json:"accountIds,omitempty"`
-	ImageURLs   []string           `json:"imageUrls,omitempty"`
-	Status      *models.PostStatus `json:"status,omitempty"`
+	Content      *string            `json:"content,omitempty"`
+	FirstComment *string            `json:"firstComment,omitempty"`
+	Platforms    []models.Platform  `json:"platforms,omitempty"`
+	ScheduledAt  *string            `json:"scheduledAt,omitempty"`
+	Tags         []string           `json:"tags,omitempty"`
+	AccountIDs   map[string]string  `json:"accountIds,omitempty"`
+	ImageURLs    []string           `json:"imageUrls,omitempty"`
+	Status       *models.PostStatus `json:"status,omitempty"`
 }
 
 const (
@@ -95,16 +97,17 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	post := models.Post{
-		UserID:      objID,
-		Content:     input.Content,
-		Platforms:   input.Platforms,
-		ScheduledAt: scheduledAt,
-		Status:      status,
-		Tags:        input.Tags,
-		AccountIDs:  input.AccountIDs,
-		ImageURLs:   input.ImageURLs,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		UserID:       objID,
+		Content:      input.Content,
+		FirstComment: input.FirstComment,
+		Platforms:    input.Platforms,
+		ScheduledAt:  scheduledAt,
+		Status:       status,
+		Tags:         input.Tags,
+		AccountIDs:   input.AccountIDs,
+		ImageURLs:    input.ImageURLs,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	// If user belongs to a team, assign post to team
@@ -243,6 +246,9 @@ func (h *PostHandler) Update(c *gin.Context) {
 
 	if input.Content != nil {
 		update["content"] = *input.Content
+	}
+	if input.FirstComment != nil {
+		update["firstComment"] = *input.FirstComment
 	}
 	if input.Platforms != nil {
 		update["platforms"] = input.Platforms

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, SocialAccount } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -132,6 +132,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm");
 
   const [content, setContent] = useState(post?.content || '');
+  const [firstComment, setFirstComment] = useState(post?.firstComment || '');
   const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || ['bluesky']);
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
@@ -303,6 +304,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     try {
       await onSave({
         content,
+        firstComment: firstComment.trim() || undefined,
         platforms,
         scheduledAt: new Date(scheduledAt).toISOString(),
         imageUrls,
@@ -361,6 +363,18 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               <div className={`char-counter ${charClass}`}>
                 {charCount} / {charLimit}
               </div>
+            </div>
+
+            {/* First Comment */}
+            <div className="form-group">
+              <label><MessageSquare size={14} /> First Comment <span className="first-comment-label-hint">(optional — posted right after)</span></label>
+              <textarea
+                className="textarea first-comment-textarea"
+                value={firstComment}
+                onChange={e => setFirstComment(e.target.value)}
+                placeholder="Add a first comment to your post…"
+                rows={3}
+              />
             </div>
 
             {/* Images */}
