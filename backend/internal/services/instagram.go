@@ -269,6 +269,53 @@ func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accou
 	return s.publishContainer(account, container.ID)
 }
 
+// PostReel publishes an Instagram Reel. mediaURL must be a publicly reachable
+// URL pointing to an MP4 video file.
+func (s *InstagramService) PostReel(ctx context.Context, mediaURL string, caption string, accountID string) (string, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return "", fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	var settings models.AppSettings
+	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	fullURL := mediaURL
+	if !strings.HasPrefix(mediaURL, "http") {
+		fullURL = settings.AppURL + mediaURL
+	}
+
+	params := url.Values{
+		"media_type":   {"REELS"},
+		"video_url":    {fullURL},
+		"caption":      {caption},
+		"access_token": {account.AccessToken},
+	}
+
+	log.Printf("IG reel create: url=%s", fullURL)
+	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("IG reel container response: %s", string(body))
+
+	var container struct {
+		ID    string `json:"id"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.Unmarshal(body, &container)
+	if container.Error != nil {
+		return "", fmt.Errorf("IG reel error: %s", container.Error.Message)
+	}
+
+	return s.publishContainer(account, container.ID)
+}
+
 // PostComment posts a comment on an existing Instagram media object.
 func (s *InstagramService) PostComment(ctx context.Context, text, mediaID, accountID string) error {
 	account, err := s.getAccount(ctx, accountID)

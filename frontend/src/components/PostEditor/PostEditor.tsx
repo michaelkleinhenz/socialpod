@@ -181,16 +181,57 @@ function StoryPreview({ imageUrl, apiUrl, instagramAccount, isVideo }: StoryPrev
   );
 }
 
+interface ReelPreviewProps {
+  videoUrl: string;
+  apiUrl: string;
+  instagramAccount?: SocialAccount | null;
+  content: string;
+}
+
+function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPreviewProps) {
+  const igHandle = instagramAccount?.accountName || 'yourhandle';
+  const igAvatarUrl = instagramAccount?.avatarUrl;
+  const src = videoUrl.startsWith('/') ? apiUrl + videoUrl : videoUrl;
+
+  return (
+    <div className="preview-cards">
+      <div className="preview-story">
+        <div className="preview-story-frame">
+          {videoUrl ? (
+            <video src={src} className="preview-story-media" muted autoPlay loop playsInline />
+          ) : (
+            <div className="preview-story-empty">
+              <Film size={32} />
+              <span>Add a video</span>
+            </div>
+          )}
+          <div className="preview-story-header">
+            {igAvatarUrl
+              ? <img src={igAvatarUrl} alt="" className="preview-story-avatar" />
+              : <div className="preview-story-avatar preview-avatar-placeholder" />}
+            <span className="preview-story-handle">{igHandle}</span>
+          </div>
+          {content && (
+            <div className="preview-reel-caption">{content}</div>
+          )}
+        </div>
+        <div className="preview-platform-badge instagram" style={{ marginTop: 8, alignSelf: 'center' }}>Instagram Reel</div>
+      </div>
+    </div>
+  );
+}
+
 export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose }: Props) {
   const defaultTime = defaultDate
     ? format(defaultDate, "yyyy-MM-dd'T'HH:mm")
     : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm");
 
   const isStory = (post?.postType || propPostType || 'post') === 'story';
+  const isReel = (post?.postType || propPostType || 'post') === 'reel';
 
   const [content, setContent] = useState(post?.content || '');
   const [firstComment, setFirstComment] = useState(post?.firstComment || '');
-  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory ? ['instagram'] : ['bluesky']));
+  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory || isReel ? ['instagram'] : ['bluesky']));
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
   );
@@ -273,7 +314,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
       _ccEditor.create(
         {
-          canvasSize: isStory
+          canvasSize: (isStory || isReel)
             ? { width: 1080, height: 1920, unit: 'px' }
             : { width: 1080, height: 1080, unit: 'px' },
         },
@@ -299,7 +340,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 } else {
                   // External URL (S3) — proxy download through backend.
                   const uploaded = await api.uploadFromURL(assetData);
-                  if (isStory) {
+                  if (isStory || isReel) {
                     setImages([{ kind: 'url' as const, url: uploaded.url }]);
                   } else {
                     setImages(prev => [...prev, { kind: 'url' as const, url: uploaded.url }]);
@@ -308,7 +349,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   toast.success('Design added');
                   return;
                 }
-                if (isStory) {
+                if (isStory || isReel) {
                   setImages([{ kind: 'file' as const, file }]);
                 } else {
                   setImages(prev => [...prev, { kind: 'file' as const, file }]);
@@ -386,8 +427,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const handleImageUpload = (files: FileList | null) => {
     if (!files) return;
     const items = Array.from(files).map(file => ({ kind: 'file' as const, file }));
-    if (isStory) {
-      // Stories only support a single media file — replace any existing.
+    if (isStory || isReel) {
+      // Stories and Reels only support a single media file — replace any existing.
       setImages(items.slice(0, 1));
     } else {
       setImages(prev => [...prev, ...items]);
@@ -428,6 +469,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const handleSubmit = async () => {
     if (isStory) {
       if (images.length === 0) { toast.error('A story requires an image or video'); return; }
+    } else if (isReel) {
+      if (images.length === 0) { toast.error('A reel requires a video'); return; }
     } else {
       if (!content.trim()) { toast.error('Content is required'); return; }
       if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
@@ -437,19 +480,21 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const imageUrls = images.filter(i => i.kind === 'url').map(i => (i as { kind: 'url'; url: string }).url);
     const imageFiles = images.filter(i => i.kind === 'file').map(i => (i as { kind: 'file'; file: File }).file);
 
+    const postType = isStory ? 'story' : isReel ? 'reel' : 'post';
+
     setSaving(true);
     try {
       await onSave(
         {
           content: content || '',
-          postType: isStory ? 'story' : 'post',
-          firstComment: isStory ? undefined : (firstComment.trim() || undefined),
+          postType,
+          firstComment: (isStory || isReel) ? undefined : (firstComment.trim() || undefined),
           platforms,
           scheduledAt: new Date(scheduledAt).toISOString(),
           imageUrls,
           tags,
           status,
-          suffixIds: isStory ? {} : suffixIds,
+          suffixIds: (isStory || isReel) ? {} : suffixIds,
         },
         imageFiles.length > 0 ? imageFiles : undefined,
       );
@@ -478,7 +523,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined}>
       <div className="modal post-editor-modal" onClick={e => e.stopPropagation()}>
         <div className="editor-header">
-          <h2>{post ? (isStory ? 'Edit Story' : 'Edit Post') : (isStory ? 'New Story' : 'New Post')}</h2>
+          <h2>{post ? (isStory ? 'Edit Story' : isReel ? 'Edit Reel' : 'Edit Post') : (isStory ? 'New Story' : isReel ? 'New Reel' : 'New Post')}</h2>
           <button className="btn btn-ghost btn-sm" onClick={handleClose}>
             <X size={18} />
           </button>
@@ -486,7 +531,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
         <div className="editor-layout">
           <div className="editor-body">
-            {!isStory && (
+            {!isStory && !isReel && (
               <>
                 {/* Platform selector */}
                 <div className="platform-selector">
@@ -597,6 +642,35 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               </div>
             )}
 
+            {isReel && (
+              <>
+                <div className="story-hint">
+                  <Film size={16} />
+                  <span>Upload a video for your Instagram Reel (9:16 recommended, MP4)</span>
+                </div>
+                <div className="form-group">
+                  <textarea
+                    ref={textareaRef}
+                    className="textarea post-textarea"
+                    value={content}
+                    onChange={e => setContent(e.target.value)}
+                    placeholder="Add a caption to your Reel… (optional)"
+                    rows={4}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {aiEnabled && (
+                      <button className="btn btn-ghost btn-sm" onClick={generateText} disabled={generating || !content.trim()}>
+                        <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
+                      </button>
+                    )}
+                    <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
+                      {charCount} / {INSTAGRAM_LIMIT}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* Images */}
             <div className="editor-images">
               {images.length > 0 && (
@@ -616,8 +690,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               <input
                 ref={fileRef}
                 type="file"
-                accept={isStory ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
-                multiple={!isStory}
+                accept={isReel ? 'video/mp4,video/quicktime' : isStory ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
+                multiple={!isStory && !isReel}
                 style={{ display: 'none' }}
                 onChange={e => handleImageUpload(e.target.files)}
               />
@@ -647,7 +721,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           {/* Live preview */}
           <div className="editor-preview">
             <div className="editor-preview-label">Preview</div>
-            {isStory ? (
+            {isReel ? (
+              <ReelPreview
+                videoUrl={previewImageUrls[0] || ''}
+                apiUrl={apiUrl}
+                instagramAccount={instagramAccount}
+                content={content}
+              />
+            ) : isStory ? (
               <StoryPreview
                 imageUrl={previewImageUrls[0] || ''}
                 apiUrl={apiUrl}
@@ -673,11 +754,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         <div className="editor-footer">
           <div className="footer-left">
             <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
-              {isStory ? <><Film size={16} /> Upload Media</> : <><Image size={16} /> Upload</>}
+              {(isStory || isReel) ? <><Film size={16} /> Upload {isReel ? 'Video' : 'Media'}</> : <><Image size={16} /> Upload</>}
             </button>
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>
-                <Wand2 size={16} /> {adobeLoading ? 'Opening...' : (isStory ? 'Create Story Design' : 'Create Design')}
+                <Wand2 size={16} /> {adobeLoading ? 'Opening...' : (isStory ? 'Create Story Design' : isReel ? 'Create Reel Design' : 'Create Design')}
               </button>
             )}
             {onDelete && (

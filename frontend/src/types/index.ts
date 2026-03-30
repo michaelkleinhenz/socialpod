@@ -20,7 +20,7 @@ export interface Team {
 }
 
 export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';
-export type PostType = 'post' | 'story';
+export type PostType = 'post' | 'story' | 'reel';
 export type Platform = 'bluesky' | 'instagram';
 
 export interface PostResult {

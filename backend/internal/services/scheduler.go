@@ -159,6 +159,25 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 						result.PostedAt = time.Now()
 					}
 				}
+			} else if post.PostType == models.PostTypeReel {
+				// Reels: publish the first media file as a reel with optional caption
+				if len(post.ImageURLs) == 0 {
+					result.Success = false
+					result.Error = "reel requires a video"
+					allSuccess = false
+				} else {
+					postID, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(post.Content, instagramSuffix), accountID)
+					if err != nil {
+						result.Success = false
+						result.Error = err.Error()
+						allSuccess = false
+						log.Printf("Instagram reel failed: %v", err)
+					} else {
+						result.Success = true
+						result.PostID = postID
+						result.PostedAt = time.Now()
+					}
+				}
 			} else {
 				postID, err := s.Instagram.Post(ctx, applyContent(post.Content, instagramSuffix), post.ImageURLs, accountID)
 				if err != nil {

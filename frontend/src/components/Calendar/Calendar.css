@@ -172,6 +172,7 @@
 .calendar-post.draft { border-left-color: var(--text-muted); }
 .calendar-post.failed { border-left-color: var(--danger); }
 .calendar-post.story { border-left-style: dashed; }
+.calendar-post.reel { border-left-style: dotted; }
 
 .post-top-row {
   display: flex;
