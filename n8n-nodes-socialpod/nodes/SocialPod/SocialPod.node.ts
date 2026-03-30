@@ -17,7 +17,7 @@ async function multipartRequest(
 ): Promise<IDataObject> {
   const form = new FormData();
   form.append('data', JSON.stringify(data));
-  return ctx.helpers.httpRequestWithAuthentication('socialPodApi', {
+  return ctx.helpers.httpRequestWithAuthentication.call(ctx, 'socialPodApi', {
     method,
     url,
     body: form,
@@ -430,7 +430,7 @@ export class SocialPod implements INodeType {
 
           } else if (operation === 'get') {
             const postId = this.getNodeParameter('postId', i) as string;
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'GET',
               url: `${baseUrl}/api/posts/${postId}`,
             }) as IDataObject;
@@ -443,7 +443,7 @@ export class SocialPod implements INodeType {
             if (filters.status)   qs.status   = filters.status;
             if (filters.platform) qs.platform = filters.platform;
 
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'GET',
               url: `${baseUrl}/api/posts`,
               qs,
@@ -470,7 +470,7 @@ export class SocialPod implements INodeType {
 
           } else if (operation === 'delete') {
             const postId = this.getNodeParameter('postId', i) as string;
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'DELETE',
               url: `${baseUrl}/api/posts/${postId}`,
             }) as IDataObject;
@@ -478,7 +478,7 @@ export class SocialPod implements INodeType {
           } else if (operation === 'reschedule') {
             const postId      = this.getNodeParameter('postId',      i) as string;
             const scheduledAt = this.getNodeParameter('scheduledAt', i) as string;
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'PATCH',
               url: `${baseUrl}/api/posts/${postId}/reschedule`,
               body: { scheduledAt },
@@ -493,7 +493,7 @@ export class SocialPod implements INodeType {
         } else if (resource === 'suffix') {
 
           if (operation === 'list') {
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'GET',
               url: `${baseUrl}/api/suffixes`,
             }) as IDataObject[];
@@ -501,7 +501,7 @@ export class SocialPod implements INodeType {
           } else if (operation === 'create') {
             const name    = this.getNodeParameter('name',    i) as string;
             const content = this.getNodeParameter('content', i) as string;
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'POST',
               url: `${baseUrl}/api/suffixes`,
               body: { name, content },
@@ -514,7 +514,7 @@ export class SocialPod implements INodeType {
             const body: IDataObject = {};
             if (fields.name    !== undefined && fields.name    !== '') body.name    = fields.name;
             if (fields.content !== undefined && fields.content !== '') body.content = fields.content;
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'PUT',
               url: `${baseUrl}/api/suffixes/${suffixId}`,
               body,
@@ -523,7 +523,7 @@ export class SocialPod implements INodeType {
 
           } else if (operation === 'delete') {
             const suffixId = this.getNodeParameter('suffixId', i) as string;
-            responseData = await this.helpers.httpRequestWithAuthentication('socialPodApi', {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
               method: 'DELETE',
               url: `${baseUrl}/api/suffixes/${suffixId}`,
             }) as IDataObject;
