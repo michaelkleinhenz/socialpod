@@ -1,5 +1,6 @@
 .post-editor-modal {
-  max-width: 620px;
+  max-width: 960px;
+  width: 95vw;
   display: flex;
   flex-direction: column;
 }
@@ -11,10 +12,21 @@
   margin-bottom: 20px;
 }
 
+/* Two-column layout: form + preview */
+.editor-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  min-height: 0;
+}
+
 .editor-body {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  overflow-y: auto;
+  max-height: 65vh;
+  padding-right: 4px;
 }
 
 .post-textarea {
@@ -62,4 +74,208 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Preview panel */
+.editor-preview {
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+  overflow-y: auto;
+  max-height: 65vh;
+}
+
+.editor-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.preview-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-card {
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 13px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+}
+
+.preview-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+}
+
+.preview-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #818cf8);
+  flex-shrink: 0;
+}
+
+.preview-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-display-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.preview-handle {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.preview-platform-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.preview-platform-badge.bluesky {
+  background: rgba(0, 133, 255, 0.15);
+  color: var(--bluesky);
+}
+
+.preview-platform-badge.instagram {
+  background: rgba(225, 48, 108, 0.15);
+  color: var(--instagram);
+}
+
+.preview-content {
+  padding: 0 14px 10px;
+}
+
+.preview-text {
+  color: var(--text-primary);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.preview-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.preview-hashtag {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Bluesky image grid */
+.preview-images {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0;
+}
+
+.preview-images-1 { grid-template-columns: 1fr; }
+.preview-images-2 { grid-template-columns: 1fr 1fr; }
+.preview-images-3 { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
+.preview-images-4 { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
+
+.preview-images-3 .preview-image:first-child {
+  grid-column: 1 / -1;
+}
+
+.preview-image {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+}
+
+.preview-images-1 .preview-image {
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+  margin: 0 14px;
+  width: calc(100% - 28px);
+}
+
+/* Instagram image */
+.preview-ig-image {
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+
+.preview-ig-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.preview-ig-image-placeholder {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.preview-footer {
+  padding: 6px 14px 12px;
+}
+
+.preview-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+/* Responsive: stack on narrow screens */
+@media (max-width: 720px) {
+  .post-editor-modal {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-preview {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 18px;
+    max-height: none;
+  }
 }

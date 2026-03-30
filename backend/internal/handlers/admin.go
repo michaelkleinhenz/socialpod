@@ -138,6 +138,9 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"adobeExpressClientId": settings.AdobeExpressClientID,
+		"imprintHtml":          settings.ImprintHTML,
+		"cookieBannerEnabled":  settings.CookieBannerEnabled,
+		"cookieBannerText":     settings.CookieBannerText,
 	})
 }
 
@@ -167,6 +170,9 @@ type UpdateSettingsInput struct {
 	DefaultPostTime       *string `json:"defaultPostTime,omitempty"`
 	AutoPublish           *bool   `json:"autoPublish,omitempty"`
 	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
+	ImprintHTML           *string `json:"imprintHtml,omitempty"`
+	CookieBannerEnabled   *bool   `json:"cookieBannerEnabled,omitempty"`
+	CookieBannerText      *string `json:"cookieBannerText,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -203,6 +209,15 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.AdobeExpressClientID != nil {
 		update["adobeExpressClientId"] = *input.AdobeExpressClientID
+	}
+	if input.ImprintHTML != nil {
+		update["imprintHtml"] = *input.ImprintHTML
+	}
+	if input.CookieBannerEnabled != nil {
+		update["cookieBannerEnabled"] = *input.CookieBannerEnabled
+	}
+	if input.CookieBannerText != nil {
+		update["cookieBannerText"] = *input.CookieBannerText
 	}
 
 	upsert := true

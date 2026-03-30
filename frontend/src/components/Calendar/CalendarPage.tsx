@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
-  format, addMonths, subMonths, isSameMonth, isSameDay, isToday, parseISO,
+  format, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isToday, parseISO,
 } from 'date-fns';
 import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { api } from '../../services/api';
@@ -14,8 +14,11 @@ import { ChevronLeft, ChevronRight, Plus, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
+type ViewMode = 'month' | 'week';
+
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -29,16 +32,25 @@ export function CalendarPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
+  // Month view date range
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
+  // Week view date range
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+  const fetchStart = viewMode === 'month' ? calStart : weekStart;
+  const fetchEnd = viewMode === 'month' ? calEnd : weekEnd;
+
   const fetchPosts = useCallback(async () => {
     try {
-      const start = calStart.toISOString();
-      const end = calEnd.toISOString();
+      const start = fetchStart.toISOString();
+      const end = fetchEnd.toISOString();
       const data = await api.getPosts({ start, end, platform: filterPlatform, status: filterStatus });
       setPosts(data);
     } catch {
@@ -46,13 +58,27 @@ export function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentDate, filterPlatform, filterStatus]);
+  }, [currentDate, viewMode, filterPlatform, filterStatus]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   const getPostsForDay = (day: Date) =>
     posts.filter(p => isSameDay(parseISO(p.scheduledAt), day))
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+  const handlePrev = () => {
+    if (viewMode === 'month') setCurrentDate(subMonths(currentDate, 1));
+    else setCurrentDate(subWeeks(currentDate, 1));
+  };
+
+  const handleNext = () => {
+    if (viewMode === 'month') setCurrentDate(addMonths(currentDate, 1));
+    else setCurrentDate(addWeeks(currentDate, 1));
+  };
+
+  const navTitle = viewMode === 'month'
+    ? format(currentDate, 'MMMM yyyy')
+    : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -130,11 +156,11 @@ export function CalendarPage() {
     <div className="page calendar-page">
       <div className="page-header">
         <div className="calendar-nav">
-          <button className="btn btn-ghost" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+          <button className="btn btn-ghost" onClick={handlePrev}>
             <ChevronLeft size={20} />
           </button>
-          <h1>{format(currentDate, 'MMMM yyyy')}</h1>
-          <button className="btn btn-ghost" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+          <h1>{navTitle}</h1>
+          <button className="btn btn-ghost" onClick={handleNext}>
             <ChevronRight size={20} />
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setCurrentDate(new Date())}>
@@ -143,6 +169,20 @@ export function CalendarPage() {
         </div>
 
         <div className="calendar-actions">
+          <div className="view-toggle">
+            <button
+              className={`view-toggle-btn ${viewMode === 'month' ? 'active' : ''}`}
+              onClick={() => setViewMode('month')}
+            >
+              Month
+            </button>
+            <button
+              className={`view-toggle-btn ${viewMode === 'week' ? 'active' : ''}`}
+              onClick={() => setViewMode('week')}
+            >
+              Week
+            </button>
+          </div>
           <div className="filter-group">
             <Filter size={14} />
             <select className="select" style={{ width: 120 }} value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)}>
@@ -165,47 +205,87 @@ export function CalendarPage() {
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="calendar-grid">
-          <div className="calendar-header-row">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
-              <div key={d} className="calendar-header-cell">{d}</div>
-            ))}
-          </div>
-
-          <div className="calendar-body">
-            {days.map(day => {
-              const dayPosts = getPostsForDay(day);
-              const dateStr = format(day, 'yyyy-MM-dd');
-
-              return (
-                <DroppableDay key={dateStr} id={dateStr}>
-                  <div
-                    className={`calendar-day ${!isSameMonth(day, currentDate) ? 'other-month' : ''} ${isToday(day) ? 'today' : ''}`}
-                    onDoubleClick={() => handleCreatePost(day)}
-                  >
-                    <div className="day-header">
-                      <span className={`day-number ${isToday(day) ? 'today-badge' : ''}`}>
-                        {format(day, 'd')}
-                      </span>
-                      {isSameMonth(day, currentDate) && (
-                        <button className="add-post-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
-                          <Plus size={14} />
-                        </button>
-                      )}
+        {viewMode === 'week' ? (
+          <div className="week-grid">
+            <div className="calendar-header-row">
+              {weekDays.map(day => (
+                <div key={format(day, 'yyyy-MM-dd')} className="calendar-header-cell week-header-cell">
+                  <span className="week-day-name">{format(day, 'EEE')}</span>
+                  <span className={`week-day-number ${isToday(day) ? 'today-badge' : ''}`}>
+                    {format(day, 'd')}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="week-body">
+              {weekDays.map(day => {
+                const dayPosts = getPostsForDay(day);
+                const dateStr = format(day, 'yyyy-MM-dd');
+                return (
+                  <DroppableDay key={dateStr} id={dateStr}>
+                    <div
+                      className={`week-day ${isToday(day) ? 'today' : ''}`}
+                      onDoubleClick={() => handleCreatePost(day)}
+                    >
+                      <div className="day-posts">
+                        {dayPosts.map(post => (
+                          <DraggablePost key={post.id} id={post.id}>
+                            <CalendarPost post={post} onClick={() => handleEditPost(post)} />
+                          </DraggablePost>
+                        ))}
+                      </div>
+                      <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                        <Plus size={14} />
+                      </button>
                     </div>
-                    <div className="day-posts">
-                      {dayPosts.map(post => (
-                        <DraggablePost key={post.id} id={post.id}>
-                          <CalendarPost post={post} onClick={() => handleEditPost(post)} />
-                        </DraggablePost>
-                      ))}
-                    </div>
-                  </div>
-                </DroppableDay>
-              );
-            })}
+                  </DroppableDay>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="calendar-grid">
+            <div className="calendar-header-row">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+                <div key={d} className="calendar-header-cell">{d}</div>
+              ))}
+            </div>
+
+            <div className="calendar-body">
+              {days.map(day => {
+                const dayPosts = getPostsForDay(day);
+                const dateStr = format(day, 'yyyy-MM-dd');
+
+                return (
+                  <DroppableDay key={dateStr} id={dateStr}>
+                    <div
+                      className={`calendar-day ${!isSameMonth(day, currentDate) ? 'other-month' : ''} ${isToday(day) ? 'today' : ''}`}
+                      onDoubleClick={() => handleCreatePost(day)}
+                    >
+                      <div className="day-header">
+                        <span className={`day-number ${isToday(day) ? 'today-badge' : ''}`}>
+                          {format(day, 'd')}
+                        </span>
+                        {isSameMonth(day, currentDate) && (
+                          <button className="add-post-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                            <Plus size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="day-posts">
+                        {dayPosts.map(post => (
+                          <DraggablePost key={post.id} id={post.id}>
+                            <CalendarPost post={post} onClick={() => handleEditPost(post)} />
+                          </DraggablePost>
+                        ))}
+                      </div>
+                    </div>
+                  </DroppableDay>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <DragOverlay>
           {draggedPost && <CalendarPost post={draggedPost} onClick={() => {}} isDragging />}
