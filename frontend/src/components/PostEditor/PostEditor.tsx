@@ -278,16 +278,22 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           callbacks: {
             // v4 still passes two arguments: (intent, publishParams).
             onPublish: async (_intent: any, publishParams: any) => {
-              closeAdobe();
               const dataUrl = publishParams?.asset?.[0]?.data;
-              if (!dataUrl) { toast.error('No image data received'); return; }
+              if (!dataUrl) { closeAdobe(); toast.error('No image data received'); return; }
               try {
                 const res = await fetch(dataUrl);
                 const blob = await res.blob();
                 const file = new File([blob], 'design.png', { type: 'image/png' });
-                setImages(prev => [...prev, { kind: 'file' as const, file }]);
+                // For stories, replace any existing image; for posts, append.
+                if (isStory) {
+                  setImages([{ kind: 'file' as const, file }]);
+                } else {
+                  setImages(prev => [...prev, { kind: 'file' as const, file }]);
+                }
+                closeAdobe();
                 toast.success('Design added');
               } catch {
+                closeAdobe();
                 toast.error('Failed to save design');
               }
             },
@@ -313,7 +319,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     } finally {
       setAdobeLoading(false);
     }
-  }, [adobeClientId, platforms]);
+  }, [adobeClientId, platforms, isStory]);
 
   const generateText = useCallback(async () => {
     if (!content.trim()) { toast.error('Enter a prompt first'); return; }
@@ -354,10 +360,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
   const handleImageUpload = (files: FileList | null) => {
     if (!files) return;
-    setImages(prev => [
-      ...prev,
-      ...Array.from(files).map(file => ({ kind: 'file' as const, file })),
-    ]);
+    const items = Array.from(files).map(file => ({ kind: 'file' as const, file }));
+    if (isStory) {
+      // Stories only support a single media file — replace any existing.
+      setImages(items.slice(0, 1));
+    } else {
+      setImages(prev => [...prev, ...items]);
+    }
   };
 
   const removeImage = (idx: number) => {
@@ -638,7 +647,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             </button>
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>
-                <Wand2 size={16} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                <Wand2 size={16} /> {adobeLoading ? 'Opening...' : (isStory ? 'Create Story Design' : 'Create Design')}
               </button>
             )}
             {onDelete && (
