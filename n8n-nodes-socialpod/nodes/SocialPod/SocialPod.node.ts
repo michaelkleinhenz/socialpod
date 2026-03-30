@@ -160,6 +160,19 @@ export class SocialPod implements INodeType {
         description: 'ISO 8601 datetime when the post should be published',
       },
       {
+        displayName: 'Post Type',
+        name: 'postType',
+        type: 'options',
+        displayOptions: { show: { resource: ['post'], operation: ['create'] } },
+        options: [
+          { name: 'Post',  value: 'post' },
+          { name: 'Reel',  value: 'reel' },
+          { name: 'Story', value: 'story' },
+        ],
+        default: 'post',
+        description: 'Type of content to publish. Reels and Stories are Instagram-only and require a video or image file.',
+      },
+      {
         displayName: 'Status',
         name: 'status',
         type: 'options',
@@ -228,6 +241,18 @@ export class SocialPod implements INodeType {
             type: 'string',
             typeOptions: { rows: 4 },
             default: '',
+          },
+          {
+            displayName: 'Post Type',
+            name: 'postType',
+            type: 'options',
+            options: [
+              { name: 'Post',  value: 'post' },
+              { name: 'Reel',  value: 'reel' },
+              { name: 'Story', value: 'story' },
+            ],
+            default: 'post',
+            description: 'Type of content to publish. Reels and Stories are Instagram-only.',
           },
           {
             displayName: 'Platforms',
@@ -419,10 +444,11 @@ export class SocialPod implements INodeType {
             const content     = this.getNodeParameter('content',     i) as string;
             const platforms   = this.getNodeParameter('platforms',   i) as string[];
             const scheduledAt = this.getNodeParameter('scheduledAt', i) as string;
+            const postType    = this.getNodeParameter('postType',    i) as string;
             const status      = this.getNodeParameter('status',      i) as string;
             const extra       = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
 
-            const body: IDataObject = { content, platforms, scheduledAt, status };
+            const body: IDataObject = { content, platforms, scheduledAt, postType, status };
             if (extra.imageUrls) body.imageUrls = parseList(extra.imageUrls as string);
 
             const suffixIds: IDataObject = {};
@@ -474,6 +500,7 @@ export class SocialPod implements INodeType {
 
             const body: IDataObject = {};
             if (fields.content     !== undefined && fields.content     !== '') body.content     = fields.content;
+            if (fields.postType    !== undefined && fields.postType    !== '') body.postType    = fields.postType;
             if (fields.scheduledAt !== undefined && fields.scheduledAt !== '') body.scheduledAt = fields.scheduledAt;
             if (fields.status      !== undefined && fields.status      !== '') body.status      = fields.status;
             if (fields.imageUrls   !== undefined && fields.imageUrls   !== '') body.imageUrls   = parseList(fields.imageUrls as string);
