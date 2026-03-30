@@ -43,6 +43,27 @@ func (h *AdminHandler) ListAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
+// ListActiveAccounts returns active accounts for all authenticated users (no secrets exposed).
+func (h *AdminHandler) ListActiveAccounts(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{"isActive": true})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch accounts"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var accounts []models.SocialAccount
+	cursor.All(ctx, &accounts)
+	if accounts == nil {
+		accounts = []models.SocialAccount{}
+	}
+
+	c.JSON(http.StatusOK, accounts)
+}
+
 type AddBlueskyInput struct {
 	Handle      string `json:"handle" binding:"required"`
 	AppPassword string `json:"appPassword" binding:"required"`

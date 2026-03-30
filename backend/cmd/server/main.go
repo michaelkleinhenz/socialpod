@@ -76,6 +76,7 @@ func main() {
 		auth.DELETE("/posts/:id", postHandler.Delete)
 		auth.PATCH("/posts/:id/reschedule", postHandler.Reschedule)
 		auth.POST("/upload", postHandler.UploadImage)
+		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 	}
 
 	// Admin routes
