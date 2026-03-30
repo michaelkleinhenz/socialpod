@@ -32,12 +32,17 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -384,8 +389,8 @@ tr:hover td { background: var(--bg-hover); }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .page { padding: 16px; }
+  .page { padding: 16px; max-width: 100%; }
   .page-header { flex-direction: column; gap: 12px; align-items: flex-start; }
-  .modal { width: 95%; padding: 20px; }
-  .modal-overlay { align-items: flex-start; padding: 0; }
+  .modal { width: 95%; padding: 20px; max-width: calc(100vw - 16px); }
+  .modal-overlay { align-items: flex-start; padding: 20px 0; overflow-y: auto; }
 }
