@@ -324,10 +324,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               toast.error('Adobe Express error: ' + err.toString());
             },
           },
-          // Request base64 output to avoid S3 upload issues.
-          outputParams: {
-            outputType: 'base64',
-          },
         },
         [
           {
