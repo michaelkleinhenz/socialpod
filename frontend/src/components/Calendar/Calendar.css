@@ -214,6 +214,153 @@
 .platform-dot.bluesky { background: var(--bluesky); }
 .platform-dot.instagram { background: var(--instagram); }
 
+/* View Toggle */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.view-toggle-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+/* Week View */
+.week-grid {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.week-header-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+}
+
+.week-day-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.week-day-number {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.week-day-number.today-badge {
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+}
+
+.week-body {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  min-height: 480px;
+}
+
+.week-body .droppable-day {
+  border-right: 1px solid var(--border);
+  border-bottom: none;
+}
+
+.week-body .droppable-day:last-child {
+  border-right: none;
+}
+
+.week-day {
+  min-height: 480px;
+  padding: 10px 8px;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.week-day:hover {
+  background: var(--bg-hover);
+}
+
+.week-day.today {
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.week-day .day-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.week-day .calendar-post {
+  font-size: 12px;
+}
+
+.week-day .calendar-post .post-preview {
+  -webkit-line-clamp: 3;
+}
+
+.week-add-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.week-day:hover .week-add-btn {
+  opacity: 1;
+}
+
+.week-add-btn:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.week-body .droppable-day.drag-over .week-day {
+  background: var(--accent-muted) !important;
+}
+
 .calendar-loading {
   position: fixed;
   top: 50%;
