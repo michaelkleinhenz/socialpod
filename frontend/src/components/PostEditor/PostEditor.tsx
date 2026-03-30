@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, Suffix, SocialAccount } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2, MessageSquare } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -40,9 +40,11 @@ interface PreviewProps {
   apiUrl: string;
   blueskyAccount?: SocialAccount | null;
   instagramAccount?: SocialAccount | null;
+  bluskySuffix?: string;
+  instagramSuffix?: string;
 }
 
-function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount }: PreviewProps) {
+function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, bluskySuffix, instagramSuffix }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
@@ -52,6 +54,9 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
     ? (blueskyAccount.accountName.includes('.') ? blueskyAccount.accountName : `${blueskyAccount.accountName}.bsky.social`)
     : 'yourhandle.bsky.social';
   const igHandle = instagramAccount?.accountName || 'yourhandle';
+
+  const bskyContent = bluskySuffix ? content + '\n' + bluskySuffix : content;
+  const igContent = instagramSuffix ? content + '\n' + instagramSuffix : content;
 
   if (platforms.length === 0) {
     return (
@@ -75,7 +80,7 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
           </div>
           <div className="preview-content">
             {content
-              ? <p className="preview-text">{renderWithHashtags(content)}</p>
+              ? <p className="preview-text">{renderWithHashtags(bskyContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
           </div>
@@ -113,7 +118,7 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
           )}
           <div className="preview-content">
             {content
-              ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(content)}</p>
+              ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(igContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
           </div>
@@ -144,8 +149,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   );
   // Cache for object URLs so we don't create a new one on every render.
   const objUrlCache = useRef<Map<File, string>>(new Map());
-  const [tags, setTags] = useState<string[]>(post?.tags || []);
-  const [tagInput, setTagInput] = useState('');
+  const [tags] = useState<string[]>(post?.tags || []);
   const [status, setStatus] = useState(post?.status || 'scheduled');
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
@@ -315,14 +319,6 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const previewImageUrls = useMemo(() =>
     images.map(item => previewUrl(item)),
   [images, previewUrl]);
-
-  const addTag = () => {
-    const tag = tagInput.trim().replace(/^#/, '');
-    if (tag && !tags.includes(tag)) {
-      setTags(prev => [...prev, tag]);
-    }
-    setTagInput('');
-  };
 
   const handleSubmit = async () => {
     if (!content.trim()) { toast.error('Content is required'); return; }
@@ -495,31 +491,6 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               />
             </div>
 
-            {/* Tags */}
-            <div className="form-group">
-              <label><Hash size={14} /> Tags</label>
-              <div className="tag-input-row">
-                <input
-                  className="input"
-                  placeholder="Add a tag..."
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-                />
-                <button className="btn btn-secondary btn-sm" onClick={addTag}>Add</button>
-              </div>
-              {tags.length > 0 && (
-                <div className="tags-list">
-                  {tags.map(t => (
-                    <span key={t} className="tag">
-                      #{t}
-                      <button onClick={() => setTags(prev => prev.filter(x => x !== t))}>x</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Status */}
             <div className="form-group">
               <label><Tag size={14} /> Status</label>
@@ -541,6 +512,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               apiUrl={apiUrl}
               blueskyAccount={blueskyAccount}
               instagramAccount={instagramAccount}
+              bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
+              instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
             />
           </div>
         </div>
