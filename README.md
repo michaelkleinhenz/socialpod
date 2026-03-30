@@ -309,18 +309,13 @@ SocialPod ships with a native **n8n community node** located in the `n8n-nodes-s
 
 ### Installation
 
+The node ships with a pre-built `dist/` directory, so you do **not** need to compile it on the target machine. Only runtime dependencies need to be installed.
+
+> **Important**: Always use `npm install --omit=dev` when installing on the n8n server. A full `npm install` pulls in build-time dependencies (`n8n-workflow` and its transitive native module `isolated-vm`) that require Node >= 22 to compile. Since n8n already provides `n8n-workflow` at runtime, only `--omit=dev` is needed.
+
 #### Option A — Install from the local directory (self-hosted n8n)
 
-1. **Build the node:**
-   ```bash
-   cd n8n-nodes-socialpod
-   npm install
-   npm run build
-   ```
-
-2. **Copy to n8n's custom nodes directory:**
-
-   The location depends on how n8n is installed:
+1. **Copy to n8n's custom nodes directory:**
 
    | n8n setup | Custom nodes path |
    |---|---|
@@ -329,14 +324,17 @@ SocialPod ships with a native **n8n community node** located in the `n8n-nodes-s
    | n8n Desktop | `~/.n8n/custom` |
 
    ```bash
-   # Example for npm/desktop install
    mkdir -p ~/.n8n/custom
    cp -r n8n-nodes-socialpod ~/.n8n/custom/
+   cd ~/.n8n/custom/n8n-nodes-socialpod
+   npm install --omit=dev
    ```
 
-3. **Restart n8n.** The SocialPod node will appear in the node palette.
+2. **Restart n8n.** The SocialPod node will appear in the node palette.
 
 #### Option B — Install via npm link (development)
+
+For local development you need the full install (requires Node >= 22):
 
 ```bash
 cd n8n-nodes-socialpod
@@ -352,7 +350,7 @@ Restart n8n after linking.
 
 #### Option C — Docker Compose (recommended for production)
 
-Add the node to your n8n Docker setup by mounting a pre-built copy:
+Add the node to your n8n Docker setup by mounting the directory and installing runtime deps:
 
 ```yaml
 services:
@@ -364,7 +362,14 @@ services:
       - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
 ```
 
-Build the node on the host first (`npm install && npm run build` inside `n8n-nodes-socialpod/`), then start n8n.
+On the host, install runtime dependencies only:
+
+```bash
+cd n8n-nodes-socialpod
+npm install --omit=dev
+```
+
+Then start n8n. The pre-built `dist/` is already included — no build step required.
 
 ### Configuring the Credential
 
@@ -539,7 +544,10 @@ The SDK uses popups and cross-origin iframes that are blocked by default in some
 - MongoDB needs to pass its health check first. Wait a few seconds and check `make logs`.
 
 **n8n node not appearing after installation**
-- Make sure you ran `npm run build` before copying/linking the node.
-- Confirm the node directory contains a `dist/` folder with compiled `.js` files.
+- Confirm the node directory contains a `dist/` folder with compiled `.js` files (it should be included out of the box).
+- Make sure you ran `npm install --omit=dev` (not `npm install`) to avoid native module build failures on Node 20.
 - Restart n8n completely (not just reload).
 - Check n8n logs for any import errors related to `n8n-nodes-socialpod`.
+
+**n8n node install fails with `isolated-vm` / `node-gyp` errors**
+- You ran `npm install` without `--omit=dev`. The `n8n-workflow` dev dependency pulls in `isolated-vm`, which requires Node >= 22 to compile. Use `npm install --omit=dev` instead — n8n provides `n8n-workflow` at runtime.
