@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -146,15 +147,27 @@ func (s *InstagramService) waitForContainer(account *models.SocialAccount, conta
 			return err
 		}
 
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
 		var status struct {
 			StatusCode string `json:"status_code"`
 			Status     string `json:"status"`
+			Error      *struct {
+				Message string `json:"message"`
+				Code    int    `json:"code"`
+			} `json:"error"`
 		}
-		json.NewDecoder(resp.Body).Decode(&status)
-		resp.Body.Close()
+		json.Unmarshal(body, &status)
 
-		log.Printf("IG container %s: status_code=%s status=%s (attempt %d/%d)",
-			containerID, status.StatusCode, status.Status, i+1, maxAttempts)
+		if i == 0 || i%10 == 0 || status.StatusCode == "FINISHED" || status.StatusCode == "ERROR" || status.Error != nil {
+			log.Printf("IG container %s: status_code=%q status=%q raw=%s (attempt %d/%d)",
+				containerID, status.StatusCode, status.Status, string(body), i+1, maxAttempts)
+		}
+
+		if status.Error != nil {
+			return fmt.Errorf("IG container check error (code %d): %s", status.Error.Code, status.Error.Message)
+		}
 
 		switch status.StatusCode {
 		case "FINISHED":
@@ -232,11 +245,15 @@ func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accou
 		params.Set("image_url", fullURL)
 	}
 
+	log.Printf("IG story create: url=%s params=%v", fullURL, params)
 	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("IG story container response: %s", string(body))
 
 	var container struct {
 		ID    string `json:"id"`
@@ -244,7 +261,7 @@ func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accou
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	json.NewDecoder(resp.Body).Decode(&container)
+	json.Unmarshal(body, &container)
 	if container.Error != nil {
 		return "", fmt.Errorf("IG story error: %s", container.Error.Message)
 	}
