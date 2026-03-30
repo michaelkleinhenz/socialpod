@@ -8,15 +8,22 @@ import {
 } from 'n8n-workflow';
 import FormData from 'form-data';
 
-// Sends a multipart/form-data request with post data in the `data` JSON field.
+// Sends a multipart/form-data request with post data in the `data` JSON field,
+// optionally attaching binary image buffers as `images` fields.
 async function multipartRequest(
   ctx: IExecuteFunctions,
   method: 'POST' | 'PUT',
   url: string,
   data: IDataObject,
+  images?: { buffer: Buffer; fileName: string; mimeType: string }[],
 ): Promise<IDataObject> {
   const form = new FormData();
   form.append('data', JSON.stringify(data));
+  if (images) {
+    for (const img of images) {
+      form.append('images', img.buffer, { filename: img.fileName, contentType: img.mimeType });
+    }
+  }
   return ctx.helpers.httpRequestWithAuthentication.call(ctx, 'socialPodApi', {
     method,
     url,
@@ -175,12 +182,11 @@ export class SocialPod implements INodeType {
         default: {},
         options: [
           {
-            displayName: 'Tags',
-            name: 'tags',
+            displayName: 'Binary Image Property',
+            name: 'binaryProperty',
             type: 'string',
-            default: '',
-            placeholder: 'news, automation, tech',
-            description: 'Comma-separated list of tags (without #)',
+            default: 'data',
+            description: 'Name of the binary property containing the image to attach (from a previous node)',
           },
           {
             displayName: 'Image URLs',
@@ -251,12 +257,11 @@ export class SocialPod implements INodeType {
             default: 'scheduled',
           },
           {
-            displayName: 'Tags',
-            name: 'tags',
+            displayName: 'Binary Image Property',
+            name: 'binaryProperty',
             type: 'string',
-            default: '',
-            placeholder: 'news, automation, tech',
-            description: 'Comma-separated list of tags (replaces existing tags)',
+            default: 'data',
+            description: 'Name of the binary property containing the image to attach',
           },
           {
             displayName: 'Image URLs',
@@ -418,7 +423,6 @@ export class SocialPod implements INodeType {
             const extra       = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
 
             const body: IDataObject = { content, platforms, scheduledAt, status };
-            if (extra.tags)      body.tags      = parseList(extra.tags as string);
             if (extra.imageUrls) body.imageUrls = parseList(extra.imageUrls as string);
 
             const suffixIds: IDataObject = {};
@@ -426,7 +430,22 @@ export class SocialPod implements INodeType {
             if (extra.instagramSuffixId) suffixIds.instagram = extra.instagramSuffixId;
             if (Object.keys(suffixIds).length) body.suffixIds = suffixIds;
 
-            responseData = await multipartRequest(this, 'POST', `${baseUrl}/api/posts`, body);
+            // Attach binary image from a previous workflow step
+            const images: { buffer: Buffer; fileName: string; mimeType: string }[] = [];
+            if (extra.binaryProperty) {
+              const binaryProp = extra.binaryProperty as string;
+              const binaryData = items[i].binary?.[binaryProp];
+              if (binaryData) {
+                const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProp);
+                images.push({
+                  buffer,
+                  fileName: binaryData.fileName || 'image.png',
+                  mimeType: binaryData.mimeType || 'image/png',
+                });
+              }
+            }
+
+            responseData = await multipartRequest(this, 'POST', `${baseUrl}/api/posts`, body, images.length ? images : undefined);
 
           } else if (operation === 'get') {
             const postId = this.getNodeParameter('postId', i) as string;
@@ -457,7 +476,6 @@ export class SocialPod implements INodeType {
             if (fields.content     !== undefined && fields.content     !== '') body.content     = fields.content;
             if (fields.scheduledAt !== undefined && fields.scheduledAt !== '') body.scheduledAt = fields.scheduledAt;
             if (fields.status      !== undefined && fields.status      !== '') body.status      = fields.status;
-            if (fields.tags        !== undefined && fields.tags        !== '') body.tags        = parseList(fields.tags as string);
             if (fields.imageUrls   !== undefined && fields.imageUrls   !== '') body.imageUrls   = parseList(fields.imageUrls as string);
             if ((fields.platforms  as string[] | undefined)?.length)           body.platforms   = fields.platforms;
 
@@ -466,7 +484,22 @@ export class SocialPod implements INodeType {
             if (fields.instagramSuffixId) suffixIds.instagram = fields.instagramSuffixId;
             body.suffixIds = suffixIds; // always send — empty map clears suffixes
 
-            responseData = await multipartRequest(this, 'PUT', `${baseUrl}/api/posts/${postId}`, body);
+            // Attach binary image from a previous workflow step
+            const images: { buffer: Buffer; fileName: string; mimeType: string }[] = [];
+            if (fields.binaryProperty) {
+              const binaryProp = fields.binaryProperty as string;
+              const binaryData = items[i].binary?.[binaryProp];
+              if (binaryData) {
+                const buffer = await this.helpers.getBinaryDataBuffer(i, binaryProp);
+                images.push({
+                  buffer,
+                  fileName: binaryData.fileName || 'image.png',
+                  mimeType: binaryData.mimeType || 'image/png',
+                });
+              }
+            }
+
+            responseData = await multipartRequest(this, 'PUT', `${baseUrl}/api/posts/${postId}`, body, images.length ? images : undefined);
 
           } else if (operation === 'delete') {
             const postId = this.getNodeParameter('postId', i) as string;
