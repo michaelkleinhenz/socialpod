@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -441,15 +442,24 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 		return
 	}
 
-	ct := resp.Header.Get("Content-Type")
+	// Detect actual content type from file magic bytes (don't trust the
+	// Content-Type header — S3 often returns application/octet-stream).
+	ct := http.DetectContentType(data)
 	extMap := map[string]string{
 		"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
-		"image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov",
+		"image/webp": ".webp", "video/mp4": ".mp4",
 	}
 	ext, ok := extMap[ct]
 	if !ok {
-		ext = ".png" // Default for Adobe Express designs
-		ct = "image/png"
+		// Fallback: check if it's a video by looking at header Content-Type
+		hdrCT := resp.Header.Get("Content-Type")
+		if strings.Contains(hdrCT, "video") {
+			ext = ".mp4"
+			ct = "video/mp4"
+		} else {
+			ext = ".png"
+			ct = "image/png"
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
