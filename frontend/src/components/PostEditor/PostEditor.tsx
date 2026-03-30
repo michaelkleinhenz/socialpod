@@ -221,9 +221,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
       _ccEditor.create(
         {
-          canvasSize: platforms.includes('instagram')
-            ? { width: 1080, height: 1080, unit: 'px' }
-            : { width: 1200, height: 675, unit: 'px' },
+          canvasSize: { width: 1080, height: 1080, unit: 'px' },
         },
         {
           callbacks: {
