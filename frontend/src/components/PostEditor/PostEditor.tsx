@@ -367,12 +367,25 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
 
+  const isDirty = content !== (post?.content || '')
+    || firstComment !== (post?.firstComment || '')
+    || scheduledAt !== (post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime)
+    || status !== (post?.status || 'scheduled')
+    || JSON.stringify(platforms) !== JSON.stringify(post?.platforms || ['bluesky'])
+    || images.length !== (post?.imageUrls || []).length
+    || JSON.stringify(suffixIds) !== JSON.stringify(post?.suffixIds || {});
+
+  const handleClose = () => {
+    if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return;
+    onClose();
+  };
+
   return (
-    <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined} onClick={onClose}>
+    <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined}>
       <div className="modal post-editor-modal" onClick={e => e.stopPropagation()}>
         <div className="editor-header">
           <h2>{post ? 'Edit Post' : 'New Post'}</h2>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>
+          <button className="btn btn-ghost btn-sm" onClick={handleClose}>
             <X size={18} />
           </button>
         </div>
@@ -558,7 +571,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
             )}
           </div>
           <div className="footer-right">
-            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
             <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || overLimit}>
               <Send size={16} /> {saving ? 'Saving...' : post ? 'Update' : 'Schedule'}
             </button>
