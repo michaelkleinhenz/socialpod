@@ -119,6 +119,11 @@ class ApiClient {
     });
   }
 
+  // Active accounts (available to all authenticated users, for preview)
+  getActiveAccounts() {
+    return this.request<any[]>('/accounts');
+  }
+
   // Admin
   getAccounts() {
     return this.request<any[]>('/admin/accounts');

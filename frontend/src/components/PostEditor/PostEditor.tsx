@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform } from '../../types';
+import type { Post, Platform, SocialAccount } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
@@ -38,12 +38,20 @@ interface PreviewProps {
   imageUrls: string[];
   scheduledAt: string;
   apiUrl: string;
+  blueskyAccount?: SocialAccount | null;
+  instagramAccount?: SocialAccount | null;
 }
 
-function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl }: PreviewProps) {
+function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
+
+  const bskyDisplayName = blueskyAccount?.displayName || blueskyAccount?.accountName || 'Your Name';
+  const bskyHandle = blueskyAccount?.accountName
+    ? (blueskyAccount.accountName.includes('.') ? blueskyAccount.accountName : `${blueskyAccount.accountName}.bsky.social`)
+    : 'yourhandle.bsky.social';
+  const igHandle = instagramAccount?.accountName || 'yourhandle';
 
   if (platforms.length === 0) {
     return (
@@ -60,8 +68,8 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl }: Pre
           <div className="preview-card-header">
             <div className="preview-avatar" />
             <div className="preview-user-info">
-              <span className="preview-display-name">Your Name</span>
-              <span className="preview-handle">@yourhandle.bsky.social</span>
+              <span className="preview-display-name">{bskyDisplayName}</span>
+              <span className="preview-handle">@{bskyHandle}</span>
             </div>
             <div className="preview-platform-badge bluesky">Bluesky</div>
           </div>
@@ -89,7 +97,7 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl }: Pre
           <div className="preview-card-header">
             <div className="preview-avatar" />
             <div className="preview-user-info">
-              <span className="preview-display-name">yourhandle</span>
+              <span className="preview-display-name">{igHandle}</span>
             </div>
             <div className="preview-platform-badge instagram">Instagram</div>
           </div>
@@ -105,7 +113,7 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl }: Pre
           )}
           <div className="preview-content">
             {content
-              ? <p className="preview-text"><strong className="preview-display-name">yourhandle</strong>{' '}{renderWithHashtags(content)}</p>
+              ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(content)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
           </div>
@@ -134,6 +142,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [status, setStatus] = useState(post?.status || 'scheduled');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
   const [adobeActive, setAdobeActive] = useState(false);
@@ -145,6 +154,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
+    api.getActiveAccounts().then(setAccounts).catch(() => {});
     return () => {
       // Clean up in case the component unmounts while Adobe is open.
       document.body.classList.remove('adobe-express-open');
@@ -305,6 +315,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   };
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
+  const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
+  const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
 
   return (
     <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined} onClick={onClose}>
@@ -428,6 +440,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               imageUrls={imageUrls}
               scheduledAt={scheduledAt}
               apiUrl={apiUrl}
+              blueskyAccount={blueskyAccount}
+              instagramAccount={instagramAccount}
             />
           </div>
         </div>
