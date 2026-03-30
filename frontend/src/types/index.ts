@@ -68,7 +68,17 @@ export interface AppSettings {
   defaultPostTime: string;
   autoPublish: boolean;
   allowSelfRegistration: boolean;
+  imprintHtml: string;
+  cookieBannerEnabled: boolean;
+  cookieBannerText: string;
   updatedAt?: string;
+}
+
+export interface PublicSettings {
+  adobeExpressClientId: string;
+  imprintHtml: string;
+  cookieBannerEnabled: boolean;
+  cookieBannerText: string;
 }
 
 export interface AuthResponse {

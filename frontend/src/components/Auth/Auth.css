@@ -68,3 +68,108 @@
   font-size: 14px;
   color: var(--text-secondary);
 }
+
+.auth-legal-links {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.link-btn:hover {
+  color: var(--accent);
+}
+
+/* Cookie banner */
+.cookie-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 48px);
+  max-width: 640px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+}
+
+.cookie-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.cookie-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cookie-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Imprint modal */
+.imprint-modal {
+  max-width: 580px;
+  width: 95vw;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.imprint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.imprint-body {
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.imprint-body p { margin: 0 0 12px; }
+.imprint-body h1, .imprint-body h2, .imprint-body h3 {
+  color: var(--text-primary);
+  margin: 16px 0 8px;
+}
+.imprint-body a { color: var(--accent); }
+
+@media (max-width: 480px) {
+  .cookie-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    transform: none;
+  }
+}

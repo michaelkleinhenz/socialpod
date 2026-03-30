@@ -35,5 +35,8 @@ type AppSettings struct {
 	DefaultPostTime       string             `bson:"defaultPostTime" json:"defaultPostTime"` // HH:MM
 	AutoPublish           bool               `bson:"autoPublish" json:"autoPublish"`
 	AllowSelfRegistration bool               `bson:"allowSelfRegistration" json:"allowSelfRegistration"`
+	ImprintHTML           string             `bson:"imprintHtml" json:"imprintHtml"`
+	CookieBannerEnabled   bool               `bson:"cookieBannerEnabled" json:"cookieBannerEnabled"`
+	CookieBannerText      string             `bson:"cookieBannerText" json:"cookieBannerText"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

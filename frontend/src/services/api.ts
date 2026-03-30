@@ -174,7 +174,7 @@ class ApiClient {
   }
 
   getPublicSettings() {
-    return this.request<{ adobeExpressClientId: string }>('/settings/public');
+    return this.request<import('../types').PublicSettings>('/settings/public');
   }
 
   // Teams
