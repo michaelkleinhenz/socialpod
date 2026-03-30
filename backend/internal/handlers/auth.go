@@ -148,6 +148,23 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Team tokens set isTeamToken — return team info instead of a user lookup.
+	if isTeam, ok := c.Get("isTeamToken"); ok && isTeam.(bool) {
+		var team models.Team
+		if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": objID}).Decode(&team); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"id":       team.ID,
+			"name":     team.Name,
+			"isAdmin":  false,
+			"teamId":   team.ID,
+			"teamName": team.Name,
+		})
+		return
+	}
+
 	var user models.User
 	err := h.DB.Users().FindOne(ctx, bson.M{"_id": objID}).Decode(&user)
 	if err != nil {
