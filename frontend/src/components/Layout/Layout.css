@@ -105,6 +105,8 @@
   flex: 1;
   margin-left: 240px;
   min-height: 100vh;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 /* While Adobe Express is open, hide the sidebar so it can't interfere
@@ -124,6 +126,8 @@ body.adobe-express-open .sidebar {
   }
   .main-content {
     margin-left: 64px;
+    width: calc(100vw - 64px);
+    max-width: calc(100vw - 64px);
   }
   .nav-item {
     justify-content: center;
