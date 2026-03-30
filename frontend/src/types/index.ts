@@ -80,6 +80,8 @@ export interface AppSettings {
   imprintHtml: string;
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
+  openRouterModel: string;
+  hasOpenRouterKey?: boolean;
   updatedAt?: string;
 }
 
@@ -88,6 +90,7 @@ export interface PublicSettings {
   imprintHtml: string;
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
+  openRouterEnabled: boolean;
 }
 
 export interface AuthResponse {

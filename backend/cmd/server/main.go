@@ -78,6 +78,7 @@ func main() {
 		auth.PATCH("/posts/:id/reschedule", postHandler.Reschedule)
 		auth.POST("/upload", postHandler.UploadImage)
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
+		auth.POST("/generate-text", adminHandler.GenerateText)
 
 		// Suffixes
 		auth.GET("/suffixes", suffixHandler.List)

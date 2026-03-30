@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -162,6 +166,7 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 		"imprintHtml":          settings.ImprintHTML,
 		"cookieBannerEnabled":  settings.CookieBannerEnabled,
 		"cookieBannerText":     settings.CookieBannerText,
+		"openRouterEnabled":    settings.OpenRouterAPIKey != "",
 	})
 }
 
@@ -177,7 +182,15 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, settings)
+	// Add hasOpenRouterKey so the admin UI can show key status without leaking it.
+	type settingsResponse struct {
+		models.AppSettings
+		HasOpenRouterKey bool `json:"hasOpenRouterKey"`
+	}
+	c.JSON(http.StatusOK, settingsResponse{
+		AppSettings:     settings,
+		HasOpenRouterKey: settings.OpenRouterAPIKey != "",
+	})
 }
 
 type UpdateSettingsInput struct {
@@ -190,6 +203,8 @@ type UpdateSettingsInput struct {
 	ImprintHTML           *string `json:"imprintHtml,omitempty"`
 	CookieBannerEnabled   *bool   `json:"cookieBannerEnabled,omitempty"`
 	CookieBannerText      *string `json:"cookieBannerText,omitempty"`
+	OpenRouterAPIKey      *string `json:"openRouterApiKey,omitempty"`
+	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -229,6 +244,12 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.CookieBannerText != nil {
 		update["cookieBannerText"] = *input.CookieBannerText
+	}
+	if input.OpenRouterAPIKey != nil {
+		update["openRouterApiKey"] = *input.OpenRouterAPIKey
+	}
+	if input.OpenRouterModel != nil {
+		update["openRouterModel"] = *input.OpenRouterModel
 	}
 
 	upsert := true
@@ -577,4 +598,77 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	h.DB.Posts().DeleteMany(ctx, bson.M{"userId": id})
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+}
+
+func (h *AdminHandler) GenerateText(c *gin.Context) {
+	var input struct {
+		Prompt    string   `json:"prompt" binding:"required"`
+		Platforms []string `json:"platforms,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil || settings.OpenRouterAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenRouter is not configured"})
+		return
+	}
+
+	model := settings.OpenRouterModel
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	systemPrompt := "You are a social media copywriter. The user gives you a prompt (which may include URLs for context). Write a ready-to-post social media post based on the prompt. Reply with ONLY the post text, no quotes, no commentary, no labels."
+	for _, p := range input.Platforms {
+		if p == "bluesky" {
+			systemPrompt += " The post must fit within 300 characters."
+			break
+		}
+	}
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": input.Prompt},
+		},
+	})
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach OpenRouter: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("OpenRouter returned %d: %s", resp.StatusCode, string(body))})
+		return
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Invalid response from OpenRouter"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"text": result.Choices[0].Message.Content})
 }

@@ -182,6 +182,14 @@ class ApiClient {
     return this.request<import('../types').PublicSettings>('/settings/public');
   }
 
+  // AI text generation
+  generateText(prompt: string, platforms: string[]) {
+    return this.request<{ text: string }>('/generate-text', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, platforms }),
+    });
+  }
+
   // Suffixes
   getSuffixes() {
     return this.request<any[]>('/suffixes');

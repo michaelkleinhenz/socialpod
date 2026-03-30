@@ -36,5 +36,7 @@ type AppSettings struct {
 	ImprintHTML           string             `bson:"imprintHtml" json:"imprintHtml"`
 	CookieBannerEnabled   bool               `bson:"cookieBannerEnabled" json:"cookieBannerEnabled"`
 	CookieBannerText      string             `bson:"cookieBannerText" json:"cookieBannerText"`
+	OpenRouterAPIKey      string             `bson:"openRouterApiKey" json:"-"`
+	OpenRouterModel       string             `bson:"openRouterModel" json:"openRouterModel"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

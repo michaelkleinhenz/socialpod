@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, Suffix, SocialAccount } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -158,6 +158,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
   const [adobeActive, setAdobeActive] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -165,6 +167,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     textareaRef.current?.focus();
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
+      if (s.openRouterEnabled) setAiEnabled(true);
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getActiveAccounts().then(setAccounts).catch(() => {});
@@ -262,6 +265,19 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
       setAdobeLoading(false);
     }
   }, [adobeClientId, platforms]);
+
+  const generateText = useCallback(async () => {
+    if (!content.trim()) { toast.error('Enter a prompt first'); return; }
+    setGenerating(true);
+    try {
+      const { text } = await api.generateText(content, platforms);
+      setContent(text);
+    } catch (err: any) {
+      toast.error(err.message || 'Text generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  }, [content, platforms]);
 
   const togglePlatform = (p: Platform) => {
     setPlatforms(prev =>
@@ -441,8 +457,15 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
                 placeholder="What's on your mind? Use #hashtags for tags..."
                 rows={5}
               />
-              <div className={`char-counter ${charClass}`}>
-                {charCount} / {charLimit}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {aiEnabled && (
+                  <button className="btn btn-ghost btn-sm" onClick={generateText} disabled={generating || !content.trim()}>
+                    <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
+                  </button>
+                )}
+                <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
+                  {charCount} / {charLimit}
+                </div>
               </div>
             </div>
 
@@ -529,7 +552,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               </button>
             )}
             {onDelete && (
-              <button className="btn btn-danger btn-sm" onClick={onDelete}>
+              <button className="btn btn-danger btn-sm" onClick={() => { if (window.confirm('Are you sure you want to delete this post?')) onDelete(); }}>
                 <Trash2 size={16} /> Delete
               </button>
             )}

@@ -15,8 +15,10 @@ export function SettingsPage() {
     imprintHtml: '',
     cookieBannerEnabled: false,
     cookieBannerText: '',
+    openRouterModel: '',
   });
   const [igSecret, setIgSecret] = useState('');
+  const [openRouterKey, setOpenRouterKey] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export function SettingsPage() {
         cookieBannerText: settings.cookieBannerText,
       };
       if (igSecret) data.instagramAppSecret = igSecret;
+      if (openRouterKey) data.openRouterApiKey = openRouterKey;
+      data.openRouterModel = settings.openRouterModel;
       const updated = await api.updateSettings(data);
       setSettings(updated);
       toast.success('Settings saved');
@@ -140,6 +144,39 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>AI Text Generation (OpenRouter)</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>OpenRouter API Key</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasOpenRouterKey ? 'Key configured (enter to update)' : 'Enter your OpenRouter API key'}
+              value={openRouterKey}
+              onChange={e => setOpenRouterKey(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Get an API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>openrouter.ai/keys</a>. Enables AI text generation in the post editor.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Model</label>
+            <input
+              className="input"
+              placeholder="openai/gpt-4o-mini"
+              value={settings.openRouterModel}
+              onChange={e => setSettings(s => ({ ...s, openRouterModel: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              OpenRouter model identifier (e.g. <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-sonnet-4</code>). See <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>available models</a>.
             </span>
           </div>
         </div>
