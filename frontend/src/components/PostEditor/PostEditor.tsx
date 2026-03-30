@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
@@ -21,6 +21,102 @@ interface Props {
 
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
+
+function renderWithHashtags(text: string) {
+  if (!text) return null;
+  const parts = text.split(/(#[\w\u00C0-\u024F]+)/g);
+  return parts.map((part, i) =>
+    part.startsWith('#')
+      ? <span key={i} className="preview-hashtag">{part}</span>
+      : <span key={i}>{part}</span>
+  );
+}
+
+interface PreviewProps {
+  content: string;
+  platforms: Platform[];
+  imageUrls: string[];
+  scheduledAt: string;
+  apiUrl: string;
+}
+
+function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl }: PreviewProps) {
+  const time = scheduledAt
+    ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
+    : '';
+
+  if (platforms.length === 0) {
+    return (
+      <div className="preview-empty">
+        <p>Select a platform to see a preview</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="preview-cards">
+      {platforms.includes('bluesky') && (
+        <div className="preview-card preview-bluesky">
+          <div className="preview-card-header">
+            <div className="preview-avatar" />
+            <div className="preview-user-info">
+              <span className="preview-display-name">Your Name</span>
+              <span className="preview-handle">@yourhandle.bsky.social</span>
+            </div>
+            <div className="preview-platform-badge bluesky">Bluesky</div>
+          </div>
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text">{renderWithHashtags(content)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          {imageUrls.length > 0 && (
+            <div className={`preview-images preview-images-${Math.min(imageUrls.length, 4)}`}>
+              {imageUrls.slice(0, 4).map((url, i) => (
+                <img key={i} src={url.startsWith('/') ? apiUrl + url : url} alt="" className="preview-image" />
+              ))}
+            </div>
+          )}
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
+          </div>
+        </div>
+      )}
+
+      {platforms.includes('instagram') && (
+        <div className="preview-card preview-instagram">
+          <div className="preview-card-header">
+            <div className="preview-avatar" />
+            <div className="preview-user-info">
+              <span className="preview-display-name">yourhandle</span>
+            </div>
+            <div className="preview-platform-badge instagram">Instagram</div>
+          </div>
+          {imageUrls.length > 0 ? (
+            <div className="preview-ig-image">
+              <img src={imageUrls[0].startsWith('/') ? apiUrl + imageUrls[0] : imageUrls[0]} alt="" />
+            </div>
+          ) : (
+            <div className="preview-ig-image-placeholder">
+              <Image size={32} />
+              <span>No image selected</span>
+            </div>
+          )}
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text"><strong className="preview-display-name">yourhandle</strong>{' '}{renderWithHashtags(content)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Props) {
   const defaultTime = defaultDate
@@ -220,105 +316,119 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           </button>
         </div>
 
-        <div className="editor-body">
-          {/* Platform selector */}
-          <div className="platform-selector">
-            <div
-              className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
-              onClick={() => togglePlatform('bluesky')}
-            >
-              <span className="platform-dot bluesky" />
-              Bluesky
-            </div>
-            <div
-              className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
-              onClick={() => togglePlatform('instagram')}
-            >
-              <span className="platform-dot instagram" />
-              Instagram
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="form-group">
-            <textarea
-              ref={textareaRef}
-              className="textarea post-textarea"
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              placeholder="What's on your mind? Use #hashtags for tags..."
-              rows={5}
-            />
-            <div className={`char-counter ${charClass}`}>
-              {charCount} / {charLimit}
-            </div>
-          </div>
-
-          {/* Images */}
-          <div className="editor-images">
-            {imageUrls.length > 0 && (
-              <div className="image-preview-grid">
-                {imageUrls.map((url, i) => (
-                  <div key={i} className="image-preview">
-                    <img src={url.startsWith('/') ? apiUrl + url : url} alt="" />
-                    <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
-                  </div>
-                ))}
+        <div className="editor-layout">
+          <div className="editor-body">
+            {/* Platform selector */}
+            <div className="platform-selector">
+              <div
+                className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
+                onClick={() => togglePlatform('bluesky')}
+              >
+                <span className="platform-dot bluesky" />
+                Bluesky
               </div>
-            )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              style={{ display: 'none' }}
-              onChange={e => handleImageUpload(e.target.files)}
-            />
-          </div>
+              <div
+                className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
+                onClick={() => togglePlatform('instagram')}
+              >
+                <span className="platform-dot instagram" />
+                Instagram
+              </div>
+            </div>
 
-          {/* Schedule */}
-          <div className="form-group">
-            <label><Clock size={14} /> Schedule</label>
-            <input
-              type="datetime-local"
-              className="input"
-              value={scheduledAt}
-              onChange={e => setScheduledAt(e.target.value)}
-            />
-          </div>
-
-          {/* Tags */}
-          <div className="form-group">
-            <label><Hash size={14} /> Tags</label>
-            <div className="tag-input-row">
-              <input
-                className="input"
-                placeholder="Add a tag..."
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            {/* Content */}
+            <div className="form-group">
+              <textarea
+                ref={textareaRef}
+                className="textarea post-textarea"
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                placeholder="What's on your mind? Use #hashtags for tags..."
+                rows={5}
               />
-              <button className="btn btn-secondary btn-sm" onClick={addTag}>Add</button>
-            </div>
-            {tags.length > 0 && (
-              <div className="tags-list">
-                {tags.map(t => (
-                  <span key={t} className="tag">
-                    #{t}
-                    <button onClick={() => setTags(prev => prev.filter(x => x !== t))}>x</button>
-                  </span>
-                ))}
+              <div className={`char-counter ${charClass}`}>
+                {charCount} / {charLimit}
               </div>
-            )}
+            </div>
+
+            {/* Images */}
+            <div className="editor-images">
+              {imageUrls.length > 0 && (
+                <div className="image-preview-grid">
+                  {imageUrls.map((url, i) => (
+                    <div key={i} className="image-preview">
+                      <img src={url.startsWith('/') ? apiUrl + url : url} alt="" />
+                      <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={e => handleImageUpload(e.target.files)}
+              />
+            </div>
+
+            {/* Schedule */}
+            <div className="form-group">
+              <label><Clock size={14} /> Schedule</label>
+              <input
+                type="datetime-local"
+                className="input"
+                value={scheduledAt}
+                onChange={e => setScheduledAt(e.target.value)}
+              />
+            </div>
+
+            {/* Tags */}
+            <div className="form-group">
+              <label><Hash size={14} /> Tags</label>
+              <div className="tag-input-row">
+                <input
+                  className="input"
+                  placeholder="Add a tag..."
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                />
+                <button className="btn btn-secondary btn-sm" onClick={addTag}>Add</button>
+              </div>
+              {tags.length > 0 && (
+                <div className="tags-list">
+                  {tags.map(t => (
+                    <span key={t} className="tag">
+                      #{t}
+                      <button onClick={() => setTags(prev => prev.filter(x => x !== t))}>x</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Status */}
+            <div className="form-group">
+              <label><Tag size={14} /> Status</label>
+              <select className="select" value={status} onChange={e => setStatus(e.target.value as any)}>
+                <option value="scheduled">Scheduled</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
           </div>
 
-          {/* Status */}
-          <div className="form-group">
-            <label><Tag size={14} /> Status</label>
-            <select className="select" value={status} onChange={e => setStatus(e.target.value as any)}>
-              <option value="scheduled">Scheduled</option>
-              <option value="draft">Draft</option>
-            </select>
+          {/* Live preview */}
+          <div className="editor-preview">
+            <div className="editor-preview-label">Preview</div>
+            <PostPreview
+              content={content}
+              platforms={platforms}
+              imageUrls={imageUrls}
+              scheduledAt={scheduledAt}
+              apiUrl={apiUrl}
+            />
           </div>
         </div>
 
