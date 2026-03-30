@@ -26,6 +26,7 @@ type PostResult struct {
 	Platform  Platform  `bson:"platform" json:"platform"`
 	Success   bool      `bson:"success" json:"success"`
 	PostID    string    `bson:"postId,omitempty" json:"postId,omitempty"`
+	PostCID   string    `bson:"postCid,omitempty" json:"postCid,omitempty"`
 	Error     string    `bson:"error,omitempty" json:"error,omitempty"`
 	PostedAt  time.Time `bson:"postedAt,omitempty" json:"postedAt,omitempty"`
 }
@@ -35,6 +36,7 @@ type Post struct {
 	UserID       primitive.ObjectID  `bson:"userId" json:"userId"`
 	TeamID       *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
 	Content      string             `bson:"content" json:"content"`
+	FirstComment string             `bson:"firstComment,omitempty" json:"firstComment,omitempty"`
 	ImageURLs    []string           `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`
 	Platforms    []Platform         `bson:"platforms" json:"platforms"`
 	ScheduledAt  time.Time          `bson:"scheduledAt" json:"scheduledAt"`

@@ -387,4 +387,5 @@ tr:hover td { background: var(--bg-hover); }
   .page { padding: 16px; }
   .page-header { flex-direction: column; gap: 12px; align-items: flex-start; }
   .modal { width: 95%; padding: 20px; }
+  .modal-overlay { align-items: flex-start; padding: 0; }
 }

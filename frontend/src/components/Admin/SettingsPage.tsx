@@ -12,6 +12,9 @@ export function SettingsPage() {
     webhookVerifyToken: '',
     adobeExpressClientId: '',
     allowSelfRegistration: true,
+    imprintHtml: '',
+    cookieBannerEnabled: false,
+    cookieBannerText: '',
   });
   const [igSecret, setIgSecret] = useState('');
   const [saving, setSaving] = useState(false);
@@ -29,6 +32,9 @@ export function SettingsPage() {
         allowSelfRegistration: settings.allowSelfRegistration,
         webhookVerifyToken: settings.webhookVerifyToken,
         adobeExpressClientId: settings.adobeExpressClientId,
+        imprintHtml: settings.imprintHtml,
+        cookieBannerEnabled: settings.cookieBannerEnabled,
+        cookieBannerText: settings.cookieBannerText,
       };
       if (igSecret) data.instagramAppSecret = igSecret;
       const updated = await api.updateSettings(data);
@@ -134,6 +140,51 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>Legal</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={settings.cookieBannerEnabled}
+                onChange={e => setSettings(s => ({ ...s, cookieBannerEnabled: e.target.checked }))}
+              />
+              Show cookie consent banner on login page
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label>Cookie Banner Text</label>
+            <input
+              className="input"
+              placeholder="We use cookies to improve your experience."
+              value={settings.cookieBannerText}
+              onChange={e => setSettings(s => ({ ...s, cookieBannerText: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Displayed in the cookie consent banner. Leave blank to use the default text.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Imprint / Legal Notice (HTML)</label>
+            <textarea
+              className="textarea"
+              rows={8}
+              placeholder={'<p>Company Name<br>Street Address<br>City, Country</p>\n<p>Email: contact@example.com</p>'}
+              value={settings.imprintHtml}
+              onChange={e => setSettings(s => ({ ...s, imprintHtml: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              HTML content for the imprint / legal notice. A link to view it will appear on the login page when this is non-empty.
             </span>
           </div>
         </div>

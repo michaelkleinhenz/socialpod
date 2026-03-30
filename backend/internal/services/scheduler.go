@@ -116,7 +116,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["bluesky"]
 			}
-			postID, err := s.Bluesky.Post(ctx, applyContent(post.Content, bluskySuffix), post.ImageURLs, accountID)
+			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(post.Content, bluskySuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -124,8 +124,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				log.Printf("Bluesky post failed: %v", err)
 			} else {
 				result.Success = true
-				result.PostID = postID
+				result.PostID = postURI
+				result.PostCID = postCID
 				result.PostedAt = time.Now()
+				if post.FirstComment != "" {
+					if _, replyErr := s.Bluesky.PostReply(ctx, post.FirstComment, postURI, postCID, accountID); replyErr != nil {
+						log.Printf("Bluesky first comment failed: %v", replyErr)
+					}
+				}
 			}
 
 		case models.PlatformInstagram:
@@ -143,6 +149,11 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				result.Success = true
 				result.PostID = postID
 				result.PostedAt = time.Now()
+				if post.FirstComment != "" {
+					if commentErr := s.Instagram.PostComment(ctx, post.FirstComment, postID, accountID); commentErr != nil {
+						log.Printf("Instagram first comment failed: %v", commentErr)
+					}
+				}
 			}
 		}
 

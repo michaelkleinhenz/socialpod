@@ -1,15 +1,41 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Zap } from 'lucide-react';
+import { api } from '../../services/api';
+import type { PublicSettings } from '../../types';
+import { Zap, X, Cookie, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Auth.css';
+
+const COOKIE_CONSENT_KEY = 'cookie_consent';
 
 export function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
+  const [showBanner, setShowBanner] = useState(false);
+  const [imprintOpen, setImprintOpen] = useState(false);
+
+  useEffect(() => {
+    api.getPublicSettings().then(s => {
+      setPublicSettings(s);
+      if (s.cookieBannerEnabled && !localStorage.getItem(COOKIE_CONSENT_KEY)) {
+        setShowBanner(true);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const acceptCookies = () => {
+    localStorage.setItem(COOKIE_CONSENT_KEY, 'accepted');
+    setShowBanner(false);
+  };
+
+  const declineCookies = () => {
+    localStorage.setItem(COOKIE_CONSENT_KEY, 'declined');
+    setShowBanner(false);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -23,6 +49,8 @@ export function LoginPage() {
       setLoading(false);
     }
   };
+
+  const hasImprint = !!publicSettings?.imprintHtml;
 
   return (
     <div className="auth-page">
@@ -68,7 +96,47 @@ export function LoginPage() {
         <p className="auth-footer">
           Don't have an account? <Link to="/register">Create one</Link>
         </p>
+
+        {hasImprint && (
+          <p className="auth-legal-links">
+            <button className="link-btn" onClick={() => setImprintOpen(true)}>
+              <FileText size={12} /> Imprint
+            </button>
+          </p>
+        )}
       </div>
+
+      {/* Cookie banner */}
+      {showBanner && (
+        <div className="cookie-banner">
+          <Cookie size={18} className="cookie-icon" />
+          <p className="cookie-text">
+            {publicSettings?.cookieBannerText || 'This site uses cookies to improve your experience.'}
+          </p>
+          <div className="cookie-actions">
+            <button className="btn btn-primary btn-sm" onClick={acceptCookies}>Accept</button>
+            <button className="btn btn-secondary btn-sm" onClick={declineCookies}>Decline</button>
+          </div>
+        </div>
+      )}
+
+      {/* Imprint modal */}
+      {imprintOpen && (
+        <div className="modal-overlay" onClick={() => setImprintOpen(false)}>
+          <div className="modal imprint-modal" onClick={e => e.stopPropagation()}>
+            <div className="imprint-header">
+              <h2>Imprint</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setImprintOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div
+              className="imprint-body"
+              dangerouslySetInnerHTML={{ __html: publicSettings?.imprintHtml || '' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

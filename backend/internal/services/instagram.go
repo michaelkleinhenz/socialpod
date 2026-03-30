@@ -190,6 +190,37 @@ func (s *InstagramService) publishContainer(account *models.SocialAccount, conta
 	return result.ID, nil
 }
 
+// PostComment posts a comment on an existing Instagram media object.
+func (s *InstagramService) PostComment(ctx context.Context, text, mediaID, accountID string) error {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	params := url.Values{
+		"message":      {text},
+		"access_token": {account.AccessToken},
+	}
+
+	resp, err := http.PostForm(fmt.Sprintf("%s/%s/comments", igGraphAPI, mediaID), params)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ID    string `json:"id"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Error != nil {
+		return fmt.Errorf("IG comment error: %s", result.Error.Message)
+	}
+	return nil
+}
+
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
 	filter := bson.M{"platform": models.PlatformInstagram, "isActive": true}
 	if accountID != "" {

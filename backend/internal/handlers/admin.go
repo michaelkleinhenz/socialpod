@@ -43,6 +43,27 @@ func (h *AdminHandler) ListAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
+// ListActiveAccounts returns active accounts for all authenticated users (no secrets exposed).
+func (h *AdminHandler) ListActiveAccounts(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{"isActive": true})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch accounts"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var accounts []models.SocialAccount
+	cursor.All(ctx, &accounts)
+	if accounts == nil {
+		accounts = []models.SocialAccount{}
+	}
+
+	c.JSON(http.StatusOK, accounts)
+}
+
 type AddBlueskyInput struct {
 	Handle      string `json:"handle" binding:"required"`
 	AppPassword string `json:"appPassword" binding:"required"`
@@ -138,6 +159,9 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"adobeExpressClientId": settings.AdobeExpressClientID,
+		"imprintHtml":          settings.ImprintHTML,
+		"cookieBannerEnabled":  settings.CookieBannerEnabled,
+		"cookieBannerText":     settings.CookieBannerText,
 	})
 }
 
@@ -163,6 +187,9 @@ type UpdateSettingsInput struct {
 	WebhookVerifyToken    *string `json:"webhookVerifyToken,omitempty"`
 	AdobeExpressClientID  *string `json:"adobeExpressClientId,omitempty"`
 	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
+	ImprintHTML           *string `json:"imprintHtml,omitempty"`
+	CookieBannerEnabled   *bool   `json:"cookieBannerEnabled,omitempty"`
+	CookieBannerText      *string `json:"cookieBannerText,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -193,6 +220,15 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.AdobeExpressClientID != nil {
 		update["adobeExpressClientId"] = *input.AdobeExpressClientID
+	}
+	if input.ImprintHTML != nil {
+		update["imprintHtml"] = *input.ImprintHTML
+	}
+	if input.CookieBannerEnabled != nil {
+		update["cookieBannerEnabled"] = *input.CookieBannerEnabled
+	}
+	if input.CookieBannerText != nil {
+		update["cookieBannerText"] = *input.CookieBannerText
 	}
 
 	upsert := true

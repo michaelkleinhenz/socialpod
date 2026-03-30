@@ -34,6 +34,7 @@ export interface Post {
   id: string;
   userId: string;
   content: string;
+  firstComment?: string;
   imageUrls?: string[];
   platforms: Platform[];
   scheduledAt: string;
@@ -76,7 +77,17 @@ export interface AppSettings {
   webhookVerifyToken: string;
   adobeExpressClientId: string;
   allowSelfRegistration: boolean;
+  imprintHtml: string;
+  cookieBannerEnabled: boolean;
+  cookieBannerText: string;
   updatedAt?: string;
+}
+
+export interface PublicSettings {
+  adobeExpressClientId: string;
+  imprintHtml: string;
+  cookieBannerEnabled: boolean;
+  cookieBannerText: string;
 }
 
 export interface AuthResponse {

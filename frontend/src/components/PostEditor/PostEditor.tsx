@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, Suffix } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2 } from 'lucide-react';
+import type { Post, Platform, Suffix, SocialAccount } from '../../types';
+import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -22,12 +22,117 @@ interface Props {
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
 
+function renderWithHashtags(text: string) {
+  if (!text) return null;
+  const parts = text.split(/(#[\w\u00C0-\u024F]+)/g);
+  return parts.map((part, i) =>
+    part.startsWith('#')
+      ? <span key={i} className="preview-hashtag">{part}</span>
+      : <span key={i}>{part}</span>
+  );
+}
+
+interface PreviewProps {
+  content: string;
+  platforms: Platform[];
+  imageUrls: string[];
+  scheduledAt: string;
+  apiUrl: string;
+  blueskyAccount?: SocialAccount | null;
+  instagramAccount?: SocialAccount | null;
+}
+
+function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount }: PreviewProps) {
+  const time = scheduledAt
+    ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
+    : '';
+
+  const bskyDisplayName = blueskyAccount?.displayName || blueskyAccount?.accountName || 'Your Name';
+  const bskyHandle = blueskyAccount?.accountName
+    ? (blueskyAccount.accountName.includes('.') ? blueskyAccount.accountName : `${blueskyAccount.accountName}.bsky.social`)
+    : 'yourhandle.bsky.social';
+  const igHandle = instagramAccount?.accountName || 'yourhandle';
+
+  if (platforms.length === 0) {
+    return (
+      <div className="preview-empty">
+        <p>Select a platform to see a preview</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="preview-cards">
+      {platforms.includes('bluesky') && (
+        <div className="preview-card preview-bluesky">
+          <div className="preview-card-header">
+            <div className="preview-avatar" />
+            <div className="preview-user-info">
+              <span className="preview-display-name">{bskyDisplayName}</span>
+              <span className="preview-handle">@{bskyHandle}</span>
+            </div>
+            <div className="preview-platform-badge bluesky">Bluesky</div>
+          </div>
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text">{renderWithHashtags(content)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          {imageUrls.length > 0 && (
+            <div className={`preview-images preview-images-${Math.min(imageUrls.length, 4)}`}>
+              {imageUrls.slice(0, 4).map((url, i) => (
+                <img key={i} src={url.startsWith('/') ? apiUrl + url : url} alt="" className="preview-image" />
+              ))}
+            </div>
+          )}
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
+          </div>
+        </div>
+      )}
+
+      {platforms.includes('instagram') && (
+        <div className="preview-card preview-instagram">
+          <div className="preview-card-header">
+            <div className="preview-avatar" />
+            <div className="preview-user-info">
+              <span className="preview-display-name">{igHandle}</span>
+            </div>
+            <div className="preview-platform-badge instagram">Instagram</div>
+          </div>
+          {imageUrls.length > 0 ? (
+            <div className="preview-ig-image">
+              <img src={imageUrls[0].startsWith('/') ? apiUrl + imageUrls[0] : imageUrls[0]} alt="" />
+            </div>
+          ) : (
+            <div className="preview-ig-image-placeholder">
+              <Image size={32} />
+              <span>No image selected</span>
+            </div>
+          )}
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(content)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Props) {
   const defaultTime = defaultDate
     ? format(defaultDate, "yyyy-MM-dd'T'HH:mm")
     : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm");
 
   const [content, setContent] = useState(post?.content || '');
+  const [firstComment, setFirstComment] = useState(post?.firstComment || '');
   const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || ['bluesky']);
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
@@ -45,6 +150,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
   const [saving, setSaving] = useState(false);
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
   const [adobeActive, setAdobeActive] = useState(false);
@@ -57,12 +163,15 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getActiveAccounts().then(setAccounts).catch(() => {});
     return () => {
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
       objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
+
+  const apiUrl = import.meta.env.VITE_API_URL || '';
 
   const launchAdobeExpress = useCallback(async () => {
     if (!adobeClientId) return;
@@ -202,6 +311,11 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     return objUrlCache.current.get(item.file)!;
   }, [apiUrl]);
 
+  // Image URLs for the preview panel (server URLs + object URLs for local files).
+  const previewImageUrls = useMemo(() =>
+    images.map(item => previewUrl(item)),
+  [images, previewUrl]);
+
   const addTag = () => {
     const tag = tagInput.trim().replace(/^#/, '');
     if (tag && !tags.includes(tag)) {
@@ -221,7 +335,16 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     setSaving(true);
     try {
       await onSave(
-        { content, platforms, scheduledAt: new Date(scheduledAt).toISOString(), imageUrls, tags, status, suffixIds },
+        {
+          content,
+          firstComment: firstComment.trim() || undefined,
+          platforms,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+          imageUrls,
+          tags,
+          status,
+          suffixIds,
+        },
         imageFiles.length > 0 ? imageFiles : undefined,
       );
     } finally {
@@ -229,7 +352,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     }
   };
 
-  const apiUrl = import.meta.env.VITE_API_URL || '';
+  const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
+  const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
 
   return (
     <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined} onClick={onClose}>
@@ -241,155 +365,183 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           </button>
         </div>
 
-        <div className="editor-body">
-          {/* Platform selector */}
-          <div className="platform-selector">
-            <div
-              className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
-              onClick={() => togglePlatform('bluesky')}
-            >
-              <span className="platform-dot bluesky" />
-              Bluesky
+        <div className="editor-layout">
+          <div className="editor-body">
+            {/* Platform selector */}
+            <div className="platform-selector">
+              <div
+                className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
+                onClick={() => togglePlatform('bluesky')}
+              >
+                <span className="platform-dot bluesky" />
+                Bluesky
+              </div>
+              <div
+                className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
+                onClick={() => togglePlatform('instagram')}
+              >
+                <span className="platform-dot instagram" />
+                Instagram
+              </div>
             </div>
-            <div
-              className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
-              onClick={() => togglePlatform('instagram')}
-            >
-              <span className="platform-dot instagram" />
-              Instagram
-            </div>
-          </div>
 
-          {/* Suffix selectors */}
-          {suffixes.length > 0 && (platforms.includes('bluesky') || platforms.includes('instagram')) && (
-            <div className="suffix-selectors">
-              {platforms.includes('bluesky') && (
-                <div className="suffix-selector-row">
-                  <label className="suffix-label">
-                    <span className="platform-dot bluesky" /> Bluesky suffix
-                  </label>
-                  <select
-                    className="select suffix-select"
-                    value={suffixIds['bluesky'] || ''}
-                    onChange={e => setSuffixIds(prev => {
-                      const next = { ...prev };
-                      if (e.target.value) next['bluesky'] = e.target.value;
-                      else delete next['bluesky'];
-                      return next;
-                    })}
-                  >
-                    <option value="">None</option>
-                    {suffixes.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {platforms.includes('instagram') && (
-                <div className="suffix-selector-row">
-                  <label className="suffix-label">
-                    <span className="platform-dot instagram" /> Instagram suffix
-                  </label>
-                  <select
-                    className="select suffix-select"
-                    value={suffixIds['instagram'] || ''}
-                    onChange={e => setSuffixIds(prev => {
-                      const next = { ...prev };
-                      if (e.target.value) next['instagram'] = e.target.value;
-                      else delete next['instagram'];
-                      return next;
-                    })}
-                  >
-                    <option value="">None</option>
-                    {suffixes.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Content */}
-          <div className="form-group">
-            <textarea
-              ref={textareaRef}
-              className="textarea post-textarea"
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              placeholder="What's on your mind? Use #hashtags for tags..."
-              rows={5}
-            />
-            <div className={`char-counter ${charClass}`}>
-              {charCount} / {charLimit}
-            </div>
-          </div>
-
-          {/* Images */}
-          <div className="editor-images">
-            {images.length > 0 && (
-              <div className="image-preview-grid">
-                {images.map((item, i) => (
-                  <div key={i} className="image-preview">
-                    <img src={previewUrl(item)} alt="" />
-                    <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
+            {/* Suffix selectors */}
+            {suffixes.length > 0 && (platforms.includes('bluesky') || platforms.includes('instagram')) && (
+              <div className="suffix-selectors">
+                {platforms.includes('bluesky') && (
+                  <div className="suffix-selector-row">
+                    <label className="suffix-label">
+                      <span className="platform-dot bluesky" /> Bluesky suffix
+                    </label>
+                    <select
+                      className="select suffix-select"
+                      value={suffixIds['bluesky'] || ''}
+                      onChange={e => setSuffixIds(prev => {
+                        const next = { ...prev };
+                        if (e.target.value) next['bluesky'] = e.target.value;
+                        else delete next['bluesky'];
+                        return next;
+                      })}
+                    >
+                      <option value="">None</option>
+                      {suffixes.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
                   </div>
-                ))}
+                )}
+                {platforms.includes('instagram') && (
+                  <div className="suffix-selector-row">
+                    <label className="suffix-label">
+                      <span className="platform-dot instagram" /> Instagram suffix
+                    </label>
+                    <select
+                      className="select suffix-select"
+                      value={suffixIds['instagram'] || ''}
+                      onChange={e => setSuffixIds(prev => {
+                        const next = { ...prev };
+                        if (e.target.value) next['instagram'] = e.target.value;
+                        else delete next['instagram'];
+                        return next;
+                      })}
+                    >
+                      <option value="">None</option>
+                      {suffixes.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              style={{ display: 'none' }}
-              onChange={e => handleImageUpload(e.target.files)}
-            />
-          </div>
 
-          {/* Schedule */}
-          <div className="form-group">
-            <label><Clock size={14} /> Schedule</label>
-            <input
-              type="datetime-local"
-              className="input"
-              value={scheduledAt}
-              onChange={e => setScheduledAt(e.target.value)}
-            />
-          </div>
-
-          {/* Tags */}
-          <div className="form-group">
-            <label><Hash size={14} /> Tags</label>
-            <div className="tag-input-row">
-              <input
-                className="input"
-                placeholder="Add a tag..."
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            {/* Content */}
+            <div className="form-group">
+              <textarea
+                ref={textareaRef}
+                className="textarea post-textarea"
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                placeholder="What's on your mind? Use #hashtags for tags..."
+                rows={5}
               />
-              <button className="btn btn-secondary btn-sm" onClick={addTag}>Add</button>
-            </div>
-            {tags.length > 0 && (
-              <div className="tags-list">
-                {tags.map(t => (
-                  <span key={t} className="tag">
-                    #{t}
-                    <button onClick={() => setTags(prev => prev.filter(x => x !== t))}>x</button>
-                  </span>
-                ))}
+              <div className={`char-counter ${charClass}`}>
+                {charCount} / {charLimit}
               </div>
-            )}
+            </div>
+
+            {/* First Comment */}
+            <div className="form-group">
+              <label><MessageSquare size={14} /> First Comment <span className="first-comment-label-hint">(optional — posted right after)</span></label>
+              <textarea
+                className="textarea first-comment-textarea"
+                value={firstComment}
+                onChange={e => setFirstComment(e.target.value)}
+                placeholder="Add a first comment to your post…"
+                rows={3}
+              />
+            </div>
+
+            {/* Images */}
+            <div className="editor-images">
+              {images.length > 0 && (
+                <div className="image-preview-grid">
+                  {images.map((item, i) => (
+                    <div key={i} className="image-preview">
+                      <img src={previewUrl(item)} alt="" />
+                      <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={e => handleImageUpload(e.target.files)}
+              />
+            </div>
+
+            {/* Schedule */}
+            <div className="form-group">
+              <label><Clock size={14} /> Schedule</label>
+              <input
+                type="datetime-local"
+                className="input"
+                value={scheduledAt}
+                onChange={e => setScheduledAt(e.target.value)}
+              />
+            </div>
+
+            {/* Tags */}
+            <div className="form-group">
+              <label><Hash size={14} /> Tags</label>
+              <div className="tag-input-row">
+                <input
+                  className="input"
+                  placeholder="Add a tag..."
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                />
+                <button className="btn btn-secondary btn-sm" onClick={addTag}>Add</button>
+              </div>
+              {tags.length > 0 && (
+                <div className="tags-list">
+                  {tags.map(t => (
+                    <span key={t} className="tag">
+                      #{t}
+                      <button onClick={() => setTags(prev => prev.filter(x => x !== t))}>x</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Status */}
+            <div className="form-group">
+              <label><Tag size={14} /> Status</label>
+              <select className="select" value={status} onChange={e => setStatus(e.target.value as any)}>
+                <option value="scheduled">Scheduled</option>
+                <option value="draft">Draft</option>
+              </select>
+            </div>
           </div>
 
-          {/* Status */}
-          <div className="form-group">
-            <label><Tag size={14} /> Status</label>
-            <select className="select" value={status} onChange={e => setStatus(e.target.value as any)}>
-              <option value="scheduled">Scheduled</option>
-              <option value="draft">Draft</option>
-            </select>
+          {/* Live preview */}
+          <div className="editor-preview">
+            <div className="editor-preview-label">Preview</div>
+            <PostPreview
+              content={content}
+              platforms={platforms}
+              imageUrls={previewImageUrls}
+              scheduledAt={scheduledAt}
+              apiUrl={apiUrl}
+              blueskyAccount={blueskyAccount}
+              instagramAccount={instagramAccount}
+            />
           </div>
         </div>
 
