@@ -32,8 +32,6 @@ type AppSettings struct {
 	InstagramAppSecret    string             `bson:"instagramAppSecret" json:"-"`
 	WebhookVerifyToken    string             `bson:"webhookVerifyToken" json:"webhookVerifyToken"`
 	AdobeExpressClientID  string             `bson:"adobeExpressClientId" json:"adobeExpressClientId"`
-	DefaultPostTime       string             `bson:"defaultPostTime" json:"defaultPostTime"` // HH:MM
-	AutoPublish           bool               `bson:"autoPublish" json:"autoPublish"`
 	AllowSelfRegistration bool               `bson:"allowSelfRegistration" json:"allowSelfRegistration"`
 	ImprintHTML           string             `bson:"imprintHtml" json:"imprintHtml"`
 	CookieBannerEnabled   bool               `bson:"cookieBannerEnabled" json:"cookieBannerEnabled"`

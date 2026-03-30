@@ -122,14 +122,14 @@ export function CalendarPage() {
     setEditorOpen(true);
   };
 
-  const handleSavePost = async (data: any) => {
+  const handleSavePost = async (data: any, files?: File[]) => {
     try {
       if (editingPost) {
-        const updated = await api.updatePost(editingPost.id, data);
+        const updated = await api.updatePost(editingPost.id, data, files);
         setPosts(prev => prev.map(p => p.id === editingPost.id ? updated : p));
         toast.success('Post updated');
       } else {
-        const created = await api.createPost(data);
+        const created = await api.createPost(data, files);
         setPosts(prev => [...prev, created]);
         toast.success('Post created');
       }

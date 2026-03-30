@@ -1,0 +1,50 @@
+{
+  "name": "n8n-nodes-socialpod",
+  "version": "1.0.0",
+  "description": "n8n community node for SocialPod — schedule and manage Bluesky and Instagram posts",
+  "keywords": [
+    "n8n-community-node-package",
+    "socialpod",
+    "social-media",
+    "bluesky",
+    "instagram"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/michaelkleinhenz/socialpod",
+  "author": {
+    "name": "SocialPod"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaelkleinhenz/socialpod.git",
+    "directory": "n8n-nodes-socialpod"
+  },
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && cp nodes/SocialPod/socialpod.svg dist/nodes/SocialPod/",
+    "dev": "tsc --watch"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/SocialPodApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/SocialPod/SocialPod.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0",
+    "n8n-workflow": "*"
+  },
+  "dependencies": {
+    "form-data": "^4.0.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

@@ -85,18 +85,18 @@ class ApiClient {
     return this.request<any[]>(`/posts${qs ? '?' + qs : ''}`);
   }
 
-  createPost(data: any) {
-    return this.request<any>('/posts', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createPost(data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('images', f));
+    return this.request<any>('/posts', { method: 'POST', body: form });
   }
 
-  updatePost(id: string, data: any) {
-    return this.request<any>(`/posts/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updatePost(id: string, data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('images', f));
+    return this.request<any>(`/posts/${id}`, { method: 'PUT', body: form });
   }
 
   deletePost(id: string) {
@@ -180,6 +180,29 @@ class ApiClient {
 
   getPublicSettings() {
     return this.request<import('../types').PublicSettings>('/settings/public');
+  }
+
+  // Suffixes
+  getSuffixes() {
+    return this.request<any[]>('/suffixes');
+  }
+
+  createSuffix(data: { name: string; content: string }) {
+    return this.request<any>('/suffixes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateSuffix(id: string, data: { name?: string; content?: string }) {
+    return this.request<any>(`/suffixes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteSuffix(id: string) {
+    return this.request<any>(`/suffixes/${id}`, { method: 'DELETE' });
   }
 
   // Teams

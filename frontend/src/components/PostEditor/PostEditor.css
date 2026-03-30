@@ -89,6 +89,34 @@
   gap: 6px;
 }
 
+.suffix-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suffix-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.suffix-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 130px;
+}
+
+.suffix-select {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
 /* Preview panel */
 .editor-preview {
   border-left: 1px solid var(--border);

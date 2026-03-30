@@ -63,6 +63,11 @@ func (m *MongoDB) ensureIndexes() {
 		Options: options.Index().SetUnique(true),
 	})
 
+	m.Suffixes().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -88,6 +93,10 @@ func (m *MongoDB) Uploads() *mongo.Collection {
 
 func (m *MongoDB) Settings() *mongo.Collection {
 	return m.Database.Collection("settings")
+}
+
+func (m *MongoDB) Suffixes() *mongo.Collection {
+	return m.Database.Collection("suffixes")
 }
 
 func (m *MongoDB) Close() {

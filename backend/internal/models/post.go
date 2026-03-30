@@ -44,6 +44,7 @@ type Post struct {
 	Results      []PostResult       `bson:"results,omitempty" json:"results,omitempty"`
 	Tags         []string           `bson:"tags,omitempty" json:"tags,omitempty"`
 	AccountIDs   map[string]string  `bson:"accountIds,omitempty" json:"accountIds,omitempty"` // platform -> accountId
+	SuffixIDs    map[string]string  `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`   // platform -> suffixId
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt    time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

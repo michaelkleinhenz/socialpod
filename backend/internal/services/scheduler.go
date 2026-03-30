@@ -9,6 +9,7 @@ import (
 	"socialmedia/internal/models"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Scheduler struct {
@@ -72,9 +73,38 @@ func (s *Scheduler) processScheduledPosts() {
 	}
 }
 
+func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string) string {
+	if suffixIDStr == "" {
+		return ""
+	}
+	oid, err := primitive.ObjectIDFromHex(suffixIDStr)
+	if err != nil {
+		return ""
+	}
+	var suffix models.Suffix
+	if err := s.DB.Suffixes().FindOne(ctx, bson.M{"_id": oid}).Decode(&suffix); err != nil {
+		return ""
+	}
+	return suffix.Content
+}
+
 func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	var results []models.PostResult
 	allSuccess := true
+
+	bluskySuffix := ""
+	instagramSuffix := ""
+	if post.SuffixIDs != nil {
+		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"])
+		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"])
+	}
+
+	applyContent := func(base, suffix string) string {
+		if suffix == "" {
+			return base
+		}
+		return base + "\n" + suffix
+	}
 
 	for _, platform := range post.Platforms {
 		var result models.PostResult
@@ -86,7 +116,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["bluesky"]
 			}
-			postURI, postCID, err := s.Bluesky.Post(ctx, post.Content, post.ImageURLs, accountID)
+			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(post.Content, bluskySuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -109,7 +139,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["instagram"]
 			}
-			postID, err := s.Instagram.Post(ctx, post.Content, post.ImageURLs, accountID)
+			postID, err := s.Instagram.Post(ctx, applyContent(post.Content, instagramSuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()

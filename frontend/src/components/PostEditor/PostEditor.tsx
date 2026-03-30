@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, SocialAccount } from '../../types';
+import type { Post, Platform, Suffix, SocialAccount } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Hash, Wand2, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
@@ -14,7 +14,7 @@ let _ccClientId = '';
 interface Props {
   post?: Post | null;
   defaultDate?: Date | null;
-  onSave: (data: any) => void;
+  onSave: (data: any, files?: File[]) => void;
   onDelete?: () => void;
   onClose: () => void;
 }
@@ -137,11 +137,18 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
   );
-  const [imageUrls, setImageUrls] = useState<string[]>(post?.imageUrls || []);
+  // Unified image list: existing server URLs and local File objects not yet uploaded.
+  type ImageItem = { kind: 'url'; url: string } | { kind: 'file'; file: File };
+  const [images, setImages] = useState<ImageItem[]>(
+    (post?.imageUrls || []).map(url => ({ kind: 'url' as const, url }))
+  );
+  // Cache for object URLs so we don't create a new one on every render.
+  const objUrlCache = useRef<Map<File, string>>(new Map());
   const [tags, setTags] = useState<string[]>(post?.tags || []);
   const [tagInput, setTagInput] = useState('');
   const [status, setStatus] = useState(post?.status || 'scheduled');
-  const [uploading, setUploading] = useState(false);
+  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
+  const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [adobeClientId, setAdobeClientId] = useState('');
@@ -155,13 +162,16 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
+    api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getActiveAccounts().then(setAccounts).catch(() => {});
     return () => {
-      // Clean up in case the component unmounts while Adobe is open.
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
+      objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
+
+  const apiUrl = import.meta.env.VITE_API_URL || '';
 
   const launchAdobeExpress = useCallback(async () => {
     if (!adobeClientId) return;
@@ -190,10 +200,6 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
     try {
       // Re-initialize only if the client ID changed or SDK was never loaded.
-      // The SDK is pre-loaded via <script defer> in index.html so the OAuth
-      // popup (which redirects back to this app's origin) can complete the
-      // auth handshake via postMessage. The dynamic import here is a fallback
-      // for environments where the script tag hasn't executed yet.
       if (!_ccEditor || _ccClientId !== adobeClientId) {
         if (!(window as any).CCEverywhere) {
           await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
@@ -214,8 +220,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
         },
         {
           callbacks: {
-            // SDK v4 passes a single publishParams argument (not intent + params).
-            onPublish: async (publishParams: any) => {
+            // v4 still passes two arguments: (intent, publishParams).
+            onPublish: async (_intent: any, publishParams: any) => {
               closeAdobe();
               const dataUrl = publishParams?.asset?.[0]?.data;
               if (!dataUrl) { toast.error('No image data received'); return; }
@@ -223,8 +229,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
                 const res = await fetch(dataUrl);
                 const blob = await res.blob();
                 const file = new File([blob], 'design.png', { type: 'image/png' });
-                const uploaded = await api.uploadImage(file);
-                setImageUrls(prev => [...prev, uploaded.url]);
+                setImages(prev => [...prev, { kind: 'file' as const, file }]);
                 toast.success('Design added');
               } catch {
                 toast.error('Failed to save design');
@@ -260,32 +265,56 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     );
   };
 
-  const charLimit = platforms.length === 0 ? INSTAGRAM_LIMIT : Math.min(
-    ...(platforms.includes('bluesky') ? [BLUESKY_LIMIT] : []),
-    ...(platforms.includes('instagram') ? [INSTAGRAM_LIMIT] : []),
+  const suffixLen = (platform: Platform) => {
+    const id = suffixIds[platform];
+    if (!id) return 0;
+    const s = suffixes.find(x => x.id === id);
+    return s ? s.content.length + 1 : 0; // +1 for newline separator
+  };
+
+  const effectiveLimit = (platform: Platform) =>
+    (platform === 'bluesky' ? BLUESKY_LIMIT : INSTAGRAM_LIMIT) - suffixLen(platform);
+
+  const charLimit = platforms.length === 0 ? effectiveLimit('instagram') : Math.min(
+    ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
+    ...(platforms.includes('instagram') ? [effectiveLimit('instagram')] : []),
   );
   const charCount = content.length;
   const overLimit = charCount > charLimit;
   const charClass = overLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
-  const handleImageUpload = async (files: FileList | null) => {
+  const handleImageUpload = (files: FileList | null) => {
     if (!files) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const res = await api.uploadImage(file);
-        setImageUrls(prev => [...prev, res.url]);
-      }
-    } catch {
-      toast.error('Upload failed');
-    } finally {
-      setUploading(false);
-    }
+    setImages(prev => [
+      ...prev,
+      ...Array.from(files).map(file => ({ kind: 'file' as const, file })),
+    ]);
   };
 
   const removeImage = (idx: number) => {
-    setImageUrls(prev => prev.filter((_, i) => i !== idx));
+    setImages(prev => {
+      const item = prev[idx];
+      if (item.kind === 'file') {
+        const cached = objUrlCache.current.get(item.file);
+        if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(item.file); }
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
   };
+
+  // Returns a displayable URL for any ImageItem without leaking object URLs.
+  const previewUrl = useMemo(() => (item: ImageItem) => {
+    if (item.kind === 'url') return item.url.startsWith('/') ? apiUrl + item.url : item.url;
+    if (!objUrlCache.current.has(item.file)) {
+      objUrlCache.current.set(item.file, URL.createObjectURL(item.file));
+    }
+    return objUrlCache.current.get(item.file)!;
+  }, [apiUrl]);
+
+  // Image URLs for the preview panel (server URLs + object URLs for local files).
+  const previewImageUrls = useMemo(() =>
+    images.map(item => previewUrl(item)),
+  [images, previewUrl]);
 
   const addTag = () => {
     const tag = tagInput.trim().replace(/^#/, '');
@@ -300,23 +329,29 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
     if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
 
+    const imageUrls = images.filter(i => i.kind === 'url').map(i => (i as { kind: 'url'; url: string }).url);
+    const imageFiles = images.filter(i => i.kind === 'file').map(i => (i as { kind: 'file'; file: File }).file);
+
     setSaving(true);
     try {
-      await onSave({
-        content,
-        firstComment: firstComment.trim() || undefined,
-        platforms,
-        scheduledAt: new Date(scheduledAt).toISOString(),
-        imageUrls,
-        tags,
-        status,
-      });
+      await onSave(
+        {
+          content,
+          firstComment: firstComment.trim() || undefined,
+          platforms,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+          imageUrls,
+          tags,
+          status,
+          suffixIds,
+        },
+        imageFiles.length > 0 ? imageFiles : undefined,
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const apiUrl = import.meta.env.VITE_API_URL || '';
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
 
@@ -350,6 +385,56 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
               </div>
             </div>
 
+            {/* Suffix selectors */}
+            {suffixes.length > 0 && (platforms.includes('bluesky') || platforms.includes('instagram')) && (
+              <div className="suffix-selectors">
+                {platforms.includes('bluesky') && (
+                  <div className="suffix-selector-row">
+                    <label className="suffix-label">
+                      <span className="platform-dot bluesky" /> Bluesky suffix
+                    </label>
+                    <select
+                      className="select suffix-select"
+                      value={suffixIds['bluesky'] || ''}
+                      onChange={e => setSuffixIds(prev => {
+                        const next = { ...prev };
+                        if (e.target.value) next['bluesky'] = e.target.value;
+                        else delete next['bluesky'];
+                        return next;
+                      })}
+                    >
+                      <option value="">None</option>
+                      {suffixes.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {platforms.includes('instagram') && (
+                  <div className="suffix-selector-row">
+                    <label className="suffix-label">
+                      <span className="platform-dot instagram" /> Instagram suffix
+                    </label>
+                    <select
+                      className="select suffix-select"
+                      value={suffixIds['instagram'] || ''}
+                      onChange={e => setSuffixIds(prev => {
+                        const next = { ...prev };
+                        if (e.target.value) next['instagram'] = e.target.value;
+                        else delete next['instagram'];
+                        return next;
+                      })}
+                    >
+                      <option value="">None</option>
+                      {suffixes.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Content */}
             <div className="form-group">
               <textarea
@@ -379,11 +464,11 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
             {/* Images */}
             <div className="editor-images">
-              {imageUrls.length > 0 && (
+              {images.length > 0 && (
                 <div className="image-preview-grid">
-                  {imageUrls.map((url, i) => (
+                  {images.map((item, i) => (
                     <div key={i} className="image-preview">
-                      <img src={url.startsWith('/') ? apiUrl + url : url} alt="" />
+                      <img src={previewUrl(item)} alt="" />
                       <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
                     </div>
                   ))}
@@ -451,7 +536,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
             <PostPreview
               content={content}
               platforms={platforms}
-              imageUrls={imageUrls}
+              imageUrls={previewImageUrls}
               scheduledAt={scheduledAt}
               apiUrl={apiUrl}
               blueskyAccount={blueskyAccount}
@@ -462,8 +547,8 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
         <div className="editor-footer">
           <div className="footer-left">
-            <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Image size={16} /> {uploading ? 'Uploading...' : 'Upload'}
+            <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
+              <Image size={16} /> Upload
             </button>
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>
