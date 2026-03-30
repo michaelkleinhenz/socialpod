@@ -37,15 +37,15 @@ type bskyImage struct {
 	Image interface{} `json:"image"`
 }
 
-func (s *BlueskyService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
+func (s *BlueskyService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (uri, cid string, err error) {
 	account, err := s.getAccount(ctx, accountID)
 	if err != nil {
-		return "", fmt.Errorf("no active Bluesky account: %w", err)
+		return "", "", fmt.Errorf("no active Bluesky account: %w", err)
 	}
 
 	session, err := s.createSession(account)
 	if err != nil {
-		return "", fmt.Errorf("auth failed: %w", err)
+		return "", "", fmt.Errorf("auth failed: %w", err)
 	}
 
 	// Build post record
@@ -63,8 +63,8 @@ func (s *BlueskyService) Post(ctx context.Context, content string, imageURLs []s
 
 	// Upload images if present
 	if len(imageURLs) > 0 {
-		images, err := s.uploadImages(session, account.PDSHost, imageURLs)
-		if err == nil && len(images) > 0 {
+		images, uploadErr := s.uploadImages(session, account.PDSHost, imageURLs)
+		if uploadErr == nil && len(images) > 0 {
 			record["embed"] = map[string]interface{}{
 				"$type":  "app.bsky.embed.images",
 				"images": images,
@@ -72,6 +72,43 @@ func (s *BlueskyService) Post(ctx context.Context, content string, imageURLs []s
 		}
 	}
 
+	uri, cid, err = s.createRecord(ctx, session, account.PDSHost, record)
+	return uri, cid, err
+}
+
+// PostReply posts a reply to an existing Bluesky post.
+func (s *BlueskyService) PostReply(ctx context.Context, content, parentURI, parentCID, accountID string) (string, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return "", fmt.Errorf("no active Bluesky account: %w", err)
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return "", fmt.Errorf("auth failed: %w", err)
+	}
+
+	ref := map[string]string{"uri": parentURI, "cid": parentCID}
+	record := map[string]interface{}{
+		"$type":     "app.bsky.feed.post",
+		"text":      content,
+		"createdAt": time.Now().UTC().Format(time.RFC3339),
+		"reply": map[string]interface{}{
+			"root":   ref,
+			"parent": ref,
+		},
+	}
+
+	facets := s.parseFacets(content)
+	if len(facets) > 0 {
+		record["facets"] = facets
+	}
+
+	uri, _, err := s.createRecord(ctx, session, account.PDSHost, record)
+	return uri, err
+}
+
+func (s *BlueskyService) createRecord(ctx context.Context, session *bskySession, pdsHost string, record map[string]interface{}) (uri, cid string, err error) {
 	body := map[string]interface{}{
 		"repo":       session.DID,
 		"collection": "app.bsky.feed.post",
@@ -80,20 +117,20 @@ func (s *BlueskyService) Post(ctx context.Context, content string, imageURLs []s
 
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequestWithContext(ctx, "POST",
-		account.PDSHost+"/xrpc/com.atproto.repo.createRecord",
+		pdsHost+"/xrpc/com.atproto.repo.createRecord",
 		bytes.NewReader(jsonBody))
 	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("post failed (%d): %s", resp.StatusCode, string(respBody))
+		return "", "", fmt.Errorf("post failed (%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -101,7 +138,7 @@ func (s *BlueskyService) Post(ctx context.Context, content string, imageURLs []s
 		CID string `json:"cid"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
-	return result.URI, nil
+	return result.URI, result.CID, nil
 }
 
 func (s *BlueskyService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {

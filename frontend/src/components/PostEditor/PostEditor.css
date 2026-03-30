@@ -35,6 +35,19 @@
   line-height: 1.6;
 }
 
+.first-comment-textarea {
+  min-height: 72px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.first-comment-label-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
 .tag-input-row {
   display: flex;
   gap: 8px;
