@@ -335,6 +335,37 @@ Configure these in your GitHub repository settings (**Settings → Secrets and v
 
 ---
 
+## Adobe Express Integration
+
+SocialPod can integrate the [Adobe Express Embed SDK](https://developer.adobe.com/express/embed-sdk/) so users can create images directly inside the post editor. To enable it, enter your Adobe Express Client ID in **Settings → Adobe Express**.
+
+The SDK uses popups and cross-origin iframes that are blocked by default in some browsers. Adjust the following settings for the domain where SocialPod is hosted:
+
+### Chrome
+
+1. Navigate to `chrome://settings/content/popups`.
+2. Under **Allowed to send pop-ups and use redirects**, click **Add** and enter your SocialPod domain (e.g. `https://socialpod.example.com`).
+3. Navigate to `chrome://settings/content/cookies`.
+4. Ensure **Third-party cookies** are not fully blocked, or add `[*.]adobe.com` and `[*.]adobelogin.com` to the allowed list.
+
+### Firefox
+
+1. Open SocialPod in Firefox, click the shield icon in the address bar.
+2. Toggle off **Enhanced Tracking Protection** for this site, or set it to **Standard** globally under `about:preferences#privacy`.
+3. If popups are blocked, click the notification bar that appears and select **Allow pop-ups for this site**.
+
+### Brave
+
+1. Click the Brave Shields icon (lion) in the address bar while on your SocialPod site.
+2. Set **Shields** to **Down** for this site, or individually:
+   - Set **Cross-site cookies blocked** to **All cookies allowed**.
+   - Ensure **Block pop-ups** is disabled.
+3. Alternatively, add `https://[*.]adobe.com` and `https://[*.]adobelogin.com` to **brave://settings/content/cookies** under allowed sites.
+
+> **Note**: Adobe Express requires the user to sign in with an Adobe account. The SDK will prompt for login when the user first exports a design.
+
+---
+
 ## Troubleshooting
 
 **Instagram OAuth fails with "redirect URI mismatch"**
