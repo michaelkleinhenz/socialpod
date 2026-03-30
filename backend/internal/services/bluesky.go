@@ -177,6 +177,31 @@ func (s *BlueskyService) createSession(account *models.SocialAccount) (*bskySess
 	return &session, nil
 }
 
+// FetchProfile authenticates and returns display name + avatar URL for a Bluesky account.
+func (s *BlueskyService) FetchProfile(account *models.SocialAccount) (displayName, avatarURL string, err error) {
+	session, err := s.createSession(account)
+	if err != nil {
+		return "", "", err
+	}
+
+	req, _ := http.NewRequest("GET",
+		account.PDSHost+"/xrpc/app.bsky.actor.getProfile?actor="+session.DID, nil)
+	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	var profile struct {
+		DisplayName string `json:"displayName"`
+		Avatar      string `json:"avatar"`
+	}
+	json.NewDecoder(resp.Body).Decode(&profile)
+	return profile.DisplayName, profile.Avatar, nil
+}
+
 func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imageURLs []string) ([]map[string]interface{}, error) {
 	var images []map[string]interface{}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

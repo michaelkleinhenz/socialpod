@@ -44,8 +44,9 @@ func main() {
 	authHandler := &handlers.AuthHandler{DB: db, Secret: cfg.JWTSecret}
 	postHandler := &handlers.PostHandler{DB: db}
 	suffixHandler := &handlers.SuffixHandler{DB: db}
+	bskyService := &services.BlueskyService{DB: db}
 	igService := &services.InstagramService{DB: db}
-	adminHandler := &handlers.AdminHandler{DB: db, Instagram: igService}
+	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService}
 
 	// Public routes
 	api := r.Group("/api")

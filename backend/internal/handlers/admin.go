@@ -23,7 +23,8 @@ import (
 )
 
 type AdminHandler struct {
-	DB        *database.MongoDB
+	DB       *database.MongoDB
+	Bluesky  *services.BlueskyService
 	Instagram *services.InstagramService
 }
 
@@ -95,6 +96,16 @@ func (h *AdminHandler) AddBlueskyAccount(c *gin.Context) {
 		IsActive:    true,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
+	}
+
+	// Fetch display name and avatar from Bluesky profile
+	if h.Bluesky != nil {
+		if dn, av, err := h.Bluesky.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+			}
+			account.AvatarURL = av
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

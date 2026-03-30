@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, Suffix, SocialAccount } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -66,12 +66,17 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
     );
   }
 
+  const bskyAvatarUrl = blueskyAccount?.avatarUrl;
+  const igAvatarUrl = instagramAccount?.avatarUrl;
+
   return (
     <div className="preview-cards">
       {platforms.includes('bluesky') && (
         <div className="preview-card preview-bluesky">
           <div className="preview-card-header">
-            <div className="preview-avatar" />
+            {bskyAvatarUrl
+              ? <img src={bskyAvatarUrl} alt="" className="preview-avatar" />
+              : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
               <span className="preview-display-name">{bskyDisplayName}</span>
               <span className="preview-handle">@{bskyHandle}</span>
@@ -100,9 +105,14 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
       {platforms.includes('instagram') && (
         <div className="preview-card preview-instagram">
           <div className="preview-card-header">
-            <div className="preview-avatar" />
+            {igAvatarUrl
+              ? <img src={igAvatarUrl} alt="" className="preview-avatar" />
+              : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
-              <span className="preview-display-name">{igHandle}</span>
+              <span className="preview-display-name">
+                {igHandle}
+                <BadgeCheck size={14} className="preview-ig-verified" />
+              </span>
             </div>
             <div className="preview-platform-badge instagram">Instagram</div>
           </div>
@@ -116,14 +126,11 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
               <span>No image selected</span>
             </div>
           )}
-          <div className="preview-content">
+          <div className="preview-content preview-ig-caption">
             {content
               ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(igContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
-          </div>
-          <div className="preview-footer">
-            <span className="preview-time">{time}</span>
           </div>
         </div>
       )}

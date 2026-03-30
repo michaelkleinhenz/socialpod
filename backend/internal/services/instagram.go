@@ -284,7 +284,7 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 
 	// Get user profile
 	profileResp, err := http.Get(fmt.Sprintf(
-		"%s/me?fields=user_id,username&access_token=%s",
+		"%s/me?fields=user_id,username,profile_picture_url&access_token=%s",
 		igGraphAPI, token))
 	if err != nil {
 		return nil, err
@@ -292,8 +292,9 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 	defer profileResp.Body.Close()
 
 	var profile struct {
-		ID       string `json:"id"`
-		Username string `json:"username"`
+		ID                string `json:"id"`
+		Username          string `json:"username"`
+		ProfilePictureURL string `json:"profile_picture_url"`
 	}
 	json.NewDecoder(profileResp.Body).Decode(&profile)
 
@@ -308,6 +309,7 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		DisplayName: profile.Username,
 		AccessToken: token,
 		IGUserID:    igUserID,
+		AvatarURL:   profile.ProfilePictureURL,
 		IsActive:    true,
 	}
 

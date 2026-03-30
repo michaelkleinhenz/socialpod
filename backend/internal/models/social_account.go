@@ -20,6 +20,7 @@ type SocialAccount struct {
 	PDSHost      string `bson:"pdsHost,omitempty" json:"pdsHost,omitempty"`
 	// Instagram-specific
 	IGUserID     string `bson:"igUserId,omitempty" json:"igUserId,omitempty"`
+	AvatarURL    string `bson:"avatarUrl,omitempty" json:"avatarUrl,omitempty"`
 	IsActive     bool   `bson:"isActive" json:"isActive"`
 	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`
 	UpdatedAt    time.Time `bson:"updatedAt" json:"updatedAt"`

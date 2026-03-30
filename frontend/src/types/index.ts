@@ -61,6 +61,7 @@ export interface SocialAccount {
   platform: Platform;
   accountName: string;
   displayName: string;
+  avatarUrl?: string;
   isActive: boolean;
   tokenExpiry?: string;
   did?: string;
