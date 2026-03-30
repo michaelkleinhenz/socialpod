@@ -19,10 +19,10 @@ type Scheduler struct {
 	stop     chan struct{}
 }
 
-func NewScheduler(db *database.MongoDB) *Scheduler {
+func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
 	return &Scheduler{
 		DB:        db,
-		Bluesky:   &BlueskyService{DB: db},
+		Bluesky:   &BlueskyService{DB: db, UploadDir: uploadDir},
 		Instagram: &InstagramService{DB: db},
 		stop:      make(chan struct{}),
 	}
@@ -49,7 +49,7 @@ func (s *Scheduler) Stop() {
 }
 
 func (s *Scheduler) processScheduledPosts() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	// Find posts that are due

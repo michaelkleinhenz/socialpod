@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -134,9 +135,12 @@ func (s *InstagramService) postCarousel(ctx context.Context, account *models.Soc
 }
 
 func (s *InstagramService) waitForContainer(account *models.SocialAccount, containerID string) error {
-	for i := 0; i < 30; i++ {
+	// Video containers can take several minutes to process on Instagram's side.
+	// Poll for up to 5 minutes with increasing intervals.
+	maxAttempts := 60
+	for i := 0; i < maxAttempts; i++ {
 		resp, err := http.Get(fmt.Sprintf(
-			"%s/%s?fields=status_code&access_token=%s",
+			"%s/%s?fields=status_code,status&access_token=%s",
 			igGraphAPI, containerID, account.AccessToken))
 		if err != nil {
 			return err
@@ -144,18 +148,27 @@ func (s *InstagramService) waitForContainer(account *models.SocialAccount, conta
 
 		var status struct {
 			StatusCode string `json:"status_code"`
+			Status     string `json:"status"`
 		}
 		json.NewDecoder(resp.Body).Decode(&status)
 		resp.Body.Close()
+
+		log.Printf("IG container %s: status_code=%s status=%s (attempt %d/%d)",
+			containerID, status.StatusCode, status.Status, i+1, maxAttempts)
 
 		switch status.StatusCode {
 		case "FINISHED":
 			return nil
 		case "ERROR":
-			return fmt.Errorf("container processing failed")
+			return fmt.Errorf("container processing failed: %s", status.Status)
 		}
 
-		time.Sleep(2 * time.Second)
+		// Wait 3s for the first 10 polls, then 5s after that.
+		if i < 10 {
+			time.Sleep(3 * time.Second)
+		} else {
+			time.Sleep(5 * time.Second)
+		}
 	}
 	return fmt.Errorf("container processing timed out")
 }

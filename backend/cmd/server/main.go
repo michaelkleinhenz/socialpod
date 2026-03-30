@@ -25,7 +25,7 @@ func main() {
 	log.Println("Connected to MongoDB")
 
 	// Start scheduler
-	scheduler := services.NewScheduler(db)
+	scheduler := services.NewScheduler(db, cfg.UploadDir)
 	scheduler.Start()
 	defer scheduler.Stop()
 
