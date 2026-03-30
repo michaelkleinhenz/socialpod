@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -424,41 +424,76 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 		return
 	}
 
-	resp, err := http.Get(input.URL)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to download: " + err.Error()})
+	// Retry download up to 3 times — the asset may not be ready on S3 yet.
+	var data []byte
+	var hdrCT string
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(2 * time.Second)
+		}
+		resp, err := http.Get(input.URL)
+		if err != nil {
+			if attempt == 2 {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to download: " + err.Error()})
+				return
+			}
+			continue
+		}
+		hdrCT = resp.Header.Get("Content-Type")
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 100*1024*1024))
+		resp.Body.Close()
+		if readErr != nil || resp.StatusCode != 200 {
+			if attempt == 2 {
+				c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Download failed: status %d, content-type %s", resp.StatusCode, hdrCT)})
+				return
+			}
+			continue
+		}
+		data = body
+		break
+	}
+
+	if len(data) == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Downloaded file is empty"})
 		return
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Download returned status %d", resp.StatusCode)})
-		return
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 100*1024*1024)) // 100MB limit
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read download"})
-		return
-	}
-
-	// Detect actual content type from file magic bytes (don't trust the
-	// Content-Type header — S3 often returns application/octet-stream).
+	// Detect content type from file magic bytes — the S3 Content-Type
+	// header is often wrong (application/octet-stream or video/mp4 for PNGs).
 	ct := http.DetectContentType(data)
+	log.Printf("UploadFromURL: downloaded %d bytes, detected=%q, header=%q", len(data), ct, hdrCT)
+
 	extMap := map[string]string{
 		"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
 		"image/webp": ".webp", "video/mp4": ".mp4",
 	}
-	ext, ok := extMap[ct]
-	if !ok {
-		// Fallback: check if it's a video by looking at header Content-Type
-		hdrCT := resp.Header.Get("Content-Type")
-		if strings.Contains(hdrCT, "video") {
-			ext = ".mp4"
-			ct = "video/mp4"
-		} else {
-			ext = ".png"
+
+	// Check magic bytes first: PNG (\x89PNG), JPEG (\xff\xd8), GIF (GIF8)
+	ext := ".png"
+	if len(data) >= 4 {
+		switch {
+		case data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G':
 			ct = "image/png"
+			ext = ".png"
+		case data[0] == 0xFF && data[1] == 0xD8:
+			ct = "image/jpeg"
+			ext = ".jpg"
+		case data[0] == 'G' && data[1] == 'I' && data[2] == 'F' && data[3] == '8':
+			ct = "image/gif"
+			ext = ".gif"
+		case data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F' && len(data) >= 12 &&
+			data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P':
+			ct = "image/webp"
+			ext = ".webp"
+		default:
+			// If magic bytes don't match a known image format, use DetectContentType result.
+			if e, ok := extMap[ct]; ok {
+				ext = e
+			} else {
+				// Default to PNG for Adobe Express designs.
+				ct = "image/png"
+				ext = ".png"
+			}
 		}
 	}
 
@@ -466,14 +501,13 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 	defer cancel()
 
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	_, err = h.DB.Uploads().InsertOne(ctx, models.Upload{
+	if _, dbErr := h.DB.Uploads().InsertOne(ctx, models.Upload{
 		Filename:    filename,
 		ContentType: ct,
 		Data:        data,
 		Size:        int64(len(data)),
 		CreatedAt:   time.Now(),
-	})
-	if err != nil {
+	}); dbErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store file"})
 		return
 	}
