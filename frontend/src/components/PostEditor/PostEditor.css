@@ -1,6 +1,7 @@
-.post-editor-modal {
+.modal.post-editor-modal {
   max-width: 1200px;
   width: 95vw;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
 }
