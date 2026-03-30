@@ -409,52 +409,50 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
             </div>
 
             {/* Suffix selectors */}
-            {suffixes.length > 0 && (platforms.includes('bluesky') || platforms.includes('instagram')) && (
+            {suffixes.length > 0 && (
               <div className="suffix-selectors">
-                {platforms.includes('bluesky') && (
-                  <div className="suffix-selector-row">
-                    <label className="suffix-label">
-                      <span className="platform-dot bluesky" /> Bluesky suffix
-                    </label>
-                    <select
-                      className="select suffix-select"
-                      value={suffixIds['bluesky'] || ''}
-                      onChange={e => setSuffixIds(prev => {
-                        const next = { ...prev };
-                        if (e.target.value) next['bluesky'] = e.target.value;
-                        else delete next['bluesky'];
-                        return next;
-                      })}
-                    >
-                      <option value="">None</option>
-                      {suffixes.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {platforms.includes('instagram') && (
-                  <div className="suffix-selector-row">
-                    <label className="suffix-label">
-                      <span className="platform-dot instagram" /> Instagram suffix
-                    </label>
-                    <select
-                      className="select suffix-select"
-                      value={suffixIds['instagram'] || ''}
-                      onChange={e => setSuffixIds(prev => {
-                        const next = { ...prev };
-                        if (e.target.value) next['instagram'] = e.target.value;
-                        else delete next['instagram'];
-                        return next;
-                      })}
-                    >
-                      <option value="">None</option>
-                      {suffixes.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div className="suffix-selector-row">
+                  <label className={`suffix-label${!platforms.includes('bluesky') ? ' disabled' : ''}`}>
+                    <span className="platform-dot bluesky" /> Bluesky suffix
+                  </label>
+                  <select
+                    className="select suffix-select"
+                    value={suffixIds['bluesky'] || ''}
+                    disabled={!platforms.includes('bluesky')}
+                    onChange={e => setSuffixIds(prev => {
+                      const next = { ...prev };
+                      if (e.target.value) next['bluesky'] = e.target.value;
+                      else delete next['bluesky'];
+                      return next;
+                    })}
+                  >
+                    <option value="">None</option>
+                    {suffixes.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="suffix-selector-row">
+                  <label className={`suffix-label${!platforms.includes('instagram') ? ' disabled' : ''}`}>
+                    <span className="platform-dot instagram" /> Instagram suffix
+                  </label>
+                  <select
+                    className="select suffix-select"
+                    value={suffixIds['instagram'] || ''}
+                    disabled={!platforms.includes('instagram')}
+                    onChange={e => setSuffixIds(prev => {
+                      const next = { ...prev };
+                      if (e.target.value) next['instagram'] = e.target.value;
+                      else delete next['instagram'];
+                      return next;
+                    })}
+                  >
+                    <option value="">None</option>
+                    {suffixes.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 
