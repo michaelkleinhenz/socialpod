@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +20,8 @@ import (
 )
 
 type BlueskyService struct {
-	DB *database.MongoDB
+	DB        *database.MongoDB
+	UploadDir string
 }
 
 type bskySession struct {
@@ -212,16 +215,23 @@ func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imag
 			break
 		}
 
-		// Read from database
+		// Read upload data from disk first, then fall back to MongoDB.
 		filename := strings.TrimPrefix(url, "/api/uploads/")
-		var upload models.Upload
-		err := s.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
-		if err != nil {
-			continue
+		var fileData []byte
+		diskPath := filepath.Join(s.UploadDir, filename)
+		if d, readErr := os.ReadFile(diskPath); readErr == nil {
+			fileData = d
+		} else {
+			var upload models.Upload
+			err := s.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
+			if err != nil {
+				continue
+			}
+			fileData = upload.Data
 		}
 
 		// Resize if over Bluesky's 1MB blob limit
-		data, contentType := ResizeImageIfNeeded(upload.Data, filename)
+		data, contentType := ResizeImageIfNeeded(fileData, filename)
 
 		req, _ := http.NewRequest("POST", pdsHost+"/xrpc/com.atproto.repo.uploadBlob",
 			bytes.NewReader(data))

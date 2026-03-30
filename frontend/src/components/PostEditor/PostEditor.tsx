@@ -92,9 +92,12 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
           </div>
           {imageUrls.length > 0 && (
             <div className={`preview-images preview-images-${Math.min(imageUrls.length, 4)}`}>
-              {imageUrls.slice(0, 4).map((url, i) => (
-                <img key={i} src={url.startsWith('/') ? apiUrl + url : url} alt="" className="preview-image" />
-              ))}
+              {imageUrls.slice(0, 4).map((url, i) => {
+                const src = url.startsWith('/') ? apiUrl + url : url;
+                return /\.(mp4|mov)$/i.test(url)
+                  ? <video key={i} src={src} muted className="preview-image" />
+                  : <img key={i} src={src} alt="" className="preview-image" />;
+              })}
             </div>
           )}
           <div className="preview-footer">
@@ -320,8 +323,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             },
             onCancel: closeAdobe,
             onError: (err: any) => {
+              console.error('Adobe Express onError:', err);
               closeAdobe();
-              toast.error('Adobe Express error: ' + err.toString());
+              toast.error('Adobe Express error: ' + (err?.message || err?.toString() || 'Unknown error'));
             },
           },
         },
@@ -399,6 +403,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       }
       return prev.filter((_, i) => i !== idx);
     });
+  };
+
+  // Detect whether an ImageItem is a video (works for both file and URL items).
+  const isVideoItem = (item: ImageItem): boolean => {
+    if (item.kind === 'file') return item.file.type.startsWith('video/');
+    return /\.(mp4|mov)$/i.test(item.url);
   };
 
   // Returns a displayable URL for any ImageItem without leaking object URLs.
@@ -592,10 +602,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               {images.length > 0 && (
                 <div className="image-preview-grid">
                   {images.map((item, i) => {
-                    const isVid = item.kind === 'file' && item.file.type.startsWith('video/');
                     return (
                       <div key={i} className="image-preview">
-                        {isVid
+                        {isVideoItem(item)
                           ? <video src={previewUrl(item)} muted className="image-preview-video" />
                           : <img src={previewUrl(item)} alt="" />}
                         <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
@@ -643,7 +652,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 imageUrl={previewImageUrls[0] || ''}
                 apiUrl={apiUrl}
                 instagramAccount={instagramAccount}
-                isVideo={images[0]?.kind === 'file' && (images[0] as { kind: 'file'; file: File }).file.type.startsWith('video/')}
+                isVideo={images[0] ? isVideoItem(images[0]) : false}
               />
             ) : (
               <PostPreview

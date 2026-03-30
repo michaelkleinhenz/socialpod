@@ -11,6 +11,7 @@ type Config struct {
 	JWTSecret   string
 	AppURL      string
 	APIPort     string
+	UploadDir   string
 }
 
 func Load() *Config {
@@ -28,6 +29,7 @@ func Load() *Config {
 		JWTSecret:   getEnv("JWT_SECRET", "change-me-in-production"),
 		AppURL:      getEnv("APP_URL", "http://localhost:8080"),
 		APIPort:     getEnv("API_PORT", "8080"),
+		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
 	}
 }
 

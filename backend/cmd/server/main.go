@@ -42,9 +42,9 @@ func main() {
 
 	// Handlers
 	authHandler := &handlers.AuthHandler{DB: db, Secret: cfg.JWTSecret}
-	postHandler := &handlers.PostHandler{DB: db}
+	postHandler := &handlers.PostHandler{DB: db, UploadDir: cfg.UploadDir}
 	suffixHandler := &handlers.SuffixHandler{DB: db}
-	bskyService := &services.BlueskyService{DB: db}
+	bskyService := &services.BlueskyService{DB: db, UploadDir: cfg.UploadDir}
 	igService := &services.InstagramService{DB: db}
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService}
 

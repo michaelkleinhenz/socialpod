@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -21,7 +22,8 @@ import (
 )
 
 type PostHandler struct {
-	DB *database.MongoDB
+	DB        *database.MongoDB
+	UploadDir string
 }
 
 type CreatePostInput struct {
@@ -350,7 +352,7 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Post deleted"})
 }
 
-// saveUpload validates and stores a multipart file in MongoDB, returning its URL.
+// saveUpload validates and stores a multipart file on disk, returning its URL.
 func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) (string, error) {
 	ext := filepath.Ext(fh.Filename)
 	contentTypes := map[string]string{
@@ -380,16 +382,27 @@ func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) 
 		return "", err
 	}
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	_, err = h.DB.Uploads().InsertOne(ctx, models.Upload{
+	return h.storeFile(filename, contentTypes[ext], data)
+}
+
+// storeFile writes file data to disk and records metadata in MongoDB.
+func (h *PostHandler) storeFile(filename, contentType string, data []byte) (string, error) {
+	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create upload directory: %w", err)
+	}
+	dst := filepath.Join(h.UploadDir, filename)
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+	// Store metadata (without file data) in MongoDB for the index.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	h.DB.Uploads().InsertOne(ctx, models.Upload{
 		Filename:    filename,
-		ContentType: contentTypes[ext],
-		Data:        data,
+		ContentType: contentType,
 		Size:        int64(len(data)),
 		CreatedAt:   time.Now(),
 	})
-	if err != nil {
-		return "", err
-	}
 	return "/api/uploads/" + filename, nil
 }
 
@@ -497,27 +510,28 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	if _, dbErr := h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: ct,
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	}); dbErr != nil {
+	url, storeErr := h.storeFile(filename, ct, data)
+	if storeErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store file"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"url": "/api/uploads/" + filename, "filename": filename})
+	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filename})
 }
 
 func (h *PostHandler) ServeImage(c *gin.Context) {
 	filename := c.Param("filename")
 
+	// Serve from disk first.
+	diskPath := filepath.Join(h.UploadDir, filename)
+	if _, err := os.Stat(diskPath); err == nil {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.File(diskPath)
+		return
+	}
+
+	// Fallback: serve from MongoDB (for uploads created before filesystem storage).
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
