@@ -1,6 +1,6 @@
 # SocialPod — Social Media Scheduler
 
-A self-hosted social media scheduling platform for **Bluesky** and **Instagram**. Features a drag-and-drop calendar UI, multitenancy, image uploads, a background post publisher, and a REST API for external integrations.
+A self-hosted social media scheduling platform for **Bluesky** and **Instagram**. Features a drag-and-drop calendar UI, multitenancy, image uploads, suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
 
 ## Quick Start
 
@@ -150,6 +150,29 @@ SocialPod requests the following permissions during OAuth:
 
 ---
 
+## Suffix Management
+
+Suffixes are snippets of text that are **automatically appended** to a post when it is published, without counting against the character limit visible in the editor.
+
+### Creating Suffixes
+
+1. Click **Suffixes** in the sidebar (available to all users).
+2. Click **New Suffix**.
+3. Give it a name (e.g. "Website footer") and enter the content (e.g. `🌐 mysite.com`).
+4. Click **Create**.
+
+### Using Suffixes in Posts
+
+When composing a post, suffix dropdowns appear for each selected platform:
+- **Bluesky suffix** — appended only when publishing to Bluesky
+- **Instagram suffix** — appended only when publishing to Instagram
+
+The character counter in the editor automatically deducts the length of the selected suffix so you always see accurate remaining characters.
+
+Suffixes are stored by reference on the post. If you update a suffix, all future posts using it will pick up the new text.
+
+---
+
 ## Multitenancy
 
 - The **first user** to register becomes the **admin**.
@@ -159,7 +182,8 @@ SocialPod requests the following permissions during OAuth:
   - Social account management (Bluesky & Instagram)
   - User management
   - Application settings
-- Each user's posts are isolated — users can only see and edit their own posts.
+- Each user's posts and suffixes are isolated — users can only see and edit their own.
+- **Teams**: admins can create teams and assign users. Team members share posts and suffixes scoped to the team.
 
 ---
 
@@ -172,6 +196,8 @@ SocialPod exposes a REST API for external scheduling. Authenticate with either a
 1. Go to **Profile** (click your name in the sidebar).
 2. Click **Generate API Token**.
 3. Copy the token (format: `sm_...`).
+
+Team tokens (format: `st_...`) can be generated from the admin **Teams** page.
 
 ### Authentication
 
@@ -186,35 +212,67 @@ Authorization: Bearer sm_your_api_token_here
 #### Posts
 
 ```bash
-# Create a scheduled post
+# Create a scheduled post (multipart/form-data — post data in `data` JSON field)
 curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Hello from the API! #automation",
-    "platforms": ["bluesky"],
-    "scheduledAt": "2025-01-15T09:00:00Z",
-    "status": "scheduled"
-  }'
+  -F 'data={"content":"Hello from the API!","platforms":["bluesky"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}'
 
-# List posts (with optional filters)
-curl http://localhost:8080/api/posts?start=2025-01-01T00:00:00Z&end=2025-01-31T23:59:59Z \
+# Create a post with images (attach files as `images` fields)
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Photo post","platforms":["instagram"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
+  -F "images=@photo.jpg"
+
+# Create a post with a suffix
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Check this out","platforms":["bluesky","instagram"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","suffixIds":{"bluesky":"<suffix-id>","instagram":"<suffix-id>"}}'
+
+# List posts (optional query params: start, end, status, platform)
+curl "http://localhost:8080/api/posts?start=2025-01-01T00:00:00Z&end=2025-12-31T23:59:59Z&status=scheduled" \
   -H "Authorization: Bearer sm_..."
 
-# Update a post
+# Get a single post
+curl http://localhost:8080/api/posts/{id} \
+  -H "Authorization: Bearer sm_..."
+
+# Update a post (multipart/form-data, same as create)
 curl -X PUT http://localhost:8080/api/posts/{id} \
   -H "Authorization: Bearer sm_..." \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Updated content"}'
+  -F 'data={"content":"Updated content"}'
 
 # Reschedule a post
 curl -X PATCH http://localhost:8080/api/posts/{id}/reschedule \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
-  -d '{"scheduledAt": "2025-01-16T10:00:00Z"}'
+  -d '{"scheduledAt":"2025-06-02T10:00:00Z"}'
 
 # Delete a post
 curl -X DELETE http://localhost:8080/api/posts/{id} \
+  -H "Authorization: Bearer sm_..."
+```
+
+#### Suffixes
+
+```bash
+# List suffixes
+curl http://localhost:8080/api/suffixes \
+  -H "Authorization: Bearer sm_..."
+
+# Create a suffix
+curl -X POST http://localhost:8080/api/suffixes \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Website footer","content":"🌐 mysite.com"}'
+
+# Update a suffix
+curl -X PUT http://localhost:8080/api/suffixes/{id} \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"content":"🌐 mysite.com | follow for more"}'
+
+# Delete a suffix
+curl -X DELETE http://localhost:8080/api/suffixes/{id} \
   -H "Authorization: Bearer sm_..."
 ```
 
@@ -227,7 +285,7 @@ curl -X POST http://localhost:8080/api/upload \
 # Returns: {"url": "/api/uploads/1234567890.jpg", "filename": "1234567890.jpg"}
 ```
 
-Include returned URLs in the `imageUrls` array when creating a post.
+Include returned URLs in the `imageUrls` array of the post `data` field, or attach binary files directly as `images` fields.
 
 #### Health Check
 
@@ -235,6 +293,102 @@ Include returned URLs in the `imageUrls` array when creating a post.
 curl http://localhost:8080/api/health
 # Returns: {"status": "ok"}
 ```
+
+---
+
+## n8n Integration
+
+SocialPod ships with a native **n8n community node** located in the `n8n-nodes-socialpod/` directory. It supports all post and suffix operations and handles authentication automatically.
+
+### Supported Operations
+
+| Resource | Operations |
+|---|---|
+| **Post** | Create, Get, List, Update, Delete, Reschedule |
+| **Suffix** | Create, List, Update, Delete |
+
+### Installation
+
+#### Option A — Install from the local directory (self-hosted n8n)
+
+1. **Build the node:**
+   ```bash
+   cd n8n-nodes-socialpod
+   npm install
+   npm run build
+   ```
+
+2. **Copy to n8n's custom nodes directory:**
+
+   The location depends on how n8n is installed:
+
+   | n8n setup | Custom nodes path |
+   |---|---|
+   | npm global | `~/.n8n/custom` |
+   | Docker | Mount a volume at `/home/node/.n8n/custom` |
+   | n8n Desktop | `~/.n8n/custom` |
+
+   ```bash
+   # Example for npm/desktop install
+   mkdir -p ~/.n8n/custom
+   cp -r n8n-nodes-socialpod ~/.n8n/custom/
+   ```
+
+3. **Restart n8n.** The SocialPod node will appear in the node palette.
+
+#### Option B — Install via npm link (development)
+
+```bash
+cd n8n-nodes-socialpod
+npm install
+npm run build
+npm link
+
+# In your n8n installation directory:
+npm link n8n-nodes-socialpod
+```
+
+Restart n8n after linking.
+
+#### Option C — Docker Compose (recommended for production)
+
+Add the node to your n8n Docker setup by mounting a pre-built copy:
+
+```yaml
+services:
+  n8n:
+    image: n8nio/n8n
+    volumes:
+      - ./n8n-nodes-socialpod:/home/node/.n8n/custom/n8n-nodes-socialpod
+    environment:
+      - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
+```
+
+Build the node on the host first (`npm install && npm run build` inside `n8n-nodes-socialpod/`), then start n8n.
+
+### Configuring the Credential
+
+1. In n8n, go to **Credentials → New Credential → SocialPod API**.
+2. Enter:
+   - **API URL**: Base URL of your SocialPod instance (e.g. `https://socialpod.example.com`)
+   - **API Token**: Your token from the SocialPod Profile page (`sm_...`) or a team token (`st_...`)
+3. Click **Save**. n8n will test the credential against `/api/auth/me` to verify it.
+
+### Example Workflow
+
+A simple workflow that creates a scheduled post every weekday at 9 AM:
+
+```
+[Cron: Mon–Fri 09:00] → [SocialPod: Post → Create]
+```
+
+In the **SocialPod** node, configure:
+- **Resource**: Post
+- **Operation**: Create
+- **Content**: `{{ $json.content }}` (or a static string)
+- **Platforms**: Bluesky, Instagram
+- **Scheduled At**: `{{ new Date().toISOString() }}`
+- **Status**: Scheduled
 
 ---
 
@@ -282,7 +436,7 @@ The React frontend is built at compile time and embedded into the Go binary via 
 
 - **API** routes live under `/api/*`.
 - **Frontend** is served for all other routes, with SPA fallback to `index.html`.
-- **Scheduler** checks every 30 seconds for posts past their `scheduledAt` time and publishes them.
+- **Scheduler** checks every 30 seconds for posts past their `scheduledAt` time and publishes them. Suffixes are fetched and appended to post content at publish time.
 
 ---
 
@@ -352,3 +506,9 @@ Configure these in your GitHub repository settings (**Settings → Secrets and v
 
 **Container won't start — MongoDB connection refused**
 - MongoDB needs to pass its health check first. Wait a few seconds and check `make logs`.
+
+**n8n node not appearing after installation**
+- Make sure you ran `npm run build` before copying/linking the node.
+- Confirm the node directory contains a `dist/` folder with compiled `.js` files.
+- Restart n8n completely (not just reload).
+- Check n8n logs for any import errors related to `n8n-nodes-socialpod`.
