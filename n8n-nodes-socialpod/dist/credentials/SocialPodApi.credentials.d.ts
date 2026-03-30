@@ -2,6 +2,7 @@ import { IAuthenticateGeneric, ICredentialTestRequest, ICredentialType, INodePro
 export declare class SocialPodApi implements ICredentialType {
     name: string;
     displayName: string;
+    icon: "file:socialpod.svg";
     documentationUrl: string;
     properties: INodeProperties[];
     authenticate: IAuthenticateGeneric;

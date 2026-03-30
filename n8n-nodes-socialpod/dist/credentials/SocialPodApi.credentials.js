@@ -5,6 +5,7 @@ class SocialPodApi {
     constructor() {
         this.name = 'socialPodApi';
         this.displayName = 'SocialPod API';
+        this.icon = 'file:socialpod.svg';
         this.documentationUrl = 'https://github.com/michaelkleinhenz/socialpod';
         this.properties = [
             {

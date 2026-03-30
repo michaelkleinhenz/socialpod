@@ -8,6 +8,7 @@ import {
 export class SocialPodApi implements ICredentialType {
   name = 'socialPodApi';
   displayName = 'SocialPod API';
+  icon = 'file:socialpod.svg' as const;
   documentationUrl = 'https://github.com/michaelkleinhenz/socialpod';
 
   properties: INodeProperties[] = [

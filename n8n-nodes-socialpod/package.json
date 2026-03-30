@@ -21,7 +21,7 @@
   },
   "main": "index.js",
   "scripts": {
-    "build": "tsc && cp nodes/SocialPod/socialpod.svg dist/nodes/SocialPod/",
+    "build": "tsc && cp nodes/SocialPod/socialpod.svg dist/nodes/SocialPod/ && cp nodes/SocialPod/socialpod.svg dist/credentials/",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build"
   },
