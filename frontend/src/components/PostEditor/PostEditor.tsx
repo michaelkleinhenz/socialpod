@@ -276,26 +276,39 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         },
         {
           callbacks: {
-            // SDK v4 may pass (intent, publishParams) or just (publishParams).
             onPublish: async (...args: any[]) => {
               // Find the object that contains .asset (could be first or second arg).
               const params = args.find((a: any) => a?.asset) || args[args.length - 1];
-              const assetUrl = params?.asset?.[0]?.data;
-              if (!assetUrl) {
+              const assetData = params?.asset?.[0]?.data;
+              if (!assetData) {
                 console.warn('Adobe Express onPublish args:', args);
                 closeAdobe();
                 toast.error('No image data received');
                 return;
               }
               try {
-                // Adobe Express returns an S3 pre-signed URL that can't be
-                // fetched from the browser due to CORS. Proxy through our
-                // backend which downloads and stores the file.
-                const uploaded = await api.uploadFromURL(assetUrl);
-                if (isStory) {
-                  setImages([{ kind: 'url' as const, url: uploaded.url }]);
+                let file: File;
+                if (assetData.startsWith('data:')) {
+                  // Base64 data URI — convert to File directly (no network request).
+                  const res = await fetch(assetData);
+                  const blob = await res.blob();
+                  file = new File([blob], 'design.png', { type: blob.type || 'image/png' });
                 } else {
-                  setImages(prev => [...prev, { kind: 'url' as const, url: uploaded.url }]);
+                  // External URL (S3) — proxy download through backend.
+                  const uploaded = await api.uploadFromURL(assetData);
+                  if (isStory) {
+                    setImages([{ kind: 'url' as const, url: uploaded.url }]);
+                  } else {
+                    setImages(prev => [...prev, { kind: 'url' as const, url: uploaded.url }]);
+                  }
+                  closeAdobe();
+                  toast.success('Design added');
+                  return;
+                }
+                if (isStory) {
+                  setImages([{ kind: 'file' as const, file }]);
+                } else {
+                  setImages(prev => [...prev, { kind: 'file' as const, file }]);
                 }
                 closeAdobe();
                 toast.success('Design added');
@@ -310,6 +323,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               closeAdobe();
               toast.error('Adobe Express error: ' + err.toString());
             },
+          },
+          // Request base64 output to avoid S3 upload issues.
+          outputParams: {
+            outputType: 'base64',
           },
         },
         [
