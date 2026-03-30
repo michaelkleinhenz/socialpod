@@ -276,10 +276,17 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         },
         {
           callbacks: {
-            // v4 still passes two arguments: (intent, publishParams).
-            onPublish: async (_intent: any, publishParams: any) => {
-              const dataUrl = publishParams?.asset?.[0]?.data;
-              if (!dataUrl) { closeAdobe(); toast.error('No image data received'); return; }
+            // SDK v4 may pass (intent, publishParams) or just (publishParams).
+            onPublish: async (...args: any[]) => {
+              // Find the object that contains .asset (could be first or second arg).
+              const params = args.find((a: any) => a?.asset) || args[args.length - 1];
+              const dataUrl = params?.asset?.[0]?.data;
+              if (!dataUrl) {
+                console.warn('Adobe Express onPublish args:', JSON.stringify(args, null, 2));
+                closeAdobe();
+                toast.error('No image data received');
+                return;
+              }
               try {
                 const res = await fetch(dataUrl);
                 const blob = await res.blob();
@@ -292,7 +299,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 }
                 closeAdobe();
                 toast.success('Design added');
-              } catch {
+              } catch (err) {
+                console.error('Adobe Express design save failed:', err);
                 closeAdobe();
                 toast.error('Failed to save design');
               }
