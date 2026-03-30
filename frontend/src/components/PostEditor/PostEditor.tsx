@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, Suffix, SocialAccount } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck } from 'lucide-react';
+import type { Post, Platform, PostType, Suffix, SocialAccount } from '../../types';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './PostEditor.css';
 
@@ -13,6 +13,7 @@ let _ccClientId = '';
 
 interface Props {
   post?: Post | null;
+  postType?: PostType;
   defaultDate?: Date | null;
   onSave: (data: any, files?: File[]) => void;
   onDelete?: () => void;
@@ -138,14 +139,55 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
   );
 }
 
-export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Props) {
+interface StoryPreviewProps {
+  imageUrl: string;
+  apiUrl: string;
+  instagramAccount?: SocialAccount | null;
+  isVideo?: boolean;
+}
+
+function StoryPreview({ imageUrl, apiUrl, instagramAccount, isVideo }: StoryPreviewProps) {
+  const igHandle = instagramAccount?.accountName || 'yourhandle';
+  const igAvatarUrl = instagramAccount?.avatarUrl;
+  const src = imageUrl.startsWith('/') ? apiUrl + imageUrl : imageUrl;
+
+  return (
+    <div className="preview-cards">
+      <div className="preview-story">
+        <div className="preview-story-frame">
+          {isVideo ? (
+            <video src={src} className="preview-story-media" muted autoPlay loop playsInline />
+          ) : imageUrl ? (
+            <img src={src} alt="" className="preview-story-media" />
+          ) : (
+            <div className="preview-story-empty">
+              <Image size={32} />
+              <span>Add an image or video</span>
+            </div>
+          )}
+          <div className="preview-story-header">
+            {igAvatarUrl
+              ? <img src={igAvatarUrl} alt="" className="preview-story-avatar" />
+              : <div className="preview-story-avatar preview-avatar-placeholder" />}
+            <span className="preview-story-handle">{igHandle}</span>
+          </div>
+        </div>
+        <div className="preview-platform-badge instagram" style={{ marginTop: 8, alignSelf: 'center' }}>Instagram Story</div>
+      </div>
+    </div>
+  );
+}
+
+export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose }: Props) {
   const defaultTime = defaultDate
     ? format(defaultDate, "yyyy-MM-dd'T'HH:mm")
     : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm");
 
+  const isStory = (post?.postType || propPostType || 'post') === 'story';
+
   const [content, setContent] = useState(post?.content || '');
   const [firstComment, setFirstComment] = useState(post?.firstComment || '');
-  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || ['bluesky']);
+  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory ? ['instagram'] : ['bluesky']));
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
   );
@@ -228,7 +270,9 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
       _ccEditor.create(
         {
-          canvasSize: { width: 1080, height: 1080, unit: 'px' },
+          canvasSize: isStory
+            ? { width: 1080, height: 1920, unit: 'px' }
+            : { width: 1080, height: 1080, unit: 'px' },
         },
         {
           callbacks: {
@@ -342,9 +386,13 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
   [images, previewUrl]);
 
   const handleSubmit = async () => {
-    if (!content.trim()) { toast.error('Content is required'); return; }
+    if (isStory) {
+      if (images.length === 0) { toast.error('A story requires an image or video'); return; }
+    } else {
+      if (!content.trim()) { toast.error('Content is required'); return; }
+      if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
+    }
     if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
-    if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
 
     const imageUrls = images.filter(i => i.kind === 'url').map(i => (i as { kind: 'url'; url: string }).url);
     const imageFiles = images.filter(i => i.kind === 'file').map(i => (i as { kind: 'file'; file: File }).file);
@@ -353,14 +401,15 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     try {
       await onSave(
         {
-          content,
-          firstComment: firstComment.trim() || undefined,
+          content: content || '',
+          postType: isStory ? 'story' : 'post',
+          firstComment: isStory ? undefined : (firstComment.trim() || undefined),
           platforms,
           scheduledAt: new Date(scheduledAt).toISOString(),
           imageUrls,
           tags,
           status,
-          suffixIds,
+          suffixIds: isStory ? {} : suffixIds,
         },
         imageFiles.length > 0 ? imageFiles : undefined,
       );
@@ -389,7 +438,7 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
     <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined}>
       <div className="modal post-editor-modal" onClick={e => e.stopPropagation()}>
         <div className="editor-header">
-          <h2>{post ? 'Edit Post' : 'New Post'}</h2>
+          <h2>{post ? (isStory ? 'Edit Story' : 'Edit Post') : (isStory ? 'New Story' : 'New Post')}</h2>
           <button className="btn btn-ghost btn-sm" onClick={handleClose}>
             <X size={18} />
           </button>
@@ -397,123 +446,139 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
 
         <div className="editor-layout">
           <div className="editor-body">
-            {/* Platform selector */}
-            <div className="platform-selector">
-              <div
-                className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
-                onClick={() => togglePlatform('bluesky')}
-              >
-                <span className="platform-dot bluesky" />
-                Bluesky
-              </div>
-              <div
-                className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
-                onClick={() => togglePlatform('instagram')}
-              >
-                <span className="platform-dot instagram" />
-                Instagram
-              </div>
-            </div>
+            {!isStory && (
+              <>
+                {/* Platform selector */}
+                <div className="platform-selector">
+                  <div
+                    className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
+                    onClick={() => togglePlatform('bluesky')}
+                  >
+                    <span className="platform-dot bluesky" />
+                    Bluesky
+                  </div>
+                  <div
+                    className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
+                    onClick={() => togglePlatform('instagram')}
+                  >
+                    <span className="platform-dot instagram" />
+                    Instagram
+                  </div>
+                </div>
 
-            {/* Suffix selectors */}
-            {suffixes.length > 0 && (
-              <div className="suffix-selectors">
-                <div className="suffix-selector-row">
-                  <label className={`suffix-label${!platforms.includes('bluesky') ? ' disabled' : ''}`}>
-                    <span className="platform-dot bluesky" /> Bluesky suffix
-                  </label>
-                  <select
-                    className="select suffix-select"
-                    value={suffixIds['bluesky'] || ''}
-                    disabled={!platforms.includes('bluesky')}
-                    onChange={e => setSuffixIds(prev => {
-                      const next = { ...prev };
-                      if (e.target.value) next['bluesky'] = e.target.value;
-                      else delete next['bluesky'];
-                      return next;
-                    })}
-                  >
-                    <option value="">None</option>
-                    {suffixes.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                {/* Suffix selectors */}
+                {suffixes.length > 0 && (
+                  <div className="suffix-selectors">
+                    <div className="suffix-selector-row">
+                      <label className={`suffix-label${!platforms.includes('bluesky') ? ' disabled' : ''}`}>
+                        <span className="platform-dot bluesky" /> Bluesky suffix
+                      </label>
+                      <select
+                        className="select suffix-select"
+                        value={suffixIds['bluesky'] || ''}
+                        disabled={!platforms.includes('bluesky')}
+                        onChange={e => setSuffixIds(prev => {
+                          const next = { ...prev };
+                          if (e.target.value) next['bluesky'] = e.target.value;
+                          else delete next['bluesky'];
+                          return next;
+                        })}
+                      >
+                        <option value="">None</option>
+                        {suffixes.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="suffix-selector-row">
+                      <label className={`suffix-label${!platforms.includes('instagram') ? ' disabled' : ''}`}>
+                        <span className="platform-dot instagram" /> Instagram suffix
+                      </label>
+                      <select
+                        className="select suffix-select"
+                        value={suffixIds['instagram'] || ''}
+                        disabled={!platforms.includes('instagram')}
+                        onChange={e => setSuffixIds(prev => {
+                          const next = { ...prev };
+                          if (e.target.value) next['instagram'] = e.target.value;
+                          else delete next['instagram'];
+                          return next;
+                        })}
+                      >
+                        <option value="">None</option>
+                        {suffixes.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Content */}
+                <div className="form-group">
+                  <textarea
+                    ref={textareaRef}
+                    className="textarea post-textarea"
+                    value={content}
+                    onChange={e => setContent(e.target.value)}
+                    placeholder="What's on your mind? Use #hashtags for tags..."
+                    rows={5}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {aiEnabled && (
+                      <button className="btn btn-ghost btn-sm" onClick={generateText} disabled={generating || !content.trim()}>
+                        <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
+                      </button>
+                    )}
+                    <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
+                      {charCount} / {charLimit}
+                    </div>
+                  </div>
                 </div>
-                <div className="suffix-selector-row">
-                  <label className={`suffix-label${!platforms.includes('instagram') ? ' disabled' : ''}`}>
-                    <span className="platform-dot instagram" /> Instagram suffix
-                  </label>
-                  <select
-                    className="select suffix-select"
-                    value={suffixIds['instagram'] || ''}
-                    disabled={!platforms.includes('instagram')}
-                    onChange={e => setSuffixIds(prev => {
-                      const next = { ...prev };
-                      if (e.target.value) next['instagram'] = e.target.value;
-                      else delete next['instagram'];
-                      return next;
-                    })}
-                  >
-                    <option value="">None</option>
-                    {suffixes.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+
+                {/* First Comment */}
+                <div className="form-group">
+                  <label><MessageSquare size={14} /> First Comment <span className="first-comment-label-hint">(optional — posted right after)</span></label>
+                  <textarea
+                    className="textarea first-comment-textarea"
+                    value={firstComment}
+                    onChange={e => setFirstComment(e.target.value)}
+                    placeholder="Add a first comment to your post…"
+                    rows={3}
+                  />
                 </div>
-              </div>
+              </>
             )}
 
-            {/* Content */}
-            <div className="form-group">
-              <textarea
-                ref={textareaRef}
-                className="textarea post-textarea"
-                value={content}
-                onChange={e => setContent(e.target.value)}
-                placeholder="What's on your mind? Use #hashtags for tags..."
-                rows={5}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                {aiEnabled && (
-                  <button className="btn btn-ghost btn-sm" onClick={generateText} disabled={generating || !content.trim()}>
-                    <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
-                  </button>
-                )}
-                <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
-                  {charCount} / {charLimit}
-                </div>
+            {isStory && (
+              <div className="story-hint">
+                <Film size={16} />
+                <span>Upload an image or video for your Instagram Story (9:16 recommended)</span>
               </div>
-            </div>
-
-            {/* First Comment */}
-            <div className="form-group">
-              <label><MessageSquare size={14} /> First Comment <span className="first-comment-label-hint">(optional — posted right after)</span></label>
-              <textarea
-                className="textarea first-comment-textarea"
-                value={firstComment}
-                onChange={e => setFirstComment(e.target.value)}
-                placeholder="Add a first comment to your post…"
-                rows={3}
-              />
-            </div>
+            )}
 
             {/* Images */}
             <div className="editor-images">
               {images.length > 0 && (
                 <div className="image-preview-grid">
-                  {images.map((item, i) => (
-                    <div key={i} className="image-preview">
-                      <img src={previewUrl(item)} alt="" />
-                      <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
-                    </div>
-                  ))}
+                  {images.map((item, i) => {
+                    const isVid = item.kind === 'file' && item.file.type.startsWith('video/');
+                    return (
+                      <div key={i} className="image-preview">
+                        {isVid
+                          ? <video src={previewUrl(item)} muted className="image-preview-video" />
+                          : <img src={previewUrl(item)} alt="" />}
+                        <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
-                multiple
+                accept={isStory ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
+                multiple={!isStory}
                 style={{ display: 'none' }}
                 onChange={e => handleImageUpload(e.target.files)}
               />
@@ -543,24 +608,33 @@ export function PostEditor({ post, defaultDate, onSave, onDelete, onClose }: Pro
           {/* Live preview */}
           <div className="editor-preview">
             <div className="editor-preview-label">Preview</div>
-            <PostPreview
-              content={content}
-              platforms={platforms}
-              imageUrls={previewImageUrls}
-              scheduledAt={scheduledAt}
-              apiUrl={apiUrl}
-              blueskyAccount={blueskyAccount}
-              instagramAccount={instagramAccount}
-              bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
-              instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
-            />
+            {isStory ? (
+              <StoryPreview
+                imageUrl={previewImageUrls[0] || ''}
+                apiUrl={apiUrl}
+                instagramAccount={instagramAccount}
+                isVideo={images[0]?.kind === 'file' && (images[0] as { kind: 'file'; file: File }).file.type.startsWith('video/')}
+              />
+            ) : (
+              <PostPreview
+                content={content}
+                platforms={platforms}
+                imageUrls={previewImageUrls}
+                scheduledAt={scheduledAt}
+                apiUrl={apiUrl}
+                blueskyAccount={blueskyAccount}
+                instagramAccount={instagramAccount}
+                bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
+                instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
+              />
+            )}
           </div>
         </div>
 
         <div className="editor-footer">
           <div className="footer-left">
             <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
-              <Image size={16} /> Upload
+              {isStory ? <><Film size={16} /> Upload Media</> : <><Image size={16} /> Upload</>}
             </button>
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>

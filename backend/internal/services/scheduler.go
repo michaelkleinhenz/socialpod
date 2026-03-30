@@ -139,19 +139,41 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["instagram"]
 			}
-			postID, err := s.Instagram.Post(ctx, applyContent(post.Content, instagramSuffix), post.ImageURLs, accountID)
-			if err != nil {
-				result.Success = false
-				result.Error = err.Error()
-				allSuccess = false
-				log.Printf("Instagram post failed: %v", err)
+
+			if post.PostType == models.PostTypeStory {
+				// Stories: publish the first media file as a story
+				if len(post.ImageURLs) == 0 {
+					result.Success = false
+					result.Error = "story requires at least one image or video"
+					allSuccess = false
+				} else {
+					postID, err := s.Instagram.PostStory(ctx, post.ImageURLs[0], accountID)
+					if err != nil {
+						result.Success = false
+						result.Error = err.Error()
+						allSuccess = false
+						log.Printf("Instagram story failed: %v", err)
+					} else {
+						result.Success = true
+						result.PostID = postID
+						result.PostedAt = time.Now()
+					}
+				}
 			} else {
-				result.Success = true
-				result.PostID = postID
-				result.PostedAt = time.Now()
-				if post.FirstComment != "" {
-					if commentErr := s.Instagram.PostComment(ctx, post.FirstComment, postID, accountID); commentErr != nil {
-						log.Printf("Instagram first comment failed: %v", commentErr)
+				postID, err := s.Instagram.Post(ctx, applyContent(post.Content, instagramSuffix), post.ImageURLs, accountID)
+				if err != nil {
+					result.Success = false
+					result.Error = err.Error()
+					allSuccess = false
+					log.Printf("Instagram post failed: %v", err)
+				} else {
+					result.Success = true
+					result.PostID = postID
+					result.PostedAt = time.Now()
+					if post.FirstComment != "" {
+						if commentErr := s.Instagram.PostComment(ctx, post.FirstComment, postID, accountID); commentErr != nil {
+							log.Printf("Instagram first comment failed: %v", commentErr)
+						}
 					}
 				}
 			}

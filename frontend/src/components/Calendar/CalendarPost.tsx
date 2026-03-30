@@ -1,6 +1,6 @@
 import type { Post } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Image, CheckCircle, Clock, AlertTriangle, FileEdit } from 'lucide-react';
+import { Image, CheckCircle, Clock, AlertTriangle, FileEdit, Film } from 'lucide-react';
 
 interface Props {
   post: Post;
@@ -16,14 +16,17 @@ const statusConfig = {
 } as const;
 
 export function CalendarPost({ post, onClick, isDragging }: Props) {
+  const isStory = post.postType === 'story';
   const time = format(parseISO(post.scheduledAt), 'HH:mm');
-  const preview = post.content.length > 60 ? post.content.slice(0, 60) + '...' : post.content;
+  const preview = isStory
+    ? 'Story'
+    : (post.content.length > 60 ? post.content.slice(0, 60) + '...' : post.content);
   const cfg = statusConfig[post.status] || statusConfig.scheduled;
   const StatusIcon = cfg.icon;
 
   return (
     <div
-      className={`calendar-post ${post.status} ${isDragging ? 'dragging' : ''}`}
+      className={`calendar-post ${post.status} ${isStory ? 'story' : ''} ${isDragging ? 'dragging' : ''}`}
       onClick={onClick}
     >
       <div className="post-top-row">
@@ -32,7 +35,10 @@ export function CalendarPost({ post, onClick, isDragging }: Props) {
           <StatusIcon size={12} color={cfg.color} />
         </span>
       </div>
-      <div className="post-preview">{preview}</div>
+      <div className="post-preview">
+        {isStory && <Film size={11} style={{ marginRight: 4, verticalAlign: -1 }} />}
+        {preview}
+      </div>
       <div className="post-meta">
         {post.platforms.map(p => (
           <span key={p} className={`platform-dot ${p}`} title={p} />

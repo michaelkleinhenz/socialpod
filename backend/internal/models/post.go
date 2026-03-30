@@ -22,6 +22,13 @@ const (
 	PlatformInstagram Platform = "instagram"
 )
 
+type PostType string
+
+const (
+	PostTypePost  PostType = "post"
+	PostTypeStory PostType = "story"
+)
+
 type PostResult struct {
 	Platform  Platform  `bson:"platform" json:"platform"`
 	Success   bool      `bson:"success" json:"success"`
@@ -35,6 +42,7 @@ type Post struct {
 	ID           primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
 	UserID       primitive.ObjectID  `bson:"userId" json:"userId"`
 	TeamID       *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
+	PostType     PostType           `bson:"postType,omitempty" json:"postType,omitempty"`
 	Content      string             `bson:"content" json:"content"`
 	FirstComment string             `bson:"firstComment,omitempty" json:"firstComment,omitempty"`
 	ImageURLs    []string           `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`

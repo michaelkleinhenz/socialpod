@@ -5,7 +5,7 @@ import {
 } from 'date-fns';
 import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { api } from '../../services/api';
-import type { Post } from '../../types';
+import type { Post, PostType } from '../../types';
 import { PostEditor } from '../PostEditor/PostEditor';
 import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
@@ -25,6 +25,7 @@ export function CalendarPage() {
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [editorPostType, setEditorPostType] = useState<PostType>('post');
   const [filterPlatform, setFilterPlatform] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
 
@@ -110,15 +111,17 @@ export function CalendarPage() {
     }
   };
 
-  const handleCreatePost = (day?: Date) => {
+  const handleCreatePost = (day?: Date, type: PostType = 'post') => {
     setEditingPost(null);
     setSelectedDate(day || null);
+    setEditorPostType(type);
     setEditorOpen(true);
   };
 
   const handleEditPost = (post: Post) => {
     setEditingPost(post);
     setSelectedDate(null);
+    setEditorPostType(post.postType || 'post');
     setEditorOpen(true);
   };
 
@@ -200,6 +203,9 @@ export function CalendarPage() {
           </div>
           <button className="btn btn-primary" onClick={() => handleCreatePost()}>
             <Plus size={18} /> New Post
+          </button>
+          <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'story')}>
+            <Plus size={18} /> New Story
           </button>
         </div>
       </div>
@@ -297,6 +303,7 @@ export function CalendarPage() {
       {editorOpen && (
         <PostEditor
           post={editingPost}
+          postType={editorPostType}
           defaultDate={selectedDate}
           onSave={handleSavePost}
           onDelete={editingPost ? () => handleDeletePost(editingPost.id) : undefined}

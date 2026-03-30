@@ -24,7 +24,8 @@ type PostHandler struct {
 }
 
 type CreatePostInput struct {
-	Content      string            `json:"content" binding:"required"`
+	Content      string            `json:"content"`
+	PostType     models.PostType   `json:"postType,omitempty"`
 	FirstComment string            `json:"firstComment,omitempty"`
 	Platforms    []models.Platform `json:"platforms" binding:"required"`
 	ScheduledAt  string            `json:"scheduledAt" binding:"required"`
@@ -85,10 +86,12 @@ func (h *PostHandler) Create(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	limit := contentLimit(input.Platforms)
-	if len([]rune(input.Content)) > limit {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Content exceeds %d character limit", limit)})
-		return
+	if input.Content != "" {
+		limit := contentLimit(input.Platforms)
+		if len([]rune(input.Content)) > limit {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Content exceeds %d character limit", limit)})
+			return
+		}
 	}
 
 	scheduledAt, err := time.Parse(time.RFC3339, input.ScheduledAt)
@@ -117,8 +120,14 @@ func (h *PostHandler) Create(c *gin.Context) {
 		}
 	}
 
+	postType := input.PostType
+	if postType == "" {
+		postType = models.PostTypePost
+	}
+
 	post := models.Post{
 		UserID:       objID,
+		PostType:     postType,
 		Content:      input.Content,
 		FirstComment: input.FirstComment,
 		Platforms:    input.Platforms,
@@ -343,12 +352,20 @@ func (h *PostHandler) Delete(c *gin.Context) {
 // saveUpload validates and stores a multipart file in MongoDB, returning its URL.
 func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) (string, error) {
 	ext := filepath.Ext(fh.Filename)
-	allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
-	if !allowed[ext] {
+	contentTypes := map[string]string{
+		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+		".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+		".mp4": "video/mp4", ".mov": "video/quicktime",
+	}
+	if _, ok := contentTypes[ext]; !ok {
 		return "", fmt.Errorf("unsupported file type %s", ext)
 	}
-	if fh.Size > 10*1024*1024 {
-		return "", fmt.Errorf("file too large (max 10MB)")
+	maxSize := int64(10 * 1024 * 1024) // 10MB for images
+	if ext == ".mp4" || ext == ".mov" {
+		maxSize = 100 * 1024 * 1024 // 100MB for videos
+	}
+	if fh.Size > maxSize {
+		return "", fmt.Errorf("file too large (max %dMB)", maxSize/(1024*1024))
 	}
 
 	f, err := fh.Open()
@@ -360,11 +377,6 @@ func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) 
 	data, err := io.ReadAll(f)
 	if err != nil {
 		return "", err
-	}
-
-	contentTypes := map[string]string{
-		".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-		".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
 	}
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 	_, err = h.DB.Uploads().InsertOne(ctx, models.Upload{

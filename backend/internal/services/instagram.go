@@ -190,6 +190,55 @@ func (s *InstagramService) publishContainer(account *models.SocialAccount, conta
 	return result.ID, nil
 }
 
+// PostStory publishes an Instagram Story. mediaURL must be a publicly
+// reachable URL pointing to an image or video file.
+func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accountID string) (string, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return "", fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	var settings models.AppSettings
+	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	fullURL := mediaURL
+	if !strings.HasPrefix(mediaURL, "http") {
+		fullURL = settings.AppURL + mediaURL
+	}
+
+	params := url.Values{
+		"media_type":   {"STORIES"},
+		"access_token": {account.AccessToken},
+	}
+
+	// Determine if the media is a video based on extension.
+	lowerURL := strings.ToLower(fullURL)
+	if strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov") {
+		params.Set("video_url", fullURL)
+	} else {
+		params.Set("image_url", fullURL)
+	}
+
+	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var container struct {
+		ID    string `json:"id"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&container)
+	if container.Error != nil {
+		return "", fmt.Errorf("IG story error: %s", container.Error.Message)
+	}
+
+	return s.publishContainer(account, container.ID)
+}
+
 // PostComment posts a comment on an existing Instagram media object.
 func (s *InstagramService) PostComment(ctx context.Context, text, mediaID, accountID string) error {
 	account, err := s.getAccount(ctx, accountID)
