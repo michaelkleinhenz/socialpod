@@ -1,6 +1,7 @@
 .env
 node_modules/
 dist/
+!n8n-nodes-socialpod/dist/
 backend/cmd/server/dist/
 uploads/
 *.exe

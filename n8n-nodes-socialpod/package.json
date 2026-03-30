@@ -22,7 +22,8 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc && cp nodes/SocialPod/socialpod.svg dist/nodes/SocialPod/",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "files": [
     "dist"
@@ -38,8 +39,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "n8n-workflow": "*"
+    "n8n-workflow": "*",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "form-data": "^4.0.0"
