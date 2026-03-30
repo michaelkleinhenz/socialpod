@@ -27,6 +27,7 @@ type PostType string
 const (
 	PostTypePost  PostType = "post"
 	PostTypeStory PostType = "story"
+	PostTypeReel  PostType = "reel"
 )
 
 type PostResult struct {

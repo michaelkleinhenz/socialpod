@@ -207,6 +207,9 @@ export function CalendarPage() {
           <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'story')}>
             <Plus size={18} /> New Story
           </button>
+          <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'reel')}>
+            <Plus size={18} /> New Reel
+          </button>
         </div>
       </div>
 

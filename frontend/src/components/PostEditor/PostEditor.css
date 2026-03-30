@@ -402,6 +402,22 @@
   text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
+.preview-reel-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px;
+  background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+  font-size: 12px;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
 /* Video in image preview grid */
 .image-preview-video {
   width: 100%;

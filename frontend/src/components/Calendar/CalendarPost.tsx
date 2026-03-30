@@ -17,16 +17,19 @@ const statusConfig = {
 
 export function CalendarPost({ post, onClick, isDragging }: Props) {
   const isStory = post.postType === 'story';
+  const isReel = post.postType === 'reel';
   const time = format(parseISO(post.scheduledAt), 'HH:mm');
   const preview = isStory
     ? 'Story'
+    : isReel
+    ? (post.content ? (post.content.length > 60 ? post.content.slice(0, 60) + '...' : post.content) : 'Reel')
     : (post.content.length > 60 ? post.content.slice(0, 60) + '...' : post.content);
   const cfg = statusConfig[post.status] || statusConfig.scheduled;
   const StatusIcon = cfg.icon;
 
   return (
     <div
-      className={`calendar-post ${post.status} ${isStory ? 'story' : ''} ${isDragging ? 'dragging' : ''}`}
+      className={`calendar-post ${post.status} ${isStory ? 'story' : ''} ${isReel ? 'reel' : ''} ${isDragging ? 'dragging' : ''}`}
       onClick={onClick}
     >
       <div className="post-top-row">
@@ -36,7 +39,7 @@ export function CalendarPost({ post, onClick, isDragging }: Props) {
         </span>
       </div>
       <div className="post-preview">
-        {isStory && <Film size={11} style={{ marginRight: 4, verticalAlign: -1 }} />}
+        {(isStory || isReel) && <Film size={11} style={{ marginRight: 4, verticalAlign: -1 }} />}
         {preview}
       </div>
       <div className="post-meta">
