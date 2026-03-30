@@ -412,6 +412,65 @@ func (h *PostHandler) UploadImage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filepath.Base(url)})
 }
 
+// UploadFromURL downloads an image/video from an external URL and stores it.
+// Used by the Adobe Express integration to bypass CORS restrictions.
+func (h *PostHandler) UploadFromURL(c *gin.Context) {
+	var input struct {
+		URL string `json:"url" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "URL is required"})
+		return
+	}
+
+	resp, err := http.Get(input.URL)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to download: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Download returned status %d", resp.StatusCode)})
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 100*1024*1024)) // 100MB limit
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read download"})
+		return
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	extMap := map[string]string{
+		"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+		"image/webp": ".webp", "video/mp4": ".mp4", "video/quicktime": ".mov",
+	}
+	ext, ok := extMap[ct]
+	if !ok {
+		ext = ".png" // Default for Adobe Express designs
+		ct = "image/png"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	_, err = h.DB.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    filename,
+		ContentType: ct,
+		Data:        data,
+		Size:        int64(len(data)),
+		CreatedAt:   time.Now(),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store file"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"url": "/api/uploads/" + filename, "filename": filename})
+}
+
 func (h *PostHandler) ServeImage(c *gin.Context) {
 	filename := c.Param("filename")
 

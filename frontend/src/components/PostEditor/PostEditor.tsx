@@ -280,29 +280,29 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             onPublish: async (...args: any[]) => {
               // Find the object that contains .asset (could be first or second arg).
               const params = args.find((a: any) => a?.asset) || args[args.length - 1];
-              const dataUrl = params?.asset?.[0]?.data;
-              if (!dataUrl) {
-                console.warn('Adobe Express onPublish args:', JSON.stringify(args, null, 2));
+              const assetUrl = params?.asset?.[0]?.data;
+              if (!assetUrl) {
+                console.warn('Adobe Express onPublish args:', args);
                 closeAdobe();
                 toast.error('No image data received');
                 return;
               }
               try {
-                const res = await fetch(dataUrl);
-                const blob = await res.blob();
-                const file = new File([blob], 'design.png', { type: 'image/png' });
-                // For stories, replace any existing image; for posts, append.
+                // Adobe Express returns an S3 pre-signed URL that can't be
+                // fetched from the browser due to CORS. Proxy through our
+                // backend which downloads and stores the file.
+                const uploaded = await api.uploadFromURL(assetUrl);
                 if (isStory) {
-                  setImages([{ kind: 'file' as const, file }]);
+                  setImages([{ kind: 'url' as const, url: uploaded.url }]);
                 } else {
-                  setImages(prev => [...prev, { kind: 'file' as const, file }]);
+                  setImages(prev => [...prev, { kind: 'url' as const, url: uploaded.url }]);
                 }
                 closeAdobe();
                 toast.success('Design added');
-              } catch (err) {
+              } catch (err: any) {
                 console.error('Adobe Express design save failed:', err);
                 closeAdobe();
-                toast.error('Failed to save design');
+                toast.error(err.message || 'Failed to save design');
               }
             },
             onCancel: closeAdobe,

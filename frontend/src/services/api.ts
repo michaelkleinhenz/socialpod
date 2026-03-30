@@ -119,6 +119,13 @@ class ApiClient {
     });
   }
 
+  uploadFromURL(url: string) {
+    return this.request<{ url: string; filename: string }>('/upload-from-url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   // Active accounts (available to all authenticated users, for preview)
   getActiveAccounts() {
     return this.request<any[]>('/accounts');
