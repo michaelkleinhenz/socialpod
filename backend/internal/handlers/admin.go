@@ -286,7 +286,7 @@ func (h *AdminHandler) InstagramAuthURL(c *gin.Context) {
 	authURL := "https://api.instagram.com/oauth/authorize" +
 		"?client_id=" + settings.InstagramAppID +
 		"&redirect_uri=" + redirectURI +
-		"&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages" +
+		"&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments" +
 		"&response_type=code" +
 		"&state=instagram_auth"
 
@@ -353,9 +353,211 @@ func (h *AdminHandler) InstagramWebhookVerify(c *gin.Context) {
 	c.String(http.StatusOK, challenge)
 }
 
+// igWebhookPayload is the top-level Instagram webhook payload.
+type igWebhookPayload struct {
+	Object string           `json:"object"`
+	Entry  []igWebhookEntry `json:"entry"`
+}
+
+type igWebhookEntry struct {
+	ID        string             `json:"id"`
+	Time      int64              `json:"time"`
+	Changes   []igWebhookChange  `json:"changes"`
+	Messaging []igWebhookMessaging `json:"messaging"`
+}
+
+type igWebhookChange struct {
+	Field string              `json:"field"`
+	Value igWebhookChangeVal  `json:"value"`
+}
+
+type igWebhookChangeVal struct {
+	// Comment fields
+	From      *igWebhookUser `json:"from"`
+	Media     *igWebhookMedia `json:"media"`
+	ID        string          `json:"id"`
+	Text      string          `json:"text"`
+	Timestamp int64           `json:"timestamp"`
+	// DM fields (field: "messages")
+	Sender    *igWebhookSender    `json:"sender"`
+	Recipient *igWebhookRecipient `json:"recipient"`
+	Message   *igWebhookMsg       `json:"message"`
+}
+
+type igWebhookUser struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+}
+
+type igWebhookMedia struct {
+	ID              string `json:"id"`
+	MediaProductType string `json:"media_product_type"`
+}
+
+type igWebhookSender struct {
+	ID string `json:"id"`
+}
+
+type igWebhookRecipient struct {
+	ID string `json:"id"`
+}
+
+type igWebhookMsg struct {
+	MID  string `json:"mid"`
+	Text string `json:"text"`
+}
+
+type igWebhookMessaging struct {
+	Sender    igWebhookSender    `json:"sender"`
+	Recipient igWebhookRecipient `json:"recipient"`
+	Timestamp int64              `json:"timestamp"`
+	Message   *igWebhookMsg      `json:"message"`
+}
+
 func (h *AdminHandler) InstagramWebhookEvent(c *gin.Context) {
-	// Accept and acknowledge webhook events from Meta
+	var payload igWebhookPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		// Acknowledge even on parse errors to prevent retries
+		c.JSON(http.StatusOK, gin.H{"status": "received"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, entry := range payload.Entry {
+		// Resolve the social account by IG user ID (entry.ID contains the IG user ID)
+		var account models.SocialAccount
+		accountFound := h.DB.SocialAccounts().FindOne(ctx, bson.M{
+			"platform": models.PlatformInstagram,
+			"igUserId": entry.ID,
+			"isActive": true,
+		}).Decode(&account) == nil
+
+		// Process changes (comments and DM changes)
+		for _, change := range entry.Changes {
+			switch change.Field {
+			case "comments":
+				h.processIGComment(ctx, change.Value, &account, accountFound)
+			case "messages":
+				h.processIGDMChange(ctx, change.Value, &account, accountFound)
+			}
+		}
+
+		// Process messaging array (Messenger Platform style DM delivery)
+		for _, msg := range entry.Messaging {
+			h.processIGMessaging(ctx, msg, &account, accountFound)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
+}
+
+func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChangeVal, account *models.SocialAccount, accountFound bool) {
+	if val.ID == "" {
+		return
+	}
+
+	msg := models.InboxMessage{
+		Platform:    models.PlatformInstagram,
+		MessageType: models.MessageTypeComment,
+		ExternalID:  val.ID,
+		Text:        val.Text,
+		IsRead:      false,
+		IsReplied:   false,
+		ReceivedAt:  time.Unix(val.Timestamp, 0),
+		CreatedAt:   time.Now(),
+	}
+
+	if val.From != nil {
+		msg.SenderID = val.From.ID
+		msg.SenderName = val.From.Username
+	}
+	if val.Media != nil {
+		msg.MediaID = val.Media.ID
+	}
+	if accountFound {
+		msg.AccountID = account.ID
+		msg.AccountName = account.AccountName
+	}
+
+	// Upsert by externalId to avoid duplicates
+	upsert := true
+	h.DB.InboxMessages().UpdateOne(ctx,
+		bson.M{"externalId": msg.ExternalID},
+		bson.M{"$setOnInsert": msg},
+		&options.UpdateOptions{Upsert: &upsert},
+	)
+}
+
+func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChangeVal, account *models.SocialAccount, accountFound bool) {
+	if val.Message == nil || val.Message.MID == "" {
+		return
+	}
+
+	// Skip echo (messages sent by the account itself)
+	if accountFound && val.Sender != nil && val.Sender.ID == account.IGUserID {
+		return
+	}
+
+	msg := models.InboxMessage{
+		Platform:    models.PlatformInstagram,
+		MessageType: models.MessageTypeDM,
+		ExternalID:  val.Message.MID,
+		Text:        val.Message.Text,
+		IsRead:      false,
+		IsReplied:   false,
+		ReceivedAt:  time.Unix(val.Timestamp, 0),
+		CreatedAt:   time.Now(),
+	}
+	if val.Sender != nil {
+		msg.SenderID = val.Sender.ID
+	}
+	if accountFound {
+		msg.AccountID = account.ID
+		msg.AccountName = account.AccountName
+	}
+
+	upsert := true
+	h.DB.InboxMessages().UpdateOne(ctx,
+		bson.M{"externalId": msg.ExternalID},
+		bson.M{"$setOnInsert": msg},
+		&options.UpdateOptions{Upsert: &upsert},
+	)
+}
+
+func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebhookMessaging, account *models.SocialAccount, accountFound bool) {
+	if messaging.Message == nil || messaging.Message.MID == "" {
+		return
+	}
+
+	// Skip echo
+	if accountFound && messaging.Sender.ID == account.IGUserID {
+		return
+	}
+
+	msg := models.InboxMessage{
+		Platform:    models.PlatformInstagram,
+		MessageType: models.MessageTypeDM,
+		ExternalID:  messaging.Message.MID,
+		SenderID:    messaging.Sender.ID,
+		Text:        messaging.Message.Text,
+		IsRead:      false,
+		IsReplied:   false,
+		ReceivedAt:  time.Unix(messaging.Timestamp/1000, 0),
+		CreatedAt:   time.Now(),
+	}
+	if accountFound {
+		msg.AccountID = account.ID
+		msg.AccountName = account.AccountName
+	}
+
+	upsert := true
+	h.DB.InboxMessages().UpdateOne(ctx,
+		bson.M{"externalId": msg.ExternalID},
+		bson.M{"$setOnInsert": msg},
+		&options.UpdateOptions{Upsert: &upsert},
+	)
 }
 
 func (h *AdminHandler) ListUsers(c *gin.Context) {

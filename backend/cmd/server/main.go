@@ -47,6 +47,7 @@ func main() {
 	bskyService := &services.BlueskyService{DB: db, UploadDir: cfg.UploadDir}
 	igService := &services.InstagramService{DB: db}
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService}
+	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService}
 
 	// Public routes
 	api := r.Group("/api")
@@ -81,6 +82,14 @@ func main() {
 		auth.POST("/upload-from-url", postHandler.UploadFromURL)
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)
+
+		// Inbox (comments + DMs)
+		auth.GET("/inbox/comments", inboxHandler.ListComments)
+		auth.GET("/inbox/dms", inboxHandler.ListDMs)
+		auth.PATCH("/inbox/:id/read", inboxHandler.MarkRead)
+		auth.POST("/inbox/comments/:id/reply", inboxHandler.ReplyToComment)
+		auth.POST("/inbox/dms/:id/reply", inboxHandler.ReplyToDM)
+		auth.GET("/inbox/feed", inboxHandler.GetFeed)
 
 		// Suffixes
 		auth.GET("/watermarks", adminHandler.ListWatermarks)

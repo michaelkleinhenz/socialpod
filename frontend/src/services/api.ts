@@ -220,6 +220,40 @@ class ApiClient {
     return this.request<any>(`/suffixes/${id}`, { method: 'DELETE' });
   }
 
+  // Inbox – comments
+  getCommentInbox() {
+    return this.request<any[]>('/inbox/comments');
+  }
+
+  // Inbox – DMs
+  getDMInbox() {
+    return this.request<any[]>('/inbox/dms');
+  }
+
+  markInboxRead(id: string) {
+    return this.request<any>(`/inbox/${id}/read`, { method: 'PATCH' });
+  }
+
+  replyToComment(id: string, text: string) {
+    return this.request<any>(`/inbox/comments/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  replyToDM(id: string, text: string) {
+    return this.request<any>(`/inbox/dms/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  // Instagram own feed
+  getInstagramFeed(accountId?: string) {
+    const qs = accountId ? `?accountId=${accountId}` : '';
+    return this.request<any[]>(`/inbox/feed${qs}`);
+  }
+
   // Watermarks
   getWatermarks() {
     return this.request<any[]>('/watermarks');
