@@ -15,12 +15,29 @@ import (
 	"socialmedia/internal/models"
 	"socialmedia/internal/services"
 
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// structToBSONDoc marshals a struct into a bson.D, honouring all bson struct
+// tags including omitempty. Using a raw struct as a value inside bson.M{}
+// skips omitempty, so this helper is needed for $setOnInsert payloads.
+func structToBSONDoc(v interface{}) (bson.D, error) {
+	data, err := bson.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var doc bson.D
+	if err := bson.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
 
 type AdminHandler struct {
 	DB       *database.MongoDB
@@ -415,12 +432,16 @@ type igWebhookMessaging struct {
 }
 
 func (h *AdminHandler) InstagramWebhookEvent(c *gin.Context) {
+	bodyBytes, _ := io.ReadAll(c.Request.Body)
+	log.Printf("Instagram webhook raw body: %s", string(bodyBytes))
+
 	var payload igWebhookPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		// Acknowledge even on parse errors to prevent retries
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		log.Printf("Instagram webhook parse error: %v", err)
 		c.JSON(http.StatusOK, gin.H{"status": "received"})
 		return
 	}
+	log.Printf("Instagram webhook parsed: object=%q entries=%d", payload.Object, len(payload.Entry))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -482,16 +503,23 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 	}
 
 	// Upsert by externalId to avoid duplicates
+	doc, err := structToBSONDoc(msg)
+	if err != nil {
+		log.Printf("inbox upsert marshal error: %v", err)
+		return
+	}
 	upsert := true
 	h.DB.InboxMessages().UpdateOne(ctx,
 		bson.M{"externalId": msg.ExternalID},
-		bson.M{"$setOnInsert": msg},
+		bson.M{"$setOnInsert": doc},
 		&options.UpdateOptions{Upsert: &upsert},
 	)
 }
 
 func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChangeVal, account *models.SocialAccount, accountFound bool) {
+	log.Printf("processIGDMChange: sender=%v message=%v timestamp=%d", val.Sender, val.Message, val.Timestamp)
 	if val.Message == nil || val.Message.MID == "" {
+		log.Printf("processIGDMChange: skipping - message nil or empty MID")
 		return
 	}
 
@@ -518,16 +546,23 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 		msg.AccountName = account.AccountName
 	}
 
+	doc, err := structToBSONDoc(msg)
+	if err != nil {
+		log.Printf("inbox upsert marshal error: %v", err)
+		return
+	}
 	upsert := true
 	h.DB.InboxMessages().UpdateOne(ctx,
 		bson.M{"externalId": msg.ExternalID},
-		bson.M{"$setOnInsert": msg},
+		bson.M{"$setOnInsert": doc},
 		&options.UpdateOptions{Upsert: &upsert},
 	)
 }
 
 func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebhookMessaging, account *models.SocialAccount, accountFound bool) {
+	log.Printf("processIGMessaging: sender=%s mid=%v timestamp=%d", messaging.Sender.ID, messaging.Message, messaging.Timestamp)
 	if messaging.Message == nil || messaging.Message.MID == "" {
+		log.Printf("processIGMessaging: skipping - message nil or empty MID")
 		return
 	}
 
@@ -552,10 +587,15 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 		msg.AccountName = account.AccountName
 	}
 
+	doc, err := structToBSONDoc(msg)
+	if err != nil {
+		log.Printf("inbox upsert marshal error: %v", err)
+		return
+	}
 	upsert := true
 	h.DB.InboxMessages().UpdateOne(ctx,
 		bson.M{"externalId": msg.ExternalID},
-		bson.M{"$setOnInsert": msg},
+		bson.M{"$setOnInsert": doc},
 		&options.UpdateOptions{Upsert: &upsert},
 	)
 }
