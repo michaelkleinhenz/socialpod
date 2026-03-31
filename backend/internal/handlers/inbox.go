@@ -109,7 +109,10 @@ func (h *InboxHandler) ReplyToComment(c *gin.Context) {
 		return
 	}
 
-	accountID := msg.AccountID.Hex()
+	accountID := ""
+	if !msg.AccountID.IsZero() {
+		accountID = msg.AccountID.Hex()
+	}
 	if err := h.Instagram.ReplyToComment(ctx, msg.ExternalID, input.Text, accountID); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -148,7 +151,10 @@ func (h *InboxHandler) ReplyToDM(c *gin.Context) {
 		return
 	}
 
-	accountID := msg.AccountID.Hex()
+	accountID := ""
+	if !msg.AccountID.IsZero() {
+		accountID = msg.AccountID.Hex()
+	}
 	if err := h.Instagram.SendDM(ctx, msg.SenderID, input.Text, accountID); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return

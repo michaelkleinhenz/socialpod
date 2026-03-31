@@ -485,16 +485,57 @@ func (s *InstagramService) FetchFeed(ctx context.Context, accountID string) ([]I
 	return media, nil
 }
 
+// GetSenderName fetches the display name of an Instagram user by their scoped ID.
+// Uses the Instagram Messaging API which allows reading sender profiles for DMs.
+func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessToken string) string {
+	if senderID == "" || accessToken == "" {
+		return ""
+	}
+	url := fmt.Sprintf("%s/%s?fields=name&access_token=%s", igGraphAPI, senderID, accessToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Printf("GetSenderName: request error: %v", err)
+		return ""
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("GetSenderName: http error: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("GetSenderName: decode error: %v", err)
+		return ""
+	}
+	return result.Name
+}
+
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
-	filter := bson.M{"platform": models.PlatformInstagram, "isActive": true}
+	// Try the specific account first, then fall back to any active Instagram account.
+	// The fallback handles cases where the message was stored against an old account
+	// document (e.g. after re-authenticating Instagram creates a new document).
 	if accountID != "" {
-		if id, err := primitive.ObjectIDFromHex(accountID); err == nil {
-			filter["_id"] = id
+		if id, err := primitive.ObjectIDFromHex(accountID); err == nil && id != primitive.NilObjectID {
+			var account models.SocialAccount
+			if err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
+				"platform": models.PlatformInstagram,
+				"isActive": true,
+				"_id":      id,
+			}).Decode(&account); err == nil {
+				return &account, nil
+			}
 		}
 	}
 
+	// Fall back to any active Instagram account
 	var account models.SocialAccount
-	err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account)
+	err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
+		"platform": models.PlatformInstagram,
+		"isActive": true,
+	}).Decode(&account)
 	return &account, err
 }
 
