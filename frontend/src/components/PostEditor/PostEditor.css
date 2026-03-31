@@ -452,7 +452,29 @@
   z-index: 10000;
   width: 100vw;
   height: 100vh;
-  background: #1a1a2e;
+  background: #0f172a;
+}
+
+/* Fix contrast for input fields inside the image editor */
+.image-editor-overlay input[type="text"],
+.image-editor-overlay input[type="number"],
+.image-editor-overlay input:not([type]) {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+/* Fix selected/active tool icons contrast */
+.image-editor-overlay [class*="SfxButton"][class*="active"],
+.image-editor-overlay [class*="SfxButton"][aria-selected="true"],
+.image-editor-overlay button[color="primary"] {
+  color: #ffffff !important;
+}
+
+/* Ensure labels and spans inside the editor are readable */
+.image-editor-overlay label,
+.image-editor-overlay span {
+  color: inherit;
 }
 
 /* Video in image preview grid */
