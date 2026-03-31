@@ -347,6 +347,144 @@ func (s *InstagramService) PostComment(ctx context.Context, text, mediaID, accou
 	return nil
 }
 
+// ReplyToComment posts a reply to an existing Instagram comment.
+func (s *InstagramService) ReplyToComment(ctx context.Context, commentID, text, accountID string) error {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	params := url.Values{
+		"message":      {text},
+		"access_token": {account.AccessToken},
+	}
+
+	resp, err := http.PostForm(fmt.Sprintf("%s/%s/replies", igGraphAPI, commentID), params)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		ID    string `json:"id"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Error != nil {
+		return fmt.Errorf("IG reply error: %s", result.Error.Message)
+	}
+	return nil
+}
+
+// SendDM sends a direct message to an Instagram user.
+// recipientID is the Instagram-Scoped User ID (IGSID) from the webhook.
+func (s *InstagramService) SendDM(ctx context.Context, recipientID, text, accountID string) error {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	body := map[string]interface{}{
+		"recipient":    map[string]string{"id": recipientID},
+		"message":      map[string]string{"text": text},
+		"access_token": account.AccessToken,
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.Post(
+		fmt.Sprintf("%s/%s/messages", igGraphAPI, account.IGUserID),
+		"application/json",
+		strings.NewReader(string(bodyJSON)),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		MessageID string `json:"message_id"`
+		Error     *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Error != nil {
+		return fmt.Errorf("IG DM error: %s", result.Error.Message)
+	}
+	return nil
+}
+
+// IGMedia represents a single media item from the user's Instagram feed.
+type IGMedia struct {
+	ID            string `json:"id"`
+	Caption       string `json:"caption,omitempty"`
+	MediaType     string `json:"mediaType"`
+	MediaURL      string `json:"mediaUrl,omitempty"`
+	ThumbnailURL  string `json:"thumbnailUrl,omitempty"`
+	Permalink     string `json:"permalink"`
+	Timestamp     string `json:"timestamp"`
+	LikeCount     int    `json:"likeCount"`
+	CommentsCount int    `json:"commentsCount"`
+}
+
+// FetchFeed retrieves the authenticated user's own Instagram media feed.
+func (s *InstagramService) FetchFeed(ctx context.Context, accountID string) ([]IGMedia, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	resp, err := http.Get(fmt.Sprintf(
+		"%s/%s/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&access_token=%s",
+		igGraphAPI, account.IGUserID, account.AccessToken))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Data []struct {
+			ID            string `json:"id"`
+			Caption       string `json:"caption"`
+			MediaType     string `json:"media_type"`
+			MediaURL      string `json:"media_url"`
+			ThumbnailURL  string `json:"thumbnail_url"`
+			Permalink     string `json:"permalink"`
+			Timestamp     string `json:"timestamp"`
+			LikeCount     int    `json:"like_count"`
+			CommentsCount int    `json:"comments_count"`
+		} `json:"data"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Error != nil {
+		return nil, fmt.Errorf("IG feed error: %s", result.Error.Message)
+	}
+
+	media := make([]IGMedia, 0, len(result.Data))
+	for _, item := range result.Data {
+		media = append(media, IGMedia{
+			ID:            item.ID,
+			Caption:       item.Caption,
+			MediaType:     item.MediaType,
+			MediaURL:      item.MediaURL,
+			ThumbnailURL:  item.ThumbnailURL,
+			Permalink:     item.Permalink,
+			Timestamp:     item.Timestamp,
+			LikeCount:     item.LikeCount,
+			CommentsCount: item.CommentsCount,
+		})
+	}
+	return media, nil
+}
+
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
 	filter := bson.M{"platform": models.PlatformInstagram, "isActive": true}
 	if accountID != "" {

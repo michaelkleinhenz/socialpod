@@ -68,6 +68,14 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
+	m.InboxMessages().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "messageType", Value: 1}}},
+		{Keys: bson.D{{Key: "platform", Value: 1}}},
+		{Keys: bson.D{{Key: "isRead", Value: 1}}},
+		{Keys: bson.D{{Key: "receivedAt", Value: -1}}},
+		{Keys: bson.D{{Key: "externalId", Value: 1}}, Options: options.Index().SetUnique(true)},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -101,6 +109,10 @@ func (m *MongoDB) Suffixes() *mongo.Collection {
 
 func (m *MongoDB) Watermarks() *mongo.Collection {
 	return m.Database.Collection("watermarks")
+}
+
+func (m *MongoDB) InboxMessages() *mongo.Collection {
+	return m.Database.Collection("inbox_messages")
 }
 
 func (m *MongoDB) Close() {
