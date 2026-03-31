@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -44,13 +45,18 @@ func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) 
 
 	cursor, err := h.DB.InboxMessages().Find(ctx, filter, opts)
 	if err != nil {
+		log.Printf("InboxMessages Find error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch messages"})
 		return
 	}
 	defer cursor.Close(ctx)
 
 	var messages []models.InboxMessage
-	cursor.All(ctx, &messages)
+	if err := cursor.All(ctx, &messages); err != nil {
+		log.Printf("InboxMessages cursor.All error (type=%s): %v", msgType, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode messages"})
+		return
+	}
 	if messages == nil {
 		messages = []models.InboxMessage{}
 	}

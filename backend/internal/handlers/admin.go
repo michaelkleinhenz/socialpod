@@ -15,12 +15,29 @@ import (
 	"socialmedia/internal/models"
 	"socialmedia/internal/services"
 
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// structToBSONDoc marshals a struct into a bson.D, honouring all bson struct
+// tags including omitempty. Using a raw struct as a value inside bson.M{}
+// skips omitempty, so this helper is needed for $setOnInsert payloads.
+func structToBSONDoc(v interface{}) (bson.D, error) {
+	data, err := bson.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var doc bson.D
+	if err := bson.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
 
 type AdminHandler struct {
 	DB       *database.MongoDB
@@ -486,10 +503,15 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 	}
 
 	// Upsert by externalId to avoid duplicates
+	doc, err := structToBSONDoc(msg)
+	if err != nil {
+		log.Printf("inbox upsert marshal error: %v", err)
+		return
+	}
 	upsert := true
 	h.DB.InboxMessages().UpdateOne(ctx,
 		bson.M{"externalId": msg.ExternalID},
-		bson.M{"$setOnInsert": msg},
+		bson.M{"$setOnInsert": doc},
 		&options.UpdateOptions{Upsert: &upsert},
 	)
 }
@@ -524,10 +546,15 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 		msg.AccountName = account.AccountName
 	}
 
+	doc, err := structToBSONDoc(msg)
+	if err != nil {
+		log.Printf("inbox upsert marshal error: %v", err)
+		return
+	}
 	upsert := true
 	h.DB.InboxMessages().UpdateOne(ctx,
 		bson.M{"externalId": msg.ExternalID},
-		bson.M{"$setOnInsert": msg},
+		bson.M{"$setOnInsert": doc},
 		&options.UpdateOptions{Upsert: &upsert},
 	)
 }
@@ -560,10 +587,15 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 		msg.AccountName = account.AccountName
 	}
 
+	doc, err := structToBSONDoc(msg)
+	if err != nil {
+		log.Printf("inbox upsert marshal error: %v", err)
+		return
+	}
 	upsert := true
 	h.DB.InboxMessages().UpdateOne(ctx,
 		bson.M{"externalId": msg.ExternalID},
-		bson.M{"$setOnInsert": msg},
+		bson.M{"$setOnInsert": doc},
 		&options.UpdateOptions{Upsert: &upsert},
 	)
 }
