@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"socialmedia/internal/database"
@@ -370,6 +371,28 @@ func (h *AdminHandler) InstagramWebhookVerify(c *gin.Context) {
 	c.String(http.StatusOK, challenge)
 }
 
+// metaTimestamp handles Meta webhook timestamps delivered as either a JSON
+// number (1234567890) or a quoted string ("1234567890").
+type metaTimestamp int64
+
+func (t *metaTimestamp) UnmarshalJSON(data []byte) error {
+	var n int64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*t = metaTimestamp(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return err
+	}
+	*t = metaTimestamp(n)
+	return nil
+}
+
 // igWebhookPayload is the top-level Instagram webhook payload.
 type igWebhookPayload struct {
 	Object string           `json:"object"`
@@ -394,7 +417,7 @@ type igWebhookChangeVal struct {
 	Media     *igWebhookMedia `json:"media"`
 	ID        string          `json:"id"`
 	Text      string          `json:"text"`
-	Timestamp int64           `json:"timestamp"`
+	Timestamp metaTimestamp   `json:"timestamp"`
 	// DM fields (field: "messages")
 	Sender    *igWebhookSender    `json:"sender"`
 	Recipient *igWebhookRecipient `json:"recipient"`
@@ -427,7 +450,7 @@ type igWebhookMsg struct {
 type igWebhookMessaging struct {
 	Sender    igWebhookSender    `json:"sender"`
 	Recipient igWebhookRecipient `json:"recipient"`
-	Timestamp int64              `json:"timestamp"`
+	Timestamp metaTimestamp      `json:"timestamp"`
 	Message   *igWebhookMsg      `json:"message"`
 }
 
@@ -486,7 +509,7 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 		Text:        val.Text,
 		IsRead:      false,
 		IsReplied:   false,
-		ReceivedAt:  time.Unix(val.Timestamp, 0),
+		ReceivedAt:  time.Unix(int64(val.Timestamp), 0),
 		CreatedAt:   time.Now(),
 	}
 
@@ -535,7 +558,7 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 		Text:        val.Message.Text,
 		IsRead:      false,
 		IsReplied:   false,
-		ReceivedAt:  time.Unix(val.Timestamp, 0),
+		ReceivedAt:  time.Unix(int64(val.Timestamp), 0),
 		CreatedAt:   time.Now(),
 	}
 	if val.Sender != nil {
@@ -579,7 +602,7 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 		Text:        messaging.Message.Text,
 		IsRead:      false,
 		IsReplied:   false,
-		ReceivedAt:  time.Unix(messaging.Timestamp/1000, 0),
+		ReceivedAt:  time.Unix(int64(messaging.Timestamp)/1000, 0),
 		CreatedAt:   time.Now(),
 	}
 	if accountFound {
