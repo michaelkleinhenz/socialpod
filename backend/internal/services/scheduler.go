@@ -99,6 +99,15 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"])
 	}
 
+	platformContent := func(platform models.Platform) string {
+		if post.ContentOverrides != nil {
+			if override, ok := post.ContentOverrides[string(platform)]; ok && override != "" {
+				return override
+			}
+		}
+		return post.Content
+	}
+
 	applyContent := func(base, suffix string) string {
 		if suffix == "" {
 			return base
@@ -116,7 +125,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["bluesky"]
 			}
-			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(post.Content, bluskySuffix), post.ImageURLs, accountID)
+			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(platformContent(models.PlatformBluesky), bluskySuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -166,7 +175,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 					result.Error = "reel requires a video"
 					allSuccess = false
 				} else {
-					postID, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(post.Content, instagramSuffix), accountID)
+					postID, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformInstagram), instagramSuffix), accountID)
 					if err != nil {
 						result.Success = false
 						result.Error = err.Error()
@@ -179,7 +188,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 					}
 				}
 			} else {
-				postID, err := s.Instagram.Post(ctx, applyContent(post.Content, instagramSuffix), post.ImageURLs, accountID)
+				postID, err := s.Instagram.Post(ctx, applyContent(platformContent(models.PlatformInstagram), instagramSuffix), post.ImageURLs, accountID)
 				if err != nil {
 					result.Success = false
 					result.Error = err.Error()

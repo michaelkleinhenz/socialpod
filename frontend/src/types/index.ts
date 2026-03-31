@@ -45,6 +45,7 @@ export interface Post {
   tags?: string[];
   accountIds?: Record<string, string>;
   suffixIds?: Record<string, string>;
+  contentOverrides?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }
