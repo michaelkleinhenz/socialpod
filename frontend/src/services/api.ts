@@ -220,6 +220,22 @@ class ApiClient {
     return this.request<any>(`/suffixes/${id}`, { method: 'DELETE' });
   }
 
+  // Watermarks
+  getWatermarks() {
+    return this.request<any[]>('/watermarks');
+  }
+
+  uploadWatermark(name: string, file: File) {
+    const form = new FormData();
+    form.append('name', name);
+    form.append('image', file);
+    return this.request<any>('/admin/watermarks', { method: 'POST', body: form });
+  }
+
+  deleteWatermark(id: string) {
+    return this.request<any>(`/admin/watermarks/${id}`, { method: 'DELETE' });
+  }
+
   // Teams
   getTeams() {
     return this.request<any[]>('/admin/teams');

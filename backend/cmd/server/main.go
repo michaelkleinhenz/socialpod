@@ -83,6 +83,7 @@ func main() {
 		auth.POST("/generate-text", adminHandler.GenerateText)
 
 		// Suffixes
+		auth.GET("/watermarks", adminHandler.ListWatermarks)
 		auth.GET("/suffixes", suffixHandler.List)
 		auth.POST("/suffixes", suffixHandler.Create)
 		auth.PUT("/suffixes/:id", suffixHandler.Update)
@@ -107,6 +108,8 @@ func main() {
 		admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
 		admin.PUT("/teams/:id/members", adminHandler.SetTeamMembers)
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
+		admin.POST("/watermarks", adminHandler.UploadWatermark)
+		admin.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
 	}
 
 	// Serve embedded frontend (SPA with index.html fallback)

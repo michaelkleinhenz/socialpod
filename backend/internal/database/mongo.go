@@ -99,6 +99,10 @@ func (m *MongoDB) Suffixes() *mongo.Collection {
 	return m.Database.Collection("suffixes")
 }
 
+func (m *MongoDB) Watermarks() *mongo.Collection {
+	return m.Database.Collection("watermarks")
+}
+
 func (m *MongoDB) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

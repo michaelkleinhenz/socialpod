@@ -255,6 +255,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
+  const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -266,6 +267,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getActiveAccounts().then(setAccounts).catch(() => {});
+    api.getWatermarks().then((wms: any[]) => {
+      const base = import.meta.env.VITE_API_URL || '';
+      setWatermarkGallery(wms.map(w => {
+        const src = w.url.startsWith('/') ? base + w.url : w.url;
+        return { url: src, previewUrl: src };
+      }));
+    }).catch(() => {});
     return () => {
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
@@ -788,11 +796,63 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         <div className="image-editor-overlay">
           <FilerobotImageEditor
             source={previewUrl(images[editingImageIdx])}
-            tabsIds={[TABS.ADJUST, TABS.ANNOTATE, TABS.FILTERS, TABS.FINETUNE, TABS.RESIZE]}
+            tabsIds={[TABS.ADJUST, TABS.ANNOTATE, TABS.WATERMARK, TABS.FILTERS, TABS.FINETUNE, TABS.RESIZE]}
             defaultTabId={TABS.ANNOTATE}
             savingPixelRatio={2}
             previewPixelRatio={2}
             defaultSavedImageType="png"
+            theme={{
+              palette: {
+                'bg-secondary': '#1e293b',
+                'bg-primary': '#0f172a',
+                'bg-primary-active': '#334155',
+                'bg-primary-hover': '#263348',
+                'bg-primary-light': '#1e293b',
+                'bg-stateless': '#1e293b',
+                'bg-hover': '#263348',
+                'bg-active': '#334155',
+                'bg-grey': '#334155',
+                'bg-tooltip': '#475569',
+                'txt-primary': '#f1f5f9',
+                'txt-secondary': '#94a3b8',
+                'txt-secondary-invert': '#94a3b8',
+                'txt-placeholder': '#64748b',
+                'accent-primary': '#6366f1',
+                'accent-primary-hover': '#818cf8',
+                'accent-primary-active': '#4f46e5',
+                'accent-stateless': '#6366f1',
+                'icon-primary': '#94a3b8',
+                'icons-secondary': '#64748b',
+                'icons-invert': '#f1f5f9',
+                'icons-placeholder': '#475569',
+                'icons-muted': '#64748b',
+                'borders-primary': '#334155',
+                'borders-secondary': '#475569',
+                'borders-strong': '#475569',
+                'borders-invert': '#1e293b',
+                'borders-item': '#334155',
+                'border-active-bottom': '#6366f1',
+                'btn-primary-text': '#ffffff',
+                'btn-secondary-text': '#f1f5f9',
+                'btn-disabled-text': '#64748b',
+                'link-primary': '#94a3b8',
+                'link-hover': '#f1f5f9',
+                'link-active': '#f1f5f9',
+                'link-stateless': '#94a3b8',
+                'link-muted': '#64748b',
+                'active-secondary': '#1e293b',
+                'active-secondary-hover': 'rgba(99, 102, 241, 0.15)',
+                'error': '#ef4444',
+                'success': '#22c55e',
+                'warning': '#f59e0b',
+                'accent-primary-disabled': '#334155',
+                'bg-base-light': '#1e293b',
+                'bg-base-medium': '#334155',
+              },
+              typography: {
+                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+              },
+            }}
             Text={{
               fonts: [
                 'Arial',
@@ -806,6 +866,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 'Comic Sans MS',
                 { label: 'Rockwell', value: 'Rockwell, "Rockwell Nova", "Roboto Slab", "DejaVu Serif", "Sitka Small", serif' },
               ],
+            }}
+            Watermark={{
+              gallery: watermarkGallery,
             }}
             Crop={{
               presetsItems: [

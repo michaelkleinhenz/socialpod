@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { Post } from '../../types';
-import { Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock, CheckCircle, AlertCircle, Image } from 'lucide-react';
 import './Admin.css';
 
 export function AdminPage() {
@@ -97,6 +97,14 @@ export function AdminPage() {
           <div>
             <h3>Teams</h3>
             <p>{stats.teams} team{stats.teams !== 1 ? 's' : ''}</p>
+          </div>
+        </Link>
+
+        <Link to="/admin/watermarks" className="admin-link-card">
+          <Image size={24} />
+          <div>
+            <h3>Watermarks</h3>
+            <p>Image editor gallery</p>
           </div>
         </Link>
 

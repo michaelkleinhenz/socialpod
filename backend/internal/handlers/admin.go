@@ -683,3 +683,90 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"text": result.Choices[0].Message.Content})
 }
+
+// Watermark gallery management
+
+func (h *AdminHandler) ListWatermarks(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := h.DB.Watermarks().Find(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch watermarks"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var watermarks []models.Watermark
+	if err := cursor.All(ctx, &watermarks); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode watermarks"})
+		return
+	}
+	if watermarks == nil {
+		watermarks = []models.Watermark{}
+	}
+	c.JSON(http.StatusOK, watermarks)
+}
+
+func (h *AdminHandler) UploadWatermark(c *gin.Context) {
+	name := c.PostForm("name")
+	if name == "" {
+		name = "Watermark"
+	}
+
+	_, fh, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	postHandler := &PostHandler{DB: h.DB, UploadDir: ""}
+	// Try to get UploadDir from the request context if available; fall back
+	// to the default used by PostHandler when not set.
+	if ud, ok := c.Get("uploadDir"); ok {
+		postHandler.UploadDir = ud.(string)
+	} else {
+		postHandler.UploadDir = "./uploads"
+	}
+
+	url, err := postHandler.saveUpload(ctx, fh)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	wm := models.Watermark{
+		Name:      name,
+		Filename:  fh.Filename,
+		URL:       url,
+		CreatedAt: time.Now(),
+	}
+	result, err := h.DB.Watermarks().InsertOne(ctx, wm)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save watermark"})
+		return
+	}
+	wm.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, wm)
+}
+
+func (h *AdminHandler) DeleteWatermark(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.Watermarks().DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil || result.DeletedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Watermark not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Watermark deleted"})
+}

@@ -10,6 +10,7 @@ import { AccountsPage } from './components/Admin/AccountsPage';
 import { SettingsPage } from './components/Admin/SettingsPage';
 import { UsersPage } from './components/Admin/UsersPage';
 import { TeamsPage } from './components/Admin/TeamsPage';
+import { WatermarksPage } from './components/Admin/WatermarksPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
 import { LogPage } from './components/Log/LogPage';
 import { SuffixesPage } from './components/Suffixes/SuffixesPage';
@@ -40,6 +41,7 @@ function AppRoutes() {
       <Route path="/admin/settings" element={<ProtectedRoute adminOnly><Layout><SettingsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/teams" element={<ProtectedRoute adminOnly><Layout><TeamsPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin/watermarks" element={<ProtectedRoute adminOnly><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
