@@ -415,12 +415,16 @@ type igWebhookMessaging struct {
 }
 
 func (h *AdminHandler) InstagramWebhookEvent(c *gin.Context) {
+	bodyBytes, _ := io.ReadAll(c.Request.Body)
+	log.Printf("Instagram webhook raw body: %s", string(bodyBytes))
+
 	var payload igWebhookPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		// Acknowledge even on parse errors to prevent retries
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		log.Printf("Instagram webhook parse error: %v", err)
 		c.JSON(http.StatusOK, gin.H{"status": "received"})
 		return
 	}
+	log.Printf("Instagram webhook parsed: object=%q entries=%d", payload.Object, len(payload.Entry))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -491,7 +495,9 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 }
 
 func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChangeVal, account *models.SocialAccount, accountFound bool) {
+	log.Printf("processIGDMChange: sender=%v message=%v timestamp=%d", val.Sender, val.Message, val.Timestamp)
 	if val.Message == nil || val.Message.MID == "" {
+		log.Printf("processIGDMChange: skipping - message nil or empty MID")
 		return
 	}
 
@@ -527,7 +533,9 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 }
 
 func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebhookMessaging, account *models.SocialAccount, accountFound bool) {
+	log.Printf("processIGMessaging: sender=%s mid=%v timestamp=%d", messaging.Sender.ID, messaging.Message, messaging.Timestamp)
 	if messaging.Message == nil || messaging.Message.MID == "" {
+		log.Printf("processIGMessaging: skipping - message nil or empty MID")
 		return
 	}
 
