@@ -502,6 +502,10 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 		return
 	}
 
+	receivedAt := time.Now()
+	if val.Timestamp != 0 {
+		receivedAt = time.Unix(int64(val.Timestamp), 0)
+	}
 	msg := models.InboxMessage{
 		Platform:    models.PlatformInstagram,
 		MessageType: models.MessageTypeComment,
@@ -509,7 +513,7 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 		Text:        val.Text,
 		IsRead:      false,
 		IsReplied:   false,
-		ReceivedAt:  time.Unix(int64(val.Timestamp), 0),
+		ReceivedAt:  receivedAt,
 		CreatedAt:   time.Now(),
 	}
 
@@ -551,6 +555,10 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 		return
 	}
 
+	dmReceivedAt := time.Now()
+	if val.Timestamp != 0 {
+		dmReceivedAt = time.Unix(int64(val.Timestamp), 0)
+	}
 	msg := models.InboxMessage{
 		Platform:    models.PlatformInstagram,
 		MessageType: models.MessageTypeDM,
@@ -558,7 +566,7 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 		Text:        val.Message.Text,
 		IsRead:      false,
 		IsReplied:   false,
-		ReceivedAt:  time.Unix(int64(val.Timestamp), 0),
+		ReceivedAt:  dmReceivedAt,
 		CreatedAt:   time.Now(),
 	}
 	if val.Sender != nil {
