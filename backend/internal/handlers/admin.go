@@ -563,6 +563,9 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 	}
 	if val.Sender != nil {
 		msg.SenderID = val.Sender.ID
+		if accountFound && val.Sender.ID != "" {
+			msg.SenderName = h.Instagram.GetSenderName(ctx, val.Sender.ID, account.AccessToken)
+		}
 	}
 	if accountFound {
 		msg.AccountID = account.ID
@@ -608,6 +611,9 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		if messaging.Sender.ID != "" {
+			msg.SenderName = h.Instagram.GetSenderName(ctx, messaging.Sender.ID, account.AccessToken)
+		}
 	}
 
 	doc, err := structToBSONDoc(msg)

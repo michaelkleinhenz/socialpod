@@ -485,6 +485,34 @@ func (s *InstagramService) FetchFeed(ctx context.Context, accountID string) ([]I
 	return media, nil
 }
 
+// GetSenderName fetches the display name of an Instagram user by their scoped ID.
+// Uses the Instagram Messaging API which allows reading sender profiles for DMs.
+func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessToken string) string {
+	if senderID == "" || accessToken == "" {
+		return ""
+	}
+	url := fmt.Sprintf("%s/%s?fields=name&access_token=%s", igGraphAPI, senderID, accessToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Printf("GetSenderName: request error: %v", err)
+		return ""
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("GetSenderName: http error: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("GetSenderName: decode error: %v", err)
+		return ""
+	}
+	return result.Name
+}
+
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
 	filter := bson.M{"platform": models.PlatformInstagram, "isActive": true}
 	if accountID != "" {
