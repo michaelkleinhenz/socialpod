@@ -792,6 +792,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             defaultTabId={TABS.ANNOTATE}
             savingPixelRatio={2}
             previewPixelRatio={2}
+            defaultSavedImageType="png"
             Crop={{
               presetsItems: [
                 { titleKey: 'Square (1:1)', ratio: 1 },
@@ -800,25 +801,29 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 { titleKey: 'Portrait (4:5)', ratio: 4 / 5 },
               ],
             }}
-            onSave={(editedImageObject: any) => {
-              const dataUrl = editedImageObject.imageBase64;
-              if (!dataUrl) {
+            onBeforeSave={() => false}
+            onSave={(savedImageData: any) => {
+              const canvas = savedImageData.imageCanvas as HTMLCanvasElement | undefined;
+              const base64 = savedImageData.imageBase64 as string | undefined;
+              const src = base64 || canvas?.toDataURL('image/png');
+              if (!src) {
                 toast.error('Failed to get edited image');
                 setEditingImageIdx(null);
                 return;
               }
-              fetch(dataUrl)
+              fetch(src)
                 .then(res => res.blob())
                 .then(blob => {
-                  const ext = editedImageObject.mimeType?.includes('png') ? '.png' : '.jpg';
-                  const file = new File([blob], `edited${ext}`, { type: blob.type || 'image/png' });
-                  const oldItem = images[editingImageIdx!];
+                  const ext = savedImageData.extension || 'png';
+                  const file = new File([blob], `edited.${ext}`, { type: savedImageData.mimeType || 'image/png' });
+                  const idx = editingImageIdx!;
+                  const oldItem = images[idx];
                   if (oldItem.kind === 'file') {
                     const cached = objUrlCache.current.get(oldItem.file);
                     if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
                   }
                   setImages(prev => prev.map((item, i) =>
-                    i === editingImageIdx ? { kind: 'file' as const, file } : item
+                    i === idx ? { kind: 'file' as const, file } : item
                   ));
                   setEditingImageIdx(null);
                   toast.success('Image updated');

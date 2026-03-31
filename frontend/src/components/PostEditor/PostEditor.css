@@ -450,12 +450,9 @@
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: var(--bg-primary);
-}
-
-.image-editor-overlay .FIE_root {
-  height: 100% !important;
-  width: 100% !important;
+  width: 100vw;
+  height: 100vh;
+  background: #1a1a2e;
 }
 
 /* Video in image preview grid */
