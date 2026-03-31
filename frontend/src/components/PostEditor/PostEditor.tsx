@@ -793,6 +793,20 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             savingPixelRatio={2}
             previewPixelRatio={2}
             defaultSavedImageType="png"
+            Text={{
+              fonts: [
+                'Arial',
+                'Helvetica',
+                'Times New Roman',
+                'Georgia',
+                'Verdana',
+                'Courier New',
+                'Trebuchet MS',
+                'Impact',
+                'Comic Sans MS',
+                { label: 'Rockwell', value: 'Rockwell, "Rockwell Nova", "Roboto Slab", "DejaVu Serif", "Sitka Small", serif' },
+              ],
+            }}
             Crop={{
               presetsItems: [
                 { titleKey: 'Square (1:1)', ratio: 1 },
