@@ -36,6 +36,7 @@ function renderWithHashtags(text: string) {
 
 interface PreviewProps {
   content: string;
+  contentOverrides?: Record<string, string>;
   platforms: Platform[];
   imageUrls: string[];
   scheduledAt: string;
@@ -46,7 +47,7 @@ interface PreviewProps {
   instagramSuffix?: string;
 }
 
-function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, bluskySuffix, instagramSuffix }: PreviewProps) {
+function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, bluskySuffix, instagramSuffix }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
@@ -57,8 +58,10 @@ function PostPreview({ content, platforms, imageUrls, scheduledAt, apiUrl, blues
     : 'yourhandle.bsky.social';
   const igHandle = instagramAccount?.accountName || 'yourhandle';
 
-  const bskyContent = bluskySuffix ? content + '\n' + bluskySuffix : content;
-  const igContent = instagramSuffix ? content + '\n' + instagramSuffix : content;
+  const bskyBase = (contentOverrides?.['bluesky'] ?? '') || content;
+  const igBase = (contentOverrides?.['instagram'] ?? '') || content;
+  const bskyContent = bluskySuffix ? bskyBase + '\n' + bluskySuffix : bskyBase;
+  const igContent = instagramSuffix ? igBase + '\n' + instagramSuffix : igBase;
 
   if (platforms.length === 0) {
     return (
@@ -231,6 +234,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const isReel = (post?.postType || propPostType || 'post') === 'reel';
 
   const [content, setContent] = useState(post?.content || '');
+  const [contentOverrides, setContentOverrides] = useState<Record<string, string>>(post?.contentOverrides || {});
+  const [customizePerPlatform, setCustomizePerPlatform] = useState(
+    post?.contentOverrides != null && Object.keys(post.contentOverrides).length > 0
+  );
   const [firstComment, setFirstComment] = useState(post?.firstComment || '');
   const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory || isReel ? ['instagram'] : ['bluesky']));
   const [scheduledAt, setScheduledAt] = useState(
@@ -431,8 +438,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     ...(platforms.includes('instagram') ? [effectiveLimit('instagram')] : []),
   );
   const charCount = content.length;
-  const overLimit = charCount > charLimit;
-  const charClass = overLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
+  const overLimit = charCount > charLimit || (customizePerPlatform && platforms.some(p => {
+    const val = contentOverrides[p];
+    return val != null && val.length > effectiveLimit(p);
+  }));
+  const charClass = charCount > charLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
   const handleImageUpload = (files: FileList | null) => {
     if (!files) return;
@@ -505,6 +515,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           tags,
           status,
           suffixIds: (isStory || isReel) ? {} : suffixIds,
+          contentOverrides: (isStory || isReel || !customizePerPlatform) ? {} : contentOverrides,
         },
         imageFiles.length > 0 ? imageFiles : undefined,
       );
@@ -522,7 +533,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || status !== (post?.status || 'scheduled')
     || JSON.stringify(platforms) !== JSON.stringify(post?.platforms || ['bluesky'])
     || images.length !== (post?.imageUrls || []).length
-    || JSON.stringify(suffixIds) !== JSON.stringify(post?.suffixIds || {});
+    || JSON.stringify(suffixIds) !== JSON.stringify(post?.suffixIds || {})
+    || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {});
 
   const handleClose = () => {
     if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return;
@@ -611,6 +623,56 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
                 {/* Content */}
                 <div className="form-group">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <label style={{ margin: 0 }}>Content</label>
+                    {platforms.length > 1 && (
+                      <label className="customize-per-platform-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={customizePerPlatform}
+                          onChange={e => {
+                            setCustomizePerPlatform(e.target.checked);
+                            if (!e.target.checked) setContentOverrides({});
+                          }}
+                        />
+                        Customize per platform
+                      </label>
+                    )}
+                  </div>
+
+                  {customizePerPlatform && platforms.length > 1 ? (
+                    <>
+                      {platforms.map(platform => {
+                        const overrideVal = contentOverrides[platform] ?? '';
+                        const platformLimit = effectiveLimit(platform);
+                        const platformCount = overrideVal.length;
+                        const platformOver = platformCount > platformLimit;
+                        const platformClass = platformOver ? 'danger' : platformCount > platformLimit * 0.9 ? 'warning' : '';
+                        return (
+                          <div key={platform} style={{ marginBottom: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                              <span className={`platform-dot ${platform}`} />
+                              <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{platform}</span>
+                            </div>
+                            <textarea
+                              className="textarea post-textarea"
+                              value={overrideVal}
+                              onChange={e => setContentOverrides(prev => ({ ...prev, [platform]: e.target.value }))}
+                              placeholder={`Text for ${platform}… (leave empty to use shared text below)`}
+                              rows={4}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                              <div className={`char-counter ${platformClass}`}>{platformCount} / {platformLimit}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+                        Shared fallback text (used when a platform field is empty):
+                      </div>
+                    </>
+                  ) : null}
+
                   <textarea
                     ref={textareaRef}
                     className="textarea post-textarea"
@@ -754,6 +816,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             ) : (
               <PostPreview
                 content={content}
+                contentOverrides={customizePerPlatform ? contentOverrides : undefined}
                 platforms={platforms}
                 imageUrls={previewImageUrls}
                 scheduledAt={scheduledAt}

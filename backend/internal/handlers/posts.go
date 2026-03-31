@@ -27,29 +27,31 @@ type PostHandler struct {
 }
 
 type CreatePostInput struct {
-	Content      string            `json:"content"`
-	PostType     models.PostType   `json:"postType,omitempty"`
-	FirstComment string            `json:"firstComment,omitempty"`
-	Platforms    []models.Platform `json:"platforms" binding:"required"`
-	ScheduledAt  string            `json:"scheduledAt" binding:"required"`
-	Tags         []string          `json:"tags,omitempty"`
-	AccountIDs   map[string]string `json:"accountIds,omitempty"`
-	ImageURLs    []string          `json:"imageUrls,omitempty"`
-	Status       models.PostStatus `json:"status,omitempty"`
-	SuffixIDs    map[string]string `json:"suffixIds,omitempty"`
+	Content          string            `json:"content"`
+	PostType         models.PostType   `json:"postType,omitempty"`
+	FirstComment     string            `json:"firstComment,omitempty"`
+	Platforms        []models.Platform `json:"platforms" binding:"required"`
+	ScheduledAt      string            `json:"scheduledAt" binding:"required"`
+	Tags             []string          `json:"tags,omitempty"`
+	AccountIDs       map[string]string `json:"accountIds,omitempty"`
+	ImageURLs        []string          `json:"imageUrls,omitempty"`
+	Status           models.PostStatus `json:"status,omitempty"`
+	SuffixIDs        map[string]string `json:"suffixIds,omitempty"`
+	ContentOverrides map[string]string `json:"contentOverrides,omitempty"`
 }
 
 type UpdatePostInput struct {
-	Content      *string            `json:"content,omitempty"`
-	PostType     *models.PostType   `json:"postType,omitempty"`
-	FirstComment *string            `json:"firstComment,omitempty"`
-	Platforms    []models.Platform  `json:"platforms,omitempty"`
-	ScheduledAt  *string            `json:"scheduledAt,omitempty"`
-	Tags         []string           `json:"tags,omitempty"`
-	AccountIDs   map[string]string  `json:"accountIds,omitempty"`
-	ImageURLs    []string           `json:"imageUrls,omitempty"`
-	Status       *models.PostStatus `json:"status,omitempty"`
-	SuffixIDs    map[string]string  `json:"suffixIds"`
+	Content          *string            `json:"content,omitempty"`
+	PostType         *models.PostType   `json:"postType,omitempty"`
+	FirstComment     *string            `json:"firstComment,omitempty"`
+	Platforms        []models.Platform  `json:"platforms,omitempty"`
+	ScheduledAt      *string            `json:"scheduledAt,omitempty"`
+	Tags             []string           `json:"tags,omitempty"`
+	AccountIDs       map[string]string  `json:"accountIds,omitempty"`
+	ImageURLs        []string           `json:"imageUrls,omitempty"`
+	Status           *models.PostStatus `json:"status,omitempty"`
+	SuffixIDs        map[string]string  `json:"suffixIds"`
+	ContentOverrides map[string]string  `json:"contentOverrides"`
 }
 
 const (
@@ -130,19 +132,20 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	post := models.Post{
-		UserID:       objID,
-		PostType:     postType,
-		Content:      input.Content,
-		FirstComment: input.FirstComment,
-		Platforms:    input.Platforms,
-		ScheduledAt:  scheduledAt,
-		Status:       status,
-		Tags:         input.Tags,
-		AccountIDs:   input.AccountIDs,
-		ImageURLs:    input.ImageURLs,
-		SuffixIDs:    input.SuffixIDs,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		UserID:           objID,
+		PostType:         postType,
+		Content:          input.Content,
+		FirstComment:     input.FirstComment,
+		Platforms:        input.Platforms,
+		ScheduledAt:      scheduledAt,
+		Status:           status,
+		Tags:             input.Tags,
+		AccountIDs:       input.AccountIDs,
+		ImageURLs:        input.ImageURLs,
+		SuffixIDs:        input.SuffixIDs,
+		ContentOverrides: input.ContentOverrides,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 
 	if teamID, ok := c.Get("teamId"); ok {
@@ -321,6 +324,11 @@ func (h *PostHandler) Update(c *gin.Context) {
 	}
 	if input.SuffixIDs != nil {
 		update["suffixIds"] = input.SuffixIDs
+	}
+	// ContentOverrides uses explicit null-check via the json tag (no omitempty) so
+	// an empty map from the client clears all overrides, while absence keeps existing.
+	if input.ContentOverrides != nil {
+		update["contentOverrides"] = input.ContentOverrides
 	}
 
 	result, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
