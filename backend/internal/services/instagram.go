@@ -514,15 +514,28 @@ func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessTo
 }
 
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
-	filter := bson.M{"platform": models.PlatformInstagram, "isActive": true}
+	// Try the specific account first, then fall back to any active Instagram account.
+	// The fallback handles cases where the message was stored against an old account
+	// document (e.g. after re-authenticating Instagram creates a new document).
 	if accountID != "" {
-		if id, err := primitive.ObjectIDFromHex(accountID); err == nil {
-			filter["_id"] = id
+		if id, err := primitive.ObjectIDFromHex(accountID); err == nil && id != primitive.NilObjectID {
+			var account models.SocialAccount
+			if err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
+				"platform": models.PlatformInstagram,
+				"isActive": true,
+				"_id":      id,
+			}).Decode(&account); err == nil {
+				return &account, nil
+			}
 		}
 	}
 
+	// Fall back to any active Instagram account
 	var account models.SocialAccount
-	err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account)
+	err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
+		"platform": models.PlatformInstagram,
+		"isActive": true,
+	}).Decode(&account)
 	return &account, err
 }
 
