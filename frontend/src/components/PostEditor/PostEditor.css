@@ -418,6 +418,46 @@
   -webkit-box-orient: vertical;
 }
 
+/* Edit button on image thumbnails */
+.image-preview .edit-btn {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.image-preview:hover .edit-btn {
+  opacity: 1;
+}
+
+.image-preview .edit-btn:hover {
+  background: var(--accent);
+}
+
+/* Image editor fullscreen overlay */
+.image-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--bg-primary);
+}
+
+.image-editor-overlay .FIE_root {
+  height: 100% !important;
+  width: 100% !important;
+}
+
 /* Video in image preview grid */
 .image-preview-video {
   width: 100%;

@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Suffix, SocialAccount } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
+import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import './PostEditor.css';
 
 // Module-level cache so the SDK is initialized once per page load and login
@@ -253,6 +254,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [adobeActive, setAdobeActive] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -676,11 +678,17 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               {images.length > 0 && (
                 <div className="image-preview-grid">
                   {images.map((item, i) => {
+                    const isVid = isVideoItem(item);
                     return (
                       <div key={i} className="image-preview">
-                        {isVideoItem(item)
+                        {isVid
                           ? <video src={previewUrl(item)} muted className="image-preview-video" />
                           : <img src={previewUrl(item)} alt="" />}
+                        {!isVid && (
+                          <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title="Edit image">
+                            <Pencil size={12} />
+                          </button>
+                        )}
                         <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
                       </div>
                     );
@@ -775,6 +783,55 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           </div>
         </div>
       </div>
+
+      {editingImageIdx !== null && (
+        <div className="image-editor-overlay">
+          <FilerobotImageEditor
+            source={previewUrl(images[editingImageIdx])}
+            tabsIds={[TABS.ADJUST, TABS.ANNOTATE, TABS.FILTERS, TABS.FINETUNE, TABS.RESIZE]}
+            defaultTabId={TABS.ANNOTATE}
+            savingPixelRatio={2}
+            previewPixelRatio={2}
+            Crop={{
+              presetsItems: [
+                { titleKey: 'Square (1:1)', ratio: 1 },
+                { titleKey: 'Story (9:16)', ratio: 9 / 16 },
+                { titleKey: 'Landscape (16:9)', ratio: 16 / 9 },
+                { titleKey: 'Portrait (4:5)', ratio: 4 / 5 },
+              ],
+            }}
+            onSave={(editedImageObject: any) => {
+              const dataUrl = editedImageObject.imageBase64;
+              if (!dataUrl) {
+                toast.error('Failed to get edited image');
+                setEditingImageIdx(null);
+                return;
+              }
+              fetch(dataUrl)
+                .then(res => res.blob())
+                .then(blob => {
+                  const ext = editedImageObject.mimeType?.includes('png') ? '.png' : '.jpg';
+                  const file = new File([blob], `edited${ext}`, { type: blob.type || 'image/png' });
+                  const oldItem = images[editingImageIdx!];
+                  if (oldItem.kind === 'file') {
+                    const cached = objUrlCache.current.get(oldItem.file);
+                    if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
+                  }
+                  setImages(prev => prev.map((item, i) =>
+                    i === editingImageIdx ? { kind: 'file' as const, file } : item
+                  ));
+                  setEditingImageIdx(null);
+                  toast.success('Image updated');
+                })
+                .catch(() => {
+                  toast.error('Failed to process edited image');
+                  setEditingImageIdx(null);
+                });
+            }}
+            onClose={() => setEditingImageIdx(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }
