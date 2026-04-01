@@ -524,6 +524,9 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 	}
 	if val.Media != nil {
 		msg.MediaID = val.Media.ID
+		if accountFound && val.Media.ID != "" {
+			msg.MediaURL = h.Instagram.GetMediaPermalink(ctx, val.Media.ID, account.AccessToken)
+		}
 	}
 	if accountFound {
 		msg.AccountID = account.ID

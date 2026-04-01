@@ -83,6 +83,52 @@ func (h *InboxHandler) backfillSenderNames(ctx context.Context, messages []model
 	}
 }
 
+// backfillMediaURLs fetches Instagram permalinks for comments that have a
+// mediaId but no mediaUrl, and persists them in the database.
+func (h *InboxHandler) backfillMediaURLs(ctx context.Context, messages []models.InboxMessage) {
+	if h.Instagram == nil {
+		return
+	}
+
+	tokenCache := map[primitive.ObjectID]string{}
+	for i := range messages {
+		msg := &messages[i]
+		if msg.MediaURL != "" || msg.MediaID == "" || msg.Platform != models.PlatformInstagram {
+			continue
+		}
+
+		token, ok := tokenCache[msg.AccountID]
+		if !ok {
+			var account models.SocialAccount
+			err := h.DB.SocialAccounts().FindOne(ctx, bson.M{
+				"_id":      msg.AccountID,
+				"platform": models.PlatformInstagram,
+				"isActive": true,
+			}).Decode(&account)
+			if err != nil {
+				err = h.DB.SocialAccounts().FindOne(ctx, bson.M{
+					"platform": models.PlatformInstagram,
+					"isActive": true,
+				}).Decode(&account)
+			}
+			if err != nil {
+				continue
+			}
+			token = account.AccessToken
+			tokenCache[msg.AccountID] = token
+		}
+
+		permalink := h.Instagram.GetMediaPermalink(ctx, msg.MediaID, token)
+		if permalink != "" {
+			msg.MediaURL = permalink
+			h.DB.InboxMessages().UpdateOne(ctx,
+				bson.M{"_id": msg.ID},
+				bson.M{"$set": bson.M{"mediaUrl": permalink}},
+			)
+		}
+	}
+}
+
 func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -114,6 +160,11 @@ func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) 
 	// Backfill sender names for DMs that are missing them
 	if msgType == models.MessageTypeDM {
 		h.backfillSenderNames(ctx, messages)
+	}
+
+	// Backfill media permalinks for comments that have a mediaId but no mediaUrl
+	if msgType == models.MessageTypeComment {
+		h.backfillMediaURLs(ctx, messages)
 	}
 
 	c.JSON(http.StatusOK, messages)

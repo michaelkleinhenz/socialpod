@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
-import { MessageCircle, RefreshCw, Reply, CheckCircle2 } from 'lucide-react';
+import { MessageCircle, RefreshCw, Reply, CheckCircle2, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Inbox.css';
@@ -15,6 +15,7 @@ interface InboxMessage {
   senderAvatar: string;
   text: string;
   mediaId: string;
+  mediaUrl: string;
   isRead: boolean;
   isReplied: boolean;
   receivedAt: string;
@@ -156,7 +157,19 @@ function CommentEntry({
 
           {message.mediaId && (
             <div className="inbox-entry-context">
-              <span>On post: {message.mediaId}</span>
+              {message.mediaUrl ? (
+                <a
+                  href={message.mediaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inbox-post-link"
+                  onClick={e => e.stopPropagation()}
+                >
+                  View post <ExternalLink size={12} />
+                </a>
+              ) : (
+                <span>On post: {message.mediaId}</span>
+              )}
             </div>
           )}
 

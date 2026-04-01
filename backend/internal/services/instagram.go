@@ -485,6 +485,30 @@ func (s *InstagramService) FetchFeed(ctx context.Context, accountID string) ([]I
 	return media, nil
 }
 
+// GetMediaPermalink fetches the permalink for an Instagram media object.
+func (s *InstagramService) GetMediaPermalink(ctx context.Context, mediaID, accessToken string) string {
+	if mediaID == "" || accessToken == "" {
+		return ""
+	}
+	u := fmt.Sprintf("%s/%s?fields=permalink&access_token=%s", igGraphAPI, mediaID, accessToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Permalink string `json:"permalink"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return ""
+	}
+	return result.Permalink
+}
+
 // GetSenderName fetches the display name of an Instagram user by their scoped ID.
 // Uses the Instagram Messaging API which allows reading sender profiles for DMs.
 func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessToken string) string {
