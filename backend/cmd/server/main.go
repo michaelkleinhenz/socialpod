@@ -46,7 +46,7 @@ func main() {
 	suffixHandler := &handlers.SuffixHandler{DB: db}
 	bskyService := &services.BlueskyService{DB: db, UploadDir: cfg.UploadDir}
 	igService := &services.InstagramService{DB: db}
-	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService}
+	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService}
 
 	// Public routes

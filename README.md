@@ -1,6 +1,6 @@
 # SocialPod — Social Media Scheduler
 
-A self-hosted social media scheduling platform for **Bluesky** and **Instagram**. Features a drag-and-drop calendar UI, multitenancy, image uploads, suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
+A self-hosted social media scheduling platform for **Bluesky** and **Instagram**. Features a drag-and-drop calendar UI, multitenancy, image uploads, a built-in image editor with watermarks, per-platform text customization, an Instagram inbox (comments & DMs), suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
 
 ## Quick Start
 
@@ -34,6 +34,7 @@ All configuration is done via environment variables in `.env`:
 | `JWT_SECRET` | `change-me-in-production` | Secret for signing JWT tokens — **change this** |
 | `APP_URL` | `http://localhost:8080` | Public URL of the app (used for Instagram OAuth) |
 | `APP_PORT` | `8080` | Port the app listens on |
+| `UPLOAD_DIR` | `./uploads` | Directory for uploaded image/video files |
 
 ### Production Deployment
 
@@ -178,6 +179,120 @@ When composing a post, suffix dropdowns appear for each selected platform:
 The character counter in the editor automatically deducts the length of the selected suffix so you always see accurate remaining characters.
 
 Suffixes are stored by reference on the post. If you update a suffix, all future posts using it will pick up the new text.
+
+---
+
+## Built-in Image Editor
+
+Every post image can be edited directly in the browser using the built-in image editor (powered by [Filerobot Image Editor](https://github.com/scaleflex/filerobot-image-editor)). Click the pencil icon on any attached image to open it.
+
+### Available Tools
+
+| Tab | Description |
+|---|---|
+| **Adjust** | Brightness, contrast, saturation, exposure, and more |
+| **Annotate** | Text overlays, shapes, arrows, and freehand drawing |
+| **Watermark** | Place admin-uploaded watermark images on the photo |
+| **Filters** | Apply preset color filters |
+| **Finetune** | Fine-grained colour and tone adjustments |
+| **Resize** | Change image dimensions |
+
+### Crop Presets
+
+The editor includes presets for common social media aspect ratios:
+
+| Preset | Ratio |
+|---|---|
+| Square | 1:1 |
+| Story | 9:16 |
+| Landscape | 16:9 |
+| Portrait | 4:5 |
+
+### Custom Fonts
+
+Text annotations support a selection of web-safe fonts plus **Rockwell** (with serif fallbacks) for a classic look.
+
+---
+
+## Watermarks
+
+Admins can manage a library of watermark images that users can apply inside the image editor.
+
+### Managing Watermarks (Admin)
+
+1. Log in as an admin and navigate to **Watermarks** in the sidebar.
+2. Optionally enter a name, then click **Upload** and select an image (PNG, JPEG, GIF, or WebP).
+3. The watermark appears in the grid and is immediately available to all users in the image editor.
+4. Click the trash icon on any watermark to remove it.
+
+### Applying Watermarks (Users)
+
+1. Open a post with an attached image and click the pencil (edit) icon.
+2. Select the **Watermark** tab in the editor toolbar.
+3. Click a watermark from the gallery to place it on the image.
+4. Drag, resize, or reposition it, then click **Save**.
+
+---
+
+## Per-Platform Text Customization
+
+When posting to both Bluesky and Instagram at the same time, you can write different text for each platform rather than using one shared caption.
+
+### Using Per-Platform Text
+
+1. In the post editor, select both **Bluesky** and **Instagram** as platforms.
+2. Toggle **Customize per platform** (above the text area).
+3. A separate text field appears for each selected platform.
+4. Leave a platform field empty to fall back to the shared text below.
+
+The character counter enforces each platform's limit independently (300 for Bluesky, 2,200 for Instagram).
+
+---
+
+## AI Text Generation
+
+When an OpenRouter API key is configured in **Settings**, a magic-wand button appears in the post editor. Click it to rewrite or improve the current post text using an AI model.
+
+### Enabling AI Text Generation
+
+1. Log in as an admin and go to **Settings → AI / OpenRouter**.
+2. Enter your OpenRouter API key and select a model.
+3. Save settings. The wand button becomes available to all users immediately.
+
+---
+
+## Instagram Inbox
+
+SocialPod can receive Instagram comments and direct messages via Meta webhooks and display them in a unified inbox.
+
+### Prerequisites
+
+- Your SocialPod `APP_URL` must be publicly accessible (Meta requires HTTPS for webhook delivery).
+- An Instagram account connected in **Accounts**.
+- Meta webhook subscription configured (see below).
+
+### Configuring Meta Webhooks
+
+1. In your Meta app dashboard, go to **Webhooks**.
+2. Add a new subscription for the **Instagram** object.
+3. Set the **Callback URL** to:
+   ```
+   https://your-domain.com/api/webhooks/instagram
+   ```
+4. Set the **Verify Token** to any string — no configuration needed on the SocialPod side.
+5. Subscribe to the `comments` and `messages` fields.
+
+### Using the Inbox
+
+| Page | Description |
+|---|---|
+| **Comments** | Instagram comments on your posts, with unread counts and reply support |
+| **Direct Messages** | Instagram DMs, with unread tracking and reply support |
+| **Feed** | Your Instagram account's own post feed |
+
+- Click **Reply** on any comment or DM to send a response directly from SocialPod.
+- Messages are marked as read when opened.
+- Click the refresh button to manually fetch the latest messages.
 
 ---
 
@@ -590,3 +705,17 @@ The SDK uses popups and cross-origin iframes that are blocked by default in some
 
 **n8n node install fails with `isolated-vm` / `node-gyp` errors**
 - You ran `npm install` without `--omit=dev`. The `n8n-workflow` dev dependency pulls in `isolated-vm`, which requires Node >= 22 to compile. Use `npm install --omit=dev` instead — n8n provides `n8n-workflow` at runtime.
+
+**Watermark images show as broken after a container restart**
+- Uploaded files are stored in `UPLOAD_DIR` (default `/app/uploads` when using `docker-compose.yml`). The provided `docker-compose.yml` mounts a named volume (`uploads_data`) at that path, so files survive restarts. If you deployed before this volume was added, run `make down` and `make up` — Docker will create the volume and future uploads will persist.
+
+**Watermark images broken immediately after upload**
+- Ensure `UPLOAD_DIR` is the same path in both the environment variable and the volume mount. The default `docker-compose.yml` sets `UPLOAD_DIR=/app/uploads` and mounts `uploads_data:/app/uploads`, so no manual configuration is needed.
+
+**Instagram inbox is empty / webhooks not arriving**
+- Confirm your `APP_URL` is publicly reachable over HTTPS. Meta will not deliver webhooks to `localhost` or HTTP endpoints.
+- Verify the webhook subscription in the Meta app dashboard shows a green checkmark (successful verification).
+- Check that the `comments` and `messages` fields are subscribed.
+
+**AI text generation button not appearing**
+- The wand button only appears when an OpenRouter API key is saved in **Settings**. Ensure the key is valid and the model is set.

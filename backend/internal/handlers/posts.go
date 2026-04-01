@@ -549,7 +549,7 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 
 	var upload models.Upload
 	err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
-	if err != nil {
+	if err != nil || len(upload.Data) == 0 {
 		c.Status(http.StatusNotFound)
 		return
 	}
