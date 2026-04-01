@@ -267,20 +267,21 @@ func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imag
 	return images, nil
 }
 
-// chatRequest makes a request to the Bluesky chat API via PDS proxy.
-func (s *BlueskyService) chatRequest(ctx context.Context, session *bskySession, pdsHost, method, endpoint string, body interface{}) ([]byte, error) {
+const bskyChatAPI = "https://api.bsky.chat"
+
+// chatRequest makes a request to the Bluesky chat API directly.
+func (s *BlueskyService) chatRequest(ctx context.Context, session *bskySession, method, endpoint string, body interface{}) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, _ := json.Marshal(body)
 		reqBody = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, pdsHost+"/xrpc/"+endpoint, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, bskyChatAPI+"/xrpc/"+endpoint, reqBody)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
-	req.Header.Set("atproto-proxy", "did:web:api.bsky.chat#bsky_chat")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -361,7 +362,7 @@ func (s *BlueskyService) ListConvos(ctx context.Context, accountID string) ([]BS
 		)
 	}
 
-	data, err := s.chatRequest(ctx, session, account.PDSHost, "GET", "chat.bsky.convo.listConvos?limit=50", nil)
+	data, err := s.chatRequest(ctx, session, "GET", "chat.bsky.convo.listConvos?limit=50", nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -392,7 +393,7 @@ func (s *BlueskyService) GetConvoMessages(ctx context.Context, convoID, accountI
 		return nil, err
 	}
 
-	data, err := s.chatRequest(ctx, session, account.PDSHost, "GET",
+	data, err := s.chatRequest(ctx, session, "GET",
 		fmt.Sprintf("chat.bsky.convo.getMessages?convoId=%s&limit=50", convoID), nil)
 	if err != nil {
 		return nil, err
@@ -427,7 +428,7 @@ func (s *BlueskyService) SendChatMessage(ctx context.Context, convoID, text, acc
 		},
 	}
 
-	_, err = s.chatRequest(ctx, session, account.PDSHost, "POST", "chat.bsky.convo.sendMessage", body)
+	_, err = s.chatRequest(ctx, session, "POST", "chat.bsky.convo.sendMessage", body)
 	return err
 }
 
