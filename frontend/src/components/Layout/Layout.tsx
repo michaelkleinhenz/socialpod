@@ -9,18 +9,20 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const navItems = [
+    ...(user?.isAdmin ? [{ path: '/admin', icon: Zap, label: 'Dashboard' }] : []),
     { path: '/', icon: Calendar, label: 'Calendar' },
-    { path: '/log', icon: ScrollText, label: 'Post Log' },
-    { path: '/suffixes', icon: Signature, label: 'Suffixes' },
     { path: '/inbox/comments', icon: MessageCircle, label: 'Comments' },
     { path: '/inbox/dms', icon: Mail, label: 'DMs' },
     { path: '/feed', icon: LayoutGrid, label: 'Feed' },
+    { path: '/log', icon: ScrollText, label: 'Post Log' },
     ...(user?.isAdmin ? [
-      { path: '/admin', icon: Zap, label: 'Dashboard' },
       { path: '/admin/accounts', icon: Share2, label: 'Accounts' },
+    ] : []),
+    { path: '/suffixes', icon: Signature, label: 'Suffixes' },
+    ...(user?.isAdmin ? [
+      { path: '/admin/watermarks', icon: Image, label: 'Watermarks' },
       { path: '/admin/users', icon: Users, label: 'Users' },
       { path: '/admin/teams', icon: UsersRound, label: 'Teams' },
-      { path: '/admin/watermarks', icon: Image, label: 'Watermarks' },
       { path: '/admin/settings', icon: Settings, label: 'Settings' },
     ] : []),
   ];
