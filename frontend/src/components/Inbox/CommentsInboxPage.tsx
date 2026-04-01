@@ -155,7 +155,7 @@ function CommentEntry({
 
           <div className="inbox-entry-text">{message.text}</div>
 
-          {message.mediaId && (
+          {(message.mediaId || message.mediaUrl) && (
             <div className="inbox-entry-context">
               {message.mediaUrl ? (
                 <a
