@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -299,10 +300,22 @@ func (s *BlueskyService) chatRequest(ctx context.Context, session *bskySession, 
 
 // BSkyConvo represents a Bluesky chat conversation.
 type BSkyConvo struct {
-	ID          string          `json:"id"`
-	Members     []BSkyDMProfile `json:"members"`
-	LastMessage *BSkyDMMessage  `json:"lastMessage"`
-	UnreadCount int             `json:"unreadCount"`
+	ID          string           `json:"id"`
+	Members     []BSkyDMProfile  `json:"members"`
+	LastMessage json.RawMessage  `json:"lastMessage"`
+	UnreadCount int              `json:"unreadCount"`
+}
+
+// ParseLastMessage extracts the last message from the raw JSON union type.
+func (c *BSkyConvo) ParseLastMessage() *BSkyDMMessage {
+	if len(c.LastMessage) == 0 {
+		return nil
+	}
+	var msg BSkyDMMessage
+	if err := json.Unmarshal(c.LastMessage, &msg); err != nil {
+		return nil
+	}
+	return &msg
 }
 
 // BSkyDMProfile represents a user profile in a DM conversation.
@@ -315,10 +328,11 @@ type BSkyDMProfile struct {
 
 // BSkyDMMessage represents a single chat message.
 type BSkyDMMessage struct {
-	ID     string        `json:"id"`
-	Text   string        `json:"text"`
-	Sender BSkyDMSender  `json:"sender"`
-	SentAt string        `json:"sentAt"`
+	Type   string       `json:"$type"`
+	ID     string       `json:"id"`
+	Text   string       `json:"text"`
+	Sender BSkyDMSender `json:"sender"`
+	SentAt string       `json:"sentAt"`
 }
 
 // BSkyDMSender identifies who sent a chat message.
@@ -352,13 +366,17 @@ func (s *BlueskyService) ListConvos(ctx context.Context, accountID string) ([]BS
 		return nil, nil, err
 	}
 
+	log.Printf("ListConvos: raw response length=%d account=%s did=%s", len(data), account.AccountName, account.DID)
+
 	var result struct {
 		Convos []BSkyConvo `json:"convos"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("ListConvos: unmarshal error: %v body=%s", err, string(data))
 		return nil, nil, err
 	}
 
+	log.Printf("ListConvos: found %d conversations", len(result.Convos))
 	return result.Convos, account, nil
 }
 

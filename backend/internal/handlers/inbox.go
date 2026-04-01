@@ -147,21 +147,26 @@ func (h *InboxHandler) syncBlueskyDMs() {
 		return
 	}
 
+	log.Printf("syncBlueskyDMs: got %d convos, account DID=%s", len(convos), account.DID)
+
 	upsert := true
 	for _, convo := range convos {
-		if convo.LastMessage == nil || convo.LastMessage.Text == "" {
+		lastMsg := convo.ParseLastMessage()
+		if lastMsg == nil || lastMsg.Text == "" {
+			log.Printf("syncBlueskyDMs: skipping convo %s - no last message or empty text", convo.ID)
 			continue
 		}
 
 		// Skip messages sent by our own account
-		if convo.LastMessage.Sender.DID == account.DID {
+		if lastMsg.Sender.DID == account.DID {
+			log.Printf("syncBlueskyDMs: skipping convo %s - own message (sender=%s)", convo.ID, lastMsg.Sender.DID)
 			continue
 		}
 
 		// Find the sender profile from the conversation members
 		var senderName, senderHandle string
 		for _, m := range convo.Members {
-			if m.DID == convo.LastMessage.Sender.DID {
+			if m.DID == lastMsg.Sender.DID {
 				senderName = m.DisplayName
 				senderHandle = m.Handle
 				break
@@ -173,18 +178,18 @@ func (h *InboxHandler) syncBlueskyDMs() {
 		}
 
 		receivedAt := time.Now()
-		if t, err := time.Parse(time.RFC3339, convo.LastMessage.SentAt); err == nil {
+		if t, err := time.Parse(time.RFC3339, lastMsg.SentAt); err == nil {
 			receivedAt = t
 		}
 
 		msg := models.InboxMessage{
 			Platform:    models.PlatformBluesky,
 			MessageType: models.MessageTypeDM,
-			ExternalID:  convo.LastMessage.ID,
+			ExternalID:  lastMsg.ID,
 			ThreadID:    convo.ID,
-			SenderID:    convo.LastMessage.Sender.DID,
+			SenderID:    lastMsg.Sender.DID,
 			SenderName:  displayName,
-			Text:        convo.LastMessage.Text,
+			Text:        lastMsg.Text,
 			AccountID:   account.ID,
 			AccountName: account.AccountName,
 			IsRead:      false,
