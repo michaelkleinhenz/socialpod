@@ -2,11 +2,19 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { Post } from '../../types';
-import { Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock, CheckCircle, AlertCircle, Image } from 'lucide-react';
+import { Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock, CheckCircle, AlertCircle, Image, Sparkles, ArrowUp, ArrowDown, Minus, RefreshCw, AlertTriangle, Lightbulb } from 'lucide-react';
 import './Admin.css';
+
+type InsightsData = {
+  stats: { label: string; value: string; trend: 'up' | 'down' | 'neutral' }[];
+  recommendations: { title: string; description: string; priority: 'high' | 'medium' | 'low' }[];
+};
 
 export function AdminPage() {
   const [stats, setStats] = useState({ total: 0, scheduled: 0, published: 0, failed: 0, accounts: 0, users: 0, teams: 0 });
+  const [insights, setInsights] = useState<InsightsData | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState('');
 
   useEffect(() => {
     Promise.all([
@@ -26,6 +34,27 @@ export function AdminPage() {
       });
     });
   }, []);
+
+  const loadInsights = () => {
+    setInsightsLoading(true);
+    setInsightsError('');
+    api.getDashboardInsights()
+      .then(data => setInsights(data))
+      .catch(err => setInsightsError(err.message || 'Failed to generate insights'))
+      .finally(() => setInsightsLoading(false));
+  };
+
+  const trendIcon = (trend: string) => {
+    if (trend === 'up') return <ArrowUp size={14} />;
+    if (trend === 'down') return <ArrowDown size={14} />;
+    return <Minus size={14} />;
+  };
+
+  const priorityConfig = {
+    high: { color: 'var(--danger)', label: 'High' },
+    medium: { color: 'var(--warning)', label: 'Medium' },
+    low: { color: 'var(--success)', label: 'Low' },
+  };
 
   return (
     <div className="page">
@@ -73,6 +102,84 @@ export function AdminPage() {
             <div className="stat-label">Failed</div>
           </div>
         </div>
+      </div>
+
+      {/* AI Insights Section */}
+      <div className="insights-section">
+        <div className="insights-header">
+          <div className="insights-title">
+            <Sparkles size={20} />
+            <h2>AI Insights</h2>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={loadInsights}
+            disabled={insightsLoading}
+          >
+            <RefreshCw size={14} className={insightsLoading ? 'spinning' : ''} />
+            {insights ? 'Refresh' : 'Generate insights'}
+          </button>
+        </div>
+
+        {insightsLoading && (
+          <div className="insights-loading">
+            <div className="spinner" />
+            <p>Analyzing your posting data...</p>
+          </div>
+        )}
+
+        {insightsError && (
+          <div className="insights-error">
+            <AlertTriangle size={16} />
+            {insightsError}
+          </div>
+        )}
+
+        {insights && !insightsLoading && (
+          <>
+            {insights.stats && insights.stats.length > 0 && (
+              <div className="ai-stats-grid">
+                {insights.stats.map((s, i) => (
+                  <div key={i} className="ai-stat-card">
+                    <div className="ai-stat-value">{s.value}</div>
+                    <div className="ai-stat-label">{s.label}</div>
+                    <div className={`ai-stat-trend ${s.trend}`}>
+                      {trendIcon(s.trend)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {insights.recommendations && insights.recommendations.length > 0 && (
+              <div className="recommendations-list">
+                <h3><Lightbulb size={16} /> Recommendations</h3>
+                {insights.recommendations.map((r, i) => {
+                  const pc = priorityConfig[r.priority] || priorityConfig.medium;
+                  return (
+                    <div key={i} className="recommendation-card">
+                      <div className="recommendation-priority" style={{ background: pc.color }} title={pc.label} />
+                      <div className="recommendation-content">
+                        <div className="recommendation-title">{r.title}</div>
+                        <div className="recommendation-desc">{r.description}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {!insights && !insightsLoading && !insightsError && (
+          <div className="insights-placeholder">
+            <Sparkles size={32} />
+            <p>Get AI-powered insights about your posting patterns and content strategy.</p>
+            <button className="btn btn-primary" onClick={loadInsights}>
+              Generate insights
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="admin-links">

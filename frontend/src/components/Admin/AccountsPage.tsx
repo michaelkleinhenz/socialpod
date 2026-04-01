@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { SocialAccount } from '../../types';
 import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink } from 'lucide-react';
+import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import './Admin.css';
 
@@ -97,7 +98,7 @@ export function AccountsPage() {
           {accounts.map(account => (
             <div key={account.id} className={`account-card ${!account.isActive ? 'inactive' : ''}`}>
               <div className="account-header">
-                <span className={`platform-dot ${account.platform}`} style={{ width: 12, height: 12 }} />
+                <PlatformIcon platform={account.platform} size={12} />
                 <span className="account-platform">{account.platform}</span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => toggleAccount(account.id)} title={account.isActive ? 'Disable' : 'Enable'}>

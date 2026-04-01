@@ -1,6 +1,7 @@
 import type { Post } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Image, CheckCircle, Clock, AlertTriangle, FileEdit, Film } from 'lucide-react';
+import { PlatformIcon } from '../Common/PlatformIcon';
 
 interface Props {
   post: Post;
@@ -44,7 +45,7 @@ export function CalendarPost({ post, onClick, isDragging }: Props) {
       </div>
       <div className="post-meta">
         {post.platforms.map(p => (
-          <span key={p} className={`platform-dot ${p}`} title={p} />
+          <PlatformIcon key={p} platform={p} size={10} />
         ))}
         {post.imageUrls && post.imageUrls.length > 0 && (
           <Image size={10} style={{ color: 'var(--text-muted)' }} />

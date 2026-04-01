@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Suffix, SocialAccount } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil } from 'lucide-react';
+import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import './PostEditor.css';
@@ -571,14 +572,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
                     onClick={() => togglePlatform('bluesky')}
                   >
-                    <span className="platform-dot bluesky" />
+                    <PlatformIcon platform="bluesky" size={14} />
                     Bluesky
                   </div>
                   <div
                     className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
                     onClick={() => togglePlatform('instagram')}
                   >
-                    <span className="platform-dot instagram" />
+                    <PlatformIcon platform="instagram" size={14} />
                     Instagram
                   </div>
                 </div>
@@ -588,7 +589,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   <div className="suffix-selectors">
                     <div className="suffix-selector-row">
                       <label className={`suffix-label${!platforms.includes('bluesky') ? ' disabled' : ''}`}>
-                        <span className="platform-dot bluesky" /> Bluesky suffix
+                        <PlatformIcon platform="bluesky" size={12} /> Bluesky suffix
                       </label>
                       <select
                         className="select suffix-select"
@@ -609,7 +610,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     </div>
                     <div className="suffix-selector-row">
                       <label className={`suffix-label${!platforms.includes('instagram') ? ' disabled' : ''}`}>
-                        <span className="platform-dot instagram" /> Instagram suffix
+                        <PlatformIcon platform="instagram" size={12} /> Instagram suffix
                       </label>
                       <select
                         className="select suffix-select"
@@ -661,7 +662,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                         return (
                           <div key={platform} style={{ marginBottom: 8 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                              <span className={`platform-dot ${platform}`} />
+                              <PlatformIcon platform={platform} size={12} />
                               <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{platform}</span>
                             </div>
                             <textarea

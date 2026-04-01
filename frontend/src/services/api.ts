@@ -197,6 +197,14 @@ class ApiClient {
     });
   }
 
+  // Dashboard AI insights
+  getDashboardInsights() {
+    return this.request<{
+      stats: { label: string; value: string; trend: 'up' | 'down' | 'neutral' }[];
+      recommendations: { title: string; description: string; priority: 'high' | 'medium' | 'low' }[];
+    }>('/dashboard/ai-insights', { method: 'POST' });
+  }
+
   // Suffixes
   getSuffixes() {
     return this.request<any[]>('/suffixes');

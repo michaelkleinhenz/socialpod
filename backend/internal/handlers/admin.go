@@ -980,6 +980,215 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"text": result.Choices[0].Message.Content})
 }
 
+func (h *AdminHandler) DashboardInsights(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil || settings.OpenRouterAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenRouter is not configured"})
+		return
+	}
+
+	// Gather all posts
+	cursor, err := h.DB.Posts().Find(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load posts"})
+		return
+	}
+	var posts []models.Post
+	if err := cursor.All(ctx, &posts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode posts"})
+		return
+	}
+
+	// Gather accounts
+	acCursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{"isActive": true})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load accounts"})
+		return
+	}
+	var accounts []models.SocialAccount
+	if err := acCursor.All(ctx, &accounts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode accounts"})
+		return
+	}
+
+	// Build stats summary for the AI
+	now := time.Now()
+	thirtyDaysAgo := now.AddDate(0, 0, -30)
+	sevenDaysAgo := now.AddDate(0, 0, -7)
+
+	totalPosts := len(posts)
+	var published, failed, scheduled, drafts int
+	var recentPosts, last7Posts int
+	platformCounts := map[string]int{}
+	typeCounts := map[string]int{}
+	tagCounts := map[string]int{}
+	hourCounts := map[int]int{}
+	weekdayCounts := map[string]int{}
+	var recentContents []string
+
+	for _, p := range posts {
+		switch p.Status {
+		case models.PostStatusPublished:
+			published++
+		case models.PostStatusFailed:
+			failed++
+		case models.PostStatusScheduled:
+			scheduled++
+		case models.PostStatusDraft:
+			drafts++
+		}
+		for _, pl := range p.Platforms {
+			platformCounts[string(pl)]++
+		}
+		pt := string(p.PostType)
+		if pt == "" {
+			pt = "post"
+		}
+		typeCounts[pt]++
+		for _, t := range p.Tags {
+			tagCounts[t]++
+		}
+		if p.ScheduledAt.After(thirtyDaysAgo) {
+			recentPosts++
+			hourCounts[p.ScheduledAt.Hour()]++
+			weekdayCounts[p.ScheduledAt.Weekday().String()]++
+		}
+		if p.ScheduledAt.After(sevenDaysAgo) {
+			last7Posts++
+		}
+		// Collect recent content snippets (last 20 published posts)
+		if p.Status == models.PostStatusPublished && len(recentContents) < 20 {
+			snippet := p.Content
+			if len(snippet) > 150 {
+				snippet = snippet[:150] + "..."
+			}
+			if snippet != "" {
+				recentContents = append(recentContents, snippet)
+			}
+		}
+	}
+
+	// Build account info
+	accountInfo := []string{}
+	for _, a := range accounts {
+		accountInfo = append(accountInfo, fmt.Sprintf("%s (@%s)", a.Platform, a.AccountName))
+	}
+
+	// Build the data summary
+	summary := fmt.Sprintf(`Social Media Dashboard Data:
+
+Accounts: %s
+
+Post Statistics (all time):
+- Total posts: %d
+- Published: %d
+- Failed: %d
+- Scheduled (upcoming): %d
+- Drafts: %d
+
+Last 30 days: %d posts
+Last 7 days: %d posts
+
+Platform distribution: %v
+Post types: %v
+Tags used: %v
+
+Posting hours (last 30 days, 24h format): %v
+Posting days (last 30 days): %v
+
+Recent post content snippets:
+%s`,
+		fmt.Sprintf("%v", accountInfo),
+		totalPosts, published, failed, scheduled, drafts,
+		recentPosts, last7Posts,
+		platformCounts, typeCounts, tagCounts,
+		hourCounts, weekdayCounts,
+		formatSnippets(recentContents),
+	)
+
+	model := settings.OpenRouterModel
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	systemPrompt := `You are a social media strategy analyst. Analyze the posting data provided and give actionable recommendations. Respond in valid JSON with this exact structure:
+{
+  "stats": [
+    {"label": "short label", "value": "number or short text", "trend": "up|down|neutral"}
+  ],
+  "recommendations": [
+    {"title": "short title", "description": "1-2 sentence actionable recommendation", "priority": "high|medium|low"}
+  ]
+}
+
+Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). Reply ONLY with valid JSON, no markdown fences.`
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": summary},
+		},
+	})
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach OpenRouter: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("OpenRouter returned %d: %s", resp.StatusCode, string(body))})
+		return
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Invalid response from OpenRouter"})
+		return
+	}
+
+	// Parse the AI response as JSON and forward it
+	aiText := result.Choices[0].Message.Content
+	var insights json.RawMessage
+	if err := json.Unmarshal([]byte(aiText), &insights); err != nil {
+		// If the AI didn't return valid JSON, wrap it
+		c.JSON(http.StatusOK, gin.H{
+			"stats":           []any{},
+			"recommendations": []any{},
+			"raw":             aiText,
+		})
+		return
+	}
+	c.Data(http.StatusOK, "application/json", insights)
+}
+
+func formatSnippets(snippets []string) string {
+	if len(snippets) == 0 {
+		return "(no published posts yet)"
+	}
+	result := ""
+	for i, s := range snippets {
+		result += fmt.Sprintf("%d. %s\n", i+1, s)
+	}
+	return result
+}
+
 // Watermark gallery management
 
 func (h *AdminHandler) ListWatermarks(c *gin.Context) {

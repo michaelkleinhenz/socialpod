@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
 import { Image, RefreshCw, Heart, MessageCircle, ExternalLink } from 'lucide-react';
+import { PlatformIcon } from '../Common/PlatformIcon';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Inbox.css';
@@ -90,7 +91,7 @@ export function FeedPage() {
                   className={`feed-tab ${selectedAccount === a.id ? 'active' : ''}`}
                   onClick={() => setSelectedAccount(a.id)}
                 >
-                  <span className={`feed-tab-dot ${a.platform}`} />
+                  <PlatformIcon platform={a.platform} size={10} />
                   @{a.accountName}
                 </button>
               ))}
