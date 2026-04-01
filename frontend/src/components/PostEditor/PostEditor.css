@@ -272,13 +272,19 @@
 
 .preview-image {
   width: 100%;
-  aspect-ratio: 16/9;
   object-fit: cover;
   display: block;
 }
 
 .preview-images-1 .preview-image {
-  aspect-ratio: 16/9;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+.preview-images-2 .preview-image,
+.preview-images-3 .preview-image,
+.preview-images-4 .preview-image {
+  aspect-ratio: 1;
 }
 
 /* Instagram image */
