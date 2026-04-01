@@ -27,7 +27,7 @@
   gap: 18px;
   overflow-y: auto;
   max-height: 65vh;
-  padding-right: 4px;
+  padding-right: 16px;
 }
 
 .post-textarea {

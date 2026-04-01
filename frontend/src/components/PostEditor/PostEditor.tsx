@@ -260,7 +260,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [adobeLoading, setAdobeLoading] = useState(false);
   const [adobeActive, setAdobeActive] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState<boolean | Platform>(false);
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -404,18 +404,23 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }
   }, [adobeClientId, platforms, isStory]);
 
-  const generateText = useCallback(async () => {
-    if (!content.trim()) { toast.error('Enter a prompt first'); return; }
-    setGenerating(true);
+  const generateText = useCallback(async (platform?: Platform) => {
+    const prompt = platform ? (contentOverrides[platform] || '').trim() : content.trim();
+    if (!prompt) { toast.error('Enter a prompt first'); return; }
+    setGenerating(platform || true);
     try {
-      const { text } = await api.generateText(content, platforms);
-      setContent(text);
+      const { text } = await api.generateText(prompt, platform ? [platform] : platforms);
+      if (platform) {
+        setContentOverrides(prev => ({ ...prev, [platform]: text }));
+      } else {
+        setContent(text);
+      }
     } catch (err: any) {
       toast.error(err.message || 'Text generation failed');
     } finally {
       setGenerating(false);
     }
-  }, [content, platforms]);
+  }, [content, contentOverrides, platforms]);
 
   const togglePlatform = (p: Platform) => {
     setPlatforms(prev =>
@@ -491,6 +496,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       if (images.length === 0) { toast.error('A story requires an image or video'); return; }
     } else if (isReel) {
       if (images.length === 0) { toast.error('A reel requires a video'); return; }
+    } else if (customizePerPlatform && platforms.length > 1) {
+      const missing = platforms.filter(p => !(contentOverrides[p] || '').trim());
+      if (missing.length > 0) { toast.error(`Content is required for ${missing.join(', ')}`); return; }
+      const over = platforms.find(p => (contentOverrides[p] || '').length > effectiveLimit(p));
+      if (over) { toast.error(`Content for ${over} exceeds ${effectiveLimit(over)} character limit`); return; }
     } else {
       if (!content.trim()) { toast.error('Content is required'); return; }
       if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
@@ -658,39 +668,43 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                               className="textarea post-textarea"
                               value={overrideVal}
                               onChange={e => setContentOverrides(prev => ({ ...prev, [platform]: e.target.value }))}
-                              placeholder={`Text for ${platform}… (leave empty to use shared text below)`}
+                              placeholder={`Text for ${platform}…`}
                               rows={4}
                             />
-                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                              <div className={`char-counter ${platformClass}`}>{platformCount} / {platformLimit}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              {aiEnabled && (
+                                <button className="btn btn-ghost btn-sm" onClick={() => generateText(platform)} disabled={!!generating || !overrideVal.trim()}>
+                                  <Sparkles size={14} /> {generating === platform ? 'Generating...' : 'Generate'}
+                                </button>
+                              )}
+                              <div className={`char-counter ${platformClass}`} style={{ marginLeft: 'auto' }}>{platformCount} / {platformLimit}</div>
                             </div>
                           </div>
                         );
                       })}
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-                        Shared fallback text (used when a platform field is empty):
+                    </>
+                  ) : (
+                    <>
+                      <textarea
+                        ref={textareaRef}
+                        className="textarea post-textarea"
+                        value={content}
+                        onChange={e => setContent(e.target.value)}
+                        placeholder="What's on your mind? Use #hashtags for tags..."
+                        rows={5}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {aiEnabled && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => generateText()} disabled={!!generating || !content.trim()}>
+                            <Sparkles size={14} /> {generating === true ? 'Generating...' : 'Generate'}
+                          </button>
+                        )}
+                        <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
+                          {charCount} / {charLimit}
+                        </div>
                       </div>
                     </>
-                  ) : null}
-
-                  <textarea
-                    ref={textareaRef}
-                    className="textarea post-textarea"
-                    value={content}
-                    onChange={e => setContent(e.target.value)}
-                    placeholder="What's on your mind? Use #hashtags for tags..."
-                    rows={5}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    {aiEnabled && (
-                      <button className="btn btn-ghost btn-sm" onClick={generateText} disabled={generating || !content.trim()}>
-                        <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
-                      </button>
-                    )}
-                    <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
-                      {charCount} / {charLimit}
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* First Comment */}
@@ -731,8 +745,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   />
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     {aiEnabled && (
-                      <button className="btn btn-ghost btn-sm" onClick={generateText} disabled={generating || !content.trim()}>
-                        <Sparkles size={14} /> {generating ? 'Generating...' : 'Generate'}
+                      <button className="btn btn-ghost btn-sm" onClick={() => generateText()} disabled={!!generating || !content.trim()}>
+                        <Sparkles size={14} /> {generating === true ? 'Generating...' : 'Generate'}
                       </button>
                     )}
                     <div className={`char-counter ${charClass}`} style={{ marginLeft: 'auto' }}>
