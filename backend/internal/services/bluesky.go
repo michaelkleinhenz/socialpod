@@ -181,10 +181,16 @@ func (s *BlueskyService) createSession(account *models.SocialAccount) (*bskySess
 }
 
 // FetchProfile authenticates and returns display name + avatar URL for a Bluesky account.
+// It also sets the account's DID as a side effect.
 func (s *BlueskyService) FetchProfile(account *models.SocialAccount) (displayName, avatarURL string, err error) {
 	session, err := s.createSession(account)
 	if err != nil {
 		return "", "", err
+	}
+
+	// Store the DID on the account so it can be persisted
+	if session.DID != "" {
+		account.DID = session.DID
 	}
 
 	req, _ := http.NewRequest("GET",
@@ -258,6 +264,153 @@ func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imag
 	}
 
 	return images, nil
+}
+
+// chatRequest makes a request to the Bluesky chat API via PDS proxy.
+func (s *BlueskyService) chatRequest(ctx context.Context, session *bskySession, pdsHost, method, endpoint string, body interface{}) ([]byte, error) {
+	var reqBody io.Reader
+	if body != nil {
+		data, _ := json.Marshal(body)
+		reqBody = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, pdsHost+"/xrpc/"+endpoint, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
+	req.Header.Set("atproto-proxy", "did:web:api.bsky.chat#bsky_chat")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("chat API %s returned %d: %s", endpoint, resp.StatusCode, string(respBody))
+	}
+	return respBody, nil
+}
+
+// BSkyConvo represents a Bluesky chat conversation.
+type BSkyConvo struct {
+	ID          string          `json:"id"`
+	Members     []BSkyDMProfile `json:"members"`
+	LastMessage *BSkyDMMessage  `json:"lastMessage"`
+	UnreadCount int             `json:"unreadCount"`
+}
+
+// BSkyDMProfile represents a user profile in a DM conversation.
+type BSkyDMProfile struct {
+	DID         string `json:"did"`
+	Handle      string `json:"handle"`
+	DisplayName string `json:"displayName"`
+	Avatar      string `json:"avatar"`
+}
+
+// BSkyDMMessage represents a single chat message.
+type BSkyDMMessage struct {
+	ID     string        `json:"id"`
+	Text   string        `json:"text"`
+	Sender BSkyDMSender  `json:"sender"`
+	SentAt string        `json:"sentAt"`
+}
+
+// BSkyDMSender identifies who sent a chat message.
+type BSkyDMSender struct {
+	DID string `json:"did"`
+}
+
+// ListConvos returns recent Bluesky DM conversations.
+func (s *BlueskyService) ListConvos(ctx context.Context, accountID string) ([]BSkyConvo, *models.SocialAccount, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Ensure the account has the DID stored
+	if account.DID == "" && session.DID != "" {
+		account.DID = session.DID
+		s.DB.SocialAccounts().UpdateOne(ctx,
+			bson.M{"_id": account.ID},
+			bson.M{"$set": bson.M{"did": session.DID}},
+		)
+	}
+
+	data, err := s.chatRequest(ctx, session, account.PDSHost, "GET", "chat.bsky.convo.listConvos?limit=50", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var result struct {
+		Convos []BSkyConvo `json:"convos"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, nil, err
+	}
+
+	return result.Convos, account, nil
+}
+
+// GetConvoMessages returns messages from a specific conversation.
+func (s *BlueskyService) GetConvoMessages(ctx context.Context, convoID, accountID string) ([]BSkyDMMessage, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := s.chatRequest(ctx, session, account.PDSHost, "GET",
+		fmt.Sprintf("chat.bsky.convo.getMessages?convoId=%s&limit=50", convoID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Messages []BSkyDMMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+
+	return result.Messages, nil
+}
+
+// SendChatMessage sends a DM reply in an existing Bluesky conversation.
+func (s *BlueskyService) SendChatMessage(ctx context.Context, convoID, text, accountID string) error {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return err
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return err
+	}
+
+	body := map[string]interface{}{
+		"convoId": convoID,
+		"message": map[string]string{
+			"text": text,
+		},
+	}
+
+	_, err = s.chatRequest(ctx, session, account.PDSHost, "POST", "chat.bsky.convo.sendMessage", body)
+	return err
 }
 
 func (s *BlueskyService) parseFacets(text string) []map[string]interface{} {

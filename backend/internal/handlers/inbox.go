@@ -19,6 +19,7 @@ import (
 type InboxHandler struct {
 	DB        *database.MongoDB
 	Instagram *services.InstagramService
+	Bluesky   *services.BlueskyService
 }
 
 // ListComments returns paginated comment inbox entries across all platforms.
@@ -30,7 +31,83 @@ func (h *InboxHandler) ListComments(c *gin.Context) {
 // ListDMs returns paginated DM inbox entries across all platforms.
 // GET /inbox/dms?page=1&limit=50
 func (h *InboxHandler) ListDMs(c *gin.Context) {
+	// Sync Bluesky DMs on-demand (no webhook available)
+	h.syncBlueskyDMs()
 	h.listMessages(c, models.MessageTypeDM)
+}
+
+// syncBlueskyDMs fetches recent Bluesky conversations and inserts new
+// incoming messages into the inbox. Only messages from other users are stored.
+func (h *InboxHandler) syncBlueskyDMs() {
+	if h.Bluesky == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	convos, account, err := h.Bluesky.ListConvos(ctx, "")
+	if err != nil {
+		log.Printf("syncBlueskyDMs: ListConvos error: %v", err)
+		return
+	}
+
+	upsert := true
+	for _, convo := range convos {
+		if convo.LastMessage == nil || convo.LastMessage.Text == "" {
+			continue
+		}
+
+		// Skip messages sent by our own account
+		if convo.LastMessage.Sender.DID == account.DID {
+			continue
+		}
+
+		// Find the sender profile from the conversation members
+		var senderName, senderHandle string
+		for _, m := range convo.Members {
+			if m.DID == convo.LastMessage.Sender.DID {
+				senderName = m.DisplayName
+				senderHandle = m.Handle
+				break
+			}
+		}
+		displayName := senderName
+		if displayName == "" {
+			displayName = senderHandle
+		}
+
+		receivedAt := time.Now()
+		if t, err := time.Parse(time.RFC3339, convo.LastMessage.SentAt); err == nil {
+			receivedAt = t
+		}
+
+		msg := models.InboxMessage{
+			Platform:    models.PlatformBluesky,
+			MessageType: models.MessageTypeDM,
+			ExternalID:  convo.LastMessage.ID,
+			ThreadID:    convo.ID,
+			SenderID:    convo.LastMessage.Sender.DID,
+			SenderName:  displayName,
+			Text:        convo.LastMessage.Text,
+			AccountID:   account.ID,
+			AccountName: account.AccountName,
+			IsRead:      false,
+			IsReplied:   false,
+			ReceivedAt:  receivedAt,
+			CreatedAt:   time.Now(),
+		}
+
+		doc, err := structToBSONDoc(msg)
+		if err != nil {
+			continue
+		}
+		h.DB.InboxMessages().UpdateOne(ctx,
+			bson.M{"externalId": msg.ExternalID},
+			bson.M{"$setOnInsert": doc},
+			&options.UpdateOptions{Upsert: &upsert},
+		)
+	}
 }
 
 // backfillSenderNames attempts to resolve sender names for DM messages that
@@ -261,9 +338,26 @@ func (h *InboxHandler) ReplyToDM(c *gin.Context) {
 	if !msg.AccountID.IsZero() {
 		accountID = msg.AccountID.Hex()
 	}
-	if err := h.Instagram.SendDM(ctx, msg.SenderID, input.Text, accountID); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
+
+	switch msg.Platform {
+	case models.PlatformBluesky:
+		if h.Bluesky == nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Bluesky service not configured"})
+			return
+		}
+		if msg.ThreadID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing conversation ID"})
+			return
+		}
+		if err := h.Bluesky.SendChatMessage(ctx, msg.ThreadID, input.Text, accountID); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+	default:
+		if err := h.Instagram.SendDM(ctx, msg.SenderID, input.Text, accountID); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	h.DB.InboxMessages().UpdateOne(ctx, bson.M{"_id": msgID}, bson.M{
