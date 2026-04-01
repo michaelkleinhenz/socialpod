@@ -249,6 +249,10 @@ class ApiClient {
     });
   }
 
+  likeComment(id: string) {
+    return this.request<any>(`/inbox/comments/${id}/like`, { method: 'POST' });
+  }
+
   replyToDM(id: string, text: string) {
     return this.request<any>(`/inbox/dms/${id}/reply`, {
       method: 'POST',

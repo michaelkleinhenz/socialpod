@@ -89,6 +89,7 @@ func main() {
 		auth.GET("/inbox/dms", inboxHandler.ListDMs)
 		auth.PATCH("/inbox/:id/read", inboxHandler.MarkRead)
 		auth.POST("/inbox/comments/:id/reply", inboxHandler.ReplyToComment)
+		auth.POST("/inbox/comments/:id/like", inboxHandler.LikeComment)
 		auth.POST("/inbox/dms/:id/reply", inboxHandler.ReplyToDM)
 		auth.GET("/inbox/feed", inboxHandler.GetFeed)
 

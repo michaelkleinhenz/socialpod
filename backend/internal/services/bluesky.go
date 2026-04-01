@@ -639,6 +639,48 @@ func (s *BlueskyService) ResolveURI(ctx context.Context, uri, accountID string) 
 	return result.CID, nil
 }
 
+// LikePost creates an app.bsky.feed.like record for the given post URI/CID.
+func (s *BlueskyService) LikePost(ctx context.Context, uri, cid, accountID string) error {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("no active Bluesky account: %w", err)
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return fmt.Errorf("auth failed: %w", err)
+	}
+
+	body := map[string]interface{}{
+		"repo":       session.DID,
+		"collection": "app.bsky.feed.like",
+		"record": map[string]interface{}{
+			"$type":     "app.bsky.feed.like",
+			"subject":   map[string]string{"uri": uri, "cid": cid},
+			"createdAt": time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	jsonBody, _ := json.Marshal(body)
+	req, _ := http.NewRequestWithContext(ctx, "POST",
+		account.PDSHost+"/xrpc/com.atproto.repo.createRecord",
+		bytes.NewReader(jsonBody))
+	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("like failed (%d): %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 func (s *BlueskyService) parseFacets(text string) []map[string]interface{} {
 	var facets []map[string]interface{}
 

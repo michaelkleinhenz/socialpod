@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
-import { MessageCircle, RefreshCw, Reply, CheckCircle2, ExternalLink } from 'lucide-react';
+import { MessageCircle, RefreshCw, Reply, CheckCircle2, ExternalLink, Heart } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Inbox.css';
@@ -18,6 +18,7 @@ interface InboxMessage {
   mediaUrl: string;
   isRead: boolean;
   isReplied: boolean;
+  isLiked: boolean;
   receivedAt: string;
 }
 
@@ -78,6 +79,11 @@ export function CommentsInboxPage() {
                   prev.map(m => m.id === msg.id ? { ...m, isRead: true } : m)
                 );
               }}
+              onLiked={() => {
+                setMessages(prev =>
+                  prev.map(m => m.id === msg.id ? { ...m, isLiked: true } : m)
+                );
+              }}
             />
           ))}
         </div>
@@ -90,18 +96,35 @@ function CommentEntry({
   message,
   onReplied,
   onRead,
+  onLiked,
 }: {
   message: InboxMessage;
   onReplied: () => void;
   onRead: () => void;
+  onLiked: () => void;
 }) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const [liking, setLiking] = useState(false);
 
   const handleMarkRead = () => {
     if (!message.isRead) {
       api.markInboxRead(message.id).then(onRead).catch(() => {});
+    }
+  };
+
+  const handleLike = async () => {
+    if (message.isLiked || liking) return;
+    setLiking(true);
+    try {
+      await api.likeComment(message.id);
+      toast.success('Liked');
+      onLiked();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to like');
+    } finally {
+      setLiking(false);
     }
   };
 
@@ -174,20 +197,32 @@ function CommentEntry({
           )}
 
           <div className="inbox-entry-actions" onClick={e => e.stopPropagation()}>
-            {message.isReplied ? (
-              <span className="replied-badge">
-                <CheckCircle2 size={13} />
-                Replied
-              </span>
-            ) : (
+            <div className="inbox-actions-row">
               <button
-                className="reply-toggle-btn"
-                onClick={() => setShowReply(v => !v)}
+                className={`like-btn ${message.isLiked ? 'liked' : ''}`}
+                onClick={handleLike}
+                disabled={message.isLiked || liking}
+                title={message.isLiked ? 'Liked' : 'Like this comment'}
               >
-                <Reply size={13} />
-                {showReply ? 'Cancel' : 'Reply'}
+                <Heart size={13} fill={message.isLiked ? 'currentColor' : 'none'} />
+                {message.isLiked ? 'Liked' : 'Like'}
               </button>
-            )}
+
+              {message.isReplied ? (
+                <span className="replied-badge">
+                  <CheckCircle2 size={13} />
+                  Replied
+                </span>
+              ) : (
+                <button
+                  className="reply-toggle-btn"
+                  onClick={() => setShowReply(v => !v)}
+                >
+                  <Reply size={13} />
+                  {showReply ? 'Cancel' : 'Reply'}
+                </button>
+              )}
+            </div>
 
             {showReply && !message.isReplied && (
               <div className="reply-form">
