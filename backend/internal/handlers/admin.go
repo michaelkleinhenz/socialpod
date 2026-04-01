@@ -41,9 +41,10 @@ func structToBSONDoc(v interface{}) (bson.D, error) {
 }
 
 type AdminHandler struct {
-	DB       *database.MongoDB
-	Bluesky  *services.BlueskyService
+	DB        *database.MongoDB
+	Bluesky   *services.BlueskyService
 	Instagram *services.InstagramService
+	UploadDir string
 }
 
 func (h *AdminHandler) ListAccounts(c *gin.Context) {
@@ -1002,14 +1003,7 @@ func (h *AdminHandler) UploadWatermark(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	postHandler := &PostHandler{DB: h.DB, UploadDir: ""}
-	// Try to get UploadDir from the request context if available; fall back
-	// to the default used by PostHandler when not set.
-	if ud, ok := c.Get("uploadDir"); ok {
-		postHandler.UploadDir = ud.(string)
-	} else {
-		postHandler.UploadDir = "./uploads"
-	}
+	postHandler := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
 
 	url, err := postHandler.saveUpload(ctx, fh)
 	if err != nil {
