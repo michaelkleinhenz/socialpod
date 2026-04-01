@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -25,7 +27,100 @@ type InboxHandler struct {
 // ListComments returns paginated comment inbox entries across all platforms.
 // GET /inbox/comments?page=1&limit=50
 func (h *InboxHandler) ListComments(c *gin.Context) {
+	// Sync Bluesky comments (replies/mentions) on-demand
+	h.syncBlueskyComments()
 	h.listMessages(c, models.MessageTypeComment)
+}
+
+// syncBlueskyComments fetches recent Bluesky notifications that are replies
+// or mentions and inserts them as comment inbox entries.
+func (h *InboxHandler) syncBlueskyComments() {
+	if h.Bluesky == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	notifications, account, err := h.Bluesky.FetchNotifications(ctx, "")
+	if err != nil {
+		log.Printf("syncBlueskyComments: FetchNotifications error: %v", err)
+		return
+	}
+
+	upsert := true
+	for _, n := range notifications {
+		// Only include replies and mentions
+		if n.Reason != "reply" && n.Reason != "mention" {
+			continue
+		}
+		if n.Record.Text == "" {
+			continue
+		}
+		// Skip our own notifications
+		if n.Author.DID == account.DID {
+			continue
+		}
+
+		receivedAt := time.Now()
+		if t, parseErr := time.Parse(time.RFC3339, n.IndexedAt); parseErr == nil {
+			receivedAt = t
+		}
+
+		// Build permalink for the parent post if this is a reply
+		mediaURL := ""
+		if n.Record.Reply != nil && n.Record.Reply.Parent.URI != "" {
+			mediaURL = bskyURIToPermalink(n.Record.Reply.Parent.URI, account.AccountName)
+		}
+
+		senderName := n.Author.DisplayName
+		if senderName == "" {
+			senderName = n.Author.Handle
+		}
+
+		msg := models.InboxMessage{
+			Platform:    models.PlatformBluesky,
+			MessageType: models.MessageTypeComment,
+			ExternalID:  n.URI,
+			SenderID:    n.Author.DID,
+			SenderName:  senderName,
+			Text:        n.Record.Text,
+			MediaURL:    mediaURL,
+			AccountID:   account.ID,
+			AccountName: account.AccountName,
+			IsRead:      false,
+			IsReplied:   false,
+			ReceivedAt:  receivedAt,
+			CreatedAt:   time.Now(),
+		}
+
+		doc, err := structToBSONDoc(msg)
+		if err != nil {
+			continue
+		}
+		h.DB.InboxMessages().UpdateOne(ctx,
+			bson.M{"externalId": msg.ExternalID},
+			bson.M{"$setOnInsert": doc},
+			&options.UpdateOptions{Upsert: &upsert},
+		)
+	}
+}
+
+// bskyURIToPermalink converts an AT URI to a Bluesky web permalink.
+// at://did:plc:xxx/app.bsky.feed.post/rkey -> https://bsky.app/profile/did:plc:xxx/post/rkey
+func bskyURIToPermalink(uri, fallbackHandle string) string {
+	// at://did:plc:xxx/app.bsky.feed.post/rkey
+	parts := strings.SplitN(strings.TrimPrefix(uri, "at://"), "/", 3)
+	if len(parts) != 3 {
+		return ""
+	}
+	actor := parts[0]
+	rkey := strings.TrimPrefix(parts[2], "")
+	// parts[1] should be "app.bsky.feed.post"
+	if parts[1] != "app.bsky.feed.post" {
+		return ""
+	}
+	return fmt.Sprintf("https://bsky.app/profile/%s/post/%s", actor, rkey)
 }
 
 // ListDMs returns paginated DM inbox entries across all platforms.
@@ -296,9 +391,29 @@ func (h *InboxHandler) ReplyToComment(c *gin.Context) {
 	if !msg.AccountID.IsZero() {
 		accountID = msg.AccountID.Hex()
 	}
-	if err := h.Instagram.ReplyToComment(ctx, msg.ExternalID, input.Text, accountID); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
+
+	switch msg.Platform {
+	case models.PlatformBluesky:
+		if h.Bluesky == nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Bluesky service not configured"})
+			return
+		}
+		// Resolve CID for the post we're replying to
+		cid, err := h.Bluesky.ResolveURI(ctx, msg.ExternalID, accountID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to resolve post: " + err.Error()})
+			return
+		}
+		_, err = h.Bluesky.PostReply(ctx, input.Text, msg.ExternalID, cid, accountID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+	default:
+		if err := h.Instagram.ReplyToComment(ctx, msg.ExternalID, input.Text, accountID); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	h.DB.InboxMessages().UpdateOne(ctx, bson.M{"_id": msgID}, bson.M{
@@ -367,19 +482,33 @@ func (h *InboxHandler) ReplyToDM(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// GetFeed fetches the authenticated user's own Instagram media feed.
-// GET /inbox/feed?accountId=xxx
+// GetFeed fetches the authenticated user's own feed for a given account.
+// GET /inbox/feed?accountId=xxx&platform=instagram
 func (h *InboxHandler) GetFeed(c *gin.Context) {
 	accountID := c.Query("accountId")
+	platform := c.Query("platform")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	feed, err := h.Instagram.FetchFeed(ctx, accountID)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
+	switch platform {
+	case string(models.PlatformBluesky):
+		if h.Bluesky == nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Bluesky service not configured"})
+			return
+		}
+		feed, err := h.Bluesky.FetchFeed(ctx, accountID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, feed)
+	default:
+		feed, err := h.Instagram.FetchFeed(ctx, accountID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, feed)
 	}
-
-	c.JSON(http.StatusOK, feed)
 }

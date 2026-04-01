@@ -31,25 +31,30 @@ export function FeedPage() {
   const [loading, setLoading] = useState(false);
   const [accountsLoading, setAccountsLoading] = useState(true);
 
+  // Load all active accounts (Instagram + Bluesky)
   useEffect(() => {
     api.getActiveAccounts()
       .then(all => {
-        const ig = all.filter((a: Account) => a.platform === 'instagram');
-        setAccounts(ig);
-        if (ig.length > 0) setSelectedAccount(ig[0].id);
+        const supported = all.filter(
+          (a: Account) => a.platform === 'instagram' || a.platform === 'bluesky'
+        );
+        setAccounts(supported);
+        if (supported.length > 0) setSelectedAccount(supported[0].id);
       })
       .catch(() => toast.error('Failed to load accounts'))
       .finally(() => setAccountsLoading(false));
   }, []);
 
+  const selectedPlatform = accounts.find(a => a.id === selectedAccount)?.platform || '';
+
   const loadFeed = useCallback(() => {
-    if (!selectedAccount) return;
+    if (!selectedAccount || !selectedPlatform) return;
     setLoading(true);
-    api.getInstagramFeed(selectedAccount)
+    api.getFeed(selectedAccount, selectedPlatform)
       .then(setFeed)
       .catch(e => toast.error(e.message || 'Failed to load feed'))
       .finally(() => setLoading(false));
-  }, [selectedAccount]);
+  }, [selectedAccount, selectedPlatform]);
 
   useEffect(() => {
     if (selectedAccount) loadFeed();
@@ -62,7 +67,7 @@ export function FeedPage() {
   return (
     <div className="page inbox-page">
       <div className="inbox-header">
-        <h1>Instagram Feed</h1>
+        <h1>Feed</h1>
         <button className="btn btn-secondary" onClick={loadFeed} disabled={loading} style={{ gap: 6 }}>
           <RefreshCw size={14} />
           Refresh
@@ -72,24 +77,23 @@ export function FeedPage() {
       {accounts.length === 0 ? (
         <div className="inbox-empty">
           <Image size={48} />
-          <p>No Instagram accounts connected</p>
-          <p style={{ fontSize: 13 }}>Connect an Instagram account in Admin &gt; Accounts.</p>
+          <p>No accounts connected</p>
+          <p style={{ fontSize: 13 }}>Connect an Instagram or Bluesky account in Admin &gt; Accounts.</p>
         </div>
       ) : (
         <>
           {accounts.length > 1 && (
-            <div className="inbox-account-select">
-              <label>Account:</label>
-              <select
-                value={selectedAccount}
-                onChange={e => setSelectedAccount(e.target.value)}
-              >
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>
-                    @{a.accountName}
-                  </option>
-                ))}
-              </select>
+            <div className="feed-tabs">
+              {accounts.map(a => (
+                <button
+                  key={a.id}
+                  className={`feed-tab ${selectedAccount === a.id ? 'active' : ''}`}
+                  onClick={() => setSelectedAccount(a.id)}
+                >
+                  <span className={`feed-tab-dot ${a.platform}`} />
+                  @{a.accountName}
+                </button>
+              ))}
             </div>
           )}
 
@@ -126,20 +130,24 @@ function FeedCard({ item }: { item: FeedItem }) {
       {imageURL ? (
         <img
           src={imageURL}
-          alt={item.caption?.slice(0, 80) || 'Instagram post'}
+          alt={item.caption?.slice(0, 80) || 'Post'}
           className="feed-card-image"
           loading="lazy"
         />
       ) : (
         <div className="feed-card-placeholder">
-          <Image size={32} />
+          {item.caption ? (
+            <div className="feed-card-text-preview">{item.caption}</div>
+          ) : (
+            <Image size={32} />
+          )}
         </div>
       )}
 
       <div className="feed-card-body">
         <div className="feed-card-type-badge">{item.mediaType}</div>
 
-        {item.caption && (
+        {item.caption && imageURL && (
           <div className="feed-card-caption">{item.caption}</div>
         )}
 

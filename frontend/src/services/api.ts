@@ -248,10 +248,18 @@ class ApiClient {
     });
   }
 
-  // Instagram own feed
+  // Account feed (Instagram or Bluesky)
+  getFeed(accountId?: string, platform?: string) {
+    const query = new URLSearchParams();
+    if (accountId) query.set('accountId', accountId);
+    if (platform) query.set('platform', platform);
+    const qs = query.toString();
+    return this.request<any[]>(`/inbox/feed${qs ? '?' + qs : ''}`);
+  }
+
+  // Backwards compat alias
   getInstagramFeed(accountId?: string) {
-    const qs = accountId ? `?accountId=${accountId}` : '';
-    return this.request<any[]>(`/inbox/feed${qs}`);
+    return this.getFeed(accountId, 'instagram');
   }
 
   // Watermarks

@@ -262,6 +262,68 @@
   font-weight: 500;
 }
 
+/* Feed tabs */
+.feed-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.feed-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.feed-tab:hover {
+  color: var(--text-primary);
+}
+
+.feed-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.feed-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.feed-tab-dot.instagram {
+  background: var(--instagram);
+}
+
+.feed-tab-dot.bluesky {
+  background: var(--bluesky);
+}
+
+/* Feed text preview for text-only posts */
+.feed-card-text-preview {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: left;
+}
+
 /* Feed page */
 .feed-grid {
   display: grid;

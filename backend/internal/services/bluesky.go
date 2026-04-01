@@ -413,6 +413,213 @@ func (s *BlueskyService) SendChatMessage(ctx context.Context, convoID, text, acc
 	return err
 }
 
+// BSkyFeedItem represents a single post from the user's Bluesky feed.
+type BSkyFeedItem struct {
+	ID            string `json:"id"`
+	Caption       string `json:"caption,omitempty"`
+	MediaType     string `json:"mediaType"`
+	MediaURL      string `json:"mediaUrl,omitempty"`
+	ThumbnailURL  string `json:"thumbnailUrl,omitempty"`
+	Permalink     string `json:"permalink"`
+	Timestamp     string `json:"timestamp"`
+	LikeCount     int    `json:"likeCount"`
+	CommentsCount int    `json:"commentsCount"`
+}
+
+// FetchFeed retrieves the authenticated user's own Bluesky post feed.
+func (s *BlueskyService) FetchFeed(ctx context.Context, accountID string) ([]BSkyFeedItem, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("no active Bluesky account: %w", err)
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return nil, fmt.Errorf("auth failed: %w", err)
+	}
+
+	actor := session.DID
+	if actor == "" {
+		actor = account.AccountName
+	}
+
+	req, _ := http.NewRequestWithContext(ctx, "GET",
+		account.PDSHost+"/xrpc/app.bsky.feed.getAuthorFeed?actor="+actor+"&limit=50&filter=posts_no_replies", nil)
+	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Feed []struct {
+			Post struct {
+				URI    string `json:"uri"`
+				CID    string `json:"cid"`
+				Author struct {
+					Handle string `json:"handle"`
+				} `json:"author"`
+				Record struct {
+					Text      string `json:"text"`
+					CreatedAt string `json:"createdAt"`
+				} `json:"record"`
+				Embed *struct {
+					Type   string `json:"$type"`
+					Images []struct {
+						Thumb    string `json:"thumb"`
+						Fullsize string `json:"fullsize"`
+					} `json:"images"`
+				} `json:"embed"`
+				LikeCount  int `json:"likeCount"`
+				ReplyCount int `json:"replyCount"`
+			} `json:"post"`
+		} `json:"feed"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	items := make([]BSkyFeedItem, 0, len(result.Feed))
+	for _, entry := range result.Feed {
+		p := entry.Post
+		// Build permalink from URI: at://did/app.bsky.feed.post/rkey -> https://bsky.app/profile/handle/post/rkey
+		permalink := ""
+		if parts := strings.SplitN(p.URI, "/", 5); len(parts) == 5 {
+			rkey := parts[4]
+			permalink = fmt.Sprintf("https://bsky.app/profile/%s/post/%s", p.Author.Handle, rkey)
+		}
+
+		mediaType := "TEXT"
+		mediaURL := ""
+		thumbnailURL := ""
+		if p.Embed != nil && len(p.Embed.Images) > 0 {
+			mediaType = "IMAGE"
+			mediaURL = p.Embed.Images[0].Fullsize
+			thumbnailURL = p.Embed.Images[0].Thumb
+		}
+
+		items = append(items, BSkyFeedItem{
+			ID:            p.URI,
+			Caption:       p.Record.Text,
+			MediaType:     mediaType,
+			MediaURL:      mediaURL,
+			ThumbnailURL:  thumbnailURL,
+			Permalink:     permalink,
+			Timestamp:     p.Record.CreatedAt,
+			LikeCount:     p.LikeCount,
+			CommentsCount: p.ReplyCount,
+		})
+	}
+	return items, nil
+}
+
+// BSkyNotification represents a Bluesky notification.
+type BSkyNotification struct {
+	URI       string `json:"uri"`
+	CID       string `json:"cid"`
+	Reason    string `json:"reason"`
+	IsRead    bool   `json:"isRead"`
+	IndexedAt string `json:"indexedAt"`
+	Author    struct {
+		DID         string `json:"did"`
+		Handle      string `json:"handle"`
+		DisplayName string `json:"displayName"`
+		Avatar      string `json:"avatar"`
+	} `json:"author"`
+	Record struct {
+		Type      string `json:"$type"`
+		Text      string `json:"text"`
+		CreatedAt string `json:"createdAt"`
+		Reply     *struct {
+			Parent struct {
+				URI string `json:"uri"`
+				CID string `json:"cid"`
+			} `json:"parent"`
+			Root struct {
+				URI string `json:"uri"`
+			} `json:"root"`
+		} `json:"reply"`
+	} `json:"record"`
+}
+
+// FetchNotifications retrieves recent Bluesky notifications (replies/mentions).
+func (s *BlueskyService) FetchNotifications(ctx context.Context, accountID string) ([]BSkyNotification, *models.SocialAccount, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if account.DID == "" && session.DID != "" {
+		account.DID = session.DID
+		s.DB.SocialAccounts().UpdateOne(ctx,
+			bson.M{"_id": account.ID},
+			bson.M{"$set": bson.M{"did": session.DID}},
+		)
+	}
+
+	req, _ := http.NewRequestWithContext(ctx, "GET",
+		account.PDSHost+"/xrpc/app.bsky.notification.listNotifications?limit=50", nil)
+	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Notifications []BSkyNotification `json:"notifications"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, nil, err
+	}
+
+	return result.Notifications, account, nil
+}
+
+// ResolveURI fetches a Bluesky post record to get its CID.
+func (s *BlueskyService) ResolveURI(ctx context.Context, uri, accountID string) (cid string, err error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+
+	session, err := s.createSession(account)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse AT URI: at://did/collection/rkey
+	parts := strings.SplitN(strings.TrimPrefix(uri, "at://"), "/", 3)
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid AT URI: %s", uri)
+	}
+
+	endpoint := fmt.Sprintf("%s/xrpc/com.atproto.repo.getRecord?repo=%s&collection=%s&rkey=%s",
+		account.PDSHost, parts[0], parts[1], parts[2])
+	req, _ := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	req.Header.Set("Authorization", "Bearer "+session.AccessJwt)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		CID string `json:"cid"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result.CID, nil
+}
+
 func (s *BlueskyService) parseFacets(text string) []map[string]interface{} {
 	var facets []map[string]interface{}
 
