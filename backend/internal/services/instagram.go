@@ -491,7 +491,7 @@ func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessTo
 	if senderID == "" || accessToken == "" {
 		return ""
 	}
-	url := fmt.Sprintf("%s/%s?fields=name&access_token=%s", igGraphAPI, senderID, accessToken)
+	url := fmt.Sprintf("%s/%s?fields=name,username&access_token=%s", igGraphAPI, senderID, accessToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		log.Printf("GetSenderName: request error: %v", err)
@@ -503,14 +503,27 @@ func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessTo
 		return ""
 	}
 	defer resp.Body.Close()
-	var result struct {
-		Name string `json:"name"`
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("GetSenderName: read body error: %v", err)
+		return ""
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	log.Printf("GetSenderName: senderID=%s status=%d body=%s", senderID, resp.StatusCode, string(body))
+
+	var result struct {
+		Name     string `json:"name"`
+		Username string `json:"username"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
 		log.Printf("GetSenderName: decode error: %v", err)
 		return ""
 	}
-	return result.Name
+
+	if result.Name != "" {
+		return result.Name
+	}
+	return result.Username
 }
 
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {

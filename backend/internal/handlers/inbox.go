@@ -33,6 +33,56 @@ func (h *InboxHandler) ListDMs(c *gin.Context) {
 	h.listMessages(c, models.MessageTypeDM)
 }
 
+// backfillSenderNames attempts to resolve sender names for DM messages that
+// have a senderId but no senderName. It fetches the name from Instagram and
+// updates the database record so future requests don't need to re-fetch.
+func (h *InboxHandler) backfillSenderNames(ctx context.Context, messages []models.InboxMessage) {
+	if h.Instagram == nil {
+		return
+	}
+
+	// Build a cache of account access tokens keyed by account ID
+	tokenCache := map[primitive.ObjectID]string{}
+	for i := range messages {
+		msg := &messages[i]
+		if msg.SenderName != "" || msg.SenderID == "" || msg.Platform != models.PlatformInstagram {
+			continue
+		}
+
+		token, ok := tokenCache[msg.AccountID]
+		if !ok {
+			var account models.SocialAccount
+			err := h.DB.SocialAccounts().FindOne(ctx, bson.M{
+				"_id":      msg.AccountID,
+				"platform": models.PlatformInstagram,
+				"isActive": true,
+			}).Decode(&account)
+			if err != nil {
+				// Try any active Instagram account as fallback
+				err = h.DB.SocialAccounts().FindOne(ctx, bson.M{
+					"platform": models.PlatformInstagram,
+					"isActive": true,
+				}).Decode(&account)
+			}
+			if err != nil {
+				continue
+			}
+			token = account.AccessToken
+			tokenCache[msg.AccountID] = token
+		}
+
+		name := h.Instagram.GetSenderName(ctx, msg.SenderID, token)
+		if name != "" {
+			msg.SenderName = name
+			// Update in DB so we don't re-fetch next time
+			h.DB.InboxMessages().UpdateOne(ctx,
+				bson.M{"_id": msg.ID},
+				bson.M{"$set": bson.M{"senderName": name}},
+			)
+		}
+	}
+}
+
 func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -59,6 +109,11 @@ func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) 
 	}
 	if messages == nil {
 		messages = []models.InboxMessage{}
+	}
+
+	// Backfill sender names for DMs that are missing them
+	if msgType == models.MessageTypeDM {
+		h.backfillSenderNames(ctx, messages)
 	}
 
 	c.JSON(http.StatusOK, messages)
