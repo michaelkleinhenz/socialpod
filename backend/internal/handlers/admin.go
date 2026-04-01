@@ -563,6 +563,10 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 	if accountFound && val.Sender != nil && val.Sender.ID == account.IGUserID {
 		return
 	}
+	// Also skip if recipient is not us (outgoing message echo)
+	if accountFound && val.Recipient != nil && val.Recipient.ID != "" && val.Recipient.ID != account.IGUserID {
+		return
+	}
 
 	dmReceivedAt := time.Now()
 	if val.Timestamp != 0 {
@@ -609,8 +613,12 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 		return
 	}
 
-	// Skip echo
+	// Skip echo (messages sent by the account itself)
 	if accountFound && messaging.Sender.ID == account.IGUserID {
+		return
+	}
+	// Also skip if recipient is not us (outgoing message echo)
+	if accountFound && messaging.Recipient.ID != "" && messaging.Recipient.ID != account.IGUserID {
 		return
 	}
 
