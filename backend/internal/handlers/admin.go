@@ -503,6 +503,11 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 		return
 	}
 
+	// Skip comments made by the account itself (e.g. our own replies)
+	if accountFound && val.From != nil && val.From.ID == account.IGUserID {
+		return
+	}
+
 	receivedAt := time.Now()
 	if val.Timestamp != 0 {
 		receivedAt = time.Unix(int64(val.Timestamp), 0)
