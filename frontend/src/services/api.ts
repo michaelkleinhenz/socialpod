@@ -197,6 +197,11 @@ class ApiClient {
     });
   }
 
+  // Dashboard stats (no AI)
+  getDashboardStats() {
+    return this.request<any>('/dashboard/stats');
+  }
+
   // Dashboard AI insights
   getDashboardInsights() {
     return this.request<{

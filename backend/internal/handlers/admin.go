@@ -1189,6 +1189,168 @@ func formatSnippets(snippets []string) string {
 	return result
 }
 
+// DashboardStats returns computed analytics derived entirely from the local
+// database — no AI or external API calls required.
+// GET /dashboard/stats
+func (h *AdminHandler) DashboardStats(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// --- posts ---
+	cursor, err := h.DB.Posts().Find(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load posts"})
+		return
+	}
+	var posts []models.Post
+	cursor.All(ctx, &posts)
+
+	// --- inbox counts ---
+	totalComments, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"messageType": "comment"})
+	totalDMs, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"messageType": "dm"})
+	unreadCount, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"isRead": false})
+	likedCount, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"isLiked": true, "messageType": "comment"})
+
+	now := time.Now()
+	thirtyDaysAgo := now.AddDate(0, 0, -30)
+
+	// posts-by-day map (last 30 days)
+	dayMap := map[string]int{}
+	for i := 0; i < 30; i++ {
+		d := now.AddDate(0, 0, -i)
+		dayMap[d.Format("2006-01-02")] = 0
+	}
+
+	platformBreakdown := map[string]int{}
+	typeBreakdown := map[string]int{}
+	statusBreakdown := map[string]int{
+		"published": 0, "failed": 0, "scheduled": 0, "draft": 0,
+	}
+	hourCounts := map[int]int{}
+	weekdayAbbrs := []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	weekdayCounts := map[string]int{}
+	for _, d := range weekdayAbbrs {
+		weekdayCounts[d] = 0
+	}
+
+	// week boundaries (Monday-based)
+	todayMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	daysFromMon := int(now.Weekday()+6) % 7 // 0=Mon…6=Sun
+	thisWeekStart := todayMidnight.AddDate(0, 0, -daysFromMon)
+	lastWeekStart := thisWeekStart.AddDate(0, 0, -7)
+	var thisWeekPosts, lastWeekPosts int
+	var published, failed int
+
+	for _, p := range posts {
+		switch p.Status {
+		case models.PostStatusPublished:
+			statusBreakdown["published"]++
+			published++
+		case models.PostStatusFailed:
+			statusBreakdown["failed"]++
+			failed++
+		case models.PostStatusScheduled:
+			statusBreakdown["scheduled"]++
+		case models.PostStatusDraft:
+			statusBreakdown["draft"]++
+		}
+
+		for _, pl := range p.Platforms {
+			platformBreakdown[string(pl)]++
+		}
+
+		pt := string(p.PostType)
+		if pt == "" {
+			pt = "post"
+		}
+		typeBreakdown[pt]++
+
+		t := p.ScheduledAt
+		if t.IsZero() {
+			t = p.CreatedAt
+		}
+
+		if t.After(thirtyDaysAgo) {
+			ds := t.Format("2006-01-02")
+			if _, ok := dayMap[ds]; ok {
+				dayMap[ds]++
+			}
+		}
+
+		// Hour distribution — published posts only
+		if p.Status == models.PostStatusPublished {
+			hourCounts[t.Hour()]++
+		}
+
+		// Weekday (all statuses)
+		wd := t.Weekday()
+		abbr := wd.String()[:3] // "Mon", "Tue", etc.
+		weekdayCounts[abbr]++
+
+		// This / last week
+		if !t.Before(thisWeekStart) {
+			thisWeekPosts++
+		} else if !t.Before(lastWeekStart) {
+			lastWeekPosts++
+		}
+	}
+
+	// Build sorted slice for postsByDay (oldest → newest)
+	type DayCount struct {
+		Date  string `json:"date"`
+		Count int    `json:"count"`
+	}
+	postsByDay := make([]DayCount, 30)
+	for i := 0; i < 30; i++ {
+		d := now.AddDate(0, 0, -(29 - i))
+		ds := d.Format("2006-01-02")
+		postsByDay[i] = DayCount{Date: ds, Count: dayMap[ds]}
+	}
+
+	// All 24 hours
+	type HourCount struct {
+		Hour  int `json:"hour"`
+		Count int `json:"count"`
+	}
+	hourDistribution := make([]HourCount, 24)
+	for i := 0; i < 24; i++ {
+		hourDistribution[i] = HourCount{Hour: i, Count: hourCounts[i]}
+	}
+
+	// Mon–Sun
+	type WeekdayCount struct {
+		Day   string `json:"day"`
+		Count int    `json:"count"`
+	}
+	weekdayDistribution := make([]WeekdayCount, 7)
+	for i, d := range weekdayAbbrs {
+		weekdayDistribution[i] = WeekdayCount{Day: d, Count: weekdayCounts[d]}
+	}
+
+	successRate := 0.0
+	if published+failed > 0 {
+		successRate = float64(published) / float64(published+failed) * 100
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"postsByDay":          postsByDay,
+		"platformBreakdown":   platformBreakdown,
+		"postTypeBreakdown":   typeBreakdown,
+		"statusBreakdown":     statusBreakdown,
+		"hourDistribution":    hourDistribution,
+		"weekdayDistribution": weekdayDistribution,
+		"thisWeekPosts":       thisWeekPosts,
+		"lastWeekPosts":       lastWeekPosts,
+		"successRate":         successRate,
+		"inboxStats": gin.H{
+			"comments": totalComments,
+			"dms":      totalDMs,
+			"unread":   unreadCount,
+			"liked":    likedCount,
+		},
+	})
+}
+
 // Watermark gallery management
 
 func (h *AdminHandler) ListWatermarks(c *gin.Context) {

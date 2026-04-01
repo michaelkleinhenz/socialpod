@@ -83,6 +83,7 @@ func main() {
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)
 		auth.POST("/dashboard/ai-insights", adminHandler.DashboardInsights)
+		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 
 		// Inbox (comments + DMs)
 		auth.GET("/inbox/comments", inboxHandler.ListComments)
