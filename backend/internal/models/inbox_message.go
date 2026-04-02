@@ -30,6 +30,7 @@ type InboxMessage struct {
 	MediaURL     string             `bson:"mediaUrl,omitempty" json:"mediaUrl,omitempty"`
 	IsRead       bool               `bson:"isRead" json:"isRead"`
 	IsReplied    bool               `bson:"isReplied" json:"isReplied"`
+	IsLiked      bool               `bson:"isLiked" json:"isLiked"`
 	ReceivedAt   time.Time          `bson:"receivedAt" json:"receivedAt"`
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
 }

@@ -428,6 +428,62 @@ func (h *InboxHandler) ReplyToComment(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// LikeComment likes a comment on the originating social platform.
+// POST /inbox/comments/:id/like
+func (h *InboxHandler) LikeComment(c *gin.Context) {
+	msgID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var msg models.InboxMessage
+	if err := h.DB.InboxMessages().FindOne(ctx, bson.M{"_id": msgID}).Decode(&msg); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
+		return
+	}
+
+	accountID := ""
+	if !msg.AccountID.IsZero() {
+		accountID = msg.AccountID.Hex()
+	}
+
+	switch msg.Platform {
+	case models.PlatformBluesky:
+		if h.Bluesky == nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Bluesky service not configured"})
+			return
+		}
+		cid, err := h.Bluesky.ResolveURI(ctx, msg.ExternalID, accountID)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to resolve post: " + err.Error()})
+			return
+		}
+		if err := h.Bluesky.LikePost(ctx, msg.ExternalID, cid, accountID); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+	default:
+		if h.Instagram == nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Instagram service not configured"})
+			return
+		}
+		if err := h.Instagram.LikeComment(ctx, msg.ExternalID, accountID); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	h.DB.InboxMessages().UpdateOne(ctx, bson.M{"_id": msgID}, bson.M{
+		"$set": bson.M{"isLiked": true},
+	})
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // ReplyToDM sends a reply to an Instagram DM.
 // POST /inbox/dms/:id/reply
 func (h *InboxHandler) ReplyToDM(c *gin.Context) {

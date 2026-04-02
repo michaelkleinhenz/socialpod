@@ -378,6 +378,36 @@ func (s *InstagramService) ReplyToComment(ctx context.Context, commentID, text, 
 	return nil
 }
 
+// LikeComment likes an Instagram comment using the Graph API.
+func (s *InstagramService) LikeComment(ctx context.Context, commentID, accountID string) error {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	params := url.Values{
+		"access_token": {account.AccessToken},
+	}
+
+	resp, err := http.PostForm(fmt.Sprintf("%s/%s/likes", igGraphAPI, commentID), params)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success bool `json:"success"`
+		Error   *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Error != nil {
+		return fmt.Errorf("IG like error: %s", result.Error.Message)
+	}
+	return nil
+}
+
 // SendDM sends a direct message to an Instagram user.
 // recipientID is the Instagram-Scoped User ID (IGSID) from the webhook.
 func (s *InstagramService) SendDM(ctx context.Context, recipientID, text, accountID string) error {

@@ -197,6 +197,11 @@ class ApiClient {
     });
   }
 
+  // Dashboard stats (no AI)
+  getDashboardStats() {
+    return this.request<any>('/dashboard/stats');
+  }
+
   // Dashboard AI insights
   getDashboardInsights() {
     return this.request<{
@@ -247,6 +252,10 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ text }),
     });
+  }
+
+  likeComment(id: string) {
+    return this.request<any>(`/inbox/comments/${id}/like`, { method: 'POST' });
   }
 
   replyToDM(id: string, text: string) {
