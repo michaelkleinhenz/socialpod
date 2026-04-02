@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
-import { MessageCircle, RefreshCw, Reply, CheckCircle2, ExternalLink, Heart } from 'lucide-react';
+import { MessageCircle, RefreshCw, Reply, CheckCircle2, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Inbox.css';
@@ -18,7 +18,6 @@ interface InboxMessage {
   mediaUrl: string;
   isRead: boolean;
   isReplied: boolean;
-  isLiked: boolean;
   receivedAt: string;
 }
 
@@ -79,11 +78,6 @@ export function CommentsInboxPage() {
                   prev.map(m => m.id === msg.id ? { ...m, isRead: true } : m)
                 );
               }}
-              onLiked={() => {
-                setMessages(prev =>
-                  prev.map(m => m.id === msg.id ? { ...m, isLiked: true } : m)
-                );
-              }}
             />
           ))}
         </div>
@@ -96,35 +90,21 @@ function CommentEntry({
   message,
   onReplied,
   onRead,
-  onLiked,
 }: {
   message: InboxMessage;
   onReplied: () => void;
   onRead: () => void;
-  onLiked: () => void;
 }) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
-  const [liking, setLiking] = useState(false);
 
-  const handleMarkRead = () => {
+  const handleClick = () => {
     if (!message.isRead) {
       api.markInboxRead(message.id).then(onRead).catch(() => {});
     }
-  };
-
-  const handleLike = async () => {
-    if (message.isLiked || liking) return;
-    setLiking(true);
-    try {
-      await api.likeComment(message.id);
-      toast.success('Liked');
-      onLiked();
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to like');
-    } finally {
-      setLiking(false);
+    if (message.mediaUrl) {
+      window.open(message.mediaUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -154,8 +134,9 @@ function CommentEntry({
 
   return (
     <div
-      className={`inbox-entry ${!message.isRead ? 'unread' : ''} ${message.isReplied ? 'replied' : ''}`}
-      onClick={handleMarkRead}
+      className={`inbox-entry ${!message.isRead ? 'unread' : ''} ${message.isReplied ? 'replied' : ''} ${message.mediaUrl ? 'clickable' : ''}`}
+      onClick={handleClick}
+      style={message.mediaUrl ? { cursor: 'pointer' } : undefined}
     >
       <div className="inbox-entry-top">
         <div className="inbox-avatar">{initials}</div>
@@ -178,36 +159,16 @@ function CommentEntry({
 
           <div className="inbox-entry-text">{message.text}</div>
 
-          {(message.mediaId || message.mediaUrl) && (
+          {message.mediaUrl && (
             <div className="inbox-entry-context">
-              {message.mediaUrl ? (
-                <a
-                  href={message.mediaUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inbox-post-link"
-                  onClick={e => e.stopPropagation()}
-                >
-                  View post <ExternalLink size={12} />
-                </a>
-              ) : (
-                <span>On post: {message.mediaId}</span>
-              )}
+              <span className="inbox-post-link">
+                View post <ExternalLink size={12} />
+              </span>
             </div>
           )}
 
           <div className="inbox-entry-actions" onClick={e => e.stopPropagation()}>
             <div className="inbox-actions-row">
-              <button
-                className={`like-btn ${message.isLiked ? 'liked' : ''}`}
-                onClick={handleLike}
-                disabled={message.isLiked || liking}
-                title={message.isLiked ? 'Liked' : 'Like this comment'}
-              >
-                <Heart size={13} fill={message.isLiked ? 'currentColor' : 'none'} />
-                {message.isLiked ? 'Liked' : 'Like'}
-              </button>
-
               {message.isReplied ? (
                 <span className="replied-badge">
                   <CheckCircle2 size={13} />
