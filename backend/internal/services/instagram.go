@@ -389,7 +389,7 @@ func (s *InstagramService) LikeComment(ctx context.Context, commentID, accountID
 		"access_token": {account.AccessToken},
 	}
 
-	resp, err := http.PostForm(fmt.Sprintf("%s/%s/likes", igGraphAPI, commentID), params)
+	resp, err := http.PostForm(fmt.Sprintf("https://graph.facebook.com/v21.0/%s/likes", commentID), params)
 	if err != nil {
 		return err
 	}
