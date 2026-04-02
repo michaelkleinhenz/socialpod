@@ -126,8 +126,14 @@ function FeedCard({ item }: { item: FeedItem }) {
     ? formatDistanceToNow(parseISO(item.timestamp), { addSuffix: true })
     : '';
 
+  const handleClick = () => {
+    if (item.permalink) {
+      window.open(item.permalink, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
-    <div className="feed-card">
+    <div className="feed-card" onClick={handleClick} style={item.permalink ? { cursor: 'pointer' } : undefined}>
       {imageURL ? (
         <img
           src={imageURL}
@@ -162,16 +168,9 @@ function FeedCard({ item }: { item: FeedItem }) {
             {item.commentsCount ?? 0}
           </span>
           {item.permalink && (
-            <a
-              href={item.permalink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="feed-card-stat"
-              style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}
-              onClick={e => e.stopPropagation()}
-            >
+            <span className="feed-card-stat" style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>
               <ExternalLink size={12} />
-            </a>
+            </span>
           )}
         </div>
 

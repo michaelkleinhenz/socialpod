@@ -13,6 +13,7 @@ interface InboxMessage {
   externalId: string;
   senderId: string;
   senderName: string;
+  threadId: string;
   senderAvatar: string;
   text: string;
   isRead: boolean;
@@ -98,9 +99,17 @@ function DMEntry({
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
 
-  const handleMarkRead = () => {
+  const handleClick = () => {
     if (!message.isRead) {
       api.markInboxRead(message.id).then(onRead).catch(() => {});
+    }
+    if (message.platform === 'instagram') {
+      window.open('https://www.instagram.com/direct/inbox/', '_blank', 'noopener,noreferrer');
+    } else if (message.platform === 'bluesky') {
+      const url = message.threadId
+        ? `https://bsky.app/messages/${message.threadId}`
+        : 'https://bsky.app/messages';
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -135,7 +144,8 @@ function DMEntry({
   return (
     <div
       className={`inbox-entry ${!message.isRead ? 'unread' : ''} ${message.isReplied ? 'replied' : ''}`}
-      onClick={handleMarkRead}
+      onClick={handleClick}
+      style={{ cursor: 'pointer' }}
     >
       <div className="inbox-entry-top">
         <div className="inbox-avatar">{initials}</div>
