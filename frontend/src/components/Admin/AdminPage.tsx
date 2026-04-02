@@ -6,7 +6,7 @@ import {
   Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock,
   CheckCircle, AlertCircle, Image, Sparkles, ArrowUp, ArrowDown, Minus,
   RefreshCw, AlertTriangle, Lightbulb, MessageCircle, Mail, Heart, BarChart2,
-  ThumbsUp, Flame, TrendingDown,
+  Flame, TrendingDown,
 } from 'lucide-react';
 import './Admin.css';
 
