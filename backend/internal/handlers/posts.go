@@ -558,6 +558,47 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 	c.Data(http.StatusOK, upload.ContentType, upload.Data)
 }
 
+func (h *PostHandler) Retry(c *gin.Context) {
+	postID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+
+	filter := postFilter(c)
+	filter["_id"] = postID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var post models.Post
+	if err := h.DB.Posts().FindOne(ctx, filter).Decode(&post); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		return
+	}
+
+	if post.Status != models.PostStatusFailed {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only failed posts can be retried"})
+		return
+	}
+
+	_, err = h.DB.Posts().UpdateOne(ctx, filter, bson.M{
+		"$set": bson.M{
+			"status":      models.PostStatusScheduled,
+			"scheduledAt": time.Now(),
+			"results":     nil,
+			"updatedAt":   time.Now(),
+		},
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retry post"})
+		return
+	}
+
+	h.DB.Posts().FindOne(ctx, bson.M{"_id": postID}).Decode(&post)
+	c.JSON(http.StatusOK, post)
+}
+
 func (h *PostHandler) Reschedule(c *gin.Context) {
 	postID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {

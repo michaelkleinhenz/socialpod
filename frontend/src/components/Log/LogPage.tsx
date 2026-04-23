@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
 import type { Post } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Filter, ExternalLink } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, Filter, ExternalLink, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Log.css';
 
@@ -13,7 +13,7 @@ export function LogPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<LogFilter>('all');
 
-  useEffect(() => {
+  const loadPosts = useCallback(() => {
     api.getPosts({})
       .then(data => {
         const withActivity = data.filter(
@@ -27,6 +27,8 @@ export function LogPage() {
       .catch(() => toast.error('Failed to load log'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadPosts(); }, [loadPosts]);
 
   const filtered = filter === 'all'
     ? posts
@@ -78,7 +80,7 @@ export function LogPage() {
       ) : (
         <div className="log-list">
           {filtered.map(post => (
-            <LogEntry key={post.id} post={post} />
+            <LogEntry key={post.id} post={post} onRetry={loadPosts} />
           ))}
         </div>
       )}
@@ -99,10 +101,24 @@ function getPostUrl(platform: string, postId: string): string | null {
   return null;
 }
 
-function LogEntry({ post }: { post: Post }) {
+function LogEntry({ post, onRetry }: { post: Post; onRetry: () => void }) {
+  const [retrying, setRetrying] = useState(false);
   const preview = post.content.length > 120 ? post.content.slice(0, 120) + '...' : post.content;
   const isSuccess = post.status === 'published';
   const isFailed = post.status === 'failed';
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await api.retryPost(post.id);
+      toast.success('Post queued for retry');
+      onRetry();
+    } catch (err: any) {
+      toast.error(err.message || 'Retry failed');
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <div className={`log-entry ${post.status}`}>
@@ -164,6 +180,15 @@ function LogEntry({ post }: { post: Post }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {isFailed && (
+          <div className="log-entry-actions">
+            <button className="log-retry-btn" onClick={handleRetry} disabled={retrying}>
+              <RotateCcw size={13} />
+              {retrying ? 'Retrying...' : 'Retry'}
+            </button>
           </div>
         )}
       </div>

@@ -103,6 +103,10 @@ class ApiClient {
     return this.request<any>(`/posts/${id}`, { method: 'DELETE' });
   }
 
+  retryPost(id: string) {
+    return this.request<any>(`/posts/${id}/retry`, { method: 'POST' });
+  }
+
   reschedulePost(id: string, scheduledAt: string) {
     return this.request<any>(`/posts/${id}/reschedule`, {
       method: 'PATCH',

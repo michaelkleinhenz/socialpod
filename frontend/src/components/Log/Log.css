@@ -180,6 +180,38 @@
   max-width: 300px;
 }
 
+/* Retry button */
+.log-entry-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.log-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--danger);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.log-retry-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.log-retry-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
