@@ -1,0 +1,32 @@
+name: Break Down Enhancements
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  breakdown:
+    if: |
+      contains(github.event.issue.labels.*.name, 'enhancement') &&
+      (github.event.issue.author_association == 'COLLABORATOR' ||
+       github.event.issue.author_association == 'MEMBER' ||
+       github.event.issue.author_association == 'OWNER')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: "--agent ${{ secrets.CLAUDE_PM_AGENT_ID }}"
+          prompt: |
+            Break down this enhancement issue into sub-issues describing
+            the implementation steps. Each sub-issue should be a concrete,
+            actionable task that a developer can pick up independently.
+            Create the sub-issues in this repository and reference this
+            parent issue number in each one.
