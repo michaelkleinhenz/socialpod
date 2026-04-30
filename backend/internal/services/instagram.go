@@ -22,6 +22,19 @@ type InstagramService struct {
 	DB *database.MongoDB
 }
 
+type igError struct {
+	Message      string `json:"message"`
+	Type         string `json:"type"`
+	Code         int    `json:"code"`
+	ErrorSubcode int    `json:"error_subcode"`
+	FBTraceID    string `json:"fbtrace_id"`
+}
+
+func (e *igError) Error() string {
+	return fmt.Sprintf("IG error (code=%d, subcode=%d, type=%s, trace=%s): %s",
+		e.Code, e.ErrorSubcode, e.Type, e.FBTraceID, e.Message)
+}
+
 const igGraphAPI = "https://graph.instagram.com/v25.0"
 
 func (s *InstagramService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
@@ -60,21 +73,24 @@ func (s *InstagramService) postSingleImage(ctx context.Context, account *models.
 		params.Set("image_url", mediaURL)
 	}
 
+	log.Printf("IG post create: image_url=%s igUser=%s", mediaURL, account.IGUserID)
+
 	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("IG post container response: status=%d body=%s", resp.StatusCode, string(body))
+
 	var container struct {
-		ID    string `json:"id"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID    string  `json:"id"`
+		Error *igError `json:"error"`
 	}
-	json.NewDecoder(resp.Body).Decode(&container)
+	json.Unmarshal(body, &container)
 	if container.Error != nil {
-		return "", fmt.Errorf("IG error: %s", container.Error.Message)
+		return "", container.Error
 	}
 
 	// Step 2: Publish
@@ -106,16 +122,22 @@ func (s *InstagramService) postCarousel(ctx context.Context, account *models.Soc
 			params.Set("image_url", fullURL)
 		}
 
+		log.Printf("IG carousel child create: image_url=%s", fullURL)
+
 		resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
 		if err != nil {
+			log.Printf("IG carousel child http error: %v", err)
 			continue
 		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		log.Printf("IG carousel child response: status=%d body=%s", resp.StatusCode, string(body))
 
 		var container struct {
 			ID string `json:"id"`
 		}
-		json.NewDecoder(resp.Body).Decode(&container)
-		resp.Body.Close()
+		json.Unmarshal(body, &container)
 
 		if container.ID != "" {
 			childIDs = append(childIDs, container.ID)
@@ -215,15 +237,16 @@ func (s *InstagramService) publishContainer(account *models.SocialAccount, conta
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("IG publish response: status=%d body=%s", resp.StatusCode, string(body))
+
 	var result struct {
-		ID    string `json:"id"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID    string   `json:"id"`
+		Error *igError `json:"error"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	json.Unmarshal(body, &result)
 	if result.Error != nil {
-		return "", fmt.Errorf("publish error: %s", result.Error.Message)
+		return "", fmt.Errorf("publish error: %w", result.Error)
 	}
 
 	return result.ID, nil
@@ -269,14 +292,12 @@ func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accou
 	log.Printf("IG story container response: %s", string(body))
 
 	var container struct {
-		ID    string `json:"id"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID    string   `json:"id"`
+		Error *igError `json:"error"`
 	}
 	json.Unmarshal(body, &container)
 	if container.Error != nil {
-		return "", fmt.Errorf("IG story error: %s", container.Error.Message)
+		return "", fmt.Errorf("IG story error: %w", container.Error)
 	}
 
 	return s.publishContainer(account, container.ID)
@@ -316,14 +337,12 @@ func (s *InstagramService) PostReel(ctx context.Context, mediaURL string, captio
 	log.Printf("IG reel container response: %s", string(body))
 
 	var container struct {
-		ID    string `json:"id"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID    string   `json:"id"`
+		Error *igError `json:"error"`
 	}
 	json.Unmarshal(body, &container)
 	if container.Error != nil {
-		return "", fmt.Errorf("IG reel error: %s", container.Error.Message)
+		return "", fmt.Errorf("IG reel error: %w", container.Error)
 	}
 
 	return s.publishContainer(account, container.ID)
@@ -348,14 +367,12 @@ func (s *InstagramService) PostComment(ctx context.Context, text, mediaID, accou
 	defer resp.Body.Close()
 
 	var result struct {
-		ID    string `json:"id"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID    string   `json:"id"`
+		Error *igError `json:"error"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 	if result.Error != nil {
-		return fmt.Errorf("IG comment error: %s", result.Error.Message)
+		return fmt.Errorf("IG comment error: %w", result.Error)
 	}
 	return nil
 }
@@ -379,14 +396,12 @@ func (s *InstagramService) ReplyToComment(ctx context.Context, commentID, text, 
 	defer resp.Body.Close()
 
 	var result struct {
-		ID    string `json:"id"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID    string   `json:"id"`
+		Error *igError `json:"error"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 	if result.Error != nil {
-		return fmt.Errorf("IG reply error: %s", result.Error.Message)
+		return fmt.Errorf("IG reply error: %w", result.Error)
 	}
 	return nil
 }
@@ -421,13 +436,11 @@ func (s *InstagramService) SendDM(ctx context.Context, recipientID, text, accoun
 
 	var result struct {
 		MessageID string `json:"message_id"`
-		Error     *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		Error     *igError `json:"error"`
 	}
 	json.NewDecoder(resp.Body).Decode(&result)
 	if result.Error != nil {
-		return fmt.Errorf("IG DM error: %s", result.Error.Message)
+		return fmt.Errorf("IG DM error: %w", result.Error)
 	}
 	return nil
 }
