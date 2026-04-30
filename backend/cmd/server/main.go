@@ -49,9 +49,11 @@ func main() {
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 
-	r.GET("/robots.txt", func(c *gin.Context) {
+	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
-	})
+	}
+	r.GET("/robots.txt", robotsTxt)
+	r.HEAD("/robots.txt", robotsTxt)
 
 	// Public routes
 	api := r.Group("/api")
