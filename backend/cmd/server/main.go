@@ -57,6 +57,7 @@ func main() {
 		api.GET("/auth/registration-status", authHandler.RegistrationStatus)
 		api.GET("/auth/instagram/callback", adminHandler.InstagramCallback)
 		api.GET("/uploads/:filename", postHandler.ServeImage)
+		api.HEAD("/uploads/:filename", postHandler.ServeImage)
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
