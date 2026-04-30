@@ -22,7 +22,7 @@ type InstagramService struct {
 	DB *database.MongoDB
 }
 
-const igGraphAPI = "https://graph.instagram.com/v21.0"
+const igGraphAPI = "https://graph.instagram.com/v25.0"
 
 func (s *InstagramService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
 	account, err := s.getAccount(ctx, accountID)
@@ -45,12 +45,19 @@ func (s *InstagramService) Post(ctx context.Context, content string, imageURLs [
 	return s.postCarousel(ctx, account, content, imageURLs, baseURL)
 }
 
-func (s *InstagramService) postSingleImage(ctx context.Context, account *models.SocialAccount, caption, imageURL string) (string, error) {
+func (s *InstagramService) postSingleImage(ctx context.Context, account *models.SocialAccount, caption, mediaURL string) (string, error) {
 	// Step 1: Create media container
 	params := url.Values{
-		"image_url":    {imageURL},
 		"caption":      {caption},
 		"access_token": {account.AccessToken},
+	}
+
+	lowerURL := strings.ToLower(mediaURL)
+	if strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov") {
+		params.Set("media_type", "REELS")
+		params.Set("video_url", mediaURL)
+	} else {
+		params.Set("image_url", mediaURL)
 	}
 
 	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
@@ -88,9 +95,15 @@ func (s *InstagramService) postCarousel(ctx context.Context, account *models.Soc
 		}
 
 		params := url.Values{
-			"image_url":      {fullURL},
 			"is_carousel_item": {"true"},
-			"access_token":   {account.AccessToken},
+			"access_token":     {account.AccessToken},
+		}
+
+		lowerURL := strings.ToLower(fullURL)
+		if strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov") {
+			params.Set("video_url", fullURL)
+		} else {
+			params.Set("image_url", fullURL)
 		}
 
 		resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
