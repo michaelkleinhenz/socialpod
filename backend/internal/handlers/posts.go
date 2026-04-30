@@ -397,7 +397,8 @@ func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) 
 	return h.storeFile(filename, contentTypes[ext], data)
 }
 
-// storeFile writes file data to disk and records metadata in MongoDB.
+// storeFile writes file data to disk and persists it in MongoDB so
+// uploads survive ephemeral filesystem restarts (e.g. Railway).
 func (h *PostHandler) storeFile(filename, contentType string, data []byte) (string, error) {
 	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create upload directory: %w", err)
@@ -406,12 +407,12 @@ func (h *PostHandler) storeFile(filename, contentType string, data []byte) (stri
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
-	// Store metadata (without file data) in MongoDB for the index.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	h.DB.Uploads().InsertOne(ctx, models.Upload{
 		Filename:    filename,
 		ContentType: contentType,
+		Data:        data,
 		Size:        int64(len(data)),
 		CreatedAt:   time.Now(),
 	})
@@ -543,7 +544,7 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 		return
 	}
 
-	// Fallback: serve from MongoDB (for uploads created before filesystem storage).
+	// Fallback: serve from MongoDB.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -553,6 +554,10 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
+
+	// Re-cache to disk so subsequent requests are served directly.
+	os.MkdirAll(h.UploadDir, 0o755)
+	os.WriteFile(diskPath, upload.Data, 0o644)
 
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	c.Data(http.StatusOK, upload.ContentType, upload.Data)
