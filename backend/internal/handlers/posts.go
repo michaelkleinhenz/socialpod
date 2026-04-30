@@ -535,27 +535,35 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 
 func (h *PostHandler) ServeImage(c *gin.Context) {
 	filename := c.Param("filename")
-
-	// Serve from disk first.
 	diskPath := filepath.Join(h.UploadDir, filename)
+
+	// Try disk cache first.
 	if _, err := os.Stat(diskPath); err == nil {
 		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		c.File(diskPath)
 		return
 	}
 
-	// Fallback: serve from MongoDB.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Serve from MongoDB (durable store).
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var upload models.Upload
 	err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
-	if err != nil || len(upload.Data) == 0 {
+	if err != nil {
+		log.Printf("ServeImage: MongoDB lookup failed for %s: %v", filename, err)
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if len(upload.Data) == 0 {
+		log.Printf("ServeImage: MongoDB record found for %s but Data is empty (size=%d, contentType=%s)", filename, upload.Size, upload.ContentType)
 		c.Status(http.StatusNotFound)
 		return
 	}
 
-	// Re-cache to disk so subsequent requests are served directly.
+	log.Printf("ServeImage: serving %s from MongoDB (%d bytes, %s)", filename, len(upload.Data), upload.ContentType)
+
+	// Re-cache to disk so subsequent requests bypass MongoDB.
 	os.MkdirAll(h.UploadDir, 0o755)
 	os.WriteFile(diskPath, upload.Data, 0o644)
 
