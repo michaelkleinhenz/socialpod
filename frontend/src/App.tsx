@@ -17,7 +17,15 @@ import { SuffixesPage } from './components/Suffixes/SuffixesPage';
 import { CommentsInboxPage } from './components/Inbox/CommentsInboxPage';
 import { DMInboxPage } from './components/Inbox/DMInboxPage';
 import { FeedPage } from './components/Inbox/FeedPage';
+import { ShareTargetPage } from './components/ShareTarget/ShareTargetPage';
 import './styles/global.css';
+
+// Register service worker for PWA / Web Share Target
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const { user, loading } = useAuth();
@@ -48,6 +56,8 @@ function AppRoutes() {
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/teams" element={<ProtectedRoute adminOnly><Layout><TeamsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/watermarks" element={<ProtectedRoute adminOnly><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
+      {/* PWA Web Share Target — standalone mobile UI, no sidebar */}
+      <Route path="/share-target" element={<ShareTargetPage />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

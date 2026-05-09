@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
 import type { PublicSettings } from '../../types';
@@ -11,6 +11,8 @@ const COOKIE_CONSENT_KEY = 'cookie_consent';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,6 +45,8 @@ export function LoginPage() {
     try {
       await login(email, password);
       toast.success('Welcome back!');
+      const next = searchParams.get('next');
+      if (next) navigate(next);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
