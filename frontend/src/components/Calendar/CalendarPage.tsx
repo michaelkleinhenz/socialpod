@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
-  format, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isToday, parseISO,
+  format, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
+  startOfDay, endOfDay, isSameMonth, isSameDay, isToday, parseISO,
 } from 'date-fns';
 import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { api } from '../../services/api';
@@ -14,11 +15,13 @@ import { ChevronLeft, ChevronRight, Plus, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
-type ViewMode = 'month' | 'week';
+type ViewMode = 'month' | 'week' | '3day';
 
 export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    window.innerWidth <= 768 ? '3day' : 'month'
+  );
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -45,8 +48,13 @@ export function CalendarPage() {
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  const fetchStart = viewMode === 'month' ? calStart : weekStart;
-  const fetchEnd = viewMode === 'month' ? calEnd : weekEnd;
+  // 3-day view date range
+  const threeDayStart = startOfDay(currentDate);
+  const threeDayEnd = endOfDay(addDays(currentDate, 2));
+  const threeDays = eachDayOfInterval({ start: threeDayStart, end: threeDayEnd });
+
+  const fetchStart = viewMode === 'month' ? calStart : viewMode === '3day' ? threeDayStart : weekStart;
+  const fetchEnd = viewMode === 'month' ? calEnd : viewMode === '3day' ? threeDayEnd : weekEnd;
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -69,16 +77,20 @@ export function CalendarPage() {
 
   const handlePrev = () => {
     if (viewMode === 'month') setCurrentDate(subMonths(currentDate, 1));
+    else if (viewMode === '3day') setCurrentDate(subDays(currentDate, 3));
     else setCurrentDate(subWeeks(currentDate, 1));
   };
 
   const handleNext = () => {
     if (viewMode === 'month') setCurrentDate(addMonths(currentDate, 1));
+    else if (viewMode === '3day') setCurrentDate(addDays(currentDate, 3));
     else setCurrentDate(addWeeks(currentDate, 1));
   };
 
   const navTitle = viewMode === 'month'
     ? format(currentDate, 'MMMM yyyy')
+    : viewMode === '3day'
+    ? `${format(threeDayStart, 'MMM d')} – ${format(threeDayEnd, 'MMM d, yyyy')}`
     : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -180,6 +192,12 @@ export function CalendarPage() {
               Month
             </button>
             <button
+              className={`view-toggle-btn ${viewMode === '3day' ? 'active' : ''}`}
+              onClick={() => setViewMode('3day')}
+            >
+              3 Day
+            </button>
+            <button
               className={`view-toggle-btn ${viewMode === 'week' ? 'active' : ''}`}
               onClick={() => setViewMode('week')}
             >
@@ -201,20 +219,60 @@ export function CalendarPage() {
               <option value="failed">Failed</option>
             </select>
           </div>
-          <button className="btn btn-primary" onClick={() => handleCreatePost()}>
-            <Plus size={18} /> New Post
-          </button>
-          <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'story')}>
-            <Plus size={18} /> New Story
-          </button>
-          <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'reel')}>
-            <Plus size={18} /> New Reel
-          </button>
+          <div className="new-post-actions">
+            <button className="btn btn-primary" onClick={() => handleCreatePost()}>
+              <Plus size={18} /> New Post
+            </button>
+            <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'story')}>
+              <Plus size={18} /> New Story
+            </button>
+            <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'reel')}>
+              <Plus size={18} /> New Reel
+            </button>
+          </div>
         </div>
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        {viewMode === 'week' ? (
+        {viewMode === '3day' ? (
+          <div className="week-grid three-day-grid">
+            <div className="calendar-header-row">
+              {threeDays.map(day => (
+                <div key={format(day, 'yyyy-MM-dd')} className="calendar-header-cell week-header-cell">
+                  <span className="week-day-name">{format(day, 'EEE')}</span>
+                  <span className={`week-day-number ${isToday(day) ? 'today-badge' : ''}`}>
+                    {format(day, 'd')}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="week-body">
+              {threeDays.map(day => {
+                const dayPosts = getPostsForDay(day);
+                const dateStr = format(day, 'yyyy-MM-dd');
+                return (
+                  <DroppableDay key={dateStr} id={dateStr}>
+                    <div
+                      className={`week-day ${isToday(day) ? 'today' : ''}`}
+                      onDoubleClick={() => handleCreatePost(day)}
+                    >
+                      <div className="day-posts">
+                        {dayPosts.map(post => (
+                          <DraggablePost key={post.id} id={post.id}>
+                            <CalendarPost post={post} onClick={() => handleEditPost(post)} />
+                          </DraggablePost>
+                        ))}
+                      </div>
+                      <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </DroppableDay>
+                );
+              })}
+            </div>
+          </div>
+        ) : viewMode === 'week' ? (
           <div className="week-grid">
             <div className="calendar-header-row">
               {weekDays.map(day => (

@@ -363,6 +363,21 @@
   background: var(--accent-muted) !important;
 }
 
+/* 3-Day View Grid */
+.three-day-grid .calendar-header-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.three-day-grid .week-body {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* New Post Actions Group */
+.new-post-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .calendar-loading {
   position: fixed;
   top: 50%;
@@ -381,16 +396,69 @@
 }
 
 @media (max-width: 768px) {
+  .calendar-page {
+    padding: 12px 8px;
+  }
+
+  .calendar-nav h1 {
+    font-size: 14px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
   .page-header {
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
+    align-items: stretch;
   }
+
   .calendar-actions {
     flex-direction: column;
     width: 100%;
+    gap: 8px;
   }
+
+  .view-toggle {
+    width: 100%;
+  }
+
+  .view-toggle-btn {
+    flex: 1;
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+
   .filter-group {
     width: 100%;
-    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .filter-group .select {
+    flex: 1;
+    min-width: 0;
+    width: auto !important;
+  }
+
+  .new-post-actions {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .new-post-actions .btn {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 4px;
+    font-size: 11px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .week-day {
+    min-height: 300px;
+  }
+
+  .three-day-grid .week-day {
+    min-height: 360px;
   }
 }
