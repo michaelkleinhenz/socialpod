@@ -400,10 +400,13 @@
     padding: 12px 8px;
   }
 
-  .calendar-nav h1 {
-    font-size: 14px;
+  .calendar-page .calendar-nav h1 {
+    font-size: 13px;
+    font-weight: 600;
     min-width: 0;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .page-header {
