@@ -3,6 +3,7 @@ export interface User {
   email: string;
   name: string;
   isAdmin: boolean;
+  isTeamAdmin: boolean;
   teamId?: string;
   teamName?: string;
   apiToken?: string;
@@ -61,6 +62,7 @@ export interface Suffix {
 
 export interface SocialAccount {
   id: string;
+  teamId?: string;
   platform: Platform;
   accountName: string;
   displayName: string;

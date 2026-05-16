@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { Trash2, Shield, Plus, X } from 'lucide-react';
+import { Trash2, Shield, Plus, X, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Admin.css';
@@ -58,6 +58,16 @@ export function UsersPage() {
     }
   };
 
+  const toggleTeamAdmin = async (user: User) => {
+    try {
+      const updated = await api.updateUserRole(user.id, { isTeamAdmin: !user.isTeamAdmin });
+      setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
+      toast.success(updated.isTeamAdmin ? 'Team admin enabled' : 'Team admin disabled');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -75,6 +85,7 @@ export function UsersPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Team Admin</th>
                 <th>Joined</th>
                 <th></th>
               </tr>
@@ -89,6 +100,21 @@ export function UsersPage() {
                       <span className="badge badge-published"><Shield size={10} /> Admin</span>
                     ) : (
                       <span className="badge badge-scheduled">User</span>
+                    )}
+                  </td>
+                  <td>
+                    {!user.isAdmin && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => toggleTeamAdmin(user)}
+                        title={user.isTeamAdmin ? 'Revoke team admin' : 'Grant team admin'}
+                      >
+                        <Star
+                          size={14}
+                          color={user.isTeamAdmin ? 'var(--warning)' : 'var(--text-muted)'}
+                          fill={user.isTeamAdmin ? 'var(--warning)' : 'none'}
+                        />
+                      </button>
                     )}
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>

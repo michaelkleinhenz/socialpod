@@ -57,11 +57,15 @@ func AuthRequired(secret string, db *database.MongoDB) gin.HandlerFunc {
 		if err == nil && token.Valid {
 			c.Set("userId", claims.UserID)
 			c.Set("isAdmin", claims.IsAdmin)
-			// Look up user's team
+			c.Set("isTeamAdmin", false)
+			// Look up user to get fresh team membership and isTeamAdmin flag
 			if uid, uerr := primitive.ObjectIDFromHex(claims.UserID); uerr == nil {
 				var u models.User
-				if uerr = db.Users().FindOne(ctx, bson.M{"_id": uid}).Decode(&u); uerr == nil && u.TeamID != nil {
-					c.Set("teamId", u.TeamID.Hex())
+				if uerr = db.Users().FindOne(ctx, bson.M{"_id": uid}).Decode(&u); uerr == nil {
+					if u.TeamID != nil {
+						c.Set("teamId", u.TeamID.Hex())
+					}
+					c.Set("isTeamAdmin", u.IsTeamAdmin)
 				}
 			}
 			c.Next()
@@ -74,6 +78,7 @@ func AuthRequired(secret string, db *database.MongoDB) gin.HandlerFunc {
 		if err == nil {
 			c.Set("userId", user.ID.Hex())
 			c.Set("isAdmin", user.IsAdmin)
+			c.Set("isTeamAdmin", user.IsTeamAdmin)
 			if user.TeamID != nil {
 				c.Set("teamId", user.TeamID.Hex())
 			}
@@ -87,6 +92,7 @@ func AuthRequired(secret string, db *database.MongoDB) gin.HandlerFunc {
 		if err == nil {
 			c.Set("teamId", team.ID.Hex())
 			c.Set("isAdmin", false)
+			c.Set("isTeamAdmin", false)
 			// Use a sentinel userId for team-token auth
 			c.Set("userId", team.ID.Hex())
 			c.Set("isTeamToken", true)
@@ -108,5 +114,22 @@ func AdminRequired() gin.HandlerFunc {
 			return
 		}
 		c.Next()
+	}
+}
+
+// TeamAdminRequired allows access to users who are team admins or global admins,
+// but only if they are assigned to a team (so they have a scope to operate in).
+func TeamAdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isAdmin, _ := c.Get("isAdmin")
+		isTeamAdmin, _ := c.Get("isTeamAdmin")
+		_, hasTeam := c.Get("teamId")
+
+		if (isAdmin.(bool) || isTeamAdmin.(bool)) && hasTeam {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Team admin access required"})
+		c.Abort()
 	}
 }

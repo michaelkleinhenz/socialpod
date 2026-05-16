@@ -109,19 +109,21 @@ func main() {
 		auth.DELETE("/suffixes/:id", suffixHandler.Delete)
 	}
 
-	// Admin routes
+	// Admin routes (global admin only)
 	admin := auth.Group("/admin", middleware.AdminRequired())
 	{
 		admin.GET("/accounts", adminHandler.ListAccounts)
 		admin.POST("/accounts/bluesky", adminHandler.AddBlueskyAccount)
 		admin.DELETE("/accounts/:id", adminHandler.DeleteAccount)
 		admin.PATCH("/accounts/:id/toggle", adminHandler.ToggleAccount)
+		admin.PATCH("/accounts/:id/team", adminHandler.AssignAccountTeam)
 		admin.GET("/settings", adminHandler.GetSettings)
 		admin.PUT("/settings", adminHandler.UpdateSettings)
 		admin.GET("/instagram/auth-url", adminHandler.InstagramAuthURL)
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.POST("/users", adminHandler.CreateUser)
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
+		admin.PATCH("/users/:id/role", adminHandler.UpdateUserRole)
 		admin.GET("/teams", adminHandler.ListTeams)
 		admin.POST("/teams", adminHandler.CreateTeam)
 		admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
@@ -129,6 +131,19 @@ func main() {
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
 		admin.POST("/watermarks", adminHandler.UploadWatermark)
 		admin.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
+	}
+
+	// Team admin routes (team admin or global admin with a team)
+	teamAdmin := auth.Group("/team", middleware.TeamAdminRequired())
+	{
+		teamAdmin.GET("/accounts", adminHandler.TeamListAccounts)
+		teamAdmin.POST("/accounts/bluesky", adminHandler.TeamAddBlueskyAccount)
+		teamAdmin.DELETE("/accounts/:id", adminHandler.TeamDeleteAccount)
+		teamAdmin.PATCH("/accounts/:id/toggle", adminHandler.TeamToggleAccount)
+		teamAdmin.GET("/instagram/auth-url", adminHandler.TeamInstagramAuthURL)
+		teamAdmin.GET("/members", adminHandler.TeamListMembers)
+		teamAdmin.POST("/members", adminHandler.TeamCreateUser)
+		teamAdmin.DELETE("/members/:id", adminHandler.TeamRemoveMember)
 	}
 
 	// Serve embedded frontend (SPA with index.html fallback)
