@@ -155,6 +155,9 @@ func main() {
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
 	}
 
+	// Team self-creation: team admin flag required, no existing team needed
+	auth.POST("/team/setup", middleware.TeamAdminFlagRequired(), adminHandler.TeamAdminCreateTeam)
+
 	// Team admin routes (team admin or global admin with a team)
 	teamAdmin := auth.Group("/team", middleware.TeamAdminRequired())
 	{

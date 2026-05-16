@@ -117,6 +117,21 @@ func AdminRequired() gin.HandlerFunc {
 	}
 }
 
+// TeamAdminFlagRequired allows access to users who have the isTeamAdmin flag set,
+// regardless of whether they are currently assigned to a team. Use this for
+// endpoints a team admin needs before they have a team (e.g. team self-creation).
+func TeamAdminFlagRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isTeamAdmin, exists := c.Get("isTeamAdmin")
+		if exists && isTeamAdmin.(bool) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Team admin access required"})
+		c.Abort()
+	}
+}
+
 // TeamAdminRequired allows access to users who are team admins or global admins,
 // but only if they are assigned to a team (so they have a scope to operate in).
 func TeamAdminRequired() gin.HandlerFunc {
