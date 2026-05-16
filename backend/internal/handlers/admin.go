@@ -588,6 +588,7 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		msg.TeamID = account.TeamID
 	}
 
 	// Upsert by externalId to avoid duplicates
@@ -643,6 +644,7 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		msg.TeamID = account.TeamID
 	}
 
 	doc, err := structToBSONDoc(msg)
@@ -688,6 +690,7 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		msg.TeamID = account.TeamID
 		if messaging.Sender.ID != "" {
 			msg.SenderName = h.Instagram.GetSenderName(ctx, messaging.Sender.ID, account.AccessToken)
 		}
@@ -1478,7 +1481,10 @@ func (h *AdminHandler) TeamListMembers(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var members []models.User
-	cursor.All(ctx, &members)
+	if err := cursor.All(ctx, &members); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch members"})
+		return
+	}
 	if members == nil {
 		members = []models.User{}
 	}
@@ -1747,11 +1753,21 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 
 // Watermark gallery management
 
+func watermarkFilter(c *gin.Context) bson.M {
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		return bson.M{"teamId": tid}
+	}
+	userID, _ := c.Get("userId")
+	uid, _ := primitive.ObjectIDFromHex(userID.(string))
+	return bson.M{"userId": uid}
+}
+
 func (h *AdminHandler) ListWatermarks(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cursor, err := h.DB.Watermarks().Find(ctx, bson.M{})
+	cursor, err := h.DB.Watermarks().Find(ctx, watermarkFilter(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch watermarks"})
 		return
@@ -1792,12 +1808,21 @@ func (h *AdminHandler) UploadWatermark(c *gin.Context) {
 		return
 	}
 
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
 	wm := models.Watermark{
+		UserID:    objID,
 		Name:      name,
 		Filename:  fh.Filename,
 		URL:       url,
 		CreatedAt: time.Now(),
 	}
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		wm.TeamID = &tid
+	}
+
 	result, err := h.DB.Watermarks().InsertOne(ctx, wm)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save watermark"})
@@ -1817,7 +1842,9 @@ func (h *AdminHandler) DeleteWatermark(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Watermarks().DeleteOne(ctx, bson.M{"_id": id})
+	filter := watermarkFilter(c)
+	filter["_id"] = id
+	result, err := h.DB.Watermarks().DeleteOne(ctx, filter)
 	if err != nil || result.DeletedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Watermark not found"})
 		return

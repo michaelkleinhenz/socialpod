@@ -341,11 +341,11 @@ class ApiClient {
     const form = new FormData();
     form.append('name', name);
     form.append('image', file);
-    return this.request<any>('/admin/watermarks', { method: 'POST', body: form });
+    return this.request<any>('/watermarks', { method: 'POST', body: form });
   }
 
   deleteWatermark(id: string) {
-    return this.request<any>(`/admin/watermarks/${id}`, { method: 'DELETE' });
+    return this.request<any>(`/watermarks/${id}`, { method: 'DELETE' });
   }
 
   // Teams

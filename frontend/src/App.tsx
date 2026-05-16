@@ -65,7 +65,7 @@ function AppRoutes() {
       <Route path="/admin/settings" element={<ProtectedRoute adminOnly><Layout><SettingsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/teams" element={<ProtectedRoute adminOnly><Layout><TeamsPage /></Layout></ProtectedRoute>} />
-      <Route path="/admin/watermarks" element={<ProtectedRoute adminOnly><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
+      <Route path="/watermarks" element={<ProtectedRoute><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
       {/* Team admin routes */}
       <Route path="/team/manage" element={<ProtectedRoute teamAdminOnly><Layout><TeamManagePage /></Layout></ProtectedRoute>} />
       {/* PWA Web Share Target — standalone mobile UI, no sidebar */}
