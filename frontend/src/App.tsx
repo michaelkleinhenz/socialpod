@@ -60,7 +60,7 @@ function AppRoutes() {
       <Route path="/inbox/dms" element={<ProtectedRoute><Layout><DMInboxPage /></Layout></ProtectedRoute>} />
       <Route path="/feed" element={<ProtectedRoute><Layout><FeedPage /></Layout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Layout><ProfilePage /></Layout></ProtectedRoute>} />
-      <Route path="/admin" element={<ProtectedRoute adminOnly><Layout><AdminPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute teamAdminOnly><Layout><AdminPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/accounts" element={<ProtectedRoute adminOnly><Layout><AccountsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/settings" element={<ProtectedRoute adminOnly><Layout><SettingsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />

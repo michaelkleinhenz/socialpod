@@ -1132,8 +1132,8 @@ func (h *AdminHandler) DashboardInsights(c *gin.Context) {
 		return
 	}
 
-	// Gather all posts
-	cursor, err := h.DB.Posts().Find(ctx, bson.M{})
+	// Gather posts (scoped to team or user)
+	cursor, err := h.DB.Posts().Find(ctx, postFilter(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load posts"})
 		return
@@ -1144,8 +1144,13 @@ func (h *AdminHandler) DashboardInsights(c *gin.Context) {
 		return
 	}
 
-	// Gather accounts
-	acCursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{"isActive": true})
+	// Gather accounts (scoped to team when applicable)
+	accountFilter := bson.M{"isActive": true}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
+		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		accountFilter["teamId"] = tid
+	}
+	acCursor, err := h.DB.SocialAccounts().Find(ctx, accountFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load accounts"})
 		return
@@ -1596,8 +1601,8 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// --- posts ---
-	cursor, err := h.DB.Posts().Find(ctx, bson.M{})
+	// --- posts (scoped to team or user) ---
+	cursor, err := h.DB.Posts().Find(ctx, postFilter(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load posts"})
 		return
@@ -1605,11 +1610,29 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 	var posts []models.Post
 	cursor.All(ctx, &posts)
 
-	// --- inbox counts ---
-	totalComments, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"messageType": "comment"})
-	totalDMs, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"messageType": "dm"})
-	unreadCount, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"isRead": false})
-	likedCount, _ := h.DB.InboxMessages().CountDocuments(ctx, bson.M{"isLiked": true, "messageType": "comment"})
+	// --- inbox counts (scoped to team, or all for global admin) ---
+	inboxScope := bson.M{}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
+		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		inboxScope["teamId"] = tid
+	} else {
+		isAdminVal, _ := c.Get("isAdmin")
+		if isAdminVal == nil || !isAdminVal.(bool) {
+			// Non-admin without a team: no inbox access
+			inboxScope["_id"] = primitive.NewObjectID()
+		}
+		// Global admin without a team: no extra filter → all messages
+	}
+	addInboxScope := func(f bson.M) bson.M {
+		for k, v := range inboxScope {
+			f[k] = v
+		}
+		return f
+	}
+	totalComments, _ := h.DB.InboxMessages().CountDocuments(ctx, addInboxScope(bson.M{"messageType": "comment"}))
+	totalDMs, _ := h.DB.InboxMessages().CountDocuments(ctx, addInboxScope(bson.M{"messageType": "dm"}))
+	unreadCount, _ := h.DB.InboxMessages().CountDocuments(ctx, addInboxScope(bson.M{"isRead": false}))
+	likedCount, _ := h.DB.InboxMessages().CountDocuments(ctx, addInboxScope(bson.M{"isLiked": true, "messageType": "comment"}))
 
 	now := time.Now()
 	thirtyDaysAgo := now.AddDate(0, 0, -30)

@@ -9,7 +9,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const navItems = [
-    ...(user?.isAdmin ? [{ path: '/admin', icon: Zap, label: 'Dashboard' }] : []),
+    ...((user?.isAdmin || user?.isTeamAdmin) ? [{ path: '/admin', icon: Zap, label: 'Dashboard' }] : []),
     { path: '/', icon: Calendar, label: 'Calendar' },
     { path: '/inbox/comments', icon: MessageCircle, label: 'Comments' },
     { path: '/inbox/dms', icon: Mail, label: 'DMs' },
