@@ -190,7 +190,7 @@ class ApiClient {
     return this.request<any[]>('/team/members');
   }
 
-  createTeamUser(data: { name: string; email: string; password: string }) {
+  addTeamMember(data: { email: string }) {
     return this.request<any>('/team/members', {
       method: 'POST',
       body: JSON.stringify(data),
