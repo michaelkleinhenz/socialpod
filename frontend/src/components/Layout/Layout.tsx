@@ -22,8 +22,8 @@ export function Layout({ children }: { children: ReactNode }) {
       { path: '/team/manage', icon: UsersRound, label: 'Team Admin' },
     ] : []),
     { path: '/suffixes', icon: Signature, label: 'Suffixes' },
+    { path: '/watermarks', icon: Image, label: 'Watermarks' },
     ...(user?.isAdmin ? [
-      { path: '/admin/watermarks', icon: Image, label: 'Watermarks' },
       { path: '/admin/users', icon: Users, label: 'Users' },
       { path: '/admin/teams', icon: UsersRound, label: 'Teams' },
       { path: '/admin/settings', icon: Settings, label: 'Settings' },

@@ -1753,11 +1753,21 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 
 // Watermark gallery management
 
+func watermarkFilter(c *gin.Context) bson.M {
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		return bson.M{"teamId": tid}
+	}
+	userID, _ := c.Get("userId")
+	uid, _ := primitive.ObjectIDFromHex(userID.(string))
+	return bson.M{"userId": uid}
+}
+
 func (h *AdminHandler) ListWatermarks(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cursor, err := h.DB.Watermarks().Find(ctx, bson.M{})
+	cursor, err := h.DB.Watermarks().Find(ctx, watermarkFilter(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch watermarks"})
 		return
@@ -1798,12 +1808,21 @@ func (h *AdminHandler) UploadWatermark(c *gin.Context) {
 		return
 	}
 
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
 	wm := models.Watermark{
+		UserID:    objID,
 		Name:      name,
 		Filename:  fh.Filename,
 		URL:       url,
 		CreatedAt: time.Now(),
 	}
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		wm.TeamID = &tid
+	}
+
 	result, err := h.DB.Watermarks().InsertOne(ctx, wm)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save watermark"})
@@ -1823,7 +1842,9 @@ func (h *AdminHandler) DeleteWatermark(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Watermarks().DeleteOne(ctx, bson.M{"_id": id})
+	filter := watermarkFilter(c)
+	filter["_id"] = id
+	result, err := h.DB.Watermarks().DeleteOne(ctx, filter)
 	if err != nil || result.DeletedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Watermark not found"})
 		return

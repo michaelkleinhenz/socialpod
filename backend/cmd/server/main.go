@@ -101,8 +101,12 @@ func main() {
 		auth.POST("/inbox/dms/:id/reply", inboxHandler.ReplyToDM)
 		auth.GET("/inbox/feed", inboxHandler.GetFeed)
 
-		// Suffixes
+		// Watermarks (team/user scoped)
 		auth.GET("/watermarks", adminHandler.ListWatermarks)
+		auth.POST("/watermarks", adminHandler.UploadWatermark)
+		auth.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
+
+		// Suffixes (team/user scoped)
 		auth.GET("/suffixes", suffixHandler.List)
 		auth.POST("/suffixes", suffixHandler.Create)
 		auth.PUT("/suffixes/:id", suffixHandler.Update)
@@ -129,8 +133,6 @@ func main() {
 		admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
 		admin.PUT("/teams/:id/members", adminHandler.SetTeamMembers)
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
-		admin.POST("/watermarks", adminHandler.UploadWatermark)
-		admin.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
 	}
 
 	// Team admin routes (team admin or global admin with a team)

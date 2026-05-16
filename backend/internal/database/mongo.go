@@ -68,6 +68,11 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
+	m.Watermarks().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+	})
+
 	m.InboxMessages().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "messageType", Value: 1}}},
 		{Keys: bson.D{{Key: "platform", Value: 1}}},
