@@ -281,7 +281,7 @@ func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accou
 		params.Set("image_url", fullURL)
 	}
 
-	log.Printf("IG story create: url=%s params=%v", fullURL, params)
+	log.Printf("IG story create: url=%s igUser=%s", fullURL, account.IGUserID)
 	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
 	if err != nil {
 		return "", err
