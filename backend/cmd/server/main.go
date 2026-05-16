@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"socialmedia/internal/config"
 	"socialmedia/internal/database"
@@ -16,6 +18,14 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Warn on known-insecure defaults so operators catch misconfigurations early.
+	if v := os.Getenv("JWT_SECRET"); v == "" || v == "change-me-in-production" {
+		log.Println("WARNING: JWT_SECRET is not set or uses the default value — set a strong random secret before exposing this service")
+	}
+	if v := os.Getenv("MONGO_PASSWORD"); v == "" || v == "socialmedia_secret" {
+		log.Println("WARNING: MONGO_PASSWORD is not set or uses the default value — set a strong password before exposing this service")
+	}
 
 	db, err := database.Connect(cfg.MongoURI, cfg.MongoDBName)
 	if err != nil {
@@ -31,13 +41,23 @@ func main() {
 
 	r := gin.Default()
 
-	// CORS
+	// CORS — restrict to the configured APP_URL; additional origins can be
+	// appended via the CORS_ORIGINS env var (comma-separated).
+	// AllowCredentials is intentionally omitted: auth is header-based (Bearer
+	// tokens), so cookie-credential sharing is not required.
+	allowedOrigins := []string{cfg.AppURL}
+	if extra := os.Getenv("CORS_ORIGINS"); extra != "" {
+		for _, o := range strings.Split(extra, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				allowedOrigins = append(allowedOrigins, o)
+			}
+		}
+	}
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
+		AllowOrigins:  allowedOrigins,
+		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:  []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders: []string{"Content-Length"},
 	}))
 
 	// Handlers
