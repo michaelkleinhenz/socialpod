@@ -15,7 +15,7 @@ type Tab = 'accounts' | 'members';
 
 export function TeamManagePage() {
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [tab, setTab] = useState<Tab>('accounts');
 
   // Accounts state
@@ -33,6 +33,10 @@ export function TeamManagePage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
   const [addingMember, setAddingMember] = useState(false);
+
+  // Team self-creation state (when team admin has no team yet)
+  const [newTeamName, setNewTeamName] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
 
   useEffect(() => {
     if (!user?.teamId) return;
@@ -138,17 +142,51 @@ export function TeamManagePage() {
     }
   };
 
+  const createTeam = async () => {
+    if (!newTeamName.trim()) { toast.error('Team name is required'); return; }
+    setCreatingTeam(true);
+    try {
+      await api.createOwnTeam({ name: newTeamName.trim() });
+      toast.success('Team created');
+      await refreshUser();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create team');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
   if (!user?.teamId) {
     return (
       <div className="page">
         <div className="page-header">
           <h1>Team Management</h1>
         </div>
-        <div className="empty-state">
-          <p>You are not assigned to any team.</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-            Contact your administrator to be assigned to a team.
-          </p>
+        <div style={{ maxWidth: 480 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Create Your Team</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 20, fontSize: 14 }}>
+              You don't have a team yet. Create one to start managing members and social accounts.
+            </p>
+            <div className="form-group">
+              <label>Team Name</label>
+              <input
+                className="input"
+                placeholder="My Team"
+                value={newTeamName}
+                onChange={e => setNewTeamName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createTeam()}
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={createTeam}
+              disabled={creatingTeam}
+              style={{ marginTop: 16 }}
+            >
+              {creatingTeam ? 'Creating...' : 'Create Team'}
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -374,6 +374,13 @@ class ApiClient {
   generateTeamToken(id: string) {
     return this.request<{ apiToken: string }>(`/admin/teams/${id}/token`, { method: 'POST' });
   }
+
+  createOwnTeam(data: { name: string }) {
+    return this.request<any>('/team/setup', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();

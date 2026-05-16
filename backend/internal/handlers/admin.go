@@ -932,6 +932,57 @@ func (h *AdminHandler) CreateTeam(c *gin.Context) {
 	c.JSON(http.StatusCreated, team)
 }
 
+// TeamAdminCreateTeam lets a team admin create their own team when they don't
+// belong to one yet. Limited to one team: the calling user is automatically
+// added as the first member.
+func (h *AdminHandler) TeamAdminCreateTeam(c *gin.Context) {
+	userIDStr, _ := c.Get("userId")
+	userID, err := primitive.ObjectIDFromHex(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var caller models.User
+	if err := h.DB.Users().FindOne(ctx, bson.M{"_id": userID}).Decode(&caller); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user"})
+		return
+	}
+	if caller.TeamID != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "You are already a member of a team"})
+		return
+	}
+
+	var input CreateTeamInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	team := models.Team{
+		Name:      input.Name,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	result, err := h.DB.Teams().InsertOne(ctx, team)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create team"})
+		return
+	}
+
+	team.ID = result.InsertedID.(primitive.ObjectID)
+
+	h.DB.Users().UpdateOne(ctx, bson.M{"_id": userID}, bson.M{
+		"$set": bson.M{"teamId": team.ID, "updatedAt": time.Now()},
+	})
+
+	c.JSON(http.StatusCreated, team)
+}
+
 func (h *AdminHandler) DeleteTeam(c *gin.Context) {
 	id, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
