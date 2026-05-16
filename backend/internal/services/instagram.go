@@ -577,29 +577,22 @@ func (s *InstagramService) GetSenderName(ctx context.Context, senderID, accessTo
 }
 
 func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
-	// Try the specific account first, then fall back to any active Instagram account.
-	// The fallback handles cases where the message was stored against an old account
-	// document (e.g. after re-authenticating Instagram creates a new document).
-	if accountID != "" {
-		if id, err := primitive.ObjectIDFromHex(accountID); err == nil && id != primitive.NilObjectID {
-			var account models.SocialAccount
-			if err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
-				"platform": models.PlatformInstagram,
-				"isActive": true,
-				"_id":      id,
-			}).Decode(&account); err == nil {
-				return &account, nil
-			}
-		}
+	if accountID == "" {
+		return nil, fmt.Errorf("instagram account ID is required")
 	}
-
-	// Fall back to any active Instagram account
+	id, err := primitive.ObjectIDFromHex(accountID)
+	if err != nil || id == primitive.NilObjectID {
+		return nil, fmt.Errorf("invalid instagram account ID: %s", accountID)
+	}
 	var account models.SocialAccount
-	err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
+	if err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
 		"platform": models.PlatformInstagram,
 		"isActive": true,
-	}).Decode(&account)
-	return &account, err
+		"_id":      id,
+	}).Decode(&account); err != nil {
+		return nil, fmt.Errorf("instagram account not found: %w", err)
+	}
+	return &account, nil
 }
 
 // ExchangeCodeForToken handles the Instagram OAuth code exchange

@@ -237,13 +237,6 @@ func (h *InboxHandler) backfillSenderNames(ctx context.Context, messages []model
 				"isActive": true,
 			}).Decode(&account)
 			if err != nil {
-				// Try any active Instagram account as fallback
-				err = h.DB.SocialAccounts().FindOne(ctx, bson.M{
-					"platform": models.PlatformInstagram,
-					"isActive": true,
-				}).Decode(&account)
-			}
-			if err != nil {
 				continue
 			}
 			token = account.AccessToken
@@ -284,12 +277,6 @@ func (h *InboxHandler) backfillMediaURLs(ctx context.Context, messages []models.
 				"platform": models.PlatformInstagram,
 				"isActive": true,
 			}).Decode(&account)
-			if err != nil {
-				err = h.DB.SocialAccounts().FindOne(ctx, bson.M{
-					"platform": models.PlatformInstagram,
-					"isActive": true,
-				}).Decode(&account)
-			}
 			if err != nil {
 				continue
 			}
@@ -371,9 +358,19 @@ func (h *InboxHandler) MarkRead(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	h.DB.InboxMessages().UpdateOne(ctx, bson.M{"_id": id}, bson.M{
+	msgFilter := bson.M{"_id": id}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
+		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		msgFilter["teamId"] = tid
+	}
+
+	result, err := h.DB.InboxMessages().UpdateOne(ctx, msgFilter, bson.M{
 		"$set": bson.M{"isRead": true},
 	})
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -398,8 +395,14 @@ func (h *InboxHandler) ReplyToComment(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	msgFilter := bson.M{"_id": msgID}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
+		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		msgFilter["teamId"] = tid
+	}
+
 	var msg models.InboxMessage
-	if err := h.DB.InboxMessages().FindOne(ctx, bson.M{"_id": msgID}).Decode(&msg); err != nil {
+	if err := h.DB.InboxMessages().FindOne(ctx, msgFilter).Decode(&msg); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
 		return
 	}
@@ -460,8 +463,14 @@ func (h *InboxHandler) ReplyToDM(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	msgFilter := bson.M{"_id": msgID}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
+		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		msgFilter["teamId"] = tid
+	}
+
 	var msg models.InboxMessage
-	if err := h.DB.InboxMessages().FindOne(ctx, bson.M{"_id": msgID}).Decode(&msg); err != nil {
+	if err := h.DB.InboxMessages().FindOne(ctx, msgFilter).Decode(&msg); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Message not found"})
 		return
 	}
@@ -507,6 +516,28 @@ func (h *InboxHandler) GetFeed(c *gin.Context) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
+	// Verify the requested account belongs to the caller's team.
+	if accountID != "" {
+		accObjID, err := primitive.ObjectIDFromHex(accountID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account ID"})
+			return
+		}
+		accFilter := bson.M{"_id": accObjID, "isActive": true}
+		if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
+			tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+			accFilter["teamId"] = tid
+		} else if isAdmin, _ := c.Get("isAdmin"); !isAdmin.(bool) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			return
+		}
+		var acc models.SocialAccount
+		if err := h.DB.SocialAccounts().FindOne(ctx, accFilter).Decode(&acc); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Account not found or access denied"})
+			return
+		}
+	}
 
 	switch platform {
 	case string(models.PlatformBluesky):
