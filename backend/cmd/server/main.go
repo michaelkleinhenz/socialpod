@@ -167,7 +167,7 @@ func main() {
 		teamAdmin.PATCH("/accounts/:id/toggle", adminHandler.TeamToggleAccount)
 		teamAdmin.GET("/instagram/auth-url", adminHandler.TeamInstagramAuthURL)
 		teamAdmin.GET("/members", adminHandler.TeamListMembers)
-		teamAdmin.POST("/members", adminHandler.TeamCreateUser)
+		teamAdmin.POST("/members", adminHandler.TeamAddMember)
 		teamAdmin.DELETE("/members/:id", adminHandler.TeamRemoveMember)
 	}
 

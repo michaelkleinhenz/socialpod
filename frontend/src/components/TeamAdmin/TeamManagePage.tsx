@@ -29,9 +29,7 @@ export function TeamManagePage() {
   // Members state
   const [members, setMembers] = useState<User[]>([]);
   const [showMemberForm, setShowMemberForm] = useState(false);
-  const [memberName, setMemberName] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
-  const [memberPassword, setMemberPassword] = useState('');
   const [addingMember, setAddingMember] = useState(false);
 
   // Team self-creation state (when team admin has no team yet)
@@ -109,20 +107,16 @@ export function TeamManagePage() {
   };
 
   const addMember = async () => {
-    if (!memberName || !memberEmail || !memberPassword) {
-      toast.error('All fields are required');
-      return;
-    }
-    if (memberPassword.length < 8) {
-      toast.error('Password must be at least 8 characters');
+    if (!memberEmail) {
+      toast.error('Email address is required');
       return;
     }
     setAddingMember(true);
     try {
-      await api.createTeamUser({ name: memberName, email: memberEmail, password: memberPassword });
+      await api.addTeamMember({ email: memberEmail });
       toast.success('Member added');
       setShowMemberForm(false);
-      setMemberName(''); setMemberEmail(''); setMemberPassword('');
+      setMemberEmail('');
       loadMembers();
     } catch (err: any) {
       toast.error(err.message);
@@ -387,17 +381,19 @@ export function TeamManagePage() {
                   </button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0 }}>
+                    Enter the email address of an existing account. Team admins cannot create new accounts — contact an admin to create one first.
+                  </p>
                   <div className="form-group">
-                    <label>Name</label>
-                    <input className="input" placeholder="Full name" value={memberName} onChange={e => setMemberName(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>Email</label>
-                    <input className="input" type="email" placeholder="user@example.com" value={memberEmail} onChange={e => setMemberEmail(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>Password</label>
-                    <input className="input" type="password" placeholder="Min 8 characters" value={memberPassword} onChange={e => setMemberPassword(e.target.value)} />
+                    <label>Email Address</label>
+                    <input
+                      className="input"
+                      type="email"
+                      placeholder="user@example.com"
+                      value={memberEmail}
+                      onChange={e => setMemberEmail(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addMember()}
+                    />
                   </div>
                 </div>
                 <div className="modal-actions">

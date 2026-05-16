@@ -1547,13 +1547,11 @@ func (h *AdminHandler) TeamListMembers(c *gin.Context) {
 	c.JSON(http.StatusOK, members)
 }
 
-type TeamCreateUserInput struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-	Name     string `json:"name" binding:"required"`
+type TeamAddMemberInput struct {
+	Email string `json:"email" binding:"required,email"`
 }
 
-func (h *AdminHandler) TeamCreateUser(c *gin.Context) {
+func (h *AdminHandler) TeamAddMember(c *gin.Context) {
 	teamIDRaw, _ := c.Get("teamId")
 	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
 	if err != nil {
@@ -1561,7 +1559,7 @@ func (h *AdminHandler) TeamCreateUser(c *gin.Context) {
 		return
 	}
 
-	var input TeamCreateUserInput
+	var input TeamAddMemberInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1570,35 +1568,33 @@ func (h *AdminHandler) TeamCreateUser(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	count, _ := h.DB.Users().CountDocuments(ctx, bson.M{"email": input.Email})
-	if count > 0 {
-		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
-		return
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	var user models.User
+	err = h.DB.Users().FindOne(ctx, bson.M{"email": input.Email}).Decode(&user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "No account found with that email address"})
 		return
 	}
 
-	user := models.User{
-		Email:     input.Email,
-		Password:  string(hash),
-		Name:      input.Name,
-		TeamID:    &tid,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	if user.TeamID != nil {
+		if *user.TeamID == tid {
+			c.JSON(http.StatusConflict, gin.H{"error": "User is already a member of this team"})
+		} else {
+			c.JSON(http.StatusConflict, gin.H{"error": "User is already a member of another team"})
+		}
+		return
 	}
 
-	result, err := h.DB.Users().InsertOne(ctx, user)
+	_, err = h.DB.Users().UpdateOne(ctx,
+		bson.M{"_id": user.ID},
+		bson.M{"$set": bson.M{"teamId": tid, "updatedAt": time.Now()}},
+	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add member"})
 		return
 	}
 
-	user.ID = result.InsertedID.(primitive.ObjectID)
-	c.JSON(http.StatusCreated, user)
+	user.TeamID = &tid
+	c.JSON(http.StatusOK, user)
 }
 
 func (h *AdminHandler) TeamRemoveMember(c *gin.Context) {
