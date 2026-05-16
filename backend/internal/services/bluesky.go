@@ -148,9 +148,11 @@ func (s *BlueskyService) createRecord(ctx context.Context, session *bskySession,
 func (s *BlueskyService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
 	filter := bson.M{"platform": models.PlatformBluesky, "isActive": true}
 	if accountID != "" {
-		if id, err := primitive.ObjectIDFromHex(accountID); err == nil {
-			filter["_id"] = id
+		id, err := primitive.ObjectIDFromHex(accountID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid bluesky account ID: %s", accountID)
 		}
+		filter["_id"] = id
 	}
 
 	var account models.SocialAccount
