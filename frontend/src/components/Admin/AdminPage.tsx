@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import type { Post } from '../../types';
 import {
   Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock,
@@ -88,6 +89,7 @@ function HorizontalBar({ pct, color }: { pct: number; color: string }) {
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export function AdminPage() {
+  const { user } = useAuth();
   const [stats, setStats] = useState({
     total: 0, scheduled: 0, published: 0, failed: 0,
     accounts: 0, users: 0, teams: 0,
@@ -104,25 +106,36 @@ export function AdminPage() {
   useEffect(() => {
     Promise.all([
       api.getPosts({}),
-      api.getAccounts(),
-      api.getUsers(),
-      api.getTeams(),
       api.getDashboardStats(),
       api.getActiveAccounts(),
-    ]).then(([posts, adminAccounts, users, teams, ds, active]) => {
-      setStats({
+    ]).then(([posts, ds, active]) => {
+      setStats(s => ({
+        ...s,
         total: posts.length,
         scheduled: posts.filter((p: Post) => p.status === 'scheduled').length,
         published: posts.filter((p: Post) => p.status === 'published').length,
         failed: posts.filter((p: Post) => p.status === 'failed').length,
-        accounts: adminAccounts.length,
-        users: users.length,
-        teams: teams.length,
-      });
+        accounts: active.length,
+      }));
       setDashStats(ds);
       setActiveAccounts(active);
     });
-  }, []);
+
+    if (user?.isAdmin) {
+      Promise.all([
+        api.getAccounts(),
+        api.getUsers(),
+        api.getTeams(),
+      ]).then(([adminAccounts, users, teams]) => {
+        setStats(s => ({
+          ...s,
+          accounts: adminAccounts.length,
+          users: users.length,
+          teams: teams.length,
+        }));
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load feed engagement data for all active accounts
   useEffect(() => {
@@ -655,43 +668,55 @@ export function AdminPage() {
 
       {/* ── Navigation links ── */}
       <div className="admin-links">
-        <Link to="/admin/accounts" className="admin-link-card">
-          <Share2 size={24} />
-          <div>
-            <h3>Social Accounts</h3>
-            <p>{stats.accounts} connected</p>
-          </div>
-        </Link>
+        {user?.isAdmin ? (
+          <>
+            <Link to="/admin/accounts" className="admin-link-card">
+              <Share2 size={24} />
+              <div>
+                <h3>Social Accounts</h3>
+                <p>{stats.accounts} connected</p>
+              </div>
+            </Link>
 
-        <Link to="/admin/users" className="admin-link-card">
-          <Users size={24} />
-          <div>
-            <h3>Users</h3>
-            <p>{stats.users} registered</p>
-          </div>
-        </Link>
+            <Link to="/admin/users" className="admin-link-card">
+              <Users size={24} />
+              <div>
+                <h3>Users</h3>
+                <p>{stats.users} registered</p>
+              </div>
+            </Link>
 
-        <Link to="/admin/teams" className="admin-link-card">
-          <UsersRound size={24} />
-          <div>
-            <h3>Teams</h3>
-            <p>{stats.teams} team{stats.teams !== 1 ? 's' : ''}</p>
-          </div>
-        </Link>
+            <Link to="/admin/teams" className="admin-link-card">
+              <UsersRound size={24} />
+              <div>
+                <h3>Teams</h3>
+                <p>{stats.teams} team{stats.teams !== 1 ? 's' : ''}</p>
+              </div>
+            </Link>
 
-        <Link to="/admin/watermarks" className="admin-link-card">
+            <Link to="/admin/settings" className="admin-link-card">
+              <Settings size={24} />
+              <div>
+                <h3>Settings</h3>
+                <p>App configuration</p>
+              </div>
+            </Link>
+          </>
+        ) : (
+          <Link to="/team/manage" className="admin-link-card">
+            <UsersRound size={24} />
+            <div>
+              <h3>Team Admin</h3>
+              <p>Manage accounts &amp; members</p>
+            </div>
+          </Link>
+        )}
+
+        <Link to="/watermarks" className="admin-link-card">
           <Image size={24} />
           <div>
             <h3>Watermarks</h3>
             <p>Image editor gallery</p>
-          </div>
-        </Link>
-
-        <Link to="/admin/settings" className="admin-link-card">
-          <Settings size={24} />
-          <div>
-            <h3>Settings</h3>
-            <p>App configuration</p>
           </div>
         </Link>
 
