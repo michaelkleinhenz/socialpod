@@ -588,6 +588,7 @@ func (h *AdminHandler) processIGComment(ctx context.Context, val igWebhookChange
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		msg.TeamID = account.TeamID
 	}
 
 	// Upsert by externalId to avoid duplicates
@@ -643,6 +644,7 @@ func (h *AdminHandler) processIGDMChange(ctx context.Context, val igWebhookChang
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		msg.TeamID = account.TeamID
 	}
 
 	doc, err := structToBSONDoc(msg)
@@ -688,6 +690,7 @@ func (h *AdminHandler) processIGMessaging(ctx context.Context, messaging igWebho
 	if accountFound {
 		msg.AccountID = account.ID
 		msg.AccountName = account.AccountName
+		msg.TeamID = account.TeamID
 		if messaging.Sender.ID != "" {
 			msg.SenderName = h.Instagram.GetSenderName(ctx, messaging.Sender.ID, account.AccessToken)
 		}

@@ -74,6 +74,7 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "isRead", Value: 1}}},
 		{Keys: bson.D{{Key: "receivedAt", Value: -1}}},
 		{Keys: bson.D{{Key: "externalId", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
 	log.Println("MongoDB indexes ensured")

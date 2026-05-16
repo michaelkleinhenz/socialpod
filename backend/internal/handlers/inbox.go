@@ -81,6 +81,7 @@ func (h *InboxHandler) syncBlueskyComments() {
 		msg := models.InboxMessage{
 			Platform:    models.PlatformBluesky,
 			MessageType: models.MessageTypeComment,
+			TeamID:      account.TeamID,
 			ExternalID:  n.URI,
 			SenderID:    n.Author.DID,
 			SenderName:  senderName,
@@ -185,6 +186,7 @@ func (h *InboxHandler) syncBlueskyDMs() {
 		msg := models.InboxMessage{
 			Platform:    models.PlatformBluesky,
 			MessageType: models.MessageTypeDM,
+			TeamID:      account.TeamID,
 			ExternalID:  lastMsg.ID,
 			ThreadID:    convo.ID,
 			SenderID:    lastMsg.Sender.DID,
@@ -311,6 +313,16 @@ func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) 
 	defer cancel()
 
 	filter := bson.M{"messageType": msgType}
+
+	teamIDRaw, hasTeam := c.Get("teamId")
+	isAdmin, _ := c.Get("isAdmin")
+	if hasTeam {
+		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		filter["teamId"] = tid
+	} else if !isAdmin.(bool) {
+		c.JSON(http.StatusOK, []models.InboxMessage{})
+		return
+	}
 
 	opts := options.Find().
 		SetSort(bson.D{{Key: "receivedAt", Value: -1}}).

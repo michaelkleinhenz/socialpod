@@ -15,11 +15,12 @@ const (
 
 // InboxMessage stores a received comment or DM from a social platform.
 type InboxMessage struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Platform     Platform           `bson:"platform" json:"platform"`
-	MessageType  MessageType        `bson:"messageType" json:"messageType"`
-	AccountID    primitive.ObjectID `bson:"accountId,omitempty" json:"accountId,omitempty"`
-	AccountName  string             `bson:"accountName" json:"accountName"`
+	ID           primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	Platform     Platform            `bson:"platform" json:"platform"`
+	MessageType  MessageType         `bson:"messageType" json:"messageType"`
+	TeamID       *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
+	AccountID    primitive.ObjectID  `bson:"accountId,omitempty" json:"accountId,omitempty"`
+	AccountName  string              `bson:"accountName" json:"accountName"`
 	ExternalID   string             `bson:"externalId" json:"externalId"` // platform-native ID (comment/message ID)
 	ThreadID     string             `bson:"threadId,omitempty" json:"threadId,omitempty"`
 	SenderID     string             `bson:"senderId" json:"senderId"`
