@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { SocialAccount } from '../../types';
+import type { SocialAccount, Team } from '../../types';
 import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
@@ -8,20 +8,22 @@ import './Admin.css';
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [showBlueskyForm, setShowBlueskyForm] = useState(false);
   const [handle, setHandle] = useState('');
   const [appPassword, setAppPassword] = useState('');
   const [pdsHost, setPdsHost] = useState('');
+  const [newAccountTeamId, setNewAccountTeamId] = useState('');
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     loadAccounts();
+    api.getTeams().then(setTeams).catch(() => {});
   }, []);
 
   const loadAccounts = async () => {
     try {
-      const data = await api.getAccounts();
-      setAccounts(data);
+      setAccounts(await api.getAccounts());
     } catch {
       toast.error('Failed to load accounts');
     }
@@ -31,17 +33,30 @@ export function AccountsPage() {
     if (!handle || !appPassword) { toast.error('Handle and app password required'); return; }
     setAdding(true);
     try {
-      await api.addBlueskyAccount({ handle, appPassword, pdsHost: pdsHost || undefined });
+      await api.addBlueskyAccount({
+        handle,
+        appPassword,
+        pdsHost: pdsHost || undefined,
+        teamId: newAccountTeamId || undefined,
+      });
       toast.success('Bluesky account added');
       setShowBlueskyForm(false);
-      setHandle('');
-      setAppPassword('');
-      setPdsHost('');
+      setHandle(''); setAppPassword(''); setPdsHost(''); setNewAccountTeamId('');
       loadAccounts();
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const assignTeam = async (accountId: string, teamId: string) => {
+    try {
+      const updated = await api.assignAccountTeam(accountId, teamId || null);
+      setAccounts(prev => prev.map(a => a.id === accountId ? updated : a));
+      toast.success(teamId ? 'Team assigned' : 'Team unassigned');
+    } catch {
+      toast.error('Failed to assign team');
     }
   };
 
@@ -95,25 +110,48 @@ export function AccountsPage() {
         </div>
       ) : (
         <div className="accounts-grid">
-          {accounts.map(account => (
-            <div key={account.id} className={`account-card ${!account.isActive ? 'inactive' : ''}`}>
-              <div className="account-header">
-                <PlatformIcon platform={account.platform} size={12} />
-                <span className="account-platform">{account.platform}</span>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => toggleAccount(account.id)} title={account.isActive ? 'Disable' : 'Enable'}>
-                    {account.isActive ? <ToggleRight size={18} color="var(--success)" /> : <ToggleLeft size={18} />}
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => deleteAccount(account.id)}>
-                    <Trash2 size={16} color="var(--danger)" />
-                  </button>
+          {accounts.map(account => {
+            const teamName = account.teamId
+              ? teams.find(t => t.id === account.teamId)?.name
+              : null;
+            return (
+              <div key={account.id} className={`account-card ${!account.isActive ? 'inactive' : ''}`}>
+                <div className="account-header">
+                  <PlatformIcon platform={account.platform} size={12} />
+                  <span className="account-platform">{account.platform}</span>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => toggleAccount(account.id)} title={account.isActive ? 'Disable' : 'Enable'}>
+                      {account.isActive ? <ToggleRight size={18} color="var(--success)" /> : <ToggleLeft size={18} />}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => deleteAccount(account.id)}>
+                      <Trash2 size={16} color="var(--danger)" />
+                    </button>
+                  </div>
+                </div>
+                <div className="account-name">{account.displayName || account.accountName}</div>
+                <div className="account-handle">@{account.accountName}</div>
+                {!account.isActive && <span className="badge badge-draft" style={{ marginBottom: 6 }}>Disabled</span>}
+                <div style={{ marginTop: 8 }}>
+                  <select
+                    className="input"
+                    style={{ fontSize: 12, padding: '4px 8px', height: 'auto' }}
+                    value={account.teamId || ''}
+                    onChange={e => assignTeam(account.id, e.target.value)}
+                  >
+                    <option value="">— Unassigned —</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  {teamName && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      Team: {teamName}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="account-name">{account.displayName || account.accountName}</div>
-              <div className="account-handle">@{account.accountName}</div>
-              {!account.isActive && <span className="badge badge-draft">Disabled</span>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -139,6 +177,16 @@ export function AccountsPage() {
               <div className="form-group">
                 <label>PDS Host (optional)</label>
                 <input className="input" placeholder="https://bsky.social" value={pdsHost} onChange={e => setPdsHost(e.target.value)} />
+              </div>
+
+              <div className="form-group">
+                <label>Assign to Team</label>
+                <select className="input" value={newAccountTeamId} onChange={e => setNewAccountTeamId(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

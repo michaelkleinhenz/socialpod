@@ -174,13 +174,14 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 	// Include team name if user belongs to a team
 	response := gin.H{
-		"id":        user.ID,
-		"email":     user.Email,
-		"name":      user.Name,
-		"isAdmin":   user.IsAdmin,
-		"teamId":    user.TeamID,
-		"createdAt": user.CreatedAt,
-		"updatedAt": user.UpdatedAt,
+		"id":          user.ID,
+		"email":       user.Email,
+		"name":        user.Name,
+		"isAdmin":     user.IsAdmin,
+		"isTeamAdmin": user.IsTeamAdmin,
+		"teamId":      user.TeamID,
+		"createdAt":   user.CreatedAt,
+		"updatedAt":   user.UpdatedAt,
 	}
 	if user.APIToken != "" {
 		response["apiToken"] = user.APIToken

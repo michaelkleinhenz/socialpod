@@ -7,8 +7,9 @@ import (
 )
 
 type SocialAccount struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Platform     Platform           `bson:"platform" json:"platform"`
+	ID       primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	TeamID   *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
+	Platform Platform            `bson:"platform" json:"platform"`
 	AccountName  string             `bson:"accountName" json:"accountName"`
 	DisplayName  string             `bson:"displayName" json:"displayName"`
 	AccessToken  string             `bson:"accessToken" json:"-"`

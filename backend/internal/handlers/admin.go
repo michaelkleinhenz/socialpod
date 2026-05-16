@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -67,12 +68,30 @@ func (h *AdminHandler) ListAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
-// ListActiveAccounts returns active accounts for all authenticated users (no secrets exposed).
+// ListActiveAccounts returns active accounts scoped to the user's team.
+// Global admins see all active accounts; users without a team see none.
 func (h *AdminHandler) ListActiveAccounts(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{"isActive": true})
+	filter := bson.M{"isActive": true}
+
+	isAdmin, _ := c.Get("isAdmin")
+	if !isAdmin.(bool) {
+		teamIDRaw, hasTeam := c.Get("teamId")
+		if !hasTeam || teamIDRaw.(string) == "" {
+			c.JSON(http.StatusOK, []models.SocialAccount{})
+			return
+		}
+		tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, []models.SocialAccount{})
+			return
+		}
+		filter["teamId"] = tid
+	}
+
+	cursor, err := h.DB.SocialAccounts().Find(ctx, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch accounts"})
 		return
@@ -92,6 +111,7 @@ type AddBlueskyInput struct {
 	Handle      string `json:"handle" binding:"required"`
 	AppPassword string `json:"appPassword" binding:"required"`
 	PDSHost     string `json:"pdsHost"`
+	TeamID      string `json:"teamId"` // admin can assign to a specific team
 }
 
 func (h *AdminHandler) AddBlueskyAccount(c *gin.Context) {
@@ -115,6 +135,12 @@ func (h *AdminHandler) AddBlueskyAccount(c *gin.Context) {
 		IsActive:    true,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
+	}
+
+	if input.TeamID != "" {
+		if tid, err := primitive.ObjectIDFromHex(input.TeamID); err == nil {
+			account.TeamID = &tid
+		}
 	}
 
 	// Fetch display name and avatar from Bluesky profile
@@ -290,32 +316,57 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, settings)
 }
 
-func (h *AdminHandler) InstagramAuthURL(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+func (h *AdminHandler) instagramAuthURL(ctx context.Context, state string) (string, error) {
 	var settings models.AppSettings
-	err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
-	if err != nil || settings.InstagramAppID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Instagram App ID not configured in settings"})
-		return
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		return "", fmt.Errorf("settings not found")
 	}
-
+	if settings.InstagramAppID == "" {
+		return "", fmt.Errorf("Instagram App ID not configured in settings")
+	}
 	redirectURI := settings.AppURL + "/api/auth/instagram/callback"
 	authURL := "https://api.instagram.com/oauth/authorize" +
 		"?client_id=" + settings.InstagramAppID +
 		"&redirect_uri=" + redirectURI +
 		"&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments" +
 		"&response_type=code" +
-		"&state=instagram_auth"
+		"&state=" + state
+	return authURL, nil
+}
 
-	c.JSON(http.StatusOK, gin.H{"url": authURL})
+func (h *AdminHandler) InstagramAuthURL(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	url, err := h.instagramAuthURL(ctx, "instagram_auth")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
 func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 	code := c.Query("code")
+	state := c.Query("state")
+
+	// Parse optional team ID from state (format: "instagram_auth:TEAMID" or "instagram_auth")
+	var teamID *primitive.ObjectID
+	var successRedirect, errorRedirect string
+	if strings.HasPrefix(state, "instagram_auth:") {
+		rawID := strings.TrimPrefix(state, "instagram_auth:")
+		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
+			teamID = &tid
+		}
+		successRedirect = "/team/accounts?instagram=connected"
+		errorRedirect = "/team/accounts?error="
+	} else {
+		successRedirect = "/admin/accounts?instagram=connected"
+		errorRedirect = "/admin/accounts?error="
+	}
+
 	if code == "" {
-		c.Redirect(http.StatusFound, "/admin/accounts?error=no_code")
+		c.Redirect(http.StatusFound, errorRedirect+"no_code")
 		return
 	}
 
@@ -325,28 +376,29 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 	var settings models.AppSettings
 	err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
 	if err != nil {
-		c.Redirect(http.StatusFound, "/admin/accounts?error=no_settings")
+		c.Redirect(http.StatusFound, errorRedirect+"no_settings")
 		return
 	}
 
 	redirectURI := settings.AppURL + "/api/auth/instagram/callback"
 	account, err := h.Instagram.ExchangeCodeForToken(ctx, code, settings.InstagramAppID, settings.InstagramAppSecret, redirectURI)
 	if err != nil {
-		c.Redirect(http.StatusFound, "/admin/accounts?error="+err.Error())
+		c.Redirect(http.StatusFound, errorRedirect+err.Error())
 		return
 	}
 
+	account.TeamID = teamID
 	account.CreatedAt = time.Now()
 	account.UpdatedAt = time.Now()
 
 	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
 	if err != nil {
-		c.Redirect(http.StatusFound, "/admin/accounts?error=save_failed")
+		c.Redirect(http.StatusFound, errorRedirect+"save_failed")
 		return
 	}
 
 	_ = result
-	c.Redirect(http.StatusFound, "/admin/accounts?instagram=connected")
+	c.Redirect(http.StatusFound, successRedirect)
 }
 
 func (h *AdminHandler) InstagramWebhookVerify(c *gin.Context) {
@@ -675,10 +727,11 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 }
 
 type CreateUserInput struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-	Name     string `json:"name" binding:"required"`
-	IsAdmin  bool   `json:"isAdmin"`
+	Email       string `json:"email" binding:"required,email"`
+	Password    string `json:"password" binding:"required,min=8"`
+	Name        string `json:"name" binding:"required"`
+	IsAdmin     bool   `json:"isAdmin"`
+	IsTeamAdmin bool   `json:"isTeamAdmin"`
 }
 
 func (h *AdminHandler) CreateUser(c *gin.Context) {
@@ -704,12 +757,13 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	}
 
 	user := models.User{
-		Email:     input.Email,
-		Password:  string(hash),
-		Name:      input.Name,
-		IsAdmin:   input.IsAdmin,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Email:       input.Email,
+		Password:    string(hash),
+		Name:        input.Name,
+		IsAdmin:     input.IsAdmin,
+		IsTeamAdmin: input.IsTeamAdmin,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	result, err := h.DB.Users().InsertOne(ctx, user)
@@ -720,6 +774,85 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 
 	user.ID = result.InsertedID.(primitive.ObjectID)
 	c.JSON(http.StatusCreated, user)
+}
+
+func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var input struct {
+		IsAdmin     *bool `json:"isAdmin,omitempty"`
+		IsTeamAdmin *bool `json:"isTeamAdmin,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	update := bson.M{"updatedAt": time.Now()}
+	if input.IsAdmin != nil {
+		update["isAdmin"] = *input.IsAdmin
+	}
+	if input.IsTeamAdmin != nil {
+		update["isTeamAdmin"] = *input.IsTeamAdmin
+	}
+
+	result, err := h.DB.Users().UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": update})
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	var user models.User
+	h.DB.Users().FindOne(ctx, bson.M{"_id": id}).Decode(&user)
+	c.JSON(http.StatusOK, user)
+}
+
+func (h *AdminHandler) AssignAccountTeam(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var input struct {
+		TeamID *string `json:"teamId"`
+	}
+	c.ShouldBindJSON(&input)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var updateDoc bson.M
+	if input.TeamID == nil || *input.TeamID == "" {
+		updateDoc = bson.M{
+			"$unset": bson.M{"teamId": ""},
+			"$set":   bson.M{"updatedAt": time.Now()},
+		}
+	} else {
+		tid, err := primitive.ObjectIDFromHex(*input.TeamID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+			return
+		}
+		updateDoc = bson.M{"$set": bson.M{"teamId": tid, "updatedAt": time.Now()}}
+	}
+
+	result, err := h.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": id}, updateDoc)
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		return
+	}
+
+	var account models.SocialAccount
+	h.DB.SocialAccounts().FindOne(ctx, bson.M{"_id": id}).Decode(&account)
+	c.JSON(http.StatusOK, account)
 }
 
 // Teams
@@ -806,8 +939,11 @@ func (h *AdminHandler) DeleteTeam(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Remove team assignment from all members
-	h.DB.Users().UpdateMany(ctx, bson.M{"teamId": id}, bson.M{"$unset": bson.M{"teamId": ""}})
+	// Remove team assignment and team admin flag from all members
+	h.DB.Users().UpdateMany(ctx, bson.M{"teamId": id}, bson.M{
+		"$unset": bson.M{"teamId": ""},
+		"$set":   bson.M{"isTeamAdmin": false, "updatedAt": time.Now()},
+	})
 
 	result, err := h.DB.Teams().DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil || result.DeletedCount == 0 {
@@ -845,8 +981,11 @@ func (h *AdminHandler) SetTeamMembers(c *gin.Context) {
 		return
 	}
 
-	// Remove all current members from this team
-	h.DB.Users().UpdateMany(ctx, bson.M{"teamId": teamID}, bson.M{"$unset": bson.M{"teamId": ""}})
+	// Remove all current members from this team and clear their team admin flag
+	h.DB.Users().UpdateMany(ctx, bson.M{"teamId": teamID}, bson.M{
+		"$unset": bson.M{"teamId": ""},
+		"$set":   bson.M{"isTeamAdmin": false, "updatedAt": time.Now()},
+	})
 
 	// Add new members
 	for _, uid := range input.UserIDs {
@@ -1176,6 +1315,261 @@ Provide exactly 4 stats (pick the most insightful metrics like posting frequency
 		return
 	}
 	c.Data(http.StatusOK, "application/json", insights)
+}
+
+// ─── Team Admin Handlers ──────────────────────────────────────────────────────
+// These operate on the caller's own team and are protected by TeamAdminRequired.
+
+func (h *AdminHandler) TeamListAccounts(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{"teamId": tid})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch accounts"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var accounts []models.SocialAccount
+	cursor.All(ctx, &accounts)
+	if accounts == nil {
+		accounts = []models.SocialAccount{}
+	}
+	c.JSON(http.StatusOK, accounts)
+}
+
+func (h *AdminHandler) TeamAddBlueskyAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input AddBlueskyInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pdsHost := input.PDSHost
+	if pdsHost == "" {
+		pdsHost = "https://bsky.social"
+	}
+
+	account := models.SocialAccount{
+		TeamID:      &tid,
+		Platform:    models.PlatformBluesky,
+		AccountName: input.Handle,
+		DisplayName: input.Handle,
+		AppPassword: input.AppPassword,
+		PDSHost:     pdsHost,
+		IsActive:    true,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	if h.Bluesky != nil {
+		if dn, av, err := h.Bluesky.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+func (h *AdminHandler) TeamDeleteAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	result, err := h.DB.SocialAccounts().DeleteOne(ctx, bson.M{"_id": id, "teamId": tid})
+	if err != nil || result.DeletedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found or not in your team"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Account deleted"})
+}
+
+func (h *AdminHandler) TeamToggleAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	var account models.SocialAccount
+	err = h.DB.SocialAccounts().FindOne(ctx, bson.M{"_id": id, "teamId": tid}).Decode(&account)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found or not in your team"})
+		return
+	}
+
+	h.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": id}, bson.M{
+		"$set": bson.M{"isActive": !account.IsActive, "updatedAt": time.Now()},
+	})
+	account.IsActive = !account.IsActive
+	c.JSON(http.StatusOK, account)
+}
+
+func (h *AdminHandler) TeamInstagramAuthURL(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	state := "instagram_auth:" + teamIDRaw.(string)
+	url, err := h.instagramAuthURL(ctx, state)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
+func (h *AdminHandler) TeamListMembers(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := h.DB.Users().Find(ctx, bson.M{"teamId": tid})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch members"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var members []models.User
+	cursor.All(ctx, &members)
+	if members == nil {
+		members = []models.User{}
+	}
+	c.JSON(http.StatusOK, members)
+}
+
+type TeamCreateUserInput struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+	Name     string `json:"name" binding:"required"`
+}
+
+func (h *AdminHandler) TeamCreateUser(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input TeamCreateUserInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	count, _ := h.DB.Users().CountDocuments(ctx, bson.M{"email": input.Email})
+	if count > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user := models.User{
+		Email:     input.Email,
+		Password:  string(hash),
+		Name:      input.Name,
+		TeamID:    &tid,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	result, err := h.DB.Users().InsertOne(ctx, user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	user.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, user)
+}
+
+func (h *AdminHandler) TeamRemoveMember(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	callerIDRaw, _ := c.Get("userId")
+
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	if callerIDRaw.(string) == c.Param("id") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot remove yourself from the team"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	result, err := h.DB.Users().UpdateOne(ctx,
+		bson.M{"_id": id, "teamId": tid},
+		bson.M{
+			"$unset": bson.M{"teamId": ""},
+			"$set":   bson.M{"isTeamAdmin": false, "updatedAt": time.Now()},
+		},
+	)
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Member not found in your team"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Member removed from team"})
 }
 
 func formatSnippets(snippets []string) string {

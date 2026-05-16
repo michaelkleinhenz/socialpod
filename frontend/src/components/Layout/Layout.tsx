@@ -18,6 +18,9 @@ export function Layout({ children }: { children: ReactNode }) {
     ...(user?.isAdmin ? [
       { path: '/admin/accounts', icon: Share2, label: 'Accounts' },
     ] : []),
+    ...(!user?.isAdmin && user?.isTeamAdmin ? [
+      { path: '/team/manage', icon: UsersRound, label: 'Team Admin' },
+    ] : []),
     { path: '/suffixes', icon: Signature, label: 'Suffixes' },
     ...(user?.isAdmin ? [
       { path: '/admin/watermarks', icon: Image, label: 'Watermarks' },

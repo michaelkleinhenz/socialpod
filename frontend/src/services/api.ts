@@ -140,7 +140,7 @@ class ApiClient {
     return this.request<any[]>('/admin/accounts');
   }
 
-  addBlueskyAccount(data: { handle: string; appPassword: string; pdsHost?: string }) {
+  addBlueskyAccount(data: { handle: string; appPassword: string; pdsHost?: string; teamId?: string }) {
     return this.request<any>('/admin/accounts/bluesky', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -153,6 +153,52 @@ class ApiClient {
 
   toggleAccount(id: string) {
     return this.request<any>(`/admin/accounts/${id}/toggle`, { method: 'PATCH' });
+  }
+
+  assignAccountTeam(id: string, teamId: string | null) {
+    return this.request<any>(`/admin/accounts/${id}/team`, {
+      method: 'PATCH',
+      body: JSON.stringify({ teamId }),
+    });
+  }
+
+  // Team admin endpoints
+  getTeamAccounts() {
+    return this.request<any[]>('/team/accounts');
+  }
+
+  addTeamBlueskyAccount(data: { handle: string; appPassword: string; pdsHost?: string }) {
+    return this.request<any>('/team/accounts/bluesky', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteTeamAccount(id: string) {
+    return this.request<any>(`/team/accounts/${id}`, { method: 'DELETE' });
+  }
+
+  toggleTeamAccount(id: string) {
+    return this.request<any>(`/team/accounts/${id}/toggle`, { method: 'PATCH' });
+  }
+
+  getTeamInstagramAuthUrl() {
+    return this.request<{ url: string }>('/team/instagram/auth-url');
+  }
+
+  getTeamMembers() {
+    return this.request<any[]>('/team/members');
+  }
+
+  createTeamUser(data: { name: string; email: string; password: string }) {
+    return this.request<any>('/team/members', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  removeTeamMember(id: string) {
+    return this.request<any>(`/team/members/${id}`, { method: 'DELETE' });
   }
 
   getSettings() {
@@ -183,6 +229,13 @@ class ApiClient {
 
   deleteUser(id: string) {
     return this.request<any>(`/admin/users/${id}`, { method: 'DELETE' });
+  }
+
+  updateUserRole(id: string, data: { isAdmin?: boolean; isTeamAdmin?: boolean }) {
+    return this.request<any>(`/admin/users/${id}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
   }
 
   getRegistrationStatus() {
