@@ -140,6 +140,12 @@
   color: var(--accent);
 }
 
+.add-post-btn:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0 !important;
+}
+
 .day-posts {
   display: flex;
   flex-direction: column;

@@ -6,7 +6,7 @@ import {
 } from 'date-fns';
 import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { api } from '../../services/api';
-import type { Post, PostType } from '../../types';
+import type { Post, PostType, SocialAccount } from '../../types';
 import { PostEditor } from '../PostEditor/PostEditor';
 import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
@@ -31,6 +31,7 @@ export function CalendarPage() {
   const [editorPostType, setEditorPostType] = useState<PostType>('post');
   const [filterPlatform, setFilterPlatform] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -70,6 +71,10 @@ export function CalendarPage() {
   }, [currentDate, viewMode, filterPlatform, filterStatus]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
+
+  useEffect(() => { api.getActiveAccounts().then(setAccounts).catch(() => {}); }, []);
+
+  const hasAccounts = accounts.length > 0;
 
   const getPostsForDay = (day: Date) =>
     posts.filter(p => isSameDay(parseISO(p.scheduledAt), day))
@@ -220,13 +225,13 @@ export function CalendarPage() {
             </select>
           </div>
           <div className="new-post-actions">
-            <button className="btn btn-primary" onClick={() => handleCreatePost()}>
+            <button className="btn btn-primary" onClick={() => handleCreatePost()} disabled={!hasAccounts} title={!hasAccounts ? 'Add a social account to create posts' : undefined}>
               <Plus size={18} /> New Post
             </button>
-            <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'story')}>
+            <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'story')} disabled={!hasAccounts} title={!hasAccounts ? 'Add a social account to create posts' : undefined}>
               <Plus size={18} /> New Story
             </button>
-            <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'reel')}>
+            <button className="btn btn-secondary" onClick={() => handleCreatePost(undefined, 'reel')} disabled={!hasAccounts} title={!hasAccounts ? 'Add a social account to create posts' : undefined}>
               <Plus size={18} /> New Reel
             </button>
           </div>
@@ -263,7 +268,7 @@ export function CalendarPage() {
                           </DraggablePost>
                         ))}
                       </div>
-                      <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                      <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }} disabled={!hasAccounts}>
                         <Plus size={14} />
                       </button>
                     </div>
@@ -301,7 +306,7 @@ export function CalendarPage() {
                           </DraggablePost>
                         ))}
                       </div>
-                      <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                      <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }} disabled={!hasAccounts}>
                         <Plus size={14} />
                       </button>
                     </div>
@@ -334,7 +339,7 @@ export function CalendarPage() {
                           {format(day, 'd')}
                         </span>
                         {isSameMonth(day, currentDate) && (
-                          <button className="add-post-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }}>
+                          <button className="add-post-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }} disabled={!hasAccounts}>
                             <Plus size={14} />
                           </button>
                         )}
