@@ -8,12 +8,14 @@ import {
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 import '../Admin/Admin.css';
 
 type Tab = 'accounts' | 'members';
 
 export function TeamManagePage() {
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>('accounts');
 
   // Accounts state
@@ -33,12 +35,13 @@ export function TeamManagePage() {
   const [addingMember, setAddingMember] = useState(false);
 
   useEffect(() => {
+    if (!user?.teamId) return;
     loadAccounts();
     loadMembers();
     if (searchParams.get('instagram') === 'connected') {
       toast.success('Instagram account connected');
     }
-  }, []);
+  }, [user?.teamId]);
 
   const loadAccounts = async () => {
     try {
@@ -134,6 +137,22 @@ export function TeamManagePage() {
       toast.error(err.message);
     }
   };
+
+  if (!user?.teamId) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <h1>Team Management</h1>
+        </div>
+        <div className="empty-state">
+          <p>You are not assigned to any team.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+            Contact your administrator to be assigned to a team.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

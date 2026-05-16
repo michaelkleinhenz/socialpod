@@ -1478,7 +1478,10 @@ func (h *AdminHandler) TeamListMembers(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var members []models.User
-	cursor.All(ctx, &members)
+	if err := cursor.All(ctx, &members); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch members"})
+		return
+	}
 	if members == nil {
 		members = []models.User{}
 	}
