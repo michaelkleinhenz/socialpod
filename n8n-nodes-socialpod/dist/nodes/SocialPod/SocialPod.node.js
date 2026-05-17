@@ -207,6 +207,52 @@ class SocialPod {
                             default: '',
                             description: 'ID of the suffix to append when publishing to Instagram',
                         },
+                        {
+                            displayName: 'First Comment',
+                            name: 'firstComment',
+                            type: 'string',
+                            typeOptions: { rows: 2 },
+                            default: '',
+                            description: 'Text to post as the first comment immediately after publishing',
+                        },
+                        {
+                            displayName: 'Bluesky Account ID',
+                            name: 'blueskyAccountId',
+                            type: 'string',
+                            default: '',
+                            description: 'ID of the Bluesky account to post from (leave empty to use the default account)',
+                        },
+                        {
+                            displayName: 'Instagram Account ID',
+                            name: 'instagramAccountId',
+                            type: 'string',
+                            default: '',
+                            description: 'ID of the Instagram account to post from (leave empty to use the default account)',
+                        },
+                        {
+                            displayName: 'Bluesky Content Override',
+                            name: 'blueskyContentOverride',
+                            type: 'string',
+                            typeOptions: { rows: 4 },
+                            default: '',
+                            description: 'Custom caption for Bluesky only — overrides the shared Content field',
+                        },
+                        {
+                            displayName: 'Instagram Content Override',
+                            name: 'instagramContentOverride',
+                            type: 'string',
+                            typeOptions: { rows: 4 },
+                            default: '',
+                            description: 'Custom caption for Instagram only — overrides the shared Content field',
+                        },
+                        {
+                            displayName: 'Tags',
+                            name: 'tags',
+                            type: 'string',
+                            default: '',
+                            placeholder: 'marketing, campaign-q1',
+                            description: 'Comma-separated list of tags for internal organisation',
+                        },
                     ],
                 },
                 // ── Post: Update ──────────────────────────────────────────────────
@@ -291,6 +337,52 @@ class SocialPod {
                             type: 'string',
                             default: '',
                             description: 'Set to the suffix ID to apply, or leave empty to remove',
+                        },
+                        {
+                            displayName: 'First Comment',
+                            name: 'firstComment',
+                            type: 'string',
+                            typeOptions: { rows: 2 },
+                            default: '',
+                            description: 'Text to post as the first comment immediately after publishing',
+                        },
+                        {
+                            displayName: 'Bluesky Account ID',
+                            name: 'blueskyAccountId',
+                            type: 'string',
+                            default: '',
+                            description: 'ID of the Bluesky account to post from (leave empty to use the default account)',
+                        },
+                        {
+                            displayName: 'Instagram Account ID',
+                            name: 'instagramAccountId',
+                            type: 'string',
+                            default: '',
+                            description: 'ID of the Instagram account to post from (leave empty to use the default account)',
+                        },
+                        {
+                            displayName: 'Bluesky Content Override',
+                            name: 'blueskyContentOverride',
+                            type: 'string',
+                            typeOptions: { rows: 4 },
+                            default: '',
+                            description: 'Custom caption for Bluesky only — overrides the shared Content field',
+                        },
+                        {
+                            displayName: 'Instagram Content Override',
+                            name: 'instagramContentOverride',
+                            type: 'string',
+                            typeOptions: { rows: 4 },
+                            default: '',
+                            description: 'Custom caption for Instagram only — overrides the shared Content field',
+                        },
+                        {
+                            displayName: 'Tags',
+                            name: 'tags',
+                            type: 'string',
+                            default: '',
+                            placeholder: 'marketing, campaign-q1',
+                            description: 'Comma-separated list of tags for internal organisation',
                         },
                     ],
                 },
@@ -433,6 +525,24 @@ class SocialPod {
                             suffixIds.instagram = extra.instagramSuffixId;
                         if (Object.keys(suffixIds).length)
                             body.suffixIds = suffixIds;
+                        if (extra.firstComment)
+                            body.firstComment = extra.firstComment;
+                        if (extra.tags)
+                            body.tags = parseList(extra.tags);
+                        const accountIds = {};
+                        if (extra.blueskyAccountId)
+                            accountIds.bluesky = extra.blueskyAccountId;
+                        if (extra.instagramAccountId)
+                            accountIds.instagram = extra.instagramAccountId;
+                        if (Object.keys(accountIds).length)
+                            body.accountIds = accountIds;
+                        const contentOverrides = {};
+                        if (extra.blueskyContentOverride)
+                            contentOverrides.bluesky = extra.blueskyContentOverride;
+                        if (extra.instagramContentOverride)
+                            contentOverrides.instagram = extra.instagramContentOverride;
+                        if (Object.keys(contentOverrides).length)
+                            body.contentOverrides = contentOverrides;
                         // Attach binary image from a previous workflow step
                         const images = [];
                         if (extra.binaryProperty) {
@@ -495,6 +605,23 @@ class SocialPod {
                         if (fields.instagramSuffixId)
                             suffixIds.instagram = fields.instagramSuffixId;
                         body.suffixIds = suffixIds; // always send — empty map clears suffixes
+                        if (fields.firstComment !== undefined && fields.firstComment !== '')
+                            body.firstComment = fields.firstComment;
+                        if (fields.tags)
+                            body.tags = parseList(fields.tags);
+                        const accountIds = {};
+                        if (fields.blueskyAccountId)
+                            accountIds.bluesky = fields.blueskyAccountId;
+                        if (fields.instagramAccountId)
+                            accountIds.instagram = fields.instagramAccountId;
+                        if (Object.keys(accountIds).length)
+                            body.accountIds = accountIds;
+                        const contentOverrides = {};
+                        if (fields.blueskyContentOverride)
+                            contentOverrides.bluesky = fields.blueskyContentOverride;
+                        if (fields.instagramContentOverride)
+                            contentOverrides.instagram = fields.instagramContentOverride;
+                        body.contentOverrides = contentOverrides; // always send — empty map clears overrides
                         // Attach binary image from a previous workflow step
                         const images = [];
                         if (fields.binaryProperty) {
