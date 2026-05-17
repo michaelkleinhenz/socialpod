@@ -500,6 +500,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     images.map(item => previewUrl(item)),
   [images, previewUrl]);
 
+  const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
+  const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
+
   const handleSubmit = async () => {
     if (isStory) {
       if (images.length === 0) { toast.error('A story requires an image or video'); return; }
@@ -521,6 +524,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
     const postType = isStory ? 'story' : isReel ? 'reel' : 'post';
 
+    const accountIds: Record<string, string> = {};
+    if (platforms.includes('instagram') && instagramAccount) accountIds['instagram'] = instagramAccount.id;
+    if (platforms.includes('bluesky') && blueskyAccount) accountIds['bluesky'] = blueskyAccount.id;
+
     setSaving(true);
     try {
       await onSave(
@@ -535,6 +542,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           status,
           suffixIds: (isStory || isReel) ? {} : suffixIds,
           contentOverrides: (isStory || isReel || !customizePerPlatform) ? {} : contentOverrides,
+          accountIds,
         },
         imageFiles.length > 0 ? imageFiles : undefined,
       );
@@ -542,9 +550,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       setSaving(false);
     }
   };
-
-  const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
-  const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
 
   const isDirty = content !== (post?.content || '')
     || firstComment !== (post?.firstComment || '')
