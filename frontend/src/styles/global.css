@@ -263,6 +263,11 @@ a:hover { color: var(--accent-hover); }
   background: rgba(225, 48, 108, 0.1);
 }
 
+.platform-option.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
