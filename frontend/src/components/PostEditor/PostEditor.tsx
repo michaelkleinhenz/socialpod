@@ -257,6 +257,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
   const [adobeActive, setAdobeActive] = useState(false);
@@ -274,7 +275,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       if (s.openRouterEnabled) setAiEnabled(true);
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
-    api.getActiveAccounts().then(setAccounts).catch(() => {});
+    api.getActiveAccounts().then(accs => { setAccounts(accs); setAccountsLoaded(true); }).catch(() => { setAccountsLoaded(true); });
     api.getWatermarks().then((wms: any[]) => {
       const base = import.meta.env.VITE_API_URL || '';
       setWatermarkGallery(wms.map(w => {
@@ -288,6 +289,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
+
+  useEffect(() => {
+    if (!accountsLoaded) return;
+    const hasBsky = accounts.some(a => a.platform === 'bluesky');
+    const hasIg = accounts.some(a => a.platform === 'instagram');
+    setPlatforms(prev => prev.filter(p => (p === 'bluesky' && hasBsky) || (p === 'instagram' && hasIg)));
+  }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
@@ -569,15 +577,17 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 {/* Platform selector */}
                 <div className="platform-selector">
                   <div
-                    className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''}`}
-                    onClick={() => togglePlatform('bluesky')}
+                    className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''} ${!blueskyAccount ? 'disabled' : ''}`}
+                    onClick={() => blueskyAccount && togglePlatform('bluesky')}
+                    title={!blueskyAccount ? 'No Bluesky account configured' : undefined}
                   >
                     <PlatformIcon platform="bluesky" size={14} />
                     Bluesky
                   </div>
                   <div
-                    className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''}`}
-                    onClick={() => togglePlatform('instagram')}
+                    className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''} ${!instagramAccount ? 'disabled' : ''}`}
+                    onClick={() => instagramAccount && togglePlatform('instagram')}
+                    title={!instagramAccount ? 'No Instagram account configured' : undefined}
                   >
                     <PlatformIcon platform="instagram" size={14} />
                     Instagram
