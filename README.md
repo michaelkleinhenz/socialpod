@@ -385,6 +385,18 @@ curl -X PATCH http://localhost:8080/api/posts/{id}/reschedule \
 # Delete a post
 curl -X DELETE http://localhost:8080/api/posts/{id} \
   -H "Authorization: Bearer sm_..."
+
+# Retry a failed post (resets status to scheduled, publishes immediately)
+curl -X POST http://localhost:8080/api/posts/{id}/retry \
+  -H "Authorization: Bearer sm_..."
+```
+
+#### Accounts
+
+```bash
+# List active social accounts visible to the authenticated user/team
+curl http://localhost:8080/api/accounts \
+  -H "Authorization: Bearer sm_..."
 ```
 
 #### Suffixes
@@ -435,6 +447,7 @@ Include returned URLs in the `imageUrls` array of the post `data` field, or atta
 | `firstComment` | string | No | Posted as the first comment after publishing |
 | `suffixIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
 | `accountIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` — specific account to use |
+| `contentOverrides` | object | No | `{"bluesky":"...", "instagram":"..."}` — per-platform caption overrides; omitting a platform falls back to `content` |
 | `tags` | array | No | Tags for internal organisation |
 
 > **Note on `postType`**: `story` and `reel` are Instagram-only. Reels require an MP4 video file. Stories accept an image or video. The `content` field is used as the caption for Reels and is ignored for Stories.
