@@ -22,6 +22,11 @@ export function AccountsPage() {
   const [twAccessTokenSecret, setTwAccessTokenSecret] = useState('');
   const [twTeamId, setTwTeamId] = useState('');
   const [addingTwitter, setAddingTwitter] = useState(false);
+  const [showMastodonForm, setShowMastodonForm] = useState(false);
+  const [mastodonInstance, setMastodonInstance] = useState('');
+  const [mastodonAccessToken, setMastodonAccessToken] = useState('');
+  const [mastodonTeamId, setMastodonTeamId] = useState('');
+  const [addingMastodon, setAddingMastodon] = useState(false);
 
   useEffect(() => {
     loadAccounts();
@@ -92,6 +97,29 @@ export function AccountsPage() {
     }
   };
 
+  const addMastodon = async () => {
+    if (!mastodonInstance || !mastodonAccessToken) {
+      toast.error('Instance and access token are required');
+      return;
+    }
+    setAddingMastodon(true);
+    try {
+      await api.addMastodonAccount({
+        instance: mastodonInstance,
+        accessToken: mastodonAccessToken,
+        teamId: mastodonTeamId || undefined,
+      });
+      toast.success('Mastodon account added');
+      setShowMastodonForm(false);
+      setMastodonInstance(''); setMastodonAccessToken(''); setMastodonTeamId('');
+      loadAccounts();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAddingMastodon(false);
+    }
+  };
+
   const connectInstagram = async () => {
     try {
       const { url } = await api.getInstagramAuthUrl();
@@ -131,6 +159,9 @@ export function AccountsPage() {
           </button>
           <button className="btn btn-secondary" onClick={() => setShowTwitterForm(true)} style={{ borderColor: 'var(--twitter)', color: 'var(--twitter)' }}>
             <Plus size={16} /> Add X/Twitter
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowMastodonForm(true)} style={{ borderColor: 'var(--mastodon)', color: 'var(--mastodon)' }}>
+            <Plus size={16} /> Add Mastodon
           </button>
           <button className="btn btn-secondary" onClick={connectInstagram} style={{ borderColor: 'var(--instagram)', color: 'var(--instagram)' }}>
             <ExternalLink size={16} /> Connect Instagram
@@ -228,6 +259,45 @@ export function AccountsPage() {
               <button className="btn btn-secondary" onClick={() => setShowTwitterForm(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={addTwitter} disabled={addingTwitter}>
                 {addingTwitter ? 'Adding...' : 'Add Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMastodonForm && (
+        <div className="modal-overlay" onClick={() => setShowMastodonForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Add Mastodon Account</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-group">
+                <label>Instance URL</label>
+                <input className="input" placeholder="mastodon.social" value={mastodonInstance} onChange={e => setMastodonInstance(e.target.value)} />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Your Mastodon server, e.g. mastodon.social
+                </span>
+              </div>
+              <div className="form-group">
+                <label>Access Token</label>
+                <input className="input" type="password" placeholder="Access token" value={mastodonAccessToken} onChange={e => setMastodonAccessToken(e.target.value)} />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Generate at your instance under Settings &gt; Development &gt; New application
+                </span>
+              </div>
+              <div className="form-group">
+                <label>Assign to Team</label>
+                <select className="input" value={mastodonTeamId} onChange={e => setMastodonTeamId(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowMastodonForm(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={addMastodon} disabled={addingMastodon}>
+                {addingMastodon ? 'Adding...' : 'Add Account'}
               </button>
             </div>
           </div>

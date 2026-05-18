@@ -20,6 +20,7 @@
   --bluesky: #0085ff;
   --instagram: #e1306c;
   --twitter: #1d9bf0;
+  --mastodon: #6364ff;
   --radius: 10px;
   --radius-sm: 6px;
   --radius-lg: 14px;
@@ -178,6 +179,7 @@ a:hover { color: var(--accent-hover); }
 .badge-bluesky { background: rgba(0, 133, 255, 0.15); color: var(--bluesky); }
 .badge-instagram { background: rgba(225, 48, 108, 0.15); color: var(--instagram); }
 .badge-twitter { background: rgba(29, 155, 240, 0.15); color: var(--twitter); }
+.badge-mastodon { background: rgba(99, 100, 255, 0.15); color: var(--mastodon); }
 .badge-scheduled { background: rgba(99, 102, 241, 0.15); color: var(--accent); }
 .badge-published { background: rgba(34, 197, 94, 0.15); color: var(--success); }
 .badge-draft { background: rgba(100, 116, 139, 0.15); color: var(--text-muted); }
@@ -268,6 +270,11 @@ a:hover { color: var(--accent-hover); }
 .platform-option.twitter.selected {
   border-color: var(--twitter);
   background: rgba(29, 155, 240, 0.1);
+}
+
+.platform-option.mastodon.selected {
+  border-color: var(--mastodon);
+  background: rgba(99, 100, 255, 0.1);
 }
 
 .platform-option.disabled {

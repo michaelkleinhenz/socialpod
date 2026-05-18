@@ -26,6 +26,8 @@ type SocialAccount struct {
 	ConsumerSecret    string `bson:"consumerSecret,omitempty" json:"-"`
 	AccessTokenSecret string `bson:"accessTokenSecret,omitempty" json:"-"`
 	TwitterUserID     string `bson:"twitterUserId,omitempty" json:"twitterUserId,omitempty"`
+	// Mastodon-specific
+	MastodonInstance string `bson:"mastodonInstance,omitempty" json:"mastodonInstance,omitempty"`
 	AvatarURL    string `bson:"avatarUrl,omitempty" json:"avatarUrl,omitempty"`
 	IsActive     bool   `bson:"isActive" json:"isActive"`
 	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`

@@ -22,7 +22,7 @@ export interface Team {
 
 export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';
 export type PostType = 'post' | 'story' | 'reel';
-export type Platform = 'bluesky' | 'instagram' | 'twitter';
+export type Platform = 'bluesky' | 'instagram' | 'twitter' | 'mastodon';
 
 export interface PostResult {
   platform: Platform;
@@ -73,6 +73,7 @@ export interface SocialAccount {
   pdsHost?: string;
   igUserId?: string;
   twitterUserId?: string;
+  mastodonInstance?: string;
   createdAt: string;
   updatedAt: string;
 }

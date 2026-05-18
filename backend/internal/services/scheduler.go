@@ -17,6 +17,7 @@ type Scheduler struct {
 	Bluesky   *BlueskyService
 	Instagram *InstagramService
 	Twitter   *TwitterService
+	Mastodon  *MastodonService
 	stop      chan struct{}
 }
 
@@ -26,6 +27,7 @@ func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
 		Bluesky:   &BlueskyService{DB: db, UploadDir: uploadDir},
 		Instagram: &InstagramService{DB: db},
 		Twitter:   &TwitterService{DB: db, UploadDir: uploadDir},
+		Mastodon:  &MastodonService{DB: db, UploadDir: uploadDir},
 		stop:      make(chan struct{}),
 	}
 }
@@ -97,10 +99,12 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	bluskySuffix := ""
 	instagramSuffix := ""
 	twitterSuffix := ""
+	mastodonSuffix := ""
 	if post.SuffixIDs != nil {
 		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"])
 		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"])
 		twitterSuffix = s.suffixContent(ctx, post.SuffixIDs["twitter"])
+		mastodonSuffix = s.suffixContent(ctx, post.SuffixIDs["mastodon"])
 	}
 
 	platformContent := func(platform models.Platform) string {
@@ -225,6 +229,22 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 						}
 					}
 				}
+			}
+		case models.PlatformMastodon:
+			accountID := ""
+			if post.AccountIDs != nil {
+				accountID = post.AccountIDs["mastodon"]
+			}
+			statusURL, err := s.Mastodon.Post(ctx, applyContent(platformContent(models.PlatformMastodon), mastodonSuffix), post.ImageURLs, accountID)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				allSuccess = false
+				log.Printf("Mastodon post failed: %v", err)
+			} else {
+				result.Success = true
+				result.PostID = statusURL
+				result.PostedAt = time.Now()
 			}
 		}
 
