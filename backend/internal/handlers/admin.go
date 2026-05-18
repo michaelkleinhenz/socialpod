@@ -45,6 +45,7 @@ type AdminHandler struct {
 	DB        *database.MongoDB
 	Bluesky   *services.BlueskyService
 	Instagram *services.InstagramService
+	Twitter   *services.TwitterService
 	UploadDir string
 }
 
@@ -148,6 +149,65 @@ func (h *AdminHandler) AddBlueskyAccount(c *gin.Context) {
 		if dn, av, err := h.Bluesky.FetchProfile(&account); err == nil {
 			if dn != "" {
 				account.DisplayName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+type AddTwitterInput struct {
+	ConsumerKey       string `json:"consumerKey" binding:"required"`
+	ConsumerSecret    string `json:"consumerSecret" binding:"required"`
+	AccessToken       string `json:"accessToken" binding:"required"`
+	AccessTokenSecret string `json:"accessTokenSecret" binding:"required"`
+	TeamID            string `json:"teamId"`
+}
+
+func (h *AdminHandler) AddTwitterAccount(c *gin.Context) {
+	var input AddTwitterInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		Platform:          models.PlatformTwitter,
+		AccountName:       "twitter",
+		DisplayName:       "Twitter Account",
+		ConsumerKey:       input.ConsumerKey,
+		ConsumerSecret:    input.ConsumerSecret,
+		AccessToken:       input.AccessToken,
+		AccessTokenSecret: input.AccessTokenSecret,
+		IsActive:          true,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	if input.TeamID != "" {
+		if tid, err := primitive.ObjectIDFromHex(input.TeamID); err == nil {
+			account.TeamID = &tid
+		}
+	}
+
+	if h.Twitter != nil {
+		if dn, username, av, err := h.Twitter.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+			}
+			if username != "" {
+				account.AccountName = username
 			}
 			account.AvatarURL = av
 		}
@@ -1440,6 +1500,59 @@ func (h *AdminHandler) TeamAddBlueskyAccount(c *gin.Context) {
 		if dn, av, err := h.Bluesky.FetchProfile(&account); err == nil {
 			if dn != "" {
 				account.DisplayName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+func (h *AdminHandler) TeamAddTwitterAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input AddTwitterInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		TeamID:            &tid,
+		Platform:          models.PlatformTwitter,
+		AccountName:       "twitter",
+		DisplayName:       "Twitter Account",
+		ConsumerKey:       input.ConsumerKey,
+		ConsumerSecret:    input.ConsumerSecret,
+		AccessToken:       input.AccessToken,
+		AccessTokenSecret: input.AccessTokenSecret,
+		IsActive:          true,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	if h.Twitter != nil {
+		if dn, username, av, err := h.Twitter.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+			}
+			if username != "" {
+				account.AccountName = username
 			}
 			account.AvatarURL = av
 		}

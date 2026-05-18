@@ -24,6 +24,7 @@ interface Props {
 
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
+const TWITTER_LIMIT = 280;
 
 function renderWithHashtags(text: string) {
   if (!text) return null;
@@ -44,11 +45,13 @@ interface PreviewProps {
   apiUrl: string;
   blueskyAccount?: SocialAccount | null;
   instagramAccount?: SocialAccount | null;
+  twitterAccount?: SocialAccount | null;
   bluskySuffix?: string;
   instagramSuffix?: string;
+  twitterSuffix?: string;
 }
 
-function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, bluskySuffix, instagramSuffix }: PreviewProps) {
+function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, bluskySuffix, instagramSuffix, twitterSuffix }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
@@ -61,8 +64,10 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
 
   const bskyBase = (contentOverrides?.['bluesky'] ?? '') || content;
   const igBase = (contentOverrides?.['instagram'] ?? '') || content;
+  const twBase = (contentOverrides?.['twitter'] ?? '') || content;
   const bskyContent = bluskySuffix ? bskyBase + '\n' + bluskySuffix : bskyBase;
   const igContent = instagramSuffix ? igBase + '\n' + instagramSuffix : igBase;
+  const twContent = twitterSuffix ? twBase + '\n' + twitterSuffix : twBase;
 
   if (platforms.length === 0) {
     return (
@@ -74,6 +79,9 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
 
   const bskyAvatarUrl = blueskyAccount?.avatarUrl;
   const igAvatarUrl = instagramAccount?.avatarUrl;
+  const twDisplayName = twitterAccount?.displayName || twitterAccount?.accountName || 'Your Name';
+  const twHandle = twitterAccount?.accountName || 'yourhandle';
+  const twAvatarUrl = twitterAccount?.avatarUrl;
 
   return (
     <div className="preview-cards">
@@ -140,6 +148,40 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
               ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(igContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
+          </div>
+        </div>
+      )}
+
+      {platforms.includes('twitter') && (
+        <div className="preview-card preview-twitter">
+          <div className="preview-card-header">
+            {twAvatarUrl
+              ? <img src={twAvatarUrl} alt="" className="preview-avatar" />
+              : <div className="preview-avatar preview-avatar-placeholder" />}
+            <div className="preview-user-info">
+              <span className="preview-display-name">{twDisplayName}</span>
+              <span className="preview-handle">@{twHandle}</span>
+            </div>
+            <div className="preview-platform-badge twitter">X / Twitter</div>
+          </div>
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text">{renderWithHashtags(twContent)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          {imageUrls.length > 0 && (
+            <div className={`preview-images preview-images-${Math.min(imageUrls.length, 4)}`}>
+              {imageUrls.slice(0, 4).map((url, i) => {
+                const src = url.startsWith('/') ? apiUrl + url : url;
+                return /\.(mp4|mov)$/i.test(url)
+                  ? <video key={i} src={src} muted className="preview-image" />
+                  : <img key={i} src={src} alt="" className="preview-image" />;
+              })}
+            </div>
+          )}
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
           </div>
         </div>
       )}
@@ -294,7 +336,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     if (!accountsLoaded) return;
     const hasBsky = accounts.some(a => a.platform === 'bluesky');
     const hasIg = accounts.some(a => a.platform === 'instagram');
-    setPlatforms(prev => prev.filter(p => (p === 'bluesky' && hasBsky) || (p === 'instagram' && hasIg)));
+    const hasTw = accounts.some(a => a.platform === 'twitter');
+    setPlatforms(prev => prev.filter(p => (p === 'bluesky' && hasBsky) || (p === 'instagram' && hasIg) || (p === 'twitter' && hasTw)));
   }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -444,12 +487,16 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     return s ? s.content.length + 1 : 0; // +1 for newline separator
   };
 
+  const platformLimit = (platform: Platform) =>
+    platform === 'bluesky' ? BLUESKY_LIMIT : platform === 'twitter' ? TWITTER_LIMIT : INSTAGRAM_LIMIT;
+
   const effectiveLimit = (platform: Platform) =>
-    (platform === 'bluesky' ? BLUESKY_LIMIT : INSTAGRAM_LIMIT) - suffixLen(platform);
+    platformLimit(platform) - suffixLen(platform);
 
   const charLimit = platforms.length === 0 ? effectiveLimit('instagram') : Math.min(
     ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
     ...(platforms.includes('instagram') ? [effectiveLimit('instagram')] : []),
+    ...(platforms.includes('twitter') ? [effectiveLimit('twitter')] : []),
   );
   const charCount = content.length;
   const overLimit = charCount > charLimit || (customizePerPlatform && platforms.some(p => {
@@ -502,6 +549,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
+  const twitterAccount = accounts.find(a => a.platform === 'twitter') ?? null;
 
   const handleSubmit = async () => {
     if (isStory) {
@@ -527,6 +575,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const accountIds: Record<string, string> = {};
     if (platforms.includes('instagram') && instagramAccount) accountIds['instagram'] = instagramAccount.id;
     if (platforms.includes('bluesky') && blueskyAccount) accountIds['bluesky'] = blueskyAccount.id;
+    if (platforms.includes('twitter') && twitterAccount) accountIds['twitter'] = twitterAccount.id;
 
     setSaving(true);
     try {
@@ -597,6 +646,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     <PlatformIcon platform="instagram" size={14} />
                     Instagram
                   </div>
+                  <div
+                    className={`platform-option twitter ${platforms.includes('twitter') ? 'selected' : ''} ${!twitterAccount ? 'disabled' : ''}`}
+                    onClick={() => twitterAccount && togglePlatform('twitter')}
+                    title={!twitterAccount ? 'No X/Twitter account configured' : undefined}
+                  >
+                    <PlatformIcon platform="twitter" size={14} />
+                    X / Twitter
+                  </div>
                 </div>
 
                 {/* Suffix selectors */}
@@ -635,6 +692,27 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                           const next = { ...prev };
                           if (e.target.value) next['instagram'] = e.target.value;
                           else delete next['instagram'];
+                          return next;
+                        })}
+                      >
+                        <option value="">None</option>
+                        {suffixes.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="suffix-selector-row">
+                      <label className={`suffix-label${!platforms.includes('twitter') ? ' disabled' : ''}`}>
+                        <PlatformIcon platform="twitter" size={12} /> X/Twitter suffix
+                      </label>
+                      <select
+                        className="select suffix-select"
+                        value={suffixIds['twitter'] || ''}
+                        disabled={!platforms.includes('twitter')}
+                        onChange={e => setSuffixIds(prev => {
+                          const next = { ...prev };
+                          if (e.target.value) next['twitter'] = e.target.value;
+                          else delete next['twitter'];
                           return next;
                         })}
                       >
@@ -853,8 +931,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 apiUrl={apiUrl}
                 blueskyAccount={blueskyAccount}
                 instagramAccount={instagramAccount}
+                twitterAccount={twitterAccount}
                 bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
                 instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
+                twitterSuffix={suffixes.find(s => s.id === suffixIds['twitter'])?.content}
               />
             )}
           </div>

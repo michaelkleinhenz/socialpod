@@ -147,6 +147,13 @@ class ApiClient {
     });
   }
 
+  addTwitterAccount(data: { consumerKey: string; consumerSecret: string; accessToken: string; accessTokenSecret: string; teamId?: string }) {
+    return this.request<any>('/admin/accounts/twitter', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   deleteAccount(id: string) {
     return this.request<any>(`/admin/accounts/${id}`, { method: 'DELETE' });
   }
@@ -169,6 +176,13 @@ class ApiClient {
 
   addTeamBlueskyAccount(data: { handle: string; appPassword: string; pdsHost?: string }) {
     return this.request<any>('/team/accounts/bluesky', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  addTeamTwitterAccount(data: { consumerKey: string; consumerSecret: string; accessToken: string; accessTokenSecret: string }) {
+    return this.request<any>('/team/accounts/twitter', {
       method: 'POST',
       body: JSON.stringify(data),
     });

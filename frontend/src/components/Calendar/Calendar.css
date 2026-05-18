@@ -221,6 +221,7 @@
 
 .platform-dot.bluesky { background: var(--bluesky); }
 .platform-dot.instagram { background: var(--instagram); }
+.platform-dot.twitter { background: var(--twitter); }
 
 /* View Toggle */
 .view-toggle {

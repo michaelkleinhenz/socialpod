@@ -21,6 +21,11 @@ type SocialAccount struct {
 	PDSHost      string `bson:"pdsHost,omitempty" json:"pdsHost,omitempty"`
 	// Instagram-specific
 	IGUserID     string `bson:"igUserId,omitempty" json:"igUserId,omitempty"`
+	// Twitter/X-specific
+	ConsumerKey       string `bson:"consumerKey,omitempty" json:"-"`
+	ConsumerSecret    string `bson:"consumerSecret,omitempty" json:"-"`
+	AccessTokenSecret string `bson:"accessTokenSecret,omitempty" json:"-"`
+	TwitterUserID     string `bson:"twitterUserId,omitempty" json:"twitterUserId,omitempty"`
 	AvatarURL    string `bson:"avatarUrl,omitempty" json:"avatarUrl,omitempty"`
 	IsActive     bool   `bson:"isActive" json:"isActive"`
 	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`

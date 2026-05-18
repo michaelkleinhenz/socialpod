@@ -113,6 +113,11 @@
   color: var(--bluesky);
 }
 
+.inbox-platform-badge.twitter {
+  background: rgba(29, 155, 240, 0.15);
+  color: var(--twitter);
+}
+
 .inbox-time {
   font-size: 12px;
   color: var(--text-muted);
@@ -317,6 +322,10 @@
 
 .feed-tab-dot.bluesky {
   background: var(--bluesky);
+}
+
+.feed-tab-dot.twitter {
+  background: var(--twitter);
 }
 
 /* Feed text preview for text-only posts */

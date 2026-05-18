@@ -115,6 +115,7 @@
 
 .breakdown-label.platform-instagram { color: #e1306c; }
 .breakdown-label.platform-bluesky   { color: #0085ff; }
+.breakdown-label.platform-twitter   { color: #1d9bf0; }
 
 .breakdown-count {
   font-size: 13px;

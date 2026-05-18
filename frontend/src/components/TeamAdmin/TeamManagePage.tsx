@@ -25,6 +25,12 @@ export function TeamManagePage() {
   const [appPassword, setAppPassword] = useState('');
   const [pdsHost, setPdsHost] = useState('');
   const [addingAccount, setAddingAccount] = useState(false);
+  const [showTwitterForm, setShowTwitterForm] = useState(false);
+  const [twConsumerKey, setTwConsumerKey] = useState('');
+  const [twConsumerSecret, setTwConsumerSecret] = useState('');
+  const [twAccessToken, setTwAccessToken] = useState('');
+  const [twAccessTokenSecret, setTwAccessTokenSecret] = useState('');
+  const [addingTwitter, setAddingTwitter] = useState(false);
 
   // Members state
   const [members, setMembers] = useState<User[]>([]);
@@ -74,6 +80,30 @@ export function TeamManagePage() {
       toast.error(err.message);
     } finally {
       setAddingAccount(false);
+    }
+  };
+
+  const addTwitter = async () => {
+    if (!twConsumerKey || !twConsumerSecret || !twAccessToken || !twAccessTokenSecret) {
+      toast.error('All Twitter API credentials are required');
+      return;
+    }
+    setAddingTwitter(true);
+    try {
+      await api.addTeamTwitterAccount({
+        consumerKey: twConsumerKey,
+        consumerSecret: twConsumerSecret,
+        accessToken: twAccessToken,
+        accessTokenSecret: twAccessTokenSecret,
+      });
+      toast.success('X/Twitter account added');
+      setShowTwitterForm(false);
+      setTwConsumerKey(''); setTwConsumerSecret(''); setTwAccessToken(''); setTwAccessTokenSecret('');
+      loadAccounts();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAddingTwitter(false);
     }
   };
 
@@ -229,6 +259,13 @@ export function TeamManagePage() {
               </button>
               <button
                 className="btn btn-secondary"
+                onClick={() => setShowTwitterForm(true)}
+                style={{ borderColor: 'var(--twitter)', color: 'var(--twitter)' }}
+              >
+                <Plus size={16} /> Add X/Twitter
+              </button>
+              <button
+                className="btn btn-secondary"
                 onClick={connectInstagram}
                 style={{ borderColor: 'var(--instagram)', color: 'var(--instagram)' }}
               >
@@ -271,6 +308,46 @@ export function TeamManagePage() {
                   {!account.isActive && <span className="badge badge-draft">Disabled</span>}
                 </div>
               ))}
+            </div>
+          )}
+
+          {showTwitterForm && (
+            <div className="modal-overlay" onClick={() => setShowTwitterForm(false)}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h2>Add X/Twitter Account</h2>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowTwitterForm(false)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="form-group">
+                    <label>API Key (Consumer Key)</label>
+                    <input className="input" type="password" placeholder="API Key" value={twConsumerKey} onChange={e => setTwConsumerKey(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>API Key Secret (Consumer Secret)</label>
+                    <input className="input" type="password" placeholder="API Key Secret" value={twConsumerSecret} onChange={e => setTwConsumerSecret(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Access Token</label>
+                    <input className="input" type="password" placeholder="Access Token" value={twAccessToken} onChange={e => setTwAccessToken(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Access Token Secret</label>
+                    <input className="input" type="password" placeholder="Access Token Secret" value={twAccessTokenSecret} onChange={e => setTwAccessTokenSecret(e.target.value)} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Get these from the X Developer Portal under your app's Keys and Tokens tab.
+                    </span>
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" onClick={() => setShowTwitterForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={addTwitter} disabled={addingTwitter}>
+                    {addingTwitter ? 'Adding...' : 'Add Account'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

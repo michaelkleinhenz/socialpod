@@ -13,10 +13,11 @@ import (
 )
 
 type Scheduler struct {
-	DB       *database.MongoDB
-	Bluesky  *BlueskyService
+	DB        *database.MongoDB
+	Bluesky   *BlueskyService
 	Instagram *InstagramService
-	stop     chan struct{}
+	Twitter   *TwitterService
+	stop      chan struct{}
 }
 
 func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
@@ -24,6 +25,7 @@ func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
 		DB:        db,
 		Bluesky:   &BlueskyService{DB: db, UploadDir: uploadDir},
 		Instagram: &InstagramService{DB: db},
+		Twitter:   &TwitterService{DB: db, UploadDir: uploadDir},
 		stop:      make(chan struct{}),
 	}
 }
@@ -94,9 +96,11 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 
 	bluskySuffix := ""
 	instagramSuffix := ""
+	twitterSuffix := ""
 	if post.SuffixIDs != nil {
 		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"])
 		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"])
+		twitterSuffix = s.suffixContent(ctx, post.SuffixIDs["twitter"])
 	}
 
 	platformContent := func(platform models.Platform) string {
@@ -141,6 +145,23 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 						log.Printf("Bluesky first comment failed: %v", replyErr)
 					}
 				}
+			}
+
+		case models.PlatformTwitter:
+			accountID := ""
+			if post.AccountIDs != nil {
+				accountID = post.AccountIDs["twitter"]
+			}
+			tweetID, err := s.Twitter.Post(ctx, applyContent(platformContent(models.PlatformTwitter), twitterSuffix), post.ImageURLs, accountID)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				allSuccess = false
+				log.Printf("Twitter post failed: %v", err)
+			} else {
+				result.Success = true
+				result.PostID = tweetID
+				result.PostedAt = time.Now()
 			}
 
 		case models.PlatformInstagram:
