@@ -309,6 +309,17 @@
   border-bottom-color: var(--accent);
 }
 
+@media (max-width: 600px) {
+  .feed-tab {
+    padding: 8px 10px;
+    gap: 0;
+  }
+
+  .feed-tab .account-label {
+    display: none;
+  }
+}
+
 .feed-tab-dot {
   width: 8px;
   height: 8px;

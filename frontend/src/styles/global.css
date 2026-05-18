@@ -282,6 +282,17 @@ a:hover { color: var(--accent-hover); }
   cursor: not-allowed;
 }
 
+@media (max-width: 600px) {
+  .platform-option {
+    padding: 8px 10px;
+    gap: 0;
+  }
+
+  .platform-option .platform-label {
+    display: none;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }

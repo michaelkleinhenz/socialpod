@@ -92,7 +92,7 @@ export function FeedPage() {
                   onClick={() => setSelectedAccount(a.id)}
                 >
                   <PlatformIcon platform={a.platform} size={10} />
-                  @{a.accountName}
+                  <span className="account-label">@{a.accountName}</span>
                 </button>
               ))}
             </div>

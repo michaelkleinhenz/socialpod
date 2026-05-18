@@ -689,34 +689,34 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   <div
                     className={`platform-option bluesky ${platforms.includes('bluesky') ? 'selected' : ''} ${!blueskyAccount ? 'disabled' : ''}`}
                     onClick={() => blueskyAccount && togglePlatform('bluesky')}
-                    title={!blueskyAccount ? 'No Bluesky account configured' : undefined}
+                    title={!blueskyAccount ? 'No Bluesky account configured' : 'Bluesky'}
                   >
                     <PlatformIcon platform="bluesky" size={14} />
-                    Bluesky
+                    <span className="platform-label">Bluesky</span>
                   </div>
                   <div
                     className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''} ${!instagramAccount ? 'disabled' : ''}`}
                     onClick={() => instagramAccount && togglePlatform('instagram')}
-                    title={!instagramAccount ? 'No Instagram account configured' : undefined}
+                    title={!instagramAccount ? 'No Instagram account configured' : 'Instagram'}
                   >
                     <PlatformIcon platform="instagram" size={14} />
-                    Instagram
+                    <span className="platform-label">Instagram</span>
                   </div>
                   <div
                     className={`platform-option twitter ${platforms.includes('twitter') ? 'selected' : ''} ${!twitterAccount ? 'disabled' : ''}`}
                     onClick={() => twitterAccount && togglePlatform('twitter')}
-                    title={!twitterAccount ? 'No X/Twitter account configured' : undefined}
+                    title={!twitterAccount ? 'No X/Twitter account configured' : 'X / Twitter'}
                   >
                     <PlatformIcon platform="twitter" size={14} />
-                    X / Twitter
+                    <span className="platform-label">X / Twitter</span>
                   </div>
                   <div
                     className={`platform-option mastodon ${platforms.includes('mastodon') ? 'selected' : ''} ${!mastodonAccount ? 'disabled' : ''}`}
                     onClick={() => mastodonAccount && togglePlatform('mastodon')}
-                    title={!mastodonAccount ? 'No Mastodon account configured' : undefined}
+                    title={!mastodonAccount ? 'No Mastodon account configured' : 'Mastodon'}
                   >
                     <PlatformIcon platform="mastodon" size={14} />
-                    Mastodon
+                    <span className="platform-label">Mastodon</span>
                   </div>
                 </div>
 
