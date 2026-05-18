@@ -64,6 +64,7 @@ func main() {
 	authHandler := &handlers.AuthHandler{DB: db, Secret: cfg.JWTSecret}
 	postHandler := &handlers.PostHandler{DB: db, UploadDir: cfg.UploadDir}
 	suffixHandler := &handlers.SuffixHandler{DB: db}
+	mentionHandler := &handlers.MentionHandler{DB: db}
 	bskyService := &services.BlueskyService{DB: db, UploadDir: cfg.UploadDir}
 	igService := &services.InstagramService{DB: db}
 	twService := &services.TwitterService{DB: db, UploadDir: cfg.UploadDir}
@@ -135,6 +136,12 @@ func main() {
 		auth.POST("/suffixes", suffixHandler.Create)
 		auth.PUT("/suffixes/:id", suffixHandler.Update)
 		auth.DELETE("/suffixes/:id", suffixHandler.Delete)
+
+		// Mentions (team/user scoped)
+		auth.GET("/mentions", mentionHandler.List)
+		auth.POST("/mentions", mentionHandler.Create)
+		auth.PUT("/mentions/:id", mentionHandler.Update)
+		auth.DELETE("/mentions/:id", mentionHandler.Delete)
 	}
 
 	// Admin routes (global admin only)

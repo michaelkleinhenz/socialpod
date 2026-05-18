@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, Suffix, SocialAccount } from '../../types';
+import type { Post, Platform, PostType, Suffix, SocialAccount, MentionEntry } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
+import { MentionTextarea } from './MentionTextarea';
 import './PostEditor.css';
 
 // Module-level cache so the SDK is initialized once per page load and login
@@ -340,6 +341,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [status, setStatus] = useState(post?.status || 'scheduled');
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
+  const [mentions, setMentions] = useState<MentionEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -360,6 +362,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       if (s.openRouterEnabled) setAiEnabled(true);
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getMentions().then(setMentions).catch(() => {});
     api.getActiveAccounts().then(accs => { setAccounts(accs); setAccountsLoaded(true); }).catch(() => { setAccountsLoaded(true); });
     api.getWatermarks().then((wms: any[]) => {
       const base = import.meta.env.VITE_API_URL || '';
@@ -522,6 +525,34 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       setGenerating(false);
     }
   }, [content, contentOverrides, platforms]);
+
+  const handleMentionInsert = useCallback(
+    (mention: MentionEntry, queryStart: number, queryLength: number) => {
+      if (platforms.length === 1) {
+        // Single platform: insert the handle directly into base content
+        const handle = mention.handles[platforms[0]] || `@${mention.name}`;
+        const normalized = handle.startsWith('@') ? handle : `@${handle}`;
+        setContent(prev => prev.slice(0, queryStart) + normalized + ' ' + prev.slice(queryStart + queryLength));
+        return;
+      }
+
+      // Multiple platforms: enable per-platform mode and expand each with the correct handle
+      setCustomizePerPlatform(true);
+      const newOverrides: Record<string, string> = {};
+      for (const p of platforms) {
+        const baseText = contentOverrides[p] ?? content;
+        const handle = mention.handles[p] || `@${mention.name}`;
+        const normalized = handle.startsWith('@') ? handle : `@${handle}`;
+        newOverrides[p] = baseText.slice(0, queryStart) + normalized + ' ' + baseText.slice(queryStart + queryLength);
+      }
+      setContentOverrides(newOverrides);
+      // Keep base content in sync with first platform's handle so char count stays consistent
+      const firstHandle = mention.handles[platforms[0]] || `@${mention.name}`;
+      const firstNormalized = firstHandle.startsWith('@') ? firstHandle : `@${firstHandle}`;
+      setContent(prev => prev.slice(0, queryStart) + firstNormalized + ' ' + prev.slice(queryStart + queryLength));
+    },
+    [platforms, contentOverrides, content],
+  );
 
   const togglePlatform = (p: Platform) => {
     setPlatforms(prev =>
@@ -843,10 +874,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                               <PlatformIcon platform={platform} size={12} />
                               <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{platform}</span>
                             </div>
-                            <textarea
+                            <MentionTextarea
                               className="textarea post-textarea"
                               value={overrideVal}
-                              onChange={e => setContentOverrides(prev => ({ ...prev, [platform]: e.target.value }))}
+                              onChange={val => setContentOverrides(prev => ({ ...prev, [platform]: val }))}
+                              mentions={mentions}
+                              platform={platform}
                               placeholder={`Text for ${platform}…`}
                               rows={4}
                             />
@@ -864,11 +897,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     </>
                   ) : (
                     <>
-                      <textarea
-                        ref={textareaRef}
+                      <MentionTextarea
+                        textareaRef={textareaRef}
                         className="textarea post-textarea"
                         value={content}
-                        onChange={e => setContent(e.target.value)}
+                        onChange={setContent}
+                        onMentionInsert={handleMentionInsert}
+                        mentions={mentions}
                         placeholder="What's on your mind? Use #hashtags for tags..."
                         rows={5}
                       />
@@ -914,11 +949,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   <span>Upload a video for your Instagram Reel (9:16 recommended, MP4)</span>
                 </div>
                 <div className="form-group">
-                  <textarea
-                    ref={textareaRef}
+                  <MentionTextarea
+                    textareaRef={textareaRef}
                     className="textarea post-textarea"
                     value={content}
-                    onChange={e => setContent(e.target.value)}
+                    onChange={setContent}
+                    onMentionInsert={handleMentionInsert}
+                    mentions={mentions}
+                    platform="instagram"
                     placeholder="Add a caption to your Reel… (optional)"
                     rows={4}
                   />

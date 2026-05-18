@@ -60,6 +60,16 @@ export interface Suffix {
   updatedAt: string;
 }
 
+export interface MentionEntry {
+  id: string;
+  userId: string;
+  teamId?: string;
+  name: string;
+  handles: Record<string, string>; // platform -> @handle
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SocialAccount {
   id: string;
   teamId?: string;
