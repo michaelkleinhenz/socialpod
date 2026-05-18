@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Calendar, Settings, Users, Share2, LogOut, User, Zap, ScrollText, UsersRound, Signature, Image, MessageCircle, Mail, LayoutGrid } from 'lucide-react';
+import { Calendar, Settings, Users, Share2, LogOut, User, Zap, ScrollText, UsersRound, Signature, Image, MessageCircle, Mail, LayoutGrid, AtSign } from 'lucide-react';
 import './Layout.css';
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -24,6 +24,7 @@ export function Layout({ children }: { children: ReactNode }) {
       { path: '/team/manage', icon: UsersRound, label: 'Team Admin' },
     ] : []),
     { path: '/suffixes', icon: Signature, label: 'Suffixes' },
+    { path: '/mentions', icon: AtSign, label: 'Mentions' },
     { path: '/watermarks', icon: Image, label: 'Watermarks' },
     ...(user?.isAdmin ? [
       { path: '/admin/users', icon: Users, label: 'Users' },

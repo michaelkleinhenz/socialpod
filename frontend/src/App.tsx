@@ -14,6 +14,7 @@ import { WatermarksPage } from './components/Admin/WatermarksPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
 import { LogPage } from './components/Log/LogPage';
 import { SuffixesPage } from './components/Suffixes/SuffixesPage';
+import { MentionsPage } from './components/Mentions/MentionsPage';
 import { CommentsInboxPage } from './components/Inbox/CommentsInboxPage';
 import { DMInboxPage } from './components/Inbox/DMInboxPage';
 import { FeedPage } from './components/Inbox/FeedPage';
@@ -56,6 +57,7 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/log" element={<ProtectedRoute><Layout><LogPage /></Layout></ProtectedRoute>} />
       <Route path="/suffixes" element={<ProtectedRoute><Layout><SuffixesPage /></Layout></ProtectedRoute>} />
+      <Route path="/mentions" element={<ProtectedRoute><Layout><MentionsPage /></Layout></ProtectedRoute>} />
       <Route path="/inbox/comments" element={<ProtectedRoute><Layout><CommentsInboxPage /></Layout></ProtectedRoute>} />
       <Route path="/inbox/dms" element={<ProtectedRoute><Layout><DMInboxPage /></Layout></ProtectedRoute>} />
       <Route path="/feed" element={<ProtectedRoute><Layout><FeedPage /></Layout></ProtectedRoute>} />

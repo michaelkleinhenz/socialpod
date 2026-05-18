@@ -73,6 +73,11 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
+	m.Mentions().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+	})
+
 	m.InboxMessages().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "messageType", Value: 1}}},
 		{Keys: bson.D{{Key: "platform", Value: 1}}},
@@ -115,6 +120,10 @@ func (m *MongoDB) Suffixes() *mongo.Collection {
 
 func (m *MongoDB) Watermarks() *mongo.Collection {
 	return m.Database.Collection("watermarks")
+}
+
+func (m *MongoDB) Mentions() *mongo.Collection {
+	return m.Database.Collection("mentions")
 }
 
 func (m *MongoDB) InboxMessages() *mongo.Collection {

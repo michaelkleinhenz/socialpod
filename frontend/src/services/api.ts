@@ -346,6 +346,29 @@ class ApiClient {
     return this.request<any>(`/suffixes/${id}`, { method: 'DELETE' });
   }
 
+  // Mentions
+  getMentions() {
+    return this.request<any[]>('/mentions');
+  }
+
+  createMention(data: { name: string; handles: Record<string, string> }) {
+    return this.request<any>('/mentions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateMention(id: string, data: { name?: string; handles?: Record<string, string> }) {
+    return this.request<any>(`/mentions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteMention(id: string) {
+    return this.request<any>(`/mentions/${id}`, { method: 'DELETE' });
+  }
+
   // Inbox – comments
   getCommentInbox() {
     return this.request<any[]>('/inbox/comments');

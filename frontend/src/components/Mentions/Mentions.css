@@ -1,0 +1,109 @@
+.mention-form-card {
+  margin-bottom: 16px;
+}
+
+.mention-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.mention-form-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mention-handles-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 540px) {
+  .mention-handles-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mention-handle-field {
+  margin-bottom: 0;
+}
+
+.mention-handle-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  margin-bottom: 4px !important;
+}
+
+.mention-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.mention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mention-card {
+  padding: 16px;
+}
+
+.mention-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mention-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mention-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.mention-handles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mention-handle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.mention-no-handles {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mention-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mention-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
