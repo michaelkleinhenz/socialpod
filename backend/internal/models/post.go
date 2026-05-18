@@ -20,6 +20,7 @@ type Platform string
 const (
 	PlatformBluesky   Platform = "bluesky"
 	PlatformInstagram Platform = "instagram"
+	PlatformTwitter   Platform = "twitter"
 )
 
 type PostType string

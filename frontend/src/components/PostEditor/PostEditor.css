@@ -224,6 +224,11 @@
   color: var(--instagram);
 }
 
+.preview-platform-badge.twitter {
+  background: rgba(29, 155, 240, 0.15);
+  color: var(--twitter);
+}
+
 .preview-content {
   padding: 2px 14px 10px;
 }
