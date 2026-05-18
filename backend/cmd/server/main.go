@@ -73,6 +73,7 @@ func main() {
 	linkedInService := &services.LinkedInService{DB: db, UploadDir: cfg.UploadDir}
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
+	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -142,6 +143,21 @@ func main() {
 		auth.POST("/mentions", mentionHandler.Create)
 		auth.PUT("/mentions/:id", mentionHandler.Update)
 		auth.DELETE("/mentions/:id", mentionHandler.Delete)
+
+		// Convention mode
+		auth.GET("/convention/queues", conventionHandler.ListQueues)
+		auth.POST("/convention/queues", conventionHandler.CreateQueue)
+		auth.GET("/convention/queues/:id", conventionHandler.GetQueue)
+		auth.PUT("/convention/queues/:id", conventionHandler.UpdateQueue)
+		auth.DELETE("/convention/queues/:id", conventionHandler.DeleteQueue)
+		auth.POST("/convention/queues/:id/items", conventionHandler.AddItem)
+		auth.PUT("/convention/queues/:id/items/:iid", conventionHandler.UpdateItem)
+		auth.DELETE("/convention/queues/:id/items/:iid", conventionHandler.DeleteItem)
+		auth.POST("/convention/queues/:id/items/:iid/analyze", conventionHandler.AnalyzeItem)
+		auth.POST("/convention/queues/:id/analyze-all", conventionHandler.AnalyzeAll)
+		auth.POST("/convention/queues/:id/reorder", conventionHandler.ReorderItems)
+		auth.GET("/convention/queues/:id/preview", conventionHandler.PreviewSchedule)
+		auth.POST("/convention/queues/:id/schedule", conventionHandler.ScheduleItems)
 	}
 
 	// Admin routes (global admin only)

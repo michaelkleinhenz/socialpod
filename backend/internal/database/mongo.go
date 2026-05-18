@@ -87,6 +87,18 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
+	m.ConventionQueues().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+		{Keys: bson.D{{Key: "status", Value: 1}}},
+	})
+
+	m.ConventionQueueItems().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "queueId", Value: 1}}},
+		{Keys: bson.D{{Key: "queueId", Value: 1}, {Key: "status", Value: 1}}},
+		{Keys: bson.D{{Key: "queueId", Value: 1}, {Key: "sortOrder", Value: 1}}},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -128,6 +140,14 @@ func (m *MongoDB) Mentions() *mongo.Collection {
 
 func (m *MongoDB) InboxMessages() *mongo.Collection {
 	return m.Database.Collection("inbox_messages")
+}
+
+func (m *MongoDB) ConventionQueues() *mongo.Collection {
+	return m.Database.Collection("convention_queues")
+}
+
+func (m *MongoDB) ConventionQueueItems() *mongo.Collection {
+	return m.Database.Collection("convention_queue_items")
 }
 
 func (m *MongoDB) Close() {

@@ -460,6 +460,61 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // Convention mode
+  getConventionQueues() {
+    return this.request<any[]>('/convention/queues');
+  }
+
+  createConventionQueue(data: any) {
+    return this.request<any>('/convention/queues', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  getConventionQueue(id: string) {
+    return this.request<{ queue: any; items: any[] }>(`/convention/queues/${id}`);
+  }
+
+  updateConventionQueue(id: string, data: any) {
+    return this.request<any>(`/convention/queues/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  deleteConventionQueue(id: string) {
+    return this.request<any>(`/convention/queues/${id}`, { method: 'DELETE' });
+  }
+
+  addConventionItem(queueId: string, file: File) {
+    const form = new FormData();
+    form.append('image', file);
+    return this.request<any>(`/convention/queues/${queueId}/items`, { method: 'POST', body: form });
+  }
+
+  updateConventionItem(queueId: string, itemId: string, data: any) {
+    return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  deleteConventionItem(queueId: string, itemId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'DELETE' });
+  }
+
+  analyzeConventionItem(queueId: string, itemId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/items/${itemId}/analyze`, { method: 'POST' });
+  }
+
+  analyzeAllConventionItems(queueId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/analyze-all`, { method: 'POST' });
+  }
+
+  reorderConventionItems(queueId: string, itemIds: string[]) {
+    return this.request<any>(`/convention/queues/${queueId}/reorder`, { method: 'POST', body: JSON.stringify({ itemIds }) });
+  }
+
+  previewConventionSchedule(queueId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/preview`);
+  }
+
+  scheduleConventionItems(queueId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/schedule`, { method: 'POST' });
+  }
 }
 
 export const api = new ApiClient();

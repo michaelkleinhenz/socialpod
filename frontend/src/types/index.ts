@@ -117,3 +117,54 @@ export interface AuthResponse {
   token: string;
   user: User;
 }
+
+export type ConventionQueueItemStatus = 'pending' | 'approved' | 'scheduled' | 'published';
+
+export interface ConventionQueue {
+  id: string;
+  userId: string;
+  teamId?: string;
+  name: string;
+  conventionUrl?: string;
+  hashtags?: string[];
+  startDate: string;
+  endDate: string;
+  postsPerDay: number;
+  timeSlots: string[];
+  platforms: Platform[];
+  accountIds?: Record<string, string>;
+  suffixIds?: Record<string, string>;
+  status: string;
+  itemCount?: number;
+  approvedCount?: number;
+  scheduledCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConventionQueueItem {
+  id: string;
+  queueId: string;
+  postId?: string;
+  imageUrl: string;
+  caption?: string;
+  status: ConventionQueueItemStatus;
+  aiError?: string;
+  sortOrder: number;
+  platforms?: Platform[];
+  accountIds?: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchedulePreviewSlot {
+  itemId: string;
+  scheduledAt: string;
+}
+
+export interface SchedulePreview {
+  slots: SchedulePreviewSlot[];
+  approvedCount: number;
+  availableSlots: number;
+  overflow: number;
+}
