@@ -56,14 +56,27 @@ type UpdatePostInput struct {
 
 const (
 	blueskyCharLimit   = 300
+	threadsCharLimit   = 500
 	instagramCharLimit = 2200
+	linkedInCharLimit  = 3000
 )
 
 func contentLimit(platforms []models.Platform) int {
-	limit := instagramCharLimit
+	limit := linkedInCharLimit
 	for _, p := range platforms {
-		if p == models.PlatformBluesky && blueskyCharLimit < limit {
-			limit = blueskyCharLimit
+		var platformLimit int
+		switch p {
+		case models.PlatformBluesky:
+			platformLimit = blueskyCharLimit
+		case models.PlatformThreads:
+			platformLimit = threadsCharLimit
+		case models.PlatformInstagram:
+			platformLimit = instagramCharLimit
+		default:
+			continue
+		}
+		if platformLimit < limit {
+			limit = platformLimit
 		}
 	}
 	return limit

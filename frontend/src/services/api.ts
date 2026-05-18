@@ -161,6 +161,20 @@ class ApiClient {
     });
   }
 
+  addThreadsAccount(data: { accessToken: string; threadsUserId?: string; teamId?: string }) {
+    return this.request<any>('/admin/accounts/threads', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  addLinkedInAccount(data: { accessToken: string; linkedinPersonUrn?: string; teamId?: string }) {
+    return this.request<any>('/admin/accounts/linkedin', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   deleteAccount(id: string) {
     return this.request<any>(`/admin/accounts/${id}`, { method: 'DELETE' });
   }
@@ -197,6 +211,20 @@ class ApiClient {
 
   addTeamMastodonAccount(data: { instance: string; accessToken: string }) {
     return this.request<any>('/team/accounts/mastodon', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  addTeamThreadsAccount(data: { accessToken: string; threadsUserId?: string }) {
+    return this.request<any>('/team/accounts/threads', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  addTeamLinkedInAccount(data: { accessToken: string; linkedinPersonUrn?: string }) {
+    return this.request<any>('/team/accounts/linkedin', {
       method: 'POST',
       body: JSON.stringify(data),
     });

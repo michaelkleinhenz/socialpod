@@ -92,11 +92,16 @@ import { PlatformIcon } from '../Common/PlatformIcon';
 
 function getPostUrl(platform: string, postId: string): string | null {
   if (platform === 'bluesky' && postId.startsWith('at://')) {
-    // at://did:plc:xxx/app.bsky.feed.post/rkey -> https://bsky.app/profile/did:plc:xxx/post/rkey
     const parts = postId.replace('at://', '').split('/');
     if (parts.length >= 3) {
       return `https://bsky.app/profile/${parts[0]}/post/${parts[2]}`;
     }
+  }
+  if (platform === 'threads' && postId) {
+    return `https://www.threads.net/post/${postId}`;
+  }
+  if (platform === 'linkedin' && postId) {
+    return `https://www.linkedin.com/feed/update/${postId}`;
   }
   return null;
 }

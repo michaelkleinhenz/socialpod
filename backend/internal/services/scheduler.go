@@ -18,6 +18,8 @@ type Scheduler struct {
 	Instagram *InstagramService
 	Twitter   *TwitterService
 	Mastodon  *MastodonService
+	Threads   *ThreadsService
+	LinkedIn  *LinkedInService
 	stop      chan struct{}
 }
 
@@ -28,6 +30,8 @@ func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
 		Instagram: &InstagramService{DB: db},
 		Twitter:   &TwitterService{DB: db, UploadDir: uploadDir},
 		Mastodon:  &MastodonService{DB: db, UploadDir: uploadDir},
+		Threads:   &ThreadsService{DB: db},
+		LinkedIn:  &LinkedInService{DB: db, UploadDir: uploadDir},
 		stop:      make(chan struct{}),
 	}
 }
@@ -100,11 +104,15 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	instagramSuffix := ""
 	twitterSuffix := ""
 	mastodonSuffix := ""
+	threadsSuffix := ""
+	linkedInSuffix := ""
 	if post.SuffixIDs != nil {
 		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"])
 		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"])
 		twitterSuffix = s.suffixContent(ctx, post.SuffixIDs["twitter"])
 		mastodonSuffix = s.suffixContent(ctx, post.SuffixIDs["mastodon"])
+		threadsSuffix = s.suffixContent(ctx, post.SuffixIDs["threads"])
+		linkedInSuffix = s.suffixContent(ctx, post.SuffixIDs["linkedin"])
 	}
 
 	platformContent := func(platform models.Platform) string {
@@ -244,6 +252,40 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			} else {
 				result.Success = true
 				result.PostID = statusURL
+				result.PostedAt = time.Now()
+			}
+
+		case models.PlatformThreads:
+			accountID := ""
+			if post.AccountIDs != nil {
+				accountID = post.AccountIDs["threads"]
+			}
+			postID, err := s.Threads.Post(ctx, applyContent(platformContent(models.PlatformThreads), threadsSuffix), post.ImageURLs, accountID)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				allSuccess = false
+				log.Printf("Threads post failed: %v", err)
+			} else {
+				result.Success = true
+				result.PostID = postID
+				result.PostedAt = time.Now()
+			}
+
+		case models.PlatformLinkedIn:
+			accountID := ""
+			if post.AccountIDs != nil {
+				accountID = post.AccountIDs["linkedin"]
+			}
+			postID, err := s.LinkedIn.Post(ctx, applyContent(platformContent(models.PlatformLinkedIn), linkedInSuffix), post.ImageURLs, accountID)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				allSuccess = false
+				log.Printf("LinkedIn post failed: %v", err)
+			} else {
+				result.Success = true
+				result.PostID = postID
 				result.PostedAt = time.Now()
 			}
 		}

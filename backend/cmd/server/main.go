@@ -68,7 +68,9 @@ func main() {
 	igService := &services.InstagramService{DB: db}
 	twService := &services.TwitterService{DB: db, UploadDir: cfg.UploadDir}
 	mastodonService := &services.MastodonService{DB: db, UploadDir: cfg.UploadDir}
-	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, UploadDir: cfg.UploadDir}
+	threadsService := &services.ThreadsService{DB: db}
+	linkedInService := &services.LinkedInService{DB: db, UploadDir: cfg.UploadDir}
+	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 
 	robotsTxt := func(c *gin.Context) {
@@ -142,6 +144,8 @@ func main() {
 		admin.POST("/accounts/bluesky", adminHandler.AddBlueskyAccount)
 		admin.POST("/accounts/twitter", adminHandler.AddTwitterAccount)
 		admin.POST("/accounts/mastodon", adminHandler.AddMastodonAccount)
+		admin.POST("/accounts/threads", adminHandler.AddThreadsAccount)
+		admin.POST("/accounts/linkedin", adminHandler.AddLinkedInAccount)
 		admin.DELETE("/accounts/:id", adminHandler.DeleteAccount)
 		admin.PATCH("/accounts/:id/toggle", adminHandler.ToggleAccount)
 		admin.PATCH("/accounts/:id/team", adminHandler.AssignAccountTeam)
@@ -169,6 +173,8 @@ func main() {
 		teamAdmin.POST("/accounts/bluesky", adminHandler.TeamAddBlueskyAccount)
 		teamAdmin.POST("/accounts/twitter", adminHandler.TeamAddTwitterAccount)
 		teamAdmin.POST("/accounts/mastodon", adminHandler.TeamAddMastodonAccount)
+		teamAdmin.POST("/accounts/threads", adminHandler.TeamAddThreadsAccount)
+		teamAdmin.POST("/accounts/linkedin", adminHandler.TeamAddLinkedInAccount)
 		teamAdmin.DELETE("/accounts/:id", adminHandler.TeamDeleteAccount)
 		teamAdmin.PATCH("/accounts/:id/toggle", adminHandler.TeamToggleAccount)
 		teamAdmin.GET("/instagram/auth-url", adminHandler.TeamInstagramAuthURL)

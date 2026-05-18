@@ -1,6 +1,6 @@
 # SocialPod — Social Media Scheduler
 
-A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, and **Mastodon**. Features a drag-and-drop calendar UI, multitenancy, image uploads, a built-in image editor with watermarks, per-platform text customization, an Instagram inbox (comments & DMs), suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
+A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, and **LinkedIn**. Features a drag-and-drop calendar UI, multitenancy, image uploads, a built-in image editor with watermarks, per-platform text customization, an Instagram inbox (comments & DMs), suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
 
 ## Quick Start
 
@@ -23,6 +23,8 @@ make up
 - For Bluesky: an app password generated from your Bluesky account settings
 - For X (Twitter): a Twitter Developer App with OAuth 1.0a keys (see below)
 - For Mastodon: an access token from your Mastodon instance (see below)
+- For Threads: a long-lived user access token from the Meta Threads API (see below)
+- For LinkedIn: an OAuth 2.0 access token from the LinkedIn Developer Portal (see below)
 
 ## Configuration
 
@@ -239,6 +241,91 @@ SocialPod will fetch your display name and avatar using `/api/v1/accounts/verify
 
 ---
 
+## Setting Up Threads Authentication
+
+Threads uses the **Meta Threads API** with a long-lived user access token. You need a Meta developer account with a Threads app.
+
+### Step 1: Create a Threads App on Meta
+
+1. Go to [developers.facebook.com](https://developers.facebook.com/) and log in.
+2. Click **My Apps → Create App**.
+3. Select **Other** as the use case, then **Consumer** as the app type.
+4. Name your app and click **Create**.
+5. In the app dashboard, find **Threads API** and click **Set Up**.
+
+### Step 2: Get a Long-Lived Access Token
+
+1. Under **Threads API → User Token Generator**, add your Threads account as a test user.
+2. Generate a short-lived token with the following scopes:
+   - `threads_basic` — read profile info
+   - `threads_content_publish` — create and publish posts
+3. Exchange the short-lived token for a long-lived token using the Threads API token exchange endpoint. Long-lived tokens are valid for 60 days and can be refreshed.
+
+> **Note**: Once your app is reviewed and approved by Meta, users can connect directly without being added as test users.
+
+### Step 3: Add the Account in SocialPod
+
+1. Log in to SocialPod as an admin.
+2. Navigate to **Accounts** in the sidebar.
+3. Click **Add Threads**.
+4. Enter the long-lived access token from step 2.
+5. Click **Add Account**.
+
+SocialPod will automatically fetch the account's username and profile picture from the Threads API.
+
+### Threads Post Features
+
+- Text posts up to 500 characters
+- Single image posts (image must be publicly accessible via `APP_URL`)
+- Carousel posts with up to 10 images
+- Per-platform text customization and suffix support
+
+---
+
+## Setting Up LinkedIn Authentication
+
+LinkedIn uses **OAuth 2.0** for authentication. You need a LinkedIn Developer app with the appropriate permissions.
+
+### Step 1: Create a LinkedIn App
+
+1. Go to [linkedin.com/developers](https://www.linkedin.com/developers/) and log in.
+2. Click **Create App**.
+3. Fill in the required fields (app name, associated LinkedIn Page, logo).
+4. Click **Create App**.
+
+### Step 2: Configure App Permissions
+
+1. In your app settings, go to the **Products** tab.
+2. Request access to **Share on LinkedIn** (provides the `w_member_social` scope for posting).
+3. Wait for access to be approved (usually instant for Share on LinkedIn).
+
+### Step 3: Get an Access Token
+
+1. Go to the **Auth** tab in your app settings.
+2. Add a redirect URL (e.g. `https://your-domain.com/linkedin/callback` — this can be a placeholder).
+3. Use LinkedIn's OAuth 2.0 authorization flow to obtain a token with the `w_member_social` scope.
+   - You can use the [OAuth 2.0 PKCE tool](https://www.linkedin.com/developers/tools/oauth) in the LinkedIn Developer Portal to generate a token quickly for testing.
+4. The access token expires after 60 days. LinkedIn's API supports token refresh with `r_liteprofile` scope.
+
+### Step 4: Add the Account in SocialPod
+
+1. Log in to SocialPod as an admin.
+2. Navigate to **Accounts** in the sidebar.
+3. Click **Add LinkedIn**.
+4. Enter your OAuth 2.0 access token.
+5. Click **Add Account**.
+
+SocialPod will automatically fetch your name and profile picture from the LinkedIn API and store the person URN required for posting.
+
+### LinkedIn Post Features
+
+- Text posts up to 3,000 characters
+- Single or multiple image posts (images uploaded directly to LinkedIn's media endpoint)
+- Posts are published to the member's feed with public visibility
+- Per-platform text customization and suffix support
+
+---
+
 ## Suffix Management
 
 Suffixes are snippets of text that are **automatically appended** to a post when it is published, without counting against the character limit visible in the editor.
@@ -330,9 +417,11 @@ The character counter enforces each platform's limit independently:
 | Platform | Character limit |
 |---|---|
 | Bluesky | 300 |
-| Instagram | 2,200 |
 | X (Twitter) | 280 |
+| Threads | 500 |
 | Mastodon | 500 |
+| Instagram | 2,200 |
+| LinkedIn | 3,000 |
 
 ---
 
@@ -455,10 +544,20 @@ curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
   -F 'data={"content":"Hello fediverse!","platforms":["mastodon"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}'
 
+# Create a post for Threads
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Hello Threads!","platforms":["threads"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}'
+
+# Create a post for LinkedIn
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Excited to share this update with my network!","platforms":["linkedin"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}'
+
 # Cross-post to all platforms with per-platform text
 curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
-  -F 'data={"content":"Default caption","platforms":["bluesky","instagram","twitter","mastodon"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","contentOverrides":{"twitter":"Short tweet (280 chars max)","mastodon":"Fediverse post (500 chars max)"}}'
+  -F 'data={"content":"Default caption","platforms":["bluesky","instagram","twitter","mastodon","threads","linkedin"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","contentOverrides":{"twitter":"Short tweet (280 chars max)","mastodon":"Fediverse post (500 chars max)","linkedin":"Professional update for LinkedIn"}}'
 
 # Create a post with a suffix
 curl -X POST http://localhost:8080/api/posts \
@@ -541,7 +640,7 @@ Include returned URLs in the `imageUrls` array of the post `data` field, or atta
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `content` | string | Yes* | Post text (*not required for Stories) |
-| `platforms` | array | Yes | Any combination of `"bluesky"`, `"instagram"`, `"twitter"`, `"mastodon"` |
+| `platforms` | array | Yes | Any combination of `"bluesky"`, `"instagram"`, `"twitter"`, `"mastodon"`, `"threads"`, `"linkedin"` |
 | `postType` | string | No | `post` (default), `story`, or `reel` |
 | `scheduledAt` | string | Yes | ISO 8601 datetime (e.g. `2025-06-01T09:00:00Z`) |
 | `status` | string | No | `scheduled` (default) or `draft` |
@@ -549,7 +648,7 @@ Include returned URLs in the `imageUrls` array of the post `data` field, or atta
 | `firstComment` | string | No | Posted as the first comment after publishing |
 | `suffixIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
 | `accountIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` — specific account to use |
-| `contentOverrides` | object | No | `{"bluesky":"...", "instagram":"...", "twitter":"...", "mastodon":"..."}` — per-platform caption overrides; omitting a platform falls back to `content` |
+| `contentOverrides` | object | No | `{"bluesky":"...", "instagram":"...", "twitter":"...", "mastodon":"...", "threads":"...", "linkedin":"..."}` — per-platform caption overrides; omitting a platform falls back to `content` |
 | `tags` | array | No | Tags for internal organisation |
 
 > **Note on `postType`**: `story` and `reel` are Instagram-only. Reels require an MP4 video file. Stories accept an image or video. The `content` field is used as the caption for Reels and is ignored for Stories.
@@ -567,7 +666,7 @@ curl http://localhost:8080/api/health
 
 SocialPod ships with a native **n8n community node** located in the `n8n-nodes-socialpod/` directory. It supports all post and suffix operations and handles authentication automatically.
 
-> **Platform support**: The n8n node currently supports **Bluesky** and **Instagram** platforms. X (Twitter) and Mastodon can be scheduled via the REST API directly.
+> **Platform support**: The n8n node currently supports **Bluesky** and **Instagram** platforms. X (Twitter), Mastodon, Threads, and LinkedIn can be scheduled via the REST API directly.
 
 ### Supported Operations
 
