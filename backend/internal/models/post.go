@@ -22,6 +22,8 @@ const (
 	PlatformInstagram Platform = "instagram"
 	PlatformTwitter   Platform = "twitter"
 	PlatformMastodon  Platform = "mastodon"
+	PlatformThreads   Platform = "threads"
+	PlatformLinkedIn  Platform = "linkedin"
 )
 
 type PostType string

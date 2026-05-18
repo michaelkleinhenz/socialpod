@@ -234,6 +234,16 @@
   color: var(--mastodon);
 }
 
+.preview-platform-badge.threads {
+  background: rgba(16, 16, 16, 0.15);
+  color: var(--threads);
+}
+
+.preview-platform-badge.linkedin {
+  background: rgba(10, 102, 194, 0.15);
+  color: var(--linkedin);
+}
+
 .preview-content {
   padding: 2px 14px 10px;
 }

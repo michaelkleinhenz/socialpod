@@ -47,6 +47,8 @@ type AdminHandler struct {
 	Instagram *services.InstagramService
 	Twitter   *services.TwitterService
 	Mastodon  *services.MastodonService
+	Threads   *services.ThreadsService
+	LinkedIn  *services.LinkedInService
 	UploadDir string
 }
 
@@ -261,6 +263,112 @@ func (h *AdminHandler) AddMastodonAccount(c *gin.Context) {
 		if dn, av, err := h.Mastodon.FetchProfile(&account); err == nil {
 			if dn != "" {
 				account.DisplayName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+type AddThreadsInput struct {
+	AccessToken   string `json:"accessToken" binding:"required"`
+	ThreadsUserID string `json:"threadsUserId"` // optional; fetched from API if omitted
+	TeamID        string `json:"teamId"`
+}
+
+func (h *AdminHandler) AddThreadsAccount(c *gin.Context) {
+	var input AddThreadsInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		Platform:      models.PlatformThreads,
+		AccountName:   "threads",
+		DisplayName:   "Threads Account",
+		AccessToken:   input.AccessToken,
+		ThreadsUserID: input.ThreadsUserID,
+		IsActive:      true,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	if input.TeamID != "" {
+		if tid, err := primitive.ObjectIDFromHex(input.TeamID); err == nil {
+			account.TeamID = &tid
+		}
+	}
+
+	if h.Threads != nil {
+		if dn, av, err := h.Threads.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+				account.AccountName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+type AddLinkedInInput struct {
+	AccessToken       string `json:"accessToken" binding:"required"`
+	LinkedInPersonURN string `json:"linkedinPersonUrn"` // optional; fetched from /me if omitted
+	TeamID            string `json:"teamId"`
+}
+
+func (h *AdminHandler) AddLinkedInAccount(c *gin.Context) {
+	var input AddLinkedInInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		Platform:          models.PlatformLinkedIn,
+		AccountName:       "linkedin",
+		DisplayName:       "LinkedIn Account",
+		AccessToken:       input.AccessToken,
+		LinkedInPersonURN: input.LinkedInPersonURN,
+		IsActive:          true,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	if input.TeamID != "" {
+		if tid, err := primitive.ObjectIDFromHex(input.TeamID); err == nil {
+			account.TeamID = &tid
+		}
+	}
+
+	if h.LinkedIn != nil {
+		if dn, av, err := h.LinkedIn.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+				account.AccountName = dn
 			}
 			account.AvatarURL = av
 		}
@@ -1654,6 +1762,104 @@ func (h *AdminHandler) TeamAddMastodonAccount(c *gin.Context) {
 		if dn, av, err := h.Mastodon.FetchProfile(&account); err == nil {
 			if dn != "" {
 				account.DisplayName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+func (h *AdminHandler) TeamAddThreadsAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input AddThreadsInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		TeamID:        &tid,
+		Platform:      models.PlatformThreads,
+		AccountName:   "threads",
+		DisplayName:   "Threads Account",
+		AccessToken:   input.AccessToken,
+		ThreadsUserID: input.ThreadsUserID,
+		IsActive:      true,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	if h.Threads != nil {
+		if dn, av, err := h.Threads.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+				account.AccountName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+func (h *AdminHandler) TeamAddLinkedInAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input AddLinkedInInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		TeamID:            &tid,
+		Platform:          models.PlatformLinkedIn,
+		AccountName:       "linkedin",
+		DisplayName:       "LinkedIn Account",
+		AccessToken:       input.AccessToken,
+		LinkedInPersonURN: input.LinkedInPersonURN,
+		IsActive:          true,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	if h.LinkedIn != nil {
+		if dn, av, err := h.LinkedIn.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+				account.AccountName = dn
 			}
 			account.AvatarURL = av
 		}

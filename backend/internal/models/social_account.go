@@ -28,6 +28,10 @@ type SocialAccount struct {
 	TwitterUserID     string `bson:"twitterUserId,omitempty" json:"twitterUserId,omitempty"`
 	// Mastodon-specific
 	MastodonInstance string `bson:"mastodonInstance,omitempty" json:"mastodonInstance,omitempty"`
+	// Threads-specific
+	ThreadsUserID string `bson:"threadsUserId,omitempty" json:"threadsUserId,omitempty"`
+	// LinkedIn-specific
+	LinkedInPersonURN string `bson:"linkedinPersonUrn,omitempty" json:"linkedinPersonUrn,omitempty"`
 	AvatarURL    string `bson:"avatarUrl,omitempty" json:"avatarUrl,omitempty"`
 	IsActive     bool   `bson:"isActive" json:"isActive"`
 	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`

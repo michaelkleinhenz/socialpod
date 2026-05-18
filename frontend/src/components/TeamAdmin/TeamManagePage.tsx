@@ -35,6 +35,12 @@ export function TeamManagePage() {
   const [mastodonInstance, setMastodonInstance] = useState('');
   const [mastodonAccessToken, setMastodonAccessToken] = useState('');
   const [addingMastodon, setAddingMastodon] = useState(false);
+  const [showThreadsForm, setShowThreadsForm] = useState(false);
+  const [threadsAccessToken, setThreadsAccessToken] = useState('');
+  const [addingThreads, setAddingThreads] = useState(false);
+  const [showLinkedInForm, setShowLinkedInForm] = useState(false);
+  const [linkedInAccessToken, setLinkedInAccessToken] = useState('');
+  const [addingLinkedIn, setAddingLinkedIn] = useState(false);
 
   // Members state
   const [members, setMembers] = useState<User[]>([]);
@@ -127,6 +133,38 @@ export function TeamManagePage() {
       toast.error(err.message);
     } finally {
       setAddingMastodon(false);
+    }
+  };
+
+  const addThreads = async () => {
+    if (!threadsAccessToken) { toast.error('Access token is required'); return; }
+    setAddingThreads(true);
+    try {
+      await api.addTeamThreadsAccount({ accessToken: threadsAccessToken });
+      toast.success('Threads account added');
+      setShowThreadsForm(false);
+      setThreadsAccessToken('');
+      loadAccounts();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAddingThreads(false);
+    }
+  };
+
+  const addLinkedIn = async () => {
+    if (!linkedInAccessToken) { toast.error('Access token is required'); return; }
+    setAddingLinkedIn(true);
+    try {
+      await api.addTeamLinkedInAccount({ accessToken: linkedInAccessToken });
+      toast.success('LinkedIn account added');
+      setShowLinkedInForm(false);
+      setLinkedInAccessToken('');
+      loadAccounts();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setAddingLinkedIn(false);
     }
   };
 
@@ -301,6 +339,20 @@ export function TeamManagePage() {
               >
                 <ExternalLink size={16} /> Connect Instagram
               </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowThreadsForm(true)}
+                style={{ borderColor: 'var(--threads)', color: 'var(--threads)' }}
+              >
+                <Plus size={16} /> Add Threads
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowLinkedInForm(true)}
+                style={{ borderColor: 'var(--linkedin)', color: 'var(--linkedin)' }}
+              >
+                <Plus size={16} /> Add LinkedIn
+              </button>
             </div>
           </div>
 
@@ -410,6 +462,62 @@ export function TeamManagePage() {
                   <button className="btn btn-secondary" onClick={() => setShowMastodonForm(false)}>Cancel</button>
                   <button className="btn btn-primary" onClick={addMastodon} disabled={addingMastodon}>
                     {addingMastodon ? 'Adding...' : 'Add Account'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showThreadsForm && (
+            <div className="modal-overlay" onClick={() => setShowThreadsForm(false)}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h2>Add Threads Account</h2>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowThreadsForm(false)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="form-group">
+                    <label>Access Token</label>
+                    <input className="input" type="password" placeholder="Long-lived user access token" value={threadsAccessToken} onChange={e => setThreadsAccessToken(e.target.value)} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Obtain a long-lived token via the Meta for Developers Threads API (threads.net).
+                    </span>
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" onClick={() => setShowThreadsForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={addThreads} disabled={addingThreads}>
+                    {addingThreads ? 'Adding...' : 'Add Account'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showLinkedInForm && (
+            <div className="modal-overlay" onClick={() => setShowLinkedInForm(false)}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h2>Add LinkedIn Account</h2>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowLinkedInForm(false)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="form-group">
+                    <label>Access Token</label>
+                    <input className="input" type="password" placeholder="OAuth 2.0 access token" value={linkedInAccessToken} onChange={e => setLinkedInAccessToken(e.target.value)} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Obtain via the LinkedIn Developer Portal. Requires the w_member_social scope.
+                    </span>
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" onClick={() => setShowLinkedInForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={addLinkedIn} disabled={addingLinkedIn}>
+                    {addingLinkedIn ? 'Adding...' : 'Add Account'}
                   </button>
                 </div>
               </div>

@@ -222,6 +222,9 @@
 .platform-dot.bluesky { background: var(--bluesky); }
 .platform-dot.instagram { background: var(--instagram); }
 .platform-dot.twitter { background: var(--twitter); }
+.platform-dot.mastodon { background: var(--mastodon); }
+.platform-dot.threads { background: var(--threads); }
+.platform-dot.linkedin { background: var(--linkedin); }
 
 /* View Toggle */
 .view-toggle {

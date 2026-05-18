@@ -215,6 +215,10 @@ export function CalendarPage() {
               <option value="">All platforms</option>
               <option value="bluesky">Bluesky</option>
               <option value="instagram">Instagram</option>
+              <option value="twitter">X/Twitter</option>
+              <option value="mastodon">Mastodon</option>
+              <option value="threads">Threads</option>
+              <option value="linkedin">LinkedIn</option>
             </select>
             <select className="select" style={{ width: 120 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
               <option value="">All status</option>
