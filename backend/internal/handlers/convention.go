@@ -759,6 +759,10 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 	if len(queue.Hashtags) > 0 {
 		contextLines = append(contextLines, fmt.Sprintf("Hashtags to include: %s", strings.Join(queue.Hashtags, " ")))
 	}
+	if len(queue.Platforms) > 0 {
+		limit := contentLimit(queue.Platforms)
+		contextLines = append(contextLines, fmt.Sprintf("Character limit: %d characters maximum (including hashtags).", limit))
+	}
 	contextLines = append(contextLines, "\nWrite an engaging social media caption for this convention photo. Reply with ONLY the caption text including the hashtags.")
 
 	imgB64 := base64.StdEncoding.EncodeToString(imageData)
@@ -773,6 +777,9 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 	}
 
 	systemPrompt := "You are a board game convention social media expert. Look at photos from game conventions (Essen, Gen Con, SPIEL, etc.) and write engaging ready-to-post social media captions. Describe what you see — publisher booths, games on tables, prototypes, crowds — with enthusiasm. Reply with ONLY the caption text, no quotes, no commentary."
+	if settings.AILanguage != "" {
+		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
+	}
 
 	reqBody, _ := json.Marshal(map[string]any{
 		"model": model,

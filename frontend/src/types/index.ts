@@ -101,6 +101,7 @@ export interface AppSettings {
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
   openRouterModel: string;
+  aiLanguage: string;
   hasOpenRouterKey?: boolean;
   updatedAt?: string;
 }

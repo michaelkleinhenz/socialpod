@@ -482,6 +482,7 @@ type UpdateSettingsInput struct {
 	CookieBannerText      *string `json:"cookieBannerText,omitempty"`
 	OpenRouterAPIKey      *string `json:"openRouterApiKey,omitempty"`
 	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
+	AILanguage            *string `json:"aiLanguage,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -527,6 +528,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.OpenRouterModel != nil {
 		update["openRouterModel"] = *input.OpenRouterModel
+	}
+	if input.AILanguage != nil {
+		update["aiLanguage"] = *input.AILanguage
 	}
 
 	upsert := true
@@ -1346,11 +1350,16 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 	}
 
 	systemPrompt := "You are a social media copywriter. The user gives you a prompt (which may include URLs for context). Write a ready-to-post social media post based on the prompt. Reply with ONLY the post text, no quotes, no commentary, no labels."
-	for _, p := range input.Platforms {
-		if p == "bluesky" {
-			systemPrompt += " The post must fit within 300 characters."
-			break
+	if len(input.Platforms) > 0 {
+		var platforms []models.Platform
+		for _, p := range input.Platforms {
+			platforms = append(platforms, models.Platform(p))
 		}
+		limit := contentLimit(platforms)
+		systemPrompt += fmt.Sprintf(" The post must fit within %d characters.", limit)
+	}
+	if settings.AILanguage != "" {
+		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
@@ -1533,6 +1542,10 @@ Recent post content snippets:
 		model = "openai/gpt-4o-mini"
 	}
 
+	langInstr := ""
+	if settings.AILanguage != "" {
+		langInstr = fmt.Sprintf(" Write all text values in %s.", settings.AILanguage)
+	}
 	systemPrompt := `You are a social media strategy analyst. Analyze the posting data provided and give actionable recommendations. Respond in valid JSON with this exact structure:
 {
   "stats": [
@@ -1543,7 +1556,7 @@ Recent post content snippets:
   ]
 }
 
-Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). Reply ONLY with valid JSON, no markdown fences.`
+Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). Reply ONLY with valid JSON, no markdown fences.` + langInstr
 
 	reqBody, _ := json.Marshal(map[string]any{
 		"model": model,
