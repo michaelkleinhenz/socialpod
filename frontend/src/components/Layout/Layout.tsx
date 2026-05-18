@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Calendar, Settings, Users, Share2, LogOut, User, Zap, ScrollText, UsersRound, Signature, Image, MessageCircle, Mail, LayoutGrid, AtSign } from 'lucide-react';
+import { Calendar, Settings, Users, Share2, LogOut, User, Zap, ScrollText, UsersRound, Signature, Image, MessageCircle, Mail, LayoutGrid, AtSign, Tent } from 'lucide-react';
 import './Layout.css';
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -17,6 +17,7 @@ export function Layout({ children }: { children: ReactNode }) {
     ] : []),
     { path: '/feed', icon: LayoutGrid, label: 'Feed' },
     { path: '/log', icon: ScrollText, label: 'Post Log' },
+    { path: '/convention', icon: Tent, label: 'Convention' },
     ...(user?.isAdmin ? [
       { path: '/admin/accounts', icon: Share2, label: 'Accounts' },
     ] : []),

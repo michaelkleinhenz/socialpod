@@ -20,6 +20,8 @@ import { DMInboxPage } from './components/Inbox/DMInboxPage';
 import { FeedPage } from './components/Inbox/FeedPage';
 import { ShareTargetPage } from './components/ShareTarget/ShareTargetPage';
 import { TeamManagePage } from './components/TeamAdmin/TeamManagePage';
+import { ConventionPage } from './components/Convention/ConventionPage';
+import { QueueDetailPage } from './components/Convention/QueueDetailPage';
 import './styles/global.css';
 
 // Register service worker for PWA / Web Share Target
@@ -68,6 +70,9 @@ function AppRoutes() {
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/teams" element={<ProtectedRoute adminOnly><Layout><TeamsPage /></Layout></ProtectedRoute>} />
       <Route path="/watermarks" element={<ProtectedRoute><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
+      {/* Convention mode */}
+      <Route path="/convention" element={<ProtectedRoute><Layout><ConventionPage /></Layout></ProtectedRoute>} />
+      <Route path="/convention/:id" element={<ProtectedRoute><Layout><QueueDetailPage /></Layout></ProtectedRoute>} />
       {/* Team admin routes */}
       <Route path="/team/manage" element={<ProtectedRoute teamAdminOnly><Layout><TeamManagePage /></Layout></ProtectedRoute>} />
       {/* PWA Web Share Target — standalone mobile UI, no sidebar */}
