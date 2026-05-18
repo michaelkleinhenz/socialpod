@@ -1,6 +1,6 @@
 # SocialPod — Social Media Scheduler
 
-A self-hosted social media scheduling platform for **Bluesky** and **Instagram**. Features a drag-and-drop calendar UI, multitenancy, image uploads, a built-in image editor with watermarks, per-platform text customization, an Instagram inbox (comments & DMs), suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
+A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, and **Mastodon**. Features a drag-and-drop calendar UI, multitenancy, image uploads, a built-in image editor with watermarks, per-platform text customization, an Instagram inbox (comments & DMs), suffix management, a background post publisher, and a REST API for external integrations including a native **n8n node**.
 
 ## Quick Start
 
@@ -21,6 +21,8 @@ make up
 - **Docker** and **Docker Compose** (v2)
 - For Instagram: a Meta developer account with an Instagram app (see below)
 - For Bluesky: an app password generated from your Bluesky account settings
+- For X (Twitter): a Twitter Developer App with OAuth 1.0a keys (see below)
+- For Mastodon: an access token from your Mastodon instance (see below)
 
 ## Configuration
 
@@ -159,6 +161,84 @@ SocialPod requests the following permissions during OAuth:
 
 ---
 
+## Setting Up X (Twitter) Authentication
+
+SocialPod uses **OAuth 1.0a** with user-context credentials from a Twitter Developer App. You will need four tokens from the Twitter Developer Portal.
+
+### Step 1: Create a Twitter Developer App
+
+1. Go to [developer.twitter.com](https://developer.twitter.com/) and log in.
+2. Create a new project and app (or use an existing one).
+3. Under **App permissions**, enable **Read and Write** (required for posting).
+4. Go to **Keys and Tokens** for your app.
+
+### Step 2: Gather Your Credentials
+
+You need four values from the **Keys and Tokens** page:
+
+| Credential | Where to find it |
+|---|---|
+| **API Key** (Consumer Key) | "Consumer Keys" section |
+| **API Key Secret** (Consumer Secret) | "Consumer Keys" section |
+| **Access Token** | "Authentication Tokens" → "Access Token and Secret" |
+| **Access Token Secret** | "Authentication Tokens" → "Access Token and Secret" |
+
+> **Note**: The Access Token and Access Token Secret are generated for the Twitter account that authorized the app. If you want to post from a specific account, generate these tokens while logged in as that account.
+
+### Step 3: Add the Account in SocialPod
+
+1. Log in to SocialPod as an admin.
+2. Navigate to **Accounts** in the sidebar.
+3. Click **Add X/Twitter**.
+4. Enter the four credentials from step 2.
+5. Click **Add Account**.
+
+SocialPod will fetch the account's display name and avatar from Twitter API v2.
+
+### X (Twitter) Post Features
+
+- Text up to 280 characters
+- Up to 4 images per tweet (uploaded via the v1.1 media endpoint)
+- Per-platform text customization and suffix support
+
+---
+
+## Setting Up Mastodon Authentication
+
+Mastodon uses **Bearer tokens** for authentication. You generate an access token directly from your Mastodon instance settings — no developer portal required.
+
+### Step 1: Generate an Access Token
+
+1. Log in to your Mastodon instance (e.g. `mastodon.social`).
+2. Go to **Preferences → Development → New Application**.
+3. Give it a name (e.g. "SocialPod") and ensure the following scopes are checked:
+   - `read` (for profile verification)
+   - `write:statuses` (for posting)
+   - `write:media` (for image uploads)
+4. Click **Submit**, then open the app you just created.
+5. Copy the **Your access token** value shown at the top.
+
+### Step 2: Add the Account in SocialPod
+
+1. Log in to SocialPod as an admin.
+2. Navigate to **Accounts** in the sidebar.
+3. Click **Add Mastodon**.
+4. Enter:
+   - **Instance**: Your Mastodon instance hostname (e.g. `mastodon.social`)
+   - **Access Token**: The token from step 1
+5. Click **Add Account**.
+
+SocialPod will fetch your display name and avatar using `/api/v1/accounts/verify_credentials`.
+
+### Mastodon Post Features
+
+- Text up to 500 characters
+- Up to 4 images per post (uploaded via the v2 media endpoint with async polling)
+- Fediverse handle shown in preview as `@user@instance`
+- Per-platform text customization and suffix support
+
+---
+
 ## Suffix Management
 
 Suffixes are snippets of text that are **automatically appended** to a post when it is published, without counting against the character limit visible in the editor.
@@ -236,16 +316,23 @@ Admins can manage a library of watermark images that users can apply inside the 
 
 ## Per-Platform Text Customization
 
-When posting to both Bluesky and Instagram at the same time, you can write different text for each platform rather than using one shared caption.
+When posting to multiple platforms at the same time, you can write different text for each platform rather than using one shared caption.
 
 ### Using Per-Platform Text
 
-1. In the post editor, select both **Bluesky** and **Instagram** as platforms.
+1. In the post editor, select two or more platforms.
 2. Toggle **Customize per platform** (above the text area).
 3. A separate text field appears for each selected platform.
 4. Leave a platform field empty to fall back to the shared text below.
 
-The character counter enforces each platform's limit independently (300 for Bluesky, 2,200 for Instagram).
+The character counter enforces each platform's limit independently:
+
+| Platform | Character limit |
+|---|---|
+| Bluesky | 300 |
+| Instagram | 2,200 |
+| X (Twitter) | 280 |
+| Mastodon | 500 |
 
 ---
 
@@ -358,6 +445,21 @@ curl -X POST http://localhost:8080/api/posts \
   -F 'data={"content":"Check out this reel!","platforms":["instagram"],"postType":"reel","scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
   -F "images=@reel.mp4"
 
+# Create a post for X (Twitter)
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Hello from the API!","platforms":["twitter"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}'
+
+# Create a post for Mastodon
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Hello fediverse!","platforms":["mastodon"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}'
+
+# Cross-post to all platforms with per-platform text
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Default caption","platforms":["bluesky","instagram","twitter","mastodon"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","contentOverrides":{"twitter":"Short tweet (280 chars max)","mastodon":"Fediverse post (500 chars max)"}}'
+
 # Create a post with a suffix
 curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
@@ -439,7 +541,7 @@ Include returned URLs in the `imageUrls` array of the post `data` field, or atta
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `content` | string | Yes* | Post text (*not required for Stories) |
-| `platforms` | array | Yes | `["bluesky"]`, `["instagram"]`, or both |
+| `platforms` | array | Yes | Any combination of `"bluesky"`, `"instagram"`, `"twitter"`, `"mastodon"` |
 | `postType` | string | No | `post` (default), `story`, or `reel` |
 | `scheduledAt` | string | Yes | ISO 8601 datetime (e.g. `2025-06-01T09:00:00Z`) |
 | `status` | string | No | `scheduled` (default) or `draft` |
@@ -447,7 +549,7 @@ Include returned URLs in the `imageUrls` array of the post `data` field, or atta
 | `firstComment` | string | No | Posted as the first comment after publishing |
 | `suffixIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
 | `accountIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` — specific account to use |
-| `contentOverrides` | object | No | `{"bluesky":"...", "instagram":"..."}` — per-platform caption overrides; omitting a platform falls back to `content` |
+| `contentOverrides` | object | No | `{"bluesky":"...", "instagram":"...", "twitter":"...", "mastodon":"..."}` — per-platform caption overrides; omitting a platform falls back to `content` |
 | `tags` | array | No | Tags for internal organisation |
 
 > **Note on `postType`**: `story` and `reel` are Instagram-only. Reels require an MP4 video file. Stories accept an image or video. The `content` field is used as the caption for Reels and is ignored for Stories.
@@ -464,6 +566,8 @@ curl http://localhost:8080/api/health
 ## n8n Integration
 
 SocialPod ships with a native **n8n community node** located in the `n8n-nodes-socialpod/` directory. It supports all post and suffix operations and handles authentication automatically.
+
+> **Platform support**: The n8n node currently supports **Bluesky** and **Instagram** platforms. X (Twitter) and Mastodon can be scheduled via the REST API directly.
 
 ### Supported Operations
 
@@ -596,12 +700,12 @@ In the **SocialPod** node, configure:
                     │      Port 8080       │
                     └──────────┬───────────┘
                                │
-                   ┌───────────┼───────────┐
-                   ▼                       ▼
-            ┌─────────────┐       ┌──────────────┐
-            │   Bluesky    │       │  Instagram   │
-            │   AT Proto   │       │  Graph API   │
-            └─────────────┘       └──────────────┘
+           ┌───────────┬───────┴───────┬───────────┐
+           ▼           ▼               ▼           ▼
+    ┌─────────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────────┐
+    │   Bluesky   │ │  Instagram   │ │ X/Twitter│ │   Mastodon   │
+    │   AT Proto  │ │  Graph API   │ │  API v2  │ │  REST API    │
+    └─────────────┘ └──────────────┘ └──────────┘ └──────────────┘
 ```
 
 The React frontend is built at compile time and embedded into the Go binary via `//go:embed`. A single binary serves the API, the SPA, uploaded files, and runs the background scheduler — all on one port.
@@ -729,6 +833,20 @@ The SDK uses popups and cross-origin iframes that are blocked by default in some
 - Confirm your `APP_URL` is publicly reachable over HTTPS. Meta will not deliver webhooks to `localhost` or HTTP endpoints.
 - Verify the webhook subscription in the Meta app dashboard shows a green checkmark (successful verification).
 - Check that the `comments` and `messages` fields are subscribed.
+
+**X (Twitter) posts fail with "401 Unauthorized"**
+- Verify all four OAuth 1.0a credentials (Consumer Key, Consumer Secret, Access Token, Access Token Secret) are correct and were generated for the same Twitter app.
+- Ensure the app has **Read and Write** permissions. Tokens generated before upgrading permissions must be regenerated.
+
+**X (Twitter) media upload fails**
+- Only JPEG, PNG, GIF, and WebP are supported for images. Videos are not currently supported for Twitter posts.
+- The file size limit enforced by the Twitter v1.1 media endpoint is 5 MB for images.
+
+**Mastodon posts fail with "403 Forbidden"**
+- Ensure the access token has the `write:statuses` and `write:media` scopes. Regenerate the token in your Mastodon instance settings if needed.
+
+**Mastodon account shows wrong instance handle**
+- The instance field must be the hostname only (e.g. `mastodon.social`), without a leading `@` or trailing slash.
 
 **AI text generation button not appearing**
 - The wand button only appears when an OpenRouter API key is saved in **Settings**. Ensure the key is valid and the model is set.
