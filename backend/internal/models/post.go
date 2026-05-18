@@ -21,6 +21,7 @@ const (
 	PlatformBluesky   Platform = "bluesky"
 	PlatformInstagram Platform = "instagram"
 	PlatformTwitter   Platform = "twitter"
+	PlatformMastodon  Platform = "mastodon"
 )
 
 type PostType string

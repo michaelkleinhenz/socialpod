@@ -229,6 +229,11 @@
   color: var(--twitter);
 }
 
+.preview-platform-badge.mastodon {
+  background: rgba(99, 100, 255, 0.15);
+  color: var(--mastodon);
+}
+
 .preview-content {
   padding: 2px 14px 10px;
 }

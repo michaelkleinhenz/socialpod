@@ -67,7 +67,8 @@ func main() {
 	bskyService := &services.BlueskyService{DB: db, UploadDir: cfg.UploadDir}
 	igService := &services.InstagramService{DB: db}
 	twService := &services.TwitterService{DB: db, UploadDir: cfg.UploadDir}
-	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, UploadDir: cfg.UploadDir}
+	mastodonService := &services.MastodonService{DB: db, UploadDir: cfg.UploadDir}
+	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 
 	robotsTxt := func(c *gin.Context) {
@@ -140,6 +141,7 @@ func main() {
 		admin.GET("/accounts", adminHandler.ListAccounts)
 		admin.POST("/accounts/bluesky", adminHandler.AddBlueskyAccount)
 		admin.POST("/accounts/twitter", adminHandler.AddTwitterAccount)
+		admin.POST("/accounts/mastodon", adminHandler.AddMastodonAccount)
 		admin.DELETE("/accounts/:id", adminHandler.DeleteAccount)
 		admin.PATCH("/accounts/:id/toggle", adminHandler.ToggleAccount)
 		admin.PATCH("/accounts/:id/team", adminHandler.AssignAccountTeam)
@@ -166,6 +168,7 @@ func main() {
 		teamAdmin.GET("/accounts", adminHandler.TeamListAccounts)
 		teamAdmin.POST("/accounts/bluesky", adminHandler.TeamAddBlueskyAccount)
 		teamAdmin.POST("/accounts/twitter", adminHandler.TeamAddTwitterAccount)
+		teamAdmin.POST("/accounts/mastodon", adminHandler.TeamAddMastodonAccount)
 		teamAdmin.DELETE("/accounts/:id", adminHandler.TeamDeleteAccount)
 		teamAdmin.PATCH("/accounts/:id/toggle", adminHandler.TeamToggleAccount)
 		teamAdmin.GET("/instagram/auth-url", adminHandler.TeamInstagramAuthURL)

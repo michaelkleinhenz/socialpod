@@ -154,6 +154,13 @@ class ApiClient {
     });
   }
 
+  addMastodonAccount(data: { instance: string; accessToken: string; teamId?: string }) {
+    return this.request<any>('/admin/accounts/mastodon', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   deleteAccount(id: string) {
     return this.request<any>(`/admin/accounts/${id}`, { method: 'DELETE' });
   }
@@ -183,6 +190,13 @@ class ApiClient {
 
   addTeamTwitterAccount(data: { consumerKey: string; consumerSecret: string; accessToken: string; accessTokenSecret: string }) {
     return this.request<any>('/team/accounts/twitter', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  addTeamMastodonAccount(data: { instance: string; accessToken: string }) {
+    return this.request<any>('/team/accounts/mastodon', {
       method: 'POST',
       body: JSON.stringify(data),
     });

@@ -46,6 +46,7 @@ type AdminHandler struct {
 	Bluesky   *services.BlueskyService
 	Instagram *services.InstagramService
 	Twitter   *services.TwitterService
+	Mastodon  *services.MastodonService
 	UploadDir string
 }
 
@@ -208,6 +209,58 @@ func (h *AdminHandler) AddTwitterAccount(c *gin.Context) {
 			}
 			if username != "" {
 				account.AccountName = username
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+type AddMastodonInput struct {
+	Instance    string `json:"instance" binding:"required"`
+	AccessToken string `json:"accessToken" binding:"required"`
+	TeamID      string `json:"teamId"`
+}
+
+func (h *AdminHandler) AddMastodonAccount(c *gin.Context) {
+	var input AddMastodonInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		Platform:         models.PlatformMastodon,
+		AccountName:      input.Instance,
+		DisplayName:      input.Instance,
+		AccessToken:      input.AccessToken,
+		MastodonInstance: input.Instance,
+		IsActive:         true,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+
+	if input.TeamID != "" {
+		if tid, err := primitive.ObjectIDFromHex(input.TeamID); err == nil {
+			account.TeamID = &tid
+		}
+	}
+
+	if h.Mastodon != nil {
+		if dn, av, err := h.Mastodon.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
 			}
 			account.AvatarURL = av
 		}
@@ -1553,6 +1606,54 @@ func (h *AdminHandler) TeamAddTwitterAccount(c *gin.Context) {
 			}
 			if username != "" {
 				account.AccountName = username
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := h.DB.SocialAccounts().InsertOne(ctx, account)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add account"})
+		return
+	}
+
+	account.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, account)
+}
+
+func (h *AdminHandler) TeamAddMastodonAccount(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input AddMastodonInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	account := models.SocialAccount{
+		TeamID:           &tid,
+		Platform:         models.PlatformMastodon,
+		AccountName:      input.Instance,
+		DisplayName:      input.Instance,
+		AccessToken:      input.AccessToken,
+		MastodonInstance: input.Instance,
+		IsActive:         true,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+
+	if h.Mastodon != nil {
+		if dn, av, err := h.Mastodon.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
 			}
 			account.AvatarURL = av
 		}

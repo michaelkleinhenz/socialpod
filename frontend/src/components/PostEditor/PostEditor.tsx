@@ -25,6 +25,7 @@ interface Props {
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
 const TWITTER_LIMIT = 280;
+const MASTODON_LIMIT = 500;
 
 function renderWithHashtags(text: string) {
   if (!text) return null;
@@ -46,12 +47,14 @@ interface PreviewProps {
   blueskyAccount?: SocialAccount | null;
   instagramAccount?: SocialAccount | null;
   twitterAccount?: SocialAccount | null;
+  mastodonAccount?: SocialAccount | null;
   bluskySuffix?: string;
   instagramSuffix?: string;
   twitterSuffix?: string;
+  mastodonSuffix?: string;
 }
 
-function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, bluskySuffix, instagramSuffix, twitterSuffix }: PreviewProps) {
+function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, mastodonAccount, bluskySuffix, instagramSuffix, twitterSuffix, mastodonSuffix }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
@@ -65,9 +68,11 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
   const bskyBase = (contentOverrides?.['bluesky'] ?? '') || content;
   const igBase = (contentOverrides?.['instagram'] ?? '') || content;
   const twBase = (contentOverrides?.['twitter'] ?? '') || content;
+  const mstBase = (contentOverrides?.['mastodon'] ?? '') || content;
   const bskyContent = bluskySuffix ? bskyBase + '\n' + bluskySuffix : bskyBase;
   const igContent = instagramSuffix ? igBase + '\n' + instagramSuffix : igBase;
   const twContent = twitterSuffix ? twBase + '\n' + twitterSuffix : twBase;
+  const mstContent = mastodonSuffix ? mstBase + '\n' + mastodonSuffix : mstBase;
 
   if (platforms.length === 0) {
     return (
@@ -82,6 +87,10 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
   const twDisplayName = twitterAccount?.displayName || twitterAccount?.accountName || 'Your Name';
   const twHandle = twitterAccount?.accountName || 'yourhandle';
   const twAvatarUrl = twitterAccount?.avatarUrl;
+  const mstDisplayName = mastodonAccount?.displayName || mastodonAccount?.accountName || 'Your Name';
+  const mstHandle = mastodonAccount?.accountName || 'yourhandle';
+  const mstInstance = mastodonAccount?.mastodonInstance || 'mastodon.social';
+  const mstAvatarUrl = mastodonAccount?.avatarUrl;
 
   return (
     <div className="preview-cards">
@@ -167,6 +176,40 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
           <div className="preview-content">
             {content
               ? <p className="preview-text">{renderWithHashtags(twContent)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          {imageUrls.length > 0 && (
+            <div className={`preview-images preview-images-${Math.min(imageUrls.length, 4)}`}>
+              {imageUrls.slice(0, 4).map((url, i) => {
+                const src = url.startsWith('/') ? apiUrl + url : url;
+                return /\.(mp4|mov)$/i.test(url)
+                  ? <video key={i} src={src} muted className="preview-image" />
+                  : <img key={i} src={src} alt="" className="preview-image" />;
+              })}
+            </div>
+          )}
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
+          </div>
+        </div>
+      )}
+
+      {platforms.includes('mastodon') && (
+        <div className="preview-card preview-mastodon">
+          <div className="preview-card-header">
+            {mstAvatarUrl
+              ? <img src={mstAvatarUrl} alt="" className="preview-avatar" />
+              : <div className="preview-avatar preview-avatar-placeholder" />}
+            <div className="preview-user-info">
+              <span className="preview-display-name">{mstDisplayName}</span>
+              <span className="preview-handle">@{mstHandle}@{mstInstance}</span>
+            </div>
+            <div className="preview-platform-badge mastodon">Mastodon</div>
+          </div>
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text">{renderWithHashtags(mstContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
           </div>
@@ -337,7 +380,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const hasBsky = accounts.some(a => a.platform === 'bluesky');
     const hasIg = accounts.some(a => a.platform === 'instagram');
     const hasTw = accounts.some(a => a.platform === 'twitter');
-    setPlatforms(prev => prev.filter(p => (p === 'bluesky' && hasBsky) || (p === 'instagram' && hasIg) || (p === 'twitter' && hasTw)));
+    const hasMst = accounts.some(a => a.platform === 'mastodon');
+    setPlatforms(prev => prev.filter(p =>
+      (p === 'bluesky' && hasBsky) ||
+      (p === 'instagram' && hasIg) ||
+      (p === 'twitter' && hasTw) ||
+      (p === 'mastodon' && hasMst)
+    ));
   }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -487,8 +536,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     return s ? s.content.length + 1 : 0; // +1 for newline separator
   };
 
-  const platformLimit = (platform: Platform) =>
-    platform === 'bluesky' ? BLUESKY_LIMIT : platform === 'twitter' ? TWITTER_LIMIT : INSTAGRAM_LIMIT;
+  const platformLimit = (platform: Platform) => {
+    if (platform === 'bluesky') return BLUESKY_LIMIT;
+    if (platform === 'twitter') return TWITTER_LIMIT;
+    if (platform === 'mastodon') return MASTODON_LIMIT;
+    return INSTAGRAM_LIMIT;
+  };
 
   const effectiveLimit = (platform: Platform) =>
     platformLimit(platform) - suffixLen(platform);
@@ -497,6 +550,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
     ...(platforms.includes('instagram') ? [effectiveLimit('instagram')] : []),
     ...(platforms.includes('twitter') ? [effectiveLimit('twitter')] : []),
+    ...(platforms.includes('mastodon') ? [effectiveLimit('mastodon')] : []),
   );
   const charCount = content.length;
   const overLimit = charCount > charLimit || (customizePerPlatform && platforms.some(p => {
@@ -550,6 +604,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
   const twitterAccount = accounts.find(a => a.platform === 'twitter') ?? null;
+  const mastodonAccount = accounts.find(a => a.platform === 'mastodon') ?? null;
 
   const handleSubmit = async () => {
     if (isStory) {
@@ -576,6 +631,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     if (platforms.includes('instagram') && instagramAccount) accountIds['instagram'] = instagramAccount.id;
     if (platforms.includes('bluesky') && blueskyAccount) accountIds['bluesky'] = blueskyAccount.id;
     if (platforms.includes('twitter') && twitterAccount) accountIds['twitter'] = twitterAccount.id;
+    if (platforms.includes('mastodon') && mastodonAccount) accountIds['mastodon'] = mastodonAccount.id;
 
     setSaving(true);
     try {
@@ -654,6 +710,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     <PlatformIcon platform="twitter" size={14} />
                     X / Twitter
                   </div>
+                  <div
+                    className={`platform-option mastodon ${platforms.includes('mastodon') ? 'selected' : ''} ${!mastodonAccount ? 'disabled' : ''}`}
+                    onClick={() => mastodonAccount && togglePlatform('mastodon')}
+                    title={!mastodonAccount ? 'No Mastodon account configured' : undefined}
+                  >
+                    <PlatformIcon platform="mastodon" size={14} />
+                    Mastodon
+                  </div>
                 </div>
 
                 {/* Suffix selectors */}
@@ -713,6 +777,27 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                           const next = { ...prev };
                           if (e.target.value) next['twitter'] = e.target.value;
                           else delete next['twitter'];
+                          return next;
+                        })}
+                      >
+                        <option value="">None</option>
+                        {suffixes.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="suffix-selector-row">
+                      <label className={`suffix-label${!platforms.includes('mastodon') ? ' disabled' : ''}`}>
+                        <PlatformIcon platform="mastodon" size={12} /> Mastodon suffix
+                      </label>
+                      <select
+                        className="select suffix-select"
+                        value={suffixIds['mastodon'] || ''}
+                        disabled={!platforms.includes('mastodon')}
+                        onChange={e => setSuffixIds(prev => {
+                          const next = { ...prev };
+                          if (e.target.value) next['mastodon'] = e.target.value;
+                          else delete next['mastodon'];
                           return next;
                         })}
                       >
@@ -932,9 +1017,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 blueskyAccount={blueskyAccount}
                 instagramAccount={instagramAccount}
                 twitterAccount={twitterAccount}
+                mastodonAccount={mastodonAccount}
                 bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
                 instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
                 twitterSuffix={suffixes.find(s => s.id === suffixIds['twitter'])?.content}
+                mastodonSuffix={suffixes.find(s => s.id === suffixIds['mastodon'])?.content}
               />
             )}
           </div>
