@@ -20,6 +20,7 @@ export function SettingsPage() {
   });
   const [igSecret, setIgSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
+  const [bggApiToken, setBggApiToken] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export function SettingsPage() {
       };
       if (igSecret) data.instagramAppSecret = igSecret;
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
+      if (bggApiToken) data.bggApiToken = bggApiToken;
       data.openRouterModel = settings.openRouterModel;
       data.aiLanguage = settings.aiLanguage;
       const updated = await api.updateSettings(data);
@@ -146,6 +148,27 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>BoardGameGeek (BGG) Import</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>BGG API Token</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasBggApiToken ? 'Token configured (enter to update)' : 'Enter your BGG API token'}
+              value={bggApiToken}
+              onChange={e => setBggApiToken(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              BGG now requires authentication for API access. Register your app and get a token at{' '}
+              <a href="https://boardgamegeek.com/applications" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>boardgamegeek.com/applications</a>.
             </span>
           </div>
         </div>

@@ -463,10 +463,12 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 	type settingsResponse struct {
 		models.AppSettings
 		HasOpenRouterKey bool `json:"hasOpenRouterKey"`
+		HasBGGAPIToken   bool `json:"hasBggApiToken"`
 	}
 	c.JSON(http.StatusOK, settingsResponse{
-		AppSettings:     settings,
+		AppSettings:      settings,
 		HasOpenRouterKey: settings.OpenRouterAPIKey != "",
+		HasBGGAPIToken:   settings.BGGAPIToken != "",
 	})
 }
 
@@ -483,6 +485,7 @@ type UpdateSettingsInput struct {
 	OpenRouterAPIKey      *string `json:"openRouterApiKey,omitempty"`
 	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
 	AILanguage            *string `json:"aiLanguage,omitempty"`
+	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -531,6 +534,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.AILanguage != nil {
 		update["aiLanguage"] = *input.AILanguage
+	}
+	if input.BGGAPIToken != nil {
+		update["bggApiToken"] = *input.BGGAPIToken
 	}
 
 	upsert := true
