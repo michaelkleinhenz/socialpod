@@ -215,7 +215,10 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string) (bggItem, 
 		if err != nil {
 			return bggItem{}, err
 		}
-		req.Header.Set("User-Agent", "SocialPod/1.0")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+		req.Header.Set("Referer", "https://boardgamegeek.com/")
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -248,7 +251,9 @@ func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, img
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "SocialPod/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
+	req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
+	req.Header.Set("Referer", "https://boardgamegeek.com/")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
