@@ -121,7 +121,10 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	item, err := h.fetchBGGItem(ctx, gameID)
+	var settings models.AppSettings
+	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	item, err := h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -154,8 +157,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 
 	// Generate AI one-sentence summary (best-effort; omitted if not configured)
 	aiSummary := ""
-	var settings models.AppSettings
-	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err == nil && settings.OpenRouterAPIKey != "" {
+	if settings.OpenRouterAPIKey != "" {
 		if s, err := h.generateGameSummary(ctx, description, title, settings); err == nil {
 			aiSummary = s
 		}
@@ -199,7 +201,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string) (bggItem, error) {
+func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, error) {
 	apiURL := fmt.Sprintf("https://boardgamegeek.com/xmlapi2/thing?id=%s&stats=1", gameID)
 
 	for attempt := 0; attempt < 5; attempt++ {
@@ -219,6 +221,9 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string) (bggItem, 
 		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 		req.Header.Set("Referer", "https://boardgamegeek.com/")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -229,6 +234,9 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string) (bggItem, 
 
 		if resp.StatusCode == http.StatusAccepted {
 			continue
+		}
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return bggItem{}, fmt.Errorf("BGG API authentication failed — add your BGG API token in Admin › Settings")
 		}
 		if resp.StatusCode != http.StatusOK {
 			return bggItem{}, fmt.Errorf("BGG API returned %d", resp.StatusCode)
