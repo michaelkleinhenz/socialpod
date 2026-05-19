@@ -63,6 +63,8 @@
 .droppable-day {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
 }
 
 .droppable-day:nth-child(7n) {
@@ -75,6 +77,7 @@
 
 .calendar-day {
   min-height: 120px;
+  flex: 1;
   padding: 8px;
   transition: background 0.15s;
 }
