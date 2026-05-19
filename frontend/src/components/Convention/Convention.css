@@ -108,6 +108,24 @@
 
 /* ── Queue form modal ─────────────────────────────────────── */
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+
+.modal-header h2 { margin-bottom: 0; }
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
 .conv-modal { max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto; }
 
 .conv-form { display: flex; flex-direction: column; gap: 18px; padding: 20px; }

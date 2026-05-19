@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { ConventionQueue, Platform, SocialAccount } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent } from 'lucide-react';
+import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import './Convention.css';
@@ -103,7 +103,7 @@ function QueueFormModal({
       <div className="modal conv-modal">
         <div className="modal-header">
           <h2>{initial ? 'Edit Queue' : 'New Convention Queue'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="conv-form">
           <div className="form-group">

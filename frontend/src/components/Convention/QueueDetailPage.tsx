@@ -16,6 +16,7 @@ import {
   Sparkles,
   CheckCircle,
   XCircle,
+  X,
   Loader,
   ChevronUp,
   ChevronDown,
@@ -281,7 +282,7 @@ function SchedulePreviewModal({
       <div className="modal conv-preview-modal">
         <div className="modal-header">
           <h2>Schedule preview</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
 
         <div className="conv-preview-body">
