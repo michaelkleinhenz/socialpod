@@ -21,15 +21,14 @@ jobs:
 
           WIKI_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
 
-          # Clone existing wiki, or init a new repo if the wiki hasn't been created yet
-          if git clone "$WIKI_URL" wiki-repo 2>/dev/null; then
-            cd wiki-repo
-          else
-            mkdir wiki-repo && cd wiki-repo
-            git init
-            git remote add origin "$WIKI_URL"
+          # Clone existing wiki — GitHub wikis cannot be created via git push;
+          # the wiki must be enabled and initialized in the repo settings first.
+          if ! git clone "$WIKI_URL" wiki-repo 2>/dev/null; then
+            echo "Wiki repository not found. Enable the Wiki feature in the repository settings and create an initial page, then re-run this workflow."
+            exit 0
           fi
 
+          cd wiki-repo
           cp -r ../docs/wiki/. .
 
           git add .
