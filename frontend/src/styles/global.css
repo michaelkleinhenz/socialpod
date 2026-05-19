@@ -252,6 +252,7 @@ a:hover { color: var(--accent-hover); }
   transition: all 0.2s;
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .platform-option.selected {
