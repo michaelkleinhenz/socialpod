@@ -15,9 +15,43 @@ export interface Team {
   id: string;
   name: string;
   apiToken?: string;
+  bggWatermarkId?: string;
   members: User[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TeamSettings {
+  bggWatermarkId?: string;
+}
+
+export interface Watermark {
+  id: string;
+  userId: string;
+  teamId?: string;
+  name: string;
+  filename: string;
+  url: string;
+  createdAt: string;
+}
+
+export interface BGGGameData {
+  gameId: string;
+  title: string;
+  yearPublished?: string;
+  minPlayers: string;
+  maxPlayers: string;
+  minPlaytime: string;
+  maxPlaytime: string;
+  minAge: string;
+  designers: string[];
+  artists: string[];
+  publishers: string[];
+  rating?: string;
+  weight?: string;
+  imageBase64: string;
+  imageFilename: string;
+  suggestedContent: string;
 }
 
 export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';

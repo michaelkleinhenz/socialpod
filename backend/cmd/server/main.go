@@ -74,6 +74,7 @@ func main() {
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
+	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -116,6 +117,9 @@ func main() {
 		auth.POST("/upload-from-url", postHandler.UploadFromURL)
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)
+
+		// BGG integration
+		auth.GET("/bgg/fetch", bggHandler.FetchGame)
 		auth.POST("/dashboard/ai-insights", adminHandler.DashboardInsights)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 
@@ -204,6 +208,10 @@ func main() {
 		teamAdmin.GET("/members", adminHandler.TeamListMembers)
 		teamAdmin.POST("/members", adminHandler.TeamAddMember)
 		teamAdmin.DELETE("/members/:id", adminHandler.TeamRemoveMember)
+
+		// Team-scoped BGG settings
+		teamAdmin.GET("/settings", bggHandler.GetTeamSettings)
+		teamAdmin.PUT("/settings", bggHandler.UpdateTeamSettings)
 	}
 
 	// Serve embedded frontend (SPA with index.html fallback)
