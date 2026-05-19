@@ -9,13 +9,33 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Push docs/wiki to GitHub Wiki
-        uses: Andrew-Chen-Wang/github-wiki-action@v4
-        with:
-          path: docs/wiki
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_WIKI_REPO: ${{ github.repository }}
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          WIKI_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
+
+          # Clone existing wiki, or init a new repo if the wiki hasn't been created yet
+          if git clone "$WIKI_URL" wiki-repo 2>/dev/null; then
+            cd wiki-repo
+          else
+            mkdir wiki-repo && cd wiki-repo
+            git init
+            git remote add origin "$WIKI_URL"
+          fi
+
+          cp -r ../docs/wiki/. .
+
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to sync."
+          else
+            git commit -m "Sync wiki from docs/wiki"
+            git push origin HEAD:master
+          fi
