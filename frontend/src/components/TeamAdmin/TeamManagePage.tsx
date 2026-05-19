@@ -402,6 +402,9 @@ export function TeamManagePage() {
                     <X size={18} />
                   </button>
                 </div>
+                <div style={{ background: 'var(--warning-bg, #fff8e1)', border: '1px solid var(--warning-border, #f9a825)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--warning-text, #7a5c00)', marginBottom: 8 }}>
+                  Your X Developer App must have <strong>Read and Write</strong> permissions. After changing app permissions in the X Developer Portal, you must regenerate your Access Token and Secret for the new permissions to take effect.
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div className="form-group">
                     <label>API Key (Consumer Key)</label>
