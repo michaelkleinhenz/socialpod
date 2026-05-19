@@ -113,7 +113,7 @@
 .conv-form { display: flex; flex-direction: column; gap: 18px; padding: 20px; }
 
 .hashtag-input-row { display: flex; gap: 8px; }
-.hashtag-input-row .form-input { flex: 1; }
+.hashtag-input-row .input { flex: 1; }
 
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
@@ -196,7 +196,7 @@
   gap: 8px;
 }
 
-.account-select-row .form-input { flex: 1; }
+.account-select-row .select { flex: 1; }
 .account-select-row.small { font-size: 13px; }
 
 /* ── Detail page ──────────────────────────────────────────── */

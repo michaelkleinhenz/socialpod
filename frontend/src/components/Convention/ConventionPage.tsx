@@ -109,7 +109,7 @@ function QueueFormModal({
           <div className="form-group">
             <label>Convention name *</label>
             <input
-              className="form-input"
+              className="input"
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="SPIEL 2026"
@@ -120,7 +120,7 @@ function QueueFormModal({
           <div className="form-group">
             <label>Convention URL</label>
             <input
-              className="form-input"
+              className="input"
               value={conventionUrl}
               onChange={e => setConventionUrl(e.target.value)}
               placeholder="https://spiel.de"
@@ -132,7 +132,7 @@ function QueueFormModal({
             <label>Hashtags</label>
             <div className="hashtag-input-row">
               <input
-                className="form-input"
+                className="input"
                 value={hashtagInput}
                 onChange={e => setHashtagInput(e.target.value)}
                 onKeyDown={handleHashtagKey}
@@ -156,7 +156,7 @@ function QueueFormModal({
             <div className="form-group">
               <label>Drip window start *</label>
               <input
-                className="form-input"
+                className="input"
                 type="datetime-local"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -166,7 +166,7 @@ function QueueFormModal({
             <div className="form-group">
               <label>Drip window end *</label>
               <input
-                className="form-input"
+                className="input"
                 type="datetime-local"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
@@ -197,7 +197,7 @@ function QueueFormModal({
               {Array.from({ length: postsPerDay }).map((_, i) => (
                 <input
                   key={i}
-                  className="form-input time-slot-input"
+                  className="input time-slot-input"
                   type="time"
                   value={timeSlots[i] ?? '12:00'}
                   onChange={e => updateTimeSlot(i, e.target.value)}
@@ -234,7 +234,7 @@ function QueueFormModal({
                     <div key={p} className="account-select-row">
                       <PlatformIcon platform={p} />
                       <select
-                        className="form-input"
+                        className="select"
                         value={accountIds[p] ?? ''}
                         onChange={e => setAccountIds(prev => ({ ...prev, [p]: e.target.value }))}
                       >
