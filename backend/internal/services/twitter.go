@@ -81,6 +81,11 @@ func (s *TwitterService) Post(ctx context.Context, content string, imageURLs []s
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode == http.StatusForbidden && strings.Contains(string(body), "oauth1-permissions") {
+			return "", fmt.Errorf("twitter post failed: app permissions are set to Read-only. " +
+				"Go to the X Developer Portal → your app → Settings → User authentication settings, " +
+				"change App permissions to 'Read and Write', then regenerate your Access Token and Secret")
+		}
 		return "", fmt.Errorf("twitter post failed (%d): %s", resp.StatusCode, string(body))
 	}
 
