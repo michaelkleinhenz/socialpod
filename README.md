@@ -425,6 +425,27 @@ The character counter enforces each platform's limit independently:
 
 ---
 
+## Mentions / @ Autocomplete
+
+SocialPod lets you maintain a list of frequently mentioned accounts with per-platform handles. Typing `@` in the post editor triggers an autocomplete dropdown so you never have to remember platform-specific usernames.
+
+### Managing Mentions
+
+1. Click **Mentions** in the sidebar (available to all users).
+2. Click **New Mention**.
+3. Enter a display name (e.g. "Acme Corp") and optionally fill in the handle for each platform (e.g. `@acme` for Bluesky, `@AcmeCorp` for X/Twitter).
+4. Click **Create**.
+
+### Using @ Autocomplete in Posts
+
+- Type `@` anywhere in a post text area and a dropdown of your saved mentions appears.
+- In a **per-platform text area**, selecting a mention inserts that platform's handle directly.
+- In the **shared text area** (multi-platform post), selecting a mention automatically enables per-platform mode and expands each platform field with its correct handle.
+
+Mentions are scoped to your user or team — team members share the same mention list.
+
+---
+
 ## AI Text Generation
 
 When an OpenRouter API key is configured in **Settings**, a magic-wand button appears in the post editor. Click it to rewrite or improve the current post text using an AI model.
@@ -433,7 +454,61 @@ When an OpenRouter API key is configured in **Settings**, a magic-wand button ap
 
 1. Log in as an admin and go to **Settings → AI / OpenRouter**.
 2. Enter your OpenRouter API key and select a model.
-3. Save settings. The wand button becomes available to all users immediately.
+3. Optionally choose an **AI Output Language** (English by default). Supported languages include German, French, Spanish, Italian, Dutch, Portuguese, Brazilian Portuguese, Japanese, Korean, Chinese, Arabic, Polish, Swedish, Norwegian, Danish, and Finnish.
+4. Save settings. The wand button becomes available to all users immediately.
+
+The selected language applies to all AI-generated text: post copy (wand button), convention captions, and the admin dashboard insights.
+
+---
+
+## Convention Mode
+
+Convention Mode is designed for events (trade shows, gaming conventions, fan expos, etc.) where you shoot dozens of photos on the floor and want to drip-publish them over the following days rather than posting everything at once.
+
+> **Requires**: An OpenRouter API key in **Settings → AI / OpenRouter** for AI-assisted caption generation. Queues can be managed and scheduled manually without it.
+
+### Creating a Queue
+
+1. Click **Convention** in the sidebar.
+2. Click **New Queue**.
+3. Configure the queue:
+   - **Name** — e.g. "Essen SPIEL 2026"
+   - **Convention URL** (optional) — website or hashtag URL to reference
+   - **Hashtags** — prepended/appended to every post from this queue
+   - **Start / End date** — the drip window (e.g. one to two weeks after the event)
+   - **Posts per day** — how many posts to publish each day
+   - **Time slots** — specific times of day to publish (e.g. `09:00`, `13:00`, `18:00`)
+   - **Platforms** — which social networks to post to
+4. Click **Create Queue**.
+
+### Adding and Managing Photos
+
+1. Open the queue from the Convention list.
+2. Drag and drop image files onto the upload zone, or click to select them.
+3. Each photo becomes a queue item with status **Pending**.
+
+Per-item actions:
+- **Edit caption** — type or paste a caption; changes are auto-saved.
+- **Approve / Unapprove** — only approved items are included when scheduling.
+- **AI regenerate** — re-run the AI vision analysis to get a fresh caption suggestion.
+- **Reorder** — use the up/down buttons to adjust publish order.
+- **Override platforms** — each item can target different platforms than the queue default.
+- **Delete** — remove the item from the queue.
+
+### AI Caption Generation
+
+Click **Analyze all** to send all pending items to the OpenRouter vision model simultaneously (up to 3 concurrent requests). The page polls every 3 seconds and updates captions as they arrive. Captions respect the tightest character limit across the selected platforms.
+
+You can also click the AI icon on a single item to regenerate just that caption.
+
+### Previewing and Scheduling
+
+1. Click **Preview & schedule** in the sticky footer.
+2. A modal shows each approved item with its assigned publish time.
+3. If you have more approved items than available slots, a warning is shown — unapprove some items or extend the date range.
+4. Click **Schedule** to convert all approved items into regular scheduled posts. The queue moves to **Completed** status.
+
+Scheduled posts appear on the calendar and can be edited or deleted individually like any other post.
 
 ---
 
@@ -477,10 +552,10 @@ SocialPod can receive Instagram comments and direct messages via Meta webhooks a
 - The **first user** to register becomes the **admin**.
 - Subsequent users are regular users who can create and manage their own posts.
 - Admins have access to:
-  - Dashboard with post statistics
-  - Social account management (Bluesky & Instagram)
+  - Dashboard with post statistics and AI insights
+  - Social account management
   - User management
-  - Application settings
+  - Application settings (including AI configuration)
 - Each user's posts and suffixes are isolated — users can only see and edit their own.
 - **Teams**: admins can create teams and assign users. Team members share posts and suffixes scoped to the team.
 
@@ -621,6 +696,89 @@ curl -X PUT http://localhost:8080/api/suffixes/{id} \
 
 # Delete a suffix
 curl -X DELETE http://localhost:8080/api/suffixes/{id} \
+  -H "Authorization: Bearer sm_..."
+```
+
+#### Mentions
+
+```bash
+# List mentions
+curl http://localhost:8080/api/mentions \
+  -H "Authorization: Bearer sm_..."
+
+# Create a mention
+curl -X POST http://localhost:8080/api/mentions \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Acme Corp","handles":{"bluesky":"@acme.bsky.social","twitter":"@AcmeCorp","mastodon":"@acme@mastodon.social"}}'
+
+# Update a mention
+curl -X PUT http://localhost:8080/api/mentions/{id} \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"handles":{"bluesky":"@acme-new.bsky.social"}}'
+
+# Delete a mention
+curl -X DELETE http://localhost:8080/api/mentions/{id} \
+  -H "Authorization: Bearer sm_..."
+```
+
+#### Convention Mode
+
+```bash
+# List queues
+curl http://localhost:8080/api/convention/queues \
+  -H "Authorization: Bearer sm_..."
+
+# Create a queue
+curl -X POST http://localhost:8080/api/convention/queues \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Essen SPIEL 2026","startDate":"2026-10-27T00:00:00Z","endDate":"2026-11-10T00:00:00Z","postsPerDay":3,"timeSlots":["09:00","13:00","18:00"],"platforms":["bluesky","instagram"],"hashtags":["#EssenSPIEL"]}'
+
+# Get a queue (includes items)
+curl http://localhost:8080/api/convention/queues/{id} \
+  -H "Authorization: Bearer sm_..."
+
+# Add a photo item to a queue (multipart; image file in "image" field)
+curl -X POST http://localhost:8080/api/convention/queues/{id}/items \
+  -H "Authorization: Bearer sm_..." \
+  -F "image=@photo.jpg"
+
+# Update an item (caption, status, platforms, accountIds)
+curl -X PUT http://localhost:8080/api/convention/queues/{id}/items/{iid} \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"caption":"Amazing booth at #EssenSPIEL!","status":"approved"}'
+
+# Reorder items
+curl -X POST http://localhost:8080/api/convention/queues/{id}/reorder \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"order":["<item-id-1>","<item-id-2>","<item-id-3>"]}'
+
+# Analyze a single item (AI caption generation)
+curl -X POST http://localhost:8080/api/convention/queues/{id}/items/{iid}/analyze \
+  -H "Authorization: Bearer sm_..."
+
+# Analyze all pending items
+curl -X POST http://localhost:8080/api/convention/queues/{id}/analyze-all \
+  -H "Authorization: Bearer sm_..."
+
+# Preview the drip schedule (dry run — returns items with assigned times)
+curl http://localhost:8080/api/convention/queues/{id}/preview \
+  -H "Authorization: Bearer sm_..."
+
+# Schedule all approved items (creates scheduled posts)
+curl -X POST http://localhost:8080/api/convention/queues/{id}/schedule \
+  -H "Authorization: Bearer sm_..."
+
+# Delete an item
+curl -X DELETE http://localhost:8080/api/convention/queues/{id}/items/{iid} \
+  -H "Authorization: Bearer sm_..."
+
+# Delete a queue
+curl -X DELETE http://localhost:8080/api/convention/queues/{id} \
   -H "Authorization: Bearer sm_..."
 ```
 
@@ -949,3 +1107,10 @@ The SDK uses popups and cross-origin iframes that are blocked by default in some
 
 **AI text generation button not appearing**
 - The wand button only appears when an OpenRouter API key is saved in **Settings**. Ensure the key is valid and the model is set.
+
+**Convention mode AI analysis returns no captions / errors**
+- Confirm an OpenRouter API key and a vision-capable model are set in **Settings → AI / OpenRouter**. Not all models support image inputs; use a model such as `google/gemini-flash-1.5` or `anthropic/claude-3-haiku`.
+- Items with analysis errors display the error message inline; click the AI icon to retry that item.
+
+**Convention queue shows "more items than slots" warning**
+- Either reduce the number of approved items, extend the **End date**, increase **Posts per day**, or add more **Time slots** to create enough scheduling capacity.
