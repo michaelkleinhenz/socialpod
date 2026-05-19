@@ -589,7 +589,7 @@ export function AdminPage() {
       )}
 
       {/* ── AI Insights ── */}
-      <div className="insights-section">
+      {user?.isAdmin && <div className="insights-section">
         <div className="insights-header">
           <div className="insights-title">
             <Sparkles size={20} />
@@ -664,7 +664,7 @@ export function AdminPage() {
             </button>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* ── Navigation links ── */}
       <div className="admin-links">
