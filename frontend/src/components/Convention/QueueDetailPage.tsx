@@ -225,7 +225,7 @@ function QueueItemCard({
               <div key={a.id} className="account-select-row small">
                 <PlatformIcon platform={a.platform} />
                 <select
-                  className="form-input"
+                  className="select"
                   value={itemAccountIds[a.platform] ?? ''}
                   onChange={e => setItemAccountIds(prev => ({ ...prev, [a.platform]: e.target.value }))}
                 >
