@@ -801,138 +801,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   </div>
                 </div>
 
-                {/* Suffix selectors */}
-                {suffixes.length > 0 && (
-                  <div className="suffix-selectors">
-                    <div className="suffix-selector-row">
-                      <label className={`suffix-label${!platforms.includes('bluesky') ? ' disabled' : ''}`}>
-                        <PlatformIcon platform="bluesky" size={12} /> Bluesky suffix
-                      </label>
-                      <select
-                        className="select suffix-select"
-                        value={suffixIds['bluesky'] || ''}
-                        disabled={!platforms.includes('bluesky')}
-                        onChange={e => setSuffixIds(prev => {
-                          const next = { ...prev };
-                          if (e.target.value) next['bluesky'] = e.target.value;
-                          else delete next['bluesky'];
-                          return next;
-                        })}
-                      >
-                        <option value="">None</option>
-                        {suffixes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="suffix-selector-row">
-                      <label className={`suffix-label${!platforms.includes('instagram') ? ' disabled' : ''}`}>
-                        <PlatformIcon platform="instagram" size={12} /> Instagram suffix
-                      </label>
-                      <select
-                        className="select suffix-select"
-                        value={suffixIds['instagram'] || ''}
-                        disabled={!platforms.includes('instagram')}
-                        onChange={e => setSuffixIds(prev => {
-                          const next = { ...prev };
-                          if (e.target.value) next['instagram'] = e.target.value;
-                          else delete next['instagram'];
-                          return next;
-                        })}
-                      >
-                        <option value="">None</option>
-                        {suffixes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="suffix-selector-row">
-                      <label className={`suffix-label${!platforms.includes('twitter') ? ' disabled' : ''}`}>
-                        <PlatformIcon platform="twitter" size={12} /> X/Twitter suffix
-                      </label>
-                      <select
-                        className="select suffix-select"
-                        value={suffixIds['twitter'] || ''}
-                        disabled={!platforms.includes('twitter')}
-                        onChange={e => setSuffixIds(prev => {
-                          const next = { ...prev };
-                          if (e.target.value) next['twitter'] = e.target.value;
-                          else delete next['twitter'];
-                          return next;
-                        })}
-                      >
-                        <option value="">None</option>
-                        {suffixes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="suffix-selector-row">
-                      <label className={`suffix-label${!platforms.includes('mastodon') ? ' disabled' : ''}`}>
-                        <PlatformIcon platform="mastodon" size={12} /> Mastodon suffix
-                      </label>
-                      <select
-                        className="select suffix-select"
-                        value={suffixIds['mastodon'] || ''}
-                        disabled={!platforms.includes('mastodon')}
-                        onChange={e => setSuffixIds(prev => {
-                          const next = { ...prev };
-                          if (e.target.value) next['mastodon'] = e.target.value;
-                          else delete next['mastodon'];
-                          return next;
-                        })}
-                      >
-                        <option value="">None</option>
-                        {suffixes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="suffix-selector-row">
-                      <label className={`suffix-label${!platforms.includes('threads') ? ' disabled' : ''}`}>
-                        <PlatformIcon platform="threads" size={12} /> Threads suffix
-                      </label>
-                      <select
-                        className="select suffix-select"
-                        value={suffixIds['threads'] || ''}
-                        disabled={!platforms.includes('threads')}
-                        onChange={e => setSuffixIds(prev => {
-                          const next = { ...prev };
-                          if (e.target.value) next['threads'] = e.target.value;
-                          else delete next['threads'];
-                          return next;
-                        })}
-                      >
-                        <option value="">None</option>
-                        {suffixes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="suffix-selector-row">
-                      <label className={`suffix-label${!platforms.includes('linkedin') ? ' disabled' : ''}`}>
-                        <PlatformIcon platform="linkedin" size={12} /> LinkedIn suffix
-                      </label>
-                      <select
-                        className="select suffix-select"
-                        value={suffixIds['linkedin'] || ''}
-                        disabled={!platforms.includes('linkedin')}
-                        onChange={e => setSuffixIds(prev => {
-                          const next = { ...prev };
-                          if (e.target.value) next['linkedin'] = e.target.value;
-                          else delete next['linkedin'];
-                          return next;
-                        })}
-                      >
-                        <option value="">None</option>
-                        {suffixes.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
                 {/* BGG Import */}
                 <div className="form-group">
                   <label>BoardGameGeek Import</label>
@@ -1039,6 +907,44 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     </>
                   )}
                 </div>
+
+                {/* Suffix selectors */}
+                {suffixes.length > 0 && platforms.length > 0 && (() => {
+                  const suffixPlatformLabels: Record<string, string> = {
+                    bluesky: 'Bluesky',
+                    instagram: 'Instagram',
+                    twitter: 'X/Twitter',
+                    mastodon: 'Mastodon',
+                    threads: 'Threads',
+                    linkedin: 'LinkedIn',
+                  };
+                  return (
+                    <div className="suffix-selectors">
+                      {platforms.map(platform => (
+                        <div key={platform} className="suffix-selector-row">
+                          <label className="suffix-label">
+                            <PlatformIcon platform={platform} size={12} /> {suffixPlatformLabels[platform] ?? platform} suffix
+                          </label>
+                          <select
+                            className="select suffix-select"
+                            value={suffixIds[platform] || ''}
+                            onChange={e => setSuffixIds(prev => {
+                              const next = { ...prev };
+                              if (e.target.value) next[platform] = e.target.value;
+                              else delete next[platform];
+                              return next;
+                            })}
+                          >
+                            <option value="">None</option>
+                            {suffixes.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* First Comment */}
                 <div className="form-group">
