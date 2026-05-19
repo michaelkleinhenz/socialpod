@@ -51,5 +51,6 @@ type AppSettings struct {
 	CookieBannerText      string             `bson:"cookieBannerText" json:"cookieBannerText"`
 	OpenRouterAPIKey      string             `bson:"openRouterApiKey" json:"-"`
 	OpenRouterModel       string             `bson:"openRouterModel" json:"openRouterModel"`
+	AILanguage            string             `bson:"aiLanguage" json:"aiLanguage"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

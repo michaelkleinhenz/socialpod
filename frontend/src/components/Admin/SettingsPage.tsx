@@ -16,6 +16,7 @@ export function SettingsPage() {
     cookieBannerEnabled: false,
     cookieBannerText: '',
     openRouterModel: '',
+    aiLanguage: '',
   });
   const [igSecret, setIgSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
@@ -41,6 +42,7 @@ export function SettingsPage() {
       if (igSecret) data.instagramAppSecret = igSecret;
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
       data.openRouterModel = settings.openRouterModel;
+      data.aiLanguage = settings.aiLanguage;
       const updated = await api.updateSettings(data);
       setSettings(updated);
       toast.success('Settings saved');
@@ -177,6 +179,36 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               OpenRouter model identifier (e.g. <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-sonnet-4</code>). See <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>available models</a>.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>AI Output Language</label>
+            <select
+              className="input"
+              value={settings.aiLanguage}
+              onChange={e => setSettings(s => ({ ...s, aiLanguage: e.target.value }))}
+            >
+              <option value="">English (default)</option>
+              <option value="German">German</option>
+              <option value="French">French</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Italian">Italian</option>
+              <option value="Dutch">Dutch</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Brazilian Portuguese">Brazilian Portuguese</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Korean">Korean</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Polish">Polish</option>
+              <option value="Swedish">Swedish</option>
+              <option value="Norwegian">Norwegian</option>
+              <option value="Danish">Danish</option>
+              <option value="Finnish">Finnish</option>
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Language for all AI-generated text (captions, post copy, dashboard insights).
             </span>
           </div>
         </div>
