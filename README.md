@@ -165,16 +165,25 @@ SocialPod requests the following permissions during OAuth:
 
 ## Setting Up X (Twitter) Authentication
 
+> **X (Twitter) API access is not free.** X no longer offers a free tier for the API. You need at least the **Basic** plan ($100/month as of 2024) to read and write tweets programmatically. Check [developer.twitter.com/en/products/twitter-api](https://developer.twitter.com/en/products/twitter-api) for current pricing before proceeding.
+
 SocialPod uses **OAuth 1.0a** with user-context credentials from a Twitter Developer App. You will need four tokens from the Twitter Developer Portal.
 
 ### Step 1: Create a Twitter Developer App
 
 1. Go to [developer.twitter.com](https://developer.twitter.com/) and log in.
-2. Create a new project and app (or use an existing one).
-3. Under **App permissions**, enable **Read and Write** (required for posting).
-4. Go to **Keys and Tokens** for your app.
+2. Subscribe to a paid API plan (Basic or higher).
+3. Create a new project and app (or use an existing one).
+4. Go to your app's **Settings** → **User authentication settings**.
+5. Set **App permissions** to **Read and Write** (required for posting — Read only will not work).
+6. Save the settings.
 
 ### Step 2: Gather Your Credentials
+
+1. Go to **Keys and Tokens** for your app.
+2. Under **Authentication Tokens**, click **Generate** (or **Regenerate**) next to **Access Token and Secret**.
+
+   > **Important**: Always generate (or regenerate) your Access Token and Secret *after* setting the app permissions to Read and Write. Tokens generated under Read-only permissions cannot post even after you upgrade the app — you must regenerate them.
 
 You need four values from the **Keys and Tokens** page:
 
@@ -185,7 +194,7 @@ You need four values from the **Keys and Tokens** page:
 | **Access Token** | "Authentication Tokens" → "Access Token and Secret" |
 | **Access Token Secret** | "Authentication Tokens" → "Access Token and Secret" |
 
-> **Note**: The Access Token and Access Token Secret are generated for the Twitter account that authorized the app. If you want to post from a specific account, generate these tokens while logged in as that account.
+The Access Token and Access Token Secret are tied to the Twitter account that was logged in when they were generated. To post from a specific account, generate these tokens while logged in as that account.
 
 ### Step 3: Add the Account in SocialPod
 
@@ -1094,6 +1103,10 @@ The SDK uses popups and cross-origin iframes that are blocked by default in some
 **X (Twitter) posts fail with "401 Unauthorized"**
 - Verify all four OAuth 1.0a credentials (Consumer Key, Consumer Secret, Access Token, Access Token Secret) are correct and were generated for the same Twitter app.
 - Ensure the app has **Read and Write** permissions. Tokens generated before upgrading permissions must be regenerated.
+
+**X (Twitter) posts fail with "403 Forbidden / oauth1 app permissions"**
+- Your Twitter app's permissions are set to **Read only**. Go to the X Developer Portal → your app → **Settings** → **User authentication settings** and change **App permissions** to **Read and Write**.
+- After changing permissions you **must regenerate** your Access Token and Secret — existing tokens keep the permissions they were issued with. Delete the account in SocialPod and re-add it with the new tokens.
 
 **X (Twitter) media upload fails**
 - Only JPEG, PNG, GIF, and WebP are supported for images. Videos are not currently supported for Twitter posts.
