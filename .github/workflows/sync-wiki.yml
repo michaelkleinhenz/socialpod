@@ -15,17 +15,29 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Push docs/wiki to GitHub Wiki
+        env:
+          # Prefer a fine-grained PAT (WIKI_TOKEN) with "Contents: Read and write"
+          # on this repository. Falls back to GITHUB_TOKEN, which requires
+          # Settings → Actions → General → Workflow permissions → "Read and write"
+          # to be enabled on the repository.
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-          WIKI_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
+          WIKI_URL="https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
 
           # Clone existing wiki — GitHub wikis cannot be created via git push;
           # the wiki must be enabled and initialized in the repo settings first.
           if ! git clone "$WIKI_URL" wiki-repo 2>/dev/null; then
-            echo "Wiki repository not found. Enable the Wiki feature in the repository settings and create an initial page, then re-run this workflow."
-            exit 0
+            echo "Wiki repository not found or access denied."
+            echo ""
+            echo "To fix permission errors, choose one of:"
+            echo "  1. Add a fine-grained PAT with 'Contents: Read and write' as the"
+            echo "     WIKI_TOKEN repository secret (recommended)."
+            echo "  2. Go to Settings → Actions → General → Workflow permissions and"
+            echo "     select 'Read and write permissions', then re-run this workflow."
+            exit 1
           fi
 
           cd wiki-repo
