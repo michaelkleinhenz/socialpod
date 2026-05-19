@@ -384,11 +384,15 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const hasIg = accounts.some(a => a.platform === 'instagram');
     const hasTw = accounts.some(a => a.platform === 'twitter');
     const hasMst = accounts.some(a => a.platform === 'mastodon');
+    const hasThreads = accounts.some(a => a.platform === 'threads');
+    const hasLinkedin = accounts.some(a => a.platform === 'linkedin');
     setPlatforms(prev => prev.filter(p =>
       (p === 'bluesky' && hasBsky) ||
       (p === 'instagram' && hasIg) ||
       (p === 'twitter' && hasTw) ||
-      (p === 'mastodon' && hasMst)
+      (p === 'mastodon' && hasMst) ||
+      (p === 'threads' && hasThreads) ||
+      (p === 'linkedin' && hasLinkedin)
     ));
   }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -636,6 +640,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
   const twitterAccount = accounts.find(a => a.platform === 'twitter') ?? null;
   const mastodonAccount = accounts.find(a => a.platform === 'mastodon') ?? null;
+  const threadsAccount = accounts.find(a => a.platform === 'threads') ?? null;
+  const linkedinAccount = accounts.find(a => a.platform === 'linkedin') ?? null;
 
   const handleSubmit = async () => {
     if (isStory) {
@@ -663,6 +669,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     if (platforms.includes('bluesky') && blueskyAccount) accountIds['bluesky'] = blueskyAccount.id;
     if (platforms.includes('twitter') && twitterAccount) accountIds['twitter'] = twitterAccount.id;
     if (platforms.includes('mastodon') && mastodonAccount) accountIds['mastodon'] = mastodonAccount.id;
+    if (platforms.includes('threads') && threadsAccount) accountIds['threads'] = threadsAccount.id;
+    if (platforms.includes('linkedin') && linkedinAccount) accountIds['linkedin'] = linkedinAccount.id;
 
     setSaving(true);
     try {
@@ -749,6 +757,22 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     <PlatformIcon platform="mastodon" size={14} />
                     <span className="platform-label">Mastodon</span>
                   </div>
+                  <div
+                    className={`platform-option threads ${platforms.includes('threads') ? 'selected' : ''} ${!threadsAccount ? 'disabled' : ''}`}
+                    onClick={() => threadsAccount && togglePlatform('threads')}
+                    title={!threadsAccount ? 'No Threads account configured' : 'Threads'}
+                  >
+                    <PlatformIcon platform="threads" size={14} />
+                    <span className="platform-label">Threads</span>
+                  </div>
+                  <div
+                    className={`platform-option linkedin ${platforms.includes('linkedin') ? 'selected' : ''} ${!linkedinAccount ? 'disabled' : ''}`}
+                    onClick={() => linkedinAccount && togglePlatform('linkedin')}
+                    title={!linkedinAccount ? 'No LinkedIn account configured' : 'LinkedIn'}
+                  >
+                    <PlatformIcon platform="linkedin" size={14} />
+                    <span className="platform-label">LinkedIn</span>
+                  </div>
                 </div>
 
                 {/* Suffix selectors */}
@@ -829,6 +853,48 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                           const next = { ...prev };
                           if (e.target.value) next['mastodon'] = e.target.value;
                           else delete next['mastodon'];
+                          return next;
+                        })}
+                      >
+                        <option value="">None</option>
+                        {suffixes.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="suffix-selector-row">
+                      <label className={`suffix-label${!platforms.includes('threads') ? ' disabled' : ''}`}>
+                        <PlatformIcon platform="threads" size={12} /> Threads suffix
+                      </label>
+                      <select
+                        className="select suffix-select"
+                        value={suffixIds['threads'] || ''}
+                        disabled={!platforms.includes('threads')}
+                        onChange={e => setSuffixIds(prev => {
+                          const next = { ...prev };
+                          if (e.target.value) next['threads'] = e.target.value;
+                          else delete next['threads'];
+                          return next;
+                        })}
+                      >
+                        <option value="">None</option>
+                        {suffixes.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="suffix-selector-row">
+                      <label className={`suffix-label${!platforms.includes('linkedin') ? ' disabled' : ''}`}>
+                        <PlatformIcon platform="linkedin" size={12} /> LinkedIn suffix
+                      </label>
+                      <select
+                        className="select suffix-select"
+                        value={suffixIds['linkedin'] || ''}
+                        disabled={!platforms.includes('linkedin')}
+                        onChange={e => setSuffixIds(prev => {
+                          const next = { ...prev };
+                          if (e.target.value) next['linkedin'] = e.target.value;
+                          else delete next['linkedin'];
                           return next;
                         })}
                       >
