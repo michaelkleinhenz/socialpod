@@ -515,6 +515,23 @@ class ApiClient {
   scheduleConventionItems(queueId: string) {
     return this.request<any>(`/convention/queues/${queueId}/schedule`, { method: 'POST' });
   }
+
+  // BGG integration
+  fetchBGGGame(url: string) {
+    return this.request<import('../types').BGGGameData>(`/bgg/fetch?url=${encodeURIComponent(url)}`);
+  }
+
+  // Team settings (BGG watermark)
+  getTeamSettings() {
+    return this.request<import('../types').TeamSettings>('/team/settings');
+  }
+
+  updateTeamSettings(data: { bggWatermarkId?: string | null }) {
+    return this.request<{ message: string }>('/team/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();

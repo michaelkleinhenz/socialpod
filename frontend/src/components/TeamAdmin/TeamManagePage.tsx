@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { SocialAccount, User } from '../../types';
+import type { SocialAccount, User, Watermark } from '../../types';
 import {
-  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2,
+  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2, Settings,
 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { format } from 'date-fns';
@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import '../Admin/Admin.css';
 
-type Tab = 'accounts' | 'members';
+type Tab = 'accounts' | 'members' | 'settings';
 
 export function TeamManagePage() {
   const [searchParams] = useSearchParams();
@@ -52,10 +52,16 @@ export function TeamManagePage() {
   const [newTeamName, setNewTeamName] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
 
+  // Settings state
+  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
+  const [bggWatermarkId, setBggWatermarkId] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+
   useEffect(() => {
     if (!user?.teamId) return;
     loadAccounts();
     loadMembers();
+    loadSettings();
     if (searchParams.get('instagram') === 'connected') {
       toast.success('Instagram account connected');
     }
@@ -74,6 +80,31 @@ export function TeamManagePage() {
       setMembers(await api.getTeamMembers());
     } catch {
       toast.error('Failed to load members');
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const [settings, wms] = await Promise.all([
+        api.getTeamSettings(),
+        api.getWatermarks(),
+      ]);
+      setBggWatermarkId(settings.bggWatermarkId || '');
+      setWatermarks(wms as Watermark[]);
+    } catch {
+      // settings tab may not be visible if no team
+    }
+  };
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await api.updateTeamSettings({ bggWatermarkId: bggWatermarkId || null });
+      toast.success('Settings saved');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save settings');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -285,7 +316,7 @@ export function TeamManagePage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
-        {(['accounts', 'members'] as Tab[]).map(t => (
+        {(['accounts', 'members', 'settings'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -303,8 +334,8 @@ export function TeamManagePage() {
               gap: 6,
             }}
           >
-            {t === 'accounts' ? <Share2 size={15} /> : <Users size={15} />}
-            {t === 'accounts' ? 'Social Accounts' : 'Members'}
+            {t === 'accounts' ? <Share2 size={15} /> : t === 'members' ? <Users size={15} /> : <Settings size={15} />}
+            {t === 'accounts' ? 'Social Accounts' : t === 'members' ? 'Members' : 'Settings'}
           </button>
         ))}
       </div>
@@ -659,6 +690,43 @@ export function TeamManagePage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Settings Tab */}
+      {tab === 'settings' && (
+        <div style={{ maxWidth: 560 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h2 style={{ marginBottom: 4, fontSize: '1rem' }}>BoardGameGeek Integration</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
+              When importing a game from BGG, the cover image will be cropped to a square and overlaid with the selected watermark at full frame.
+            </p>
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>BGG Watermark</label>
+              <select
+                className="select"
+                value={bggWatermarkId}
+                onChange={e => setBggWatermarkId(e.target.value)}
+              >
+                <option value="">None (no watermark)</option>
+                {watermarks.map(wm => (
+                  <option key={wm.id} value={wm.id}>{wm.name}</option>
+                ))}
+              </select>
+              {watermarks.length === 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                  No watermarks uploaded yet. Add watermarks on the Watermarks page first.
+                </span>
+              )}
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={saveSettings}
+              disabled={savingSettings}
+            >
+              {savingSettings ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

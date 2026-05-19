@@ -342,6 +342,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
   const [mentions, setMentions] = useState<MentionEntry[]>([]);
+  const [bggUrl, setBggUrl] = useState('');
+  const [fetchingBgg, setFetchingBgg] = useState(false);
+  const [bggError, setBggError] = useState('');
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -704,6 +707,29 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || JSON.stringify(suffixIds) !== JSON.stringify(post?.suffixIds || {})
     || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {});
 
+  const fetchBGGData = async () => {
+    if (!bggUrl.trim()) return;
+    setFetchingBgg(true);
+    setBggError('');
+    try {
+      const data = await api.fetchBGGGame(bggUrl.trim());
+      setContent(data.suggestedContent);
+      if (data.imageBase64) {
+        const byteStr = atob(data.imageBase64);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'image/jpeg' });
+        const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
+        setImages([{ kind: 'file', file }]);
+      }
+      toast.success('BGG data imported');
+    } catch (e: any) {
+      setBggError(e.message || 'Failed to fetch BGG data');
+    } finally {
+      setFetchingBgg(false);
+    }
+  };
+
   const handleClose = () => {
     if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return;
     onClose();
@@ -906,6 +932,33 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     </div>
                   </div>
                 )}
+
+                {/* BGG Import */}
+                <div className="form-group">
+                  <label>BoardGameGeek Import</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="url"
+                      className="input"
+                      value={bggUrl}
+                      onChange={e => { setBggUrl(e.target.value); setBggError(''); }}
+                      onKeyDown={e => e.key === 'Enter' && fetchBGGData()}
+                      placeholder="https://boardgamegeek.com/boardgame/822/carcassonne"
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={fetchBGGData}
+                      disabled={fetchingBgg || !bggUrl.trim()}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {fetchingBgg ? 'Fetching...' : 'Import from BGG'}
+                    </button>
+                  </div>
+                  {bggError && (
+                    <span style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--danger)', display: 'block' }}>{bggError}</span>
+                  )}
+                </div>
 
                 {/* Content */}
                 <div className="form-group">
