@@ -64,7 +64,11 @@ func (h *AdminHandler) ListAccounts(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var accounts []models.SocialAccount
-	cursor.All(ctx, &accounts)
+	if err := cursor.All(ctx, &accounts); err != nil {
+		log.Printf("ListAccounts cursor.All error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode accounts"})
+		return
+	}
 	if accounts == nil {
 		accounts = []models.SocialAccount{}
 	}
@@ -103,7 +107,11 @@ func (h *AdminHandler) ListActiveAccounts(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var accounts []models.SocialAccount
-	cursor.All(ctx, &accounts)
+	if err := cursor.All(ctx, &accounts); err != nil {
+		log.Printf("ListActiveAccounts cursor.All error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode accounts"})
+		return
+	}
 	if accounts == nil {
 		accounts = []models.SocialAccount{}
 	}
@@ -952,7 +960,11 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var users []models.User
-	cursor.All(ctx, &users)
+	if err := cursor.All(ctx, &users); err != nil {
+		log.Printf("ListUsers cursor.All error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode users"})
+		return
+	}
 	if users == nil {
 		users = []models.User{}
 	}
@@ -1103,7 +1115,11 @@ func (h *AdminHandler) ListTeams(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var teams []models.Team
-	cursor.All(ctx, &teams)
+	if err := cursor.All(ctx, &teams); err != nil {
+		log.Printf("ListTeams cursor.All error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode teams"})
+		return
+	}
 	if teams == nil {
 		teams = []models.Team{}
 	}
@@ -1638,7 +1654,11 @@ func (h *AdminHandler) TeamListAccounts(c *gin.Context) {
 	defer cursor.Close(ctx)
 
 	var accounts []models.SocialAccount
-	cursor.All(ctx, &accounts)
+	if err := cursor.All(ctx, &accounts); err != nil {
+		log.Printf("TeamListAccounts cursor.All error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode accounts"})
+		return
+	}
 	if accounts == nil {
 		accounts = []models.SocialAccount{}
 	}
@@ -2094,7 +2114,11 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 		return
 	}
 	var posts []models.Post
-	cursor.All(ctx, &posts)
+	if err := cursor.All(ctx, &posts); err != nil {
+		log.Printf("DashboardStats cursor.All error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode posts"})
+		return
+	}
 
 	// --- inbox counts (scoped to team, or all for global admin) ---
 	inboxScope := bson.M{}
