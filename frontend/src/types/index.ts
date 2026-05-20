@@ -147,6 +147,7 @@ export interface PublicSettings {
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
   openRouterEnabled: boolean;
+  hasBggApiToken: boolean;
 }
 
 export interface AuthResponse {
