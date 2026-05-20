@@ -345,6 +345,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [bggUrl, setBggUrl] = useState('');
   const [fetchingBgg, setFetchingBgg] = useState(false);
   const [bggError, setBggError] = useState('');
+  const [bggEnabled, setBggEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -363,6 +364,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
       if (s.openRouterEnabled) setAiEnabled(true);
+      setBggEnabled(s.hasBggApiToken);
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
@@ -802,6 +804,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 </div>
 
                 {/* BGG Import */}
+                {bggEnabled && (
                 <div className="form-group">
                   <label>BoardGameGeek Import</label>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -827,6 +830,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     <span style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--danger)', display: 'block' }}>{bggError}</span>
                   )}
                 </div>
+                )}
 
                 {/* Content */}
                 <div className="form-group">
