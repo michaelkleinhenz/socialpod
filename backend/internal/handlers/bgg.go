@@ -137,6 +137,17 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		item, err = h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 	default:
 		item, err = h.scrapeBGGGame(ctx, rawURL)
+		if err != nil {
+			// BGG frequently blocks server-side scraping (HTTP 403 via Cloudflare).
+			// Fall back to the public BGG XML API, which works without authentication.
+			var apiErr error
+			item, apiErr = h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+			if apiErr != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			err = nil
+		}
 	}
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
@@ -287,6 +298,9 @@ func (h *BGGHandler) scrapeBGGGame(ctx context.Context, pageURL string) (bggItem
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return bggItem{}, fmt.Errorf("BGG rate limit exceeded, please try again later")
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return bggItem{}, fmt.Errorf("BGG blocked the scraper request (HTTP 403)")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return bggItem{}, fmt.Errorf("BGG page returned HTTP %d", resp.StatusCode)
