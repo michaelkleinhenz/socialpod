@@ -123,12 +123,7 @@ func main() {
 		auth.POST("/dashboard/ai-insights", adminHandler.DashboardInsights)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 
-		// Inbox (comments + DMs)
-		auth.GET("/inbox/comments", inboxHandler.ListComments)
-		auth.GET("/inbox/dms", inboxHandler.ListDMs)
-		auth.PATCH("/inbox/:id/read", inboxHandler.MarkRead)
-		auth.POST("/inbox/comments/:id/reply", inboxHandler.ReplyToComment)
-		auth.POST("/inbox/dms/:id/reply", inboxHandler.ReplyToDM)
+		// Feed
 		auth.GET("/inbox/feed", inboxHandler.GetFeed)
 
 		// Watermarks (team/user scoped)
