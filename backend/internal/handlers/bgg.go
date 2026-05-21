@@ -14,6 +14,7 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -143,7 +144,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 			var apiErr error
 			item, apiErr = h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 			if apiErr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("BGG is blocking requests from this server (scrape: %v; XML API: %v). Try again later or switch to the API method in Admin › Settings.", err, apiErr)})
 				return
 			}
 			err = nil
@@ -241,10 +242,13 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string, token stri
 		if err != nil {
 			return bggItem{}, err
 		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 		req.Header.Set("Referer", "https://boardgamegeek.com/")
+		req.Header.Set("sec-ch-ua", `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`)
+		req.Header.Set("sec-ch-ua-mobile", "?0")
+		req.Header.Set("sec-ch-ua-platform", `"Windows"`)
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -281,16 +285,27 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string, token stri
 // scrapeBGGGame fetches a BGG game page and extracts game data via HTML scraping.
 // This is the default method used while awaiting BGG API approval.
 func (h *BGGHandler) scrapeBGGGame(ctx context.Context, pageURL string) (bggItem, error) {
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
 	if err != nil {
 		return bggItem{}, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Referer", "https://boardgamegeek.com/")
+	req.Header.Set("Cache-Control", "max-age=0")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("sec-ch-ua", `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"Windows"`)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return bggItem{}, fmt.Errorf("failed to fetch BGG page: %w", err)
 	}
@@ -505,9 +520,11 @@ func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, img
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
-	req.Header.Set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 	req.Header.Set("Referer", "https://boardgamegeek.com/")
+	req.Header.Set("sec-ch-ua", `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
