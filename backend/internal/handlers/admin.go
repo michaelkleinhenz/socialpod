@@ -453,6 +453,7 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 		"cookieBannerText":     settings.CookieBannerText,
 		"openRouterEnabled":    settings.OpenRouterAPIKey != "",
 		"hasBggApiToken":       settings.BGGAPIToken != "",
+		"bggFetchMethod":       settings.BGGFetchMethod,
 	})
 }
 
