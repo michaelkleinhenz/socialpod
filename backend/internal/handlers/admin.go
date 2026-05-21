@@ -451,9 +451,8 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 		"imprintHtml":          settings.ImprintHTML,
 		"cookieBannerEnabled":  settings.CookieBannerEnabled,
 		"cookieBannerText":     settings.CookieBannerText,
-		"openRouterEnabled":    settings.OpenRouterAPIKey != "",
-		"hasBggApiToken":       settings.BGGAPIToken != "",
-		"bggFetchMethod":       settings.BGGFetchMethod,
+		"openRouterEnabled": settings.OpenRouterAPIKey != "",
+		"hasBggApiToken":    settings.BGGAPIToken != "",
 	})
 }
 
@@ -496,7 +495,6 @@ type UpdateSettingsInput struct {
 	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
 	AILanguage            *string `json:"aiLanguage,omitempty"`
 	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
-	BGGFetchMethod        *string `json:"bggFetchMethod,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -548,9 +546,6 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.BGGAPIToken != nil {
 		update["bggApiToken"] = *input.BGGAPIToken
-	}
-	if input.BGGFetchMethod != nil {
-		update["bggFetchMethod"] = *input.BGGFetchMethod
 	}
 
 	upsert := true
