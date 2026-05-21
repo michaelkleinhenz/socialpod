@@ -27,83 +27,103 @@ type InboxHandler struct {
 // ListComments returns paginated comment inbox entries across all platforms.
 // GET /inbox/comments?page=1&limit=50
 func (h *InboxHandler) ListComments(c *gin.Context) {
-	// Sync Bluesky comments (replies/mentions) on-demand
-	h.syncBlueskyComments()
+	teamIDRaw, _ := c.Get("teamId")
+	teamIDStr, _ := teamIDRaw.(string)
+	h.syncBlueskyComments(teamIDStr)
 	h.listMessages(c, models.MessageTypeComment)
 }
 
-// syncBlueskyComments fetches recent Bluesky notifications that are replies
-// or mentions and inserts them as comment inbox entries.
-func (h *InboxHandler) syncBlueskyComments() {
-	if h.Bluesky == nil {
+// syncBlueskyComments fetches recent Bluesky notifications for all accounts
+// belonging to the given team and inserts them as comment inbox entries.
+func (h *InboxHandler) syncBlueskyComments(teamIDStr string) {
+	if h.Bluesky == nil || teamIDStr == "" {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	notifications, account, err := h.Bluesky.FetchNotifications(ctx, "")
+	tid, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		log.Printf("syncBlueskyComments: FetchNotifications error: %v", err)
+		return
+	}
+
+	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{
+		"platform": models.PlatformBluesky,
+		"isActive": true,
+		"teamId":   tid,
+	})
+	if err != nil {
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var bskyAccounts []models.SocialAccount
+	if err := cursor.All(ctx, &bskyAccounts); err != nil || len(bskyAccounts) == 0 {
 		return
 	}
 
 	upsert := true
-	for _, n := range notifications {
-		// Only include replies and mentions
-		if n.Reason != "reply" && n.Reason != "mention" {
-			continue
-		}
-		if n.Record.Text == "" {
-			continue
-		}
-		// Skip our own notifications
-		if n.Author.DID == account.DID {
+	for _, acc := range bskyAccounts {
+		notifications, account, fetchErr := h.Bluesky.FetchNotifications(ctx, acc.ID.Hex())
+		if fetchErr != nil {
+			log.Printf("syncBlueskyComments: FetchNotifications error for account %s: %v", acc.ID.Hex(), fetchErr)
 			continue
 		}
 
-		receivedAt := time.Now()
-		if t, parseErr := time.Parse(time.RFC3339, n.IndexedAt); parseErr == nil {
-			receivedAt = t
-		}
+		for _, n := range notifications {
+			if n.Reason != "reply" && n.Reason != "mention" {
+				continue
+			}
+			if n.Record.Text == "" {
+				continue
+			}
+			if n.Author.DID == account.DID {
+				continue
+			}
 
-		// Build permalink for the parent post if this is a reply
-		mediaURL := ""
-		if n.Record.Reply != nil && n.Record.Reply.Parent.URI != "" {
-			mediaURL = bskyURIToPermalink(n.Record.Reply.Parent.URI, account.AccountName)
-		}
+			receivedAt := time.Now()
+			if t, parseErr := time.Parse(time.RFC3339, n.IndexedAt); parseErr == nil {
+				receivedAt = t
+			}
 
-		senderName := n.Author.DisplayName
-		if senderName == "" {
-			senderName = n.Author.Handle
-		}
+			mediaURL := ""
+			if n.Record.Reply != nil && n.Record.Reply.Parent.URI != "" {
+				mediaURL = bskyURIToPermalink(n.Record.Reply.Parent.URI, account.AccountName)
+			}
 
-		msg := models.InboxMessage{
-			Platform:    models.PlatformBluesky,
-			MessageType: models.MessageTypeComment,
-			TeamID:      account.TeamID,
-			ExternalID:  n.URI,
-			SenderID:    n.Author.DID,
-			SenderName:  senderName,
-			Text:        n.Record.Text,
-			MediaURL:    mediaURL,
-			AccountID:   account.ID,
-			AccountName: account.AccountName,
-			IsRead:      false,
-			IsReplied:   false,
-			ReceivedAt:  receivedAt,
-			CreatedAt:   time.Now(),
-		}
+			senderName := n.Author.DisplayName
+			if senderName == "" {
+				senderName = n.Author.Handle
+			}
 
-		doc, err := structToBSONDoc(msg)
-		if err != nil {
-			continue
+			msg := models.InboxMessage{
+				Platform:    models.PlatformBluesky,
+				MessageType: models.MessageTypeComment,
+				TeamID:      account.TeamID,
+				ExternalID:  n.URI,
+				SenderID:    n.Author.DID,
+				SenderName:  senderName,
+				Text:        n.Record.Text,
+				MediaURL:    mediaURL,
+				AccountID:   account.ID,
+				AccountName: account.AccountName,
+				IsRead:      false,
+				IsReplied:   false,
+				ReceivedAt:  receivedAt,
+				CreatedAt:   time.Now(),
+			}
+
+			doc, docErr := structToBSONDoc(msg)
+			if docErr != nil {
+				continue
+			}
+			h.DB.InboxMessages().UpdateOne(ctx,
+				bson.M{"externalId": msg.ExternalID},
+				bson.M{"$setOnInsert": doc},
+				&options.UpdateOptions{Upsert: &upsert},
+			)
 		}
-		h.DB.InboxMessages().UpdateOne(ctx,
-			bson.M{"externalId": msg.ExternalID},
-			bson.M{"$setOnInsert": doc},
-			&options.UpdateOptions{Upsert: &upsert},
-		)
 	}
 }
 
@@ -127,88 +147,109 @@ func bskyURIToPermalink(uri, fallbackHandle string) string {
 // ListDMs returns paginated DM inbox entries across all platforms.
 // GET /inbox/dms?page=1&limit=50
 func (h *InboxHandler) ListDMs(c *gin.Context) {
-	// Sync Bluesky DMs on-demand (no webhook available)
-	h.syncBlueskyDMs()
+	teamIDRaw, _ := c.Get("teamId")
+	teamIDStr, _ := teamIDRaw.(string)
+	h.syncBlueskyDMs(teamIDStr)
 	h.listMessages(c, models.MessageTypeDM)
 }
 
-// syncBlueskyDMs fetches recent Bluesky conversations and inserts new
-// incoming messages into the inbox. Only messages from other users are stored.
-func (h *InboxHandler) syncBlueskyDMs() {
-	if h.Bluesky == nil {
+// syncBlueskyDMs fetches recent Bluesky conversations for all accounts
+// belonging to the given team and inserts new incoming messages into the inbox.
+func (h *InboxHandler) syncBlueskyDMs(teamIDStr string) {
+	if h.Bluesky == nil || teamIDStr == "" {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	convos, account, err := h.Bluesky.ListConvos(ctx, "")
+	tid, err := primitive.ObjectIDFromHex(teamIDStr)
 	if err != nil {
-		log.Printf("syncBlueskyDMs: ListConvos error: %v", err)
 		return
 	}
 
-	log.Printf("syncBlueskyDMs: got %d convos, account DID=%s", len(convos), account.DID)
+	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{
+		"platform": models.PlatformBluesky,
+		"isActive": true,
+		"teamId":   tid,
+	})
+	if err != nil {
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var bskyAccounts []models.SocialAccount
+	if err := cursor.All(ctx, &bskyAccounts); err != nil || len(bskyAccounts) == 0 {
+		return
+	}
 
 	upsert := true
-	for _, convo := range convos {
-		lastMsg := convo.ParseLastMessage()
-		if lastMsg == nil || lastMsg.Text == "" {
-			log.Printf("syncBlueskyDMs: skipping convo %s - no last message or empty text", convo.ID)
+	for _, acc := range bskyAccounts {
+		convos, account, fetchErr := h.Bluesky.ListConvos(ctx, acc.ID.Hex())
+		if fetchErr != nil {
+			log.Printf("syncBlueskyDMs: ListConvos error for account %s: %v", acc.ID.Hex(), fetchErr)
 			continue
 		}
 
-		// Skip messages sent by our own account
-		if lastMsg.Sender.DID == account.DID {
-			log.Printf("syncBlueskyDMs: skipping convo %s - own message (sender=%s)", convo.ID, lastMsg.Sender.DID)
-			continue
-		}
+		log.Printf("syncBlueskyDMs: got %d convos, account DID=%s", len(convos), account.DID)
 
-		// Find the sender profile from the conversation members
-		var senderName, senderHandle string
-		for _, m := range convo.Members {
-			if m.DID == lastMsg.Sender.DID {
-				senderName = m.DisplayName
-				senderHandle = m.Handle
-				break
+		for _, convo := range convos {
+			lastMsg := convo.ParseLastMessage()
+			if lastMsg == nil || lastMsg.Text == "" {
+				log.Printf("syncBlueskyDMs: skipping convo %s - no last message or empty text", convo.ID)
+				continue
 			}
-		}
-		displayName := senderName
-		if displayName == "" {
-			displayName = senderHandle
-		}
 
-		receivedAt := time.Now()
-		if t, err := time.Parse(time.RFC3339, lastMsg.SentAt); err == nil {
-			receivedAt = t
-		}
+			if lastMsg.Sender.DID == account.DID {
+				log.Printf("syncBlueskyDMs: skipping convo %s - own message (sender=%s)", convo.ID, lastMsg.Sender.DID)
+				continue
+			}
 
-		msg := models.InboxMessage{
-			Platform:    models.PlatformBluesky,
-			MessageType: models.MessageTypeDM,
-			TeamID:      account.TeamID,
-			ExternalID:  lastMsg.ID,
-			ThreadID:    convo.ID,
-			SenderID:    lastMsg.Sender.DID,
-			SenderName:  displayName,
-			Text:        lastMsg.Text,
-			AccountID:   account.ID,
-			AccountName: account.AccountName,
-			IsRead:      false,
-			IsReplied:   false,
-			ReceivedAt:  receivedAt,
-			CreatedAt:   time.Now(),
-		}
+			var senderName, senderHandle string
+			for _, m := range convo.Members {
+				if m.DID == lastMsg.Sender.DID {
+					senderName = m.DisplayName
+					senderHandle = m.Handle
+					break
+				}
+			}
+			displayName := senderName
+			if displayName == "" {
+				displayName = senderHandle
+			}
 
-		doc, err := structToBSONDoc(msg)
-		if err != nil {
-			continue
+			receivedAt := time.Now()
+			if t, parseErr := time.Parse(time.RFC3339, lastMsg.SentAt); parseErr == nil {
+				receivedAt = t
+			}
+
+			msg := models.InboxMessage{
+				Platform:    models.PlatformBluesky,
+				MessageType: models.MessageTypeDM,
+				TeamID:      account.TeamID,
+				ExternalID:  lastMsg.ID,
+				ThreadID:    convo.ID,
+				SenderID:    lastMsg.Sender.DID,
+				SenderName:  displayName,
+				Text:        lastMsg.Text,
+				AccountID:   account.ID,
+				AccountName: account.AccountName,
+				IsRead:      false,
+				IsReplied:   false,
+				ReceivedAt:  receivedAt,
+				CreatedAt:   time.Now(),
+			}
+
+			doc, docErr := structToBSONDoc(msg)
+			if docErr != nil {
+				continue
+			}
+			h.DB.InboxMessages().UpdateOne(ctx,
+				bson.M{"externalId": msg.ExternalID},
+				bson.M{"$setOnInsert": doc},
+				&options.UpdateOptions{Upsert: &upsert},
+			)
 		}
-		h.DB.InboxMessages().UpdateOne(ctx,
-			bson.M{"externalId": msg.ExternalID},
-			bson.M{"$setOnInsert": doc},
-			&options.UpdateOptions{Upsert: &upsert},
-		)
 	}
 }
 
@@ -302,14 +343,12 @@ func (h *InboxHandler) listMessages(c *gin.Context, msgType models.MessageType) 
 	filter := bson.M{"messageType": msgType}
 
 	teamIDRaw, hasTeam := c.Get("teamId")
-	isAdmin, _ := c.Get("isAdmin")
-	if hasTeam {
-		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
-		filter["teamId"] = tid
-	} else if !isAdmin.(bool) {
+	if !hasTeam || teamIDRaw.(string) == "" {
 		c.JSON(http.StatusOK, []models.InboxMessage{})
 		return
 	}
+	tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	filter["teamId"] = tid
 
 	opts := options.Find().
 		SetSort(bson.D{{Key: "receivedAt", Value: -1}}).
@@ -358,11 +397,13 @@ func (h *InboxHandler) MarkRead(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	msgFilter := bson.M{"_id": id}
-	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
-		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
-		msgFilter["teamId"] = tid
+	teamIDRaw, hasTeam := c.Get("teamId")
+	if !hasTeam || teamIDRaw.(string) == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
 	}
+	tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	msgFilter := bson.M{"_id": id, "teamId": tid}
 
 	result, err := h.DB.InboxMessages().UpdateOne(ctx, msgFilter, bson.M{
 		"$set": bson.M{"isRead": true},
@@ -395,11 +436,13 @@ func (h *InboxHandler) ReplyToComment(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	msgFilter := bson.M{"_id": msgID}
-	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
-		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
-		msgFilter["teamId"] = tid
+	teamIDRaw, hasTeam := c.Get("teamId")
+	if !hasTeam || teamIDRaw.(string) == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
 	}
+	replyTid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	msgFilter := bson.M{"_id": msgID, "teamId": replyTid}
 
 	var msg models.InboxMessage
 	if err := h.DB.InboxMessages().FindOne(ctx, msgFilter).Decode(&msg); err != nil {
@@ -463,11 +506,13 @@ func (h *InboxHandler) ReplyToDM(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	msgFilter := bson.M{"_id": msgID}
-	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
-		tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
-		msgFilter["teamId"] = tid
+	dmTeamIDRaw, dmHasTeam := c.Get("teamId")
+	if !dmHasTeam || dmTeamIDRaw.(string) == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
 	}
+	dmTid, _ := primitive.ObjectIDFromHex(dmTeamIDRaw.(string))
+	msgFilter := bson.M{"_id": msgID, "teamId": dmTid}
 
 	var msg models.InboxMessage
 	if err := h.DB.InboxMessages().FindOne(ctx, msgFilter).Decode(&msg); err != nil {
@@ -524,14 +569,17 @@ func (h *InboxHandler) GetFeed(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account ID"})
 			return
 		}
-		accFilter := bson.M{"_id": accObjID, "isActive": true}
-		if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam {
-			tid, _ := primitive.ObjectIDFromHex(teamIDRaw.(string))
-			accFilter["teamId"] = tid
-		} else if isAdmin, _ := c.Get("isAdmin"); !isAdmin.(bool) {
+		feedTeamIDRaw, feedHasTeam := c.Get("teamId")
+		if !feedHasTeam || feedTeamIDRaw.(string) == "" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 			return
 		}
+		feedTid, err := primitive.ObjectIDFromHex(feedTeamIDRaw.(string))
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			return
+		}
+		accFilter := bson.M{"_id": accObjID, "isActive": true, "teamId": feedTid}
 		var acc models.SocialAccount
 		if err := h.DB.SocialAccounts().FindOne(ctx, accFilter).Decode(&acc); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Account not found or access denied"})

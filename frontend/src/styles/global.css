@@ -243,6 +243,8 @@ a:hover { color: var(--accent-hover); }
 
 .platform-option {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
@@ -253,6 +255,11 @@ a:hover { color: var(--accent-hover); }
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
+}
+
+.platform-option .platform-label {
+  display: flex;
+  align-items: center;
 }
 
 .platform-option.selected {
@@ -283,6 +290,18 @@ a:hover { color: var(--accent-hover); }
 .platform-option.disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.platform-account-hint {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+  line-height: 1.2;
 }
 
 @media (max-width: 600px) {

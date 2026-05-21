@@ -81,7 +81,7 @@ func (s *Scheduler) processScheduledPosts() {
 	}
 }
 
-func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string) string {
+func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string, teamID *primitive.ObjectID) string {
 	if suffixIDStr == "" {
 		return ""
 	}
@@ -89,11 +89,29 @@ func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string) strin
 	if err != nil {
 		return ""
 	}
+	filter := bson.M{"_id": oid}
+	if teamID != nil {
+		filter["teamId"] = teamID
+	}
 	var suffix models.Suffix
-	if err := s.DB.Suffixes().FindOne(ctx, bson.M{"_id": oid}).Decode(&suffix); err != nil {
+	if err := s.DB.Suffixes().FindOne(ctx, filter).Decode(&suffix); err != nil {
 		return ""
 	}
 	return suffix.Content
+}
+
+// accountBelongsToTeam checks that an account ID is owned by the given team.
+// Returns true when accountID is empty (no specific account requested).
+func (s *Scheduler) accountBelongsToTeam(ctx context.Context, accountID string, teamID *primitive.ObjectID) bool {
+	if accountID == "" || teamID == nil {
+		return true
+	}
+	id, err := primitive.ObjectIDFromHex(accountID)
+	if err != nil {
+		return false
+	}
+	count, err := s.DB.SocialAccounts().CountDocuments(ctx, bson.M{"_id": id, "teamId": teamID})
+	return err == nil && count > 0
 }
 
 func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
@@ -107,12 +125,12 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	threadsSuffix := ""
 	linkedInSuffix := ""
 	if post.SuffixIDs != nil {
-		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"])
-		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"])
-		twitterSuffix = s.suffixContent(ctx, post.SuffixIDs["twitter"])
-		mastodonSuffix = s.suffixContent(ctx, post.SuffixIDs["mastodon"])
-		threadsSuffix = s.suffixContent(ctx, post.SuffixIDs["threads"])
-		linkedInSuffix = s.suffixContent(ctx, post.SuffixIDs["linkedin"])
+		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"], post.TeamID)
+		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"], post.TeamID)
+		twitterSuffix = s.suffixContent(ctx, post.SuffixIDs["twitter"], post.TeamID)
+		mastodonSuffix = s.suffixContent(ctx, post.SuffixIDs["mastodon"], post.TeamID)
+		threadsSuffix = s.suffixContent(ctx, post.SuffixIDs["threads"], post.TeamID)
+		linkedInSuffix = s.suffixContent(ctx, post.SuffixIDs["linkedin"], post.TeamID)
 	}
 
 	platformContent := func(platform models.Platform) string {
@@ -141,6 +159,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["bluesky"]
 			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("Bluesky account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
+			}
 			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(platformContent(models.PlatformBluesky), bluskySuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
@@ -164,6 +190,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["twitter"]
 			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("Twitter account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
+			}
 			tweetID, err := s.Twitter.Post(ctx, applyContent(platformContent(models.PlatformTwitter), twitterSuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
@@ -180,6 +214,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			accountID := ""
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["instagram"]
+			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("Instagram account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
 			}
 
 			if post.PostType == models.PostTypeStory {
@@ -243,6 +285,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["mastodon"]
 			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("Mastodon account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
+			}
 			statusURL, err := s.Mastodon.Post(ctx, applyContent(platformContent(models.PlatformMastodon), mastodonSuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
@@ -260,6 +310,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["threads"]
 			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("Threads account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
+			}
 			postID, err := s.Threads.Post(ctx, applyContent(platformContent(models.PlatformThreads), threadsSuffix), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
@@ -276,6 +334,14 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			accountID := ""
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["linkedin"]
+			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("LinkedIn account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
 			}
 			postID, err := s.LinkedIn.Post(ctx, applyContent(platformContent(models.PlatformLinkedIn), linkedInSuffix), post.ImageURLs, accountID)
 			if err != nil {
