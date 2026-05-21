@@ -364,7 +364,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     api.getPublicSettings().then(s => {
       if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
       if (s.openRouterEnabled) setAiEnabled(true);
-      setBggEnabled(s.hasBggApiToken);
+      setBggEnabled(s.bggFetchMethod !== 'api' || s.hasBggApiToken);
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
