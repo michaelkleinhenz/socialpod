@@ -17,6 +17,7 @@ export function SettingsPage() {
     cookieBannerText: '',
     openRouterModel: '',
     aiLanguage: '',
+    bggFetchMethod: 'scrape',
   });
   const [igSecret, setIgSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
@@ -45,6 +46,7 @@ export function SettingsPage() {
       if (bggApiToken) data.bggApiToken = bggApiToken;
       data.openRouterModel = settings.openRouterModel;
       data.aiLanguage = settings.aiLanguage;
+      data.bggFetchMethod = settings.bggFetchMethod || 'scrape';
       const updated = await api.updateSettings(data);
       setSettings(updated);
       toast.success('Settings saved');
@@ -158,6 +160,21 @@ export function SettingsPage() {
 
         <div className="settings-grid">
           <div className="form-group">
+            <label>Data Fetch Method</label>
+            <select
+              className="input"
+              value={settings.bggFetchMethod || 'scrape'}
+              onChange={e => setSettings(s => ({ ...s, bggFetchMethod: e.target.value }))}
+            >
+              <option value="scrape">Web Scraping (default — no API approval required)</option>
+              <option value="api">BGG XML API (requires approved API token)</option>
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Web scraping extracts data directly from the BGG game page and works without any credentials. Switch to the BGG API once your application has been approved by BGG staff.
+            </span>
+          </div>
+
+          <div className="form-group">
             <label>BGG API Token</label>
             <input
               className="input"
@@ -165,9 +182,10 @@ export function SettingsPage() {
               placeholder={settings.hasBggApiToken ? 'Token configured (enter to update)' : 'Enter your BGG API token'}
               value={bggApiToken}
               onChange={e => setBggApiToken(e.target.value)}
+              disabled={settings.bggFetchMethod === 'scrape' || !settings.bggFetchMethod}
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              BGG now requires authentication for API access. Register your app and get a token at{' '}
+              Only required when using the BGG API method. Register your app at{' '}
               <a href="https://boardgamegeek.com/applications" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>boardgamegeek.com/applications</a>.
             </span>
           </div>
