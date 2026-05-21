@@ -8,6 +8,7 @@ import type {
   SchedulePreview,
   SocialAccount,
   Platform,
+  Suffix,
 } from '../../types';
 import { format, parseISO } from 'date-fns';
 import {
@@ -25,8 +26,11 @@ import {
   Edit3,
   Calendar,
   AlertTriangle,
+  Pencil,
+  Filter,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { QueueFormModal } from './ConventionPage';
 import './Convention.css';
@@ -47,34 +51,41 @@ function QueueItemCard({
   total,
   queueId,
   accounts,
+  suffixes,
   queuePlatforms,
+  queueSuffixIds,
   onUpdate,
   onDelete,
   onAnalyze,
   onMoveUp,
   onMoveDown,
+  onEditImage,
 }: {
   item: ConventionQueueItem;
   index: number;
   total: number;
   queueId: string;
   accounts: SocialAccount[];
+  suffixes: Suffix[];
   queuePlatforms: Platform[];
+  queueSuffixIds: Record<string, string>;
   onUpdate: (item: ConventionQueueItem) => void;
   onDelete: () => void;
   onAnalyze: () => Promise<void>;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onEditImage: () => void;
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
   const [showOverrides, setShowOverrides] = useState(false);
   const [itemPlatforms, setItemPlatforms] = useState<Platform[]>(item.platforms ?? []);
   const [itemAccountIds, setItemAccountIds] = useState<Record<string, string>>(item.accountIds ?? {});
+  const [itemSuffixIds, setItemSuffixIds] = useState<Record<string, string>>(item.suffixIds ?? {});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const suffixSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Sync when item updates from parent (e.g. after AI analysis)
   useEffect(() => {
     setCaption(item.caption ?? '');
   }, [item.caption]);
@@ -87,9 +98,29 @@ function QueueItemCard({
         const updated = await api.updateConventionItem(queueId, item.id, { caption: value });
         onUpdate(updated);
       } catch {
-        // silently fail — user can retry
+        // silently fail
       }
     }, 800);
+  };
+
+  const saveSuffixIds = (newSuffixIds: Record<string, string>) => {
+    clearTimeout(suffixSaveTimer.current);
+    suffixSaveTimer.current = setTimeout(async () => {
+      try {
+        const updated = await api.updateConventionItem(queueId, item.id, { suffixIds: newSuffixIds });
+        onUpdate(updated);
+      } catch {
+        // silently fail
+      }
+    }, 600);
+  };
+
+  const handleSuffixChange = (platform: string, value: string) => {
+    const next = { ...itemSuffixIds };
+    if (value) next[platform] = value;
+    else delete next[platform];
+    setItemSuffixIds(next);
+    saveSuffixIds(next);
   };
 
   const toggleApprove = async () => {
@@ -131,6 +162,15 @@ function QueueItemCard({
   const effectivePlatforms = itemPlatforms.length > 0 ? itemPlatforms : queuePlatforms;
   const isLocked = item.status === 'scheduled' || item.status === 'published';
 
+  const suffixPlatformLabels: Record<string, string> = {
+    bluesky: 'Bluesky',
+    instagram: 'Instagram',
+    twitter: 'X/Twitter',
+    mastodon: 'Mastodon',
+    threads: 'Threads',
+    linkedin: 'LinkedIn',
+  };
+
   return (
     <div className={`conv-item-card ${item.status}`}>
       <div className="conv-item-thumb-wrap">
@@ -140,6 +180,15 @@ function QueueItemCard({
           {item.status}
         </span>
         <span className="conv-item-num">#{index + 1}</span>
+        {!isLocked && (
+          <button
+            className="conv-item-edit-btn"
+            onClick={e => { e.stopPropagation(); onEditImage(); }}
+            title="Edit image"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
       </div>
 
       <div className="conv-item-body">
@@ -162,6 +211,30 @@ function QueueItemCard({
           {effectivePlatforms.map(p => <PlatformIcon key={p} platform={p} />)}
           {itemPlatforms.length > 0 && <span className="conv-override-badge">overridden</span>}
         </div>
+
+        {suffixes.length > 0 && (
+          <div className="conv-suffix-selectors">
+            {effectivePlatforms.map(platform => (
+              <div key={platform} className="conv-suffix-row">
+                <label>
+                  <PlatformIcon platform={platform} size={11} />
+                  {suffixPlatformLabels[platform] ?? platform}
+                </label>
+                <select
+                  className="select"
+                  value={itemSuffixIds[platform] ?? queueSuffixIds[platform] ?? ''}
+                  onChange={e => handleSuffixChange(platform, e.target.value)}
+                  disabled={isLocked}
+                >
+                  <option value="">— queue default —</option>
+                  {suffixes.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="conv-item-actions">
           <button
@@ -339,6 +412,7 @@ export function QueueDetailPage() {
   const [queue, setQueue] = useState<ConventionQueue | null>(null);
   const [items, setItems] = useState<ConventionQueueItem[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [analyzingAll, setAnalyzingAll] = useState(false);
@@ -346,6 +420,8 @@ export function QueueDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [filterPending, setFilterPending] = useState(false);
+  const [editingImageItem, setEditingImageItem] = useState<ConventionQueueItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -365,7 +441,10 @@ export function QueueDetailPage() {
 
   useEffect(() => { loadQueue(); }, [loadQueue]);
 
-  // Poll every 3s while any item is in pending-but-being-analyzed state
+  useEffect(() => {
+    api.getSuffixes().then(setSuffixes).catch(() => {});
+  }, []);
+
   useEffect(() => {
     const hasPending = items.some(i => i.status === 'pending' && !i.aiError && !i.caption);
     if (hasPending) {
@@ -500,6 +579,35 @@ export function QueueDetailPage() {
     setShowEdit(false);
   };
 
+  const handleImageEditSave = (savedImageData: any) => {
+    if (!id || !editingImageItem) return;
+    const canvas = savedImageData.imageCanvas as HTMLCanvasElement | undefined;
+    const base64 = savedImageData.imageBase64 as string | undefined;
+    const src = base64 || canvas?.toDataURL('image/png');
+    if (!src) {
+      toast.error('Failed to get edited image');
+      setEditingImageItem(null);
+      return;
+    }
+    const itemId = editingImageItem.id;
+    fetch(src)
+      .then(res => res.blob())
+      .then(blob => {
+        const ext = savedImageData.extension || 'png';
+        const file = new File([blob], `edited.${ext}`, { type: savedImageData.mimeType || 'image/png' });
+        return api.replaceConventionItemImage(id!, itemId, file);
+      })
+      .then(updated => {
+        setItems(prev => prev.map(i => (i.id === itemId ? updated : i)));
+        setEditingImageItem(null);
+        toast.success('Image updated');
+      })
+      .catch(() => {
+        toast.error('Failed to upload edited image');
+        setEditingImageItem(null);
+      });
+  };
+
   if (loading) return <div className="page"><div className="loading-screen"><div className="spinner" /></div></div>;
   if (!queue) return <div className="page"><p>Queue not found.</p></div>;
 
@@ -507,6 +615,10 @@ export function QueueDetailPage() {
   const scheduledCount = items.filter(i => i.status === 'scheduled' || i.status === 'published').length;
   const pendingCount = items.filter(i => i.status === 'pending').length;
   const analyzingCount = items.filter(i => i.status === 'pending' && !i.caption && !i.aiError).length;
+
+  const visibleItems = filterPending
+    ? items.filter(i => i.status === 'pending')
+    : items;
 
   return (
     <div className="page conv-detail-page">
@@ -592,33 +704,50 @@ export function QueueDetailPage() {
             {items.filter(i => i.status === 'pending' && i.caption).length} have captions,{' '}
             {approvedCount} approved
           </span>
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              className={`conv-filter-btn ${filterPending ? 'active' : ''}`}
+              onClick={() => setFilterPending(v => !v)}
+              title={filterPending ? 'Show all items' : 'Show only pending'}
+            >
+              <Filter size={13} />
+              {filterPending ? 'Pending only' : 'All items'}
+            </button>
+          </div>
         </div>
       )}
 
       {/* Item grid */}
-      {items.length > 0 ? (
+      {visibleItems.length > 0 ? (
         <div className="conv-item-grid">
-          {items.map((item, idx) => (
+          {visibleItems.map((item, idx) => (
             <QueueItemCard
               key={item.id}
               item={item}
-              index={idx}
+              index={items.indexOf(item)}
               total={items.length}
               queueId={queue.id}
               accounts={accounts}
+              suffixes={suffixes}
               queuePlatforms={queue.platforms}
+              queueSuffixIds={queue.suffixIds ?? {}}
               onUpdate={handleUpdateItem}
               onDelete={() => handleDeleteItem(item)}
               onAnalyze={() => handleAnalyzeItem(item)}
-              onMoveUp={() => handleMoveItem(idx, 'up')}
-              onMoveDown={() => handleMoveItem(idx, 'down')}
+              onMoveUp={() => handleMoveItem(items.indexOf(item), 'up')}
+              onMoveDown={() => handleMoveItem(items.indexOf(item), 'down')}
+              onEditImage={() => setEditingImageItem(item)}
             />
           ))}
         </div>
       ) : (
         <div className="empty-state" style={{ marginTop: 24 }}>
           <XCircle size={36} color="var(--text-muted)" />
-          <p style={{ marginTop: 12, color: 'var(--text-muted)' }}>No photos yet — upload some above</p>
+          <p style={{ marginTop: 12, color: 'var(--text-muted)' }}>
+            {filterPending && items.length > 0
+              ? 'No pending photos — all items are approved or scheduled'
+              : 'No photos yet — upload some above'}
+          </p>
         </div>
       )}
 
@@ -656,6 +785,118 @@ export function QueueDetailPage() {
           onConfirm={handleSchedule}
           onClose={() => setPreview(null)}
         />
+      )}
+
+      {editingImageItem && (
+        <div className="image-editor-overlay">
+          <FilerobotImageEditor
+            source={editingImageItem.imageUrl}
+            tabsIds={[TABS.ADJUST, TABS.ANNOTATE, TABS.WATERMARK, TABS.FILTERS, TABS.FINETUNE, TABS.RESIZE]}
+            defaultTabId={TABS.ANNOTATE}
+            savingPixelRatio={2}
+            previewPixelRatio={2}
+            defaultSavedImageType="png"
+            theme={{
+              palette: {
+                'bg-secondary': '#1e293b',
+                'bg-primary': '#0f172a',
+                'bg-primary-active': '#334155',
+                'bg-primary-hover': '#263348',
+                'bg-primary-light': '#1e293b',
+                'bg-primary-stateless': '#334155',
+                'bg-primary-0-5-opacity': 'rgba(30, 41, 59, 0.5)',
+                'bg-stateless': '#1e293b',
+                'bg-hover': '#263348',
+                'bg-active': '#334155',
+                'bg-grey': '#334155',
+                'bg-tooltip': '#475569',
+                'txt-primary': '#f1f5f9',
+                'txt-secondary': '#94a3b8',
+                'txt-secondary-invert': '#f1f5f9',
+                'txt-placeholder': '#64748b',
+                'accent-primary': '#818cf8',
+                'accent-primary-hover': '#a5b4fc',
+                'accent-primary-active': '#6366f1',
+                'accent-stateless': '#818cf8',
+                'accent-stateless_0_4_opacity': 'rgba(129, 140, 248, 0.4)',
+                'accent_0_5_opacity': 'rgba(129, 140, 248, 0.05)',
+                'accent_1_2_opacity': 'rgba(129, 140, 248, 0.12)',
+                'accent_1_8_opacity': 'rgba(129, 140, 248, 0.18)',
+                'accent_2_8_opacity': 'rgba(129, 140, 248, 0.28)',
+                'accent_4_0_opacity': 'rgba(129, 140, 248, 0.4)',
+                'accent-primary-disabled': '#334155',
+                'accent-secondary-disabled': '#1e293b',
+                'icon-primary': '#cbd5e1',
+                'icons-primary-opacity-0-6': 'rgba(203, 213, 225, 0.6)',
+                'icons-secondary': '#94a3b8',
+                'icons-secondary-hover': '#cbd5e1',
+                'icons-primary-hover': '#f1f5f9',
+                'icons-invert': '#f1f5f9',
+                'icons-placeholder': '#475569',
+                'icons-muted': '#64748b',
+                'borders-primary': '#334155',
+                'borders-primary-hover': '#64748b',
+                'borders-secondary': '#1e293b',
+                'borders-strong': '#475569',
+                'borders-invert': '#1e293b',
+                'borders-item': '#334155',
+                'borders-button': '#64748b',
+                'borders-disabled': 'rgba(99, 102, 241, 0.3)',
+                'border-primary-stateless': '#334155',
+                'border-hover-bottom': 'rgba(129, 140, 248, 0.18)',
+                'border-active-bottom': '#818cf8',
+                'btn-primary-text': '#ffffff',
+                'btn-primary-text-0-6': 'rgba(255, 255, 255, 0.6)',
+                'btn-primary-text-0-4': 'rgba(255, 255, 255, 0.4)',
+                'btn-secondary-text': '#f1f5f9',
+                'btn-disabled-text': '#64748b',
+                'link-primary': '#94a3b8',
+                'link-hover': '#f1f5f9',
+                'link-active': '#f1f5f9',
+                'link-stateless': '#94a3b8',
+                'link-pressed': '#818cf8',
+                'link-muted': '#64748b',
+                'active-secondary': '#1e293b',
+                'active-secondary-hover': 'rgba(99, 102, 241, 0.15)',
+                'error': '#ef4444',
+                'error-hover': '#dc2626',
+                'error-active': '#b91c1c',
+                'success': '#22c55e',
+                'success-hover': '#16a34a',
+                'warning': '#f59e0b',
+                'warning-hover': '#d97706',
+                'info': '#3b82f6',
+                'tag': '#94a3b8',
+                'bg-base-light': '#1e293b',
+                'bg-base-medium': '#334155',
+                'borders-base-light': '#334155',
+                'borders-base-medium': '#475569',
+                'extra-0-3-overlay': 'rgba(15, 23, 42, 0.3)',
+                'extra-0-5-overlay': 'rgba(15, 23, 42, 0.5)',
+                'extra-0-7-overlay': 'rgba(15, 23, 42, 0.7)',
+                'extra-0-9-overlay': 'rgba(15, 23, 42, 0.9)',
+                'white-0-7-8-overlay': 'rgba(15, 23, 42, 0.78)',
+                'gradient-right': 'linear-gradient(270deg, #0f172a 1.56%, rgba(15,23,42,0.89) 52.4%, rgba(15,23,42,0.53) 76.04%, rgba(15,23,42,0) 100%)',
+                'gradient-right-active': 'linear-gradient(270deg, #1e293b 1.56%, #1e293b 52.4%, rgba(30,41,59,0.53) 76.04%, rgba(30,41,59,0) 100%)',
+                'gradient-right-hover': 'linear-gradient(270deg, #263348 1.56%, #263348 52.4%, rgba(38,51,72,0.53) 76.04%, rgba(38,51,72,0) 100%)',
+              },
+              typography: {
+                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+              },
+            }}
+            Crop={{
+              presetsItems: [
+                { titleKey: 'Square (1:1)', ratio: 1 },
+                { titleKey: 'Story (9:16)', ratio: 9 / 16 },
+                { titleKey: 'Landscape (16:9)', ratio: 16 / 9 },
+                { titleKey: 'Portrait (4:5)', ratio: 4 / 5 },
+              ],
+            }}
+            onBeforeSave={() => false}
+            onSave={handleImageEditSave}
+            onClose={() => setEditingImageItem(null)}
+          />
+        </div>
       )}
     </div>
   );

@@ -46,6 +46,7 @@ type ConventionQueueItem struct {
 	SortOrder  int                 `bson:"sortOrder" json:"sortOrder"`
 	Platforms  []Platform          `bson:"platforms,omitempty" json:"platforms,omitempty"`
 	AccountIDs map[string]string   `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
+	SuffixIDs  map[string]string   `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
 	CreatedAt  time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt  time.Time           `bson:"updatedAt" json:"updatedAt"`
 }

@@ -304,7 +304,7 @@
 /* Item grid */
 .conv-item-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
@@ -328,6 +328,32 @@
   border-radius: var(--radius) 0 0 var(--radius);
   overflow: hidden;
   flex-shrink: 0;
+}
+
+.conv-item-edit-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.75);
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.conv-item-thumb-wrap:hover .conv-item-edit-btn {
+  opacity: 1;
+}
+
+.conv-item-edit-btn:hover {
+  background: var(--accent);
 }
 
 .conv-item-thumb {
@@ -436,6 +462,62 @@
 
 .conv-overrides-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 
+.conv-suffix-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.conv-suffix-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conv-suffix-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.conv-suffix-row .select {
+  flex: 1;
+  font-size: 12px;
+  padding: 3px 6px;
+  height: 28px;
+}
+
+.conv-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.conv-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.conv-filter-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent-hover);
+}
+
 .conv-item-reorder {
   display: flex;
   flex-direction: column;
@@ -521,6 +603,35 @@
   margin-top: 2px;
 }
 
+/* Image editor overlay (same as PostEditor) */
+.image-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  width: 100vw;
+  height: 100vh;
+  background: #0f172a;
+}
+
+.image-editor-overlay input[type="text"],
+.image-editor-overlay input[type="number"],
+.image-editor-overlay input:not([type]) {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.image-editor-overlay [class*="SfxButton"][class*="active"],
+.image-editor-overlay [class*="SfxButton"][aria-selected="true"],
+.image-editor-overlay button[color="primary"] {
+  color: #ffffff !important;
+}
+
+.image-editor-overlay label,
+.image-editor-overlay span {
+  color: inherit;
+}
+
 /* Spinner animation */
 .spin { animation: spin 0.8s linear infinite; }
 
@@ -558,10 +669,12 @@
 
 /* ── Responsive ───────────────────────────────────────────── */
 
+@media (max-width: 900px) {
+  .conv-item-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 720px) {
   .conv-queue-list { grid-template-columns: 1fr; }
-
-  .conv-item-grid { grid-template-columns: 1fr; }
 
   .conv-item-card { grid-template-columns: 100px 1fr 32px; }
   .conv-item-thumb-wrap { width: 100px; }

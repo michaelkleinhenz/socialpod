@@ -151,6 +151,7 @@ func main() {
 		auth.DELETE("/convention/queues/:id", conventionHandler.DeleteQueue)
 		auth.POST("/convention/queues/:id/items", conventionHandler.AddItem)
 		auth.PUT("/convention/queues/:id/items/:iid", conventionHandler.UpdateItem)
+		auth.PUT("/convention/queues/:id/items/:iid/image", conventionHandler.ReplaceItemImage)
 		auth.DELETE("/convention/queues/:id/items/:iid", conventionHandler.DeleteItem)
 		auth.POST("/convention/queues/:id/items/:iid/analyze", conventionHandler.AnalyzeItem)
 		auth.POST("/convention/queues/:id/analyze-all", conventionHandler.AnalyzeAll)
