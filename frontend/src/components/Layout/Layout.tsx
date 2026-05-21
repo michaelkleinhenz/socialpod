@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Calendar, Settings, Users, Share2, LogOut, User, Zap, ScrollText, UsersRound, Signature, Image, MessageCircle, Mail, LayoutGrid, AtSign, Tent } from 'lucide-react';
+import { Calendar, Settings, Users, Share2, LogOut, User, Zap, ScrollText, UsersRound, Signature, Image, LayoutGrid, AtSign, Tent } from 'lucide-react';
 import './Layout.css';
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -11,10 +11,6 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     ...((user?.isAdmin || user?.isTeamAdmin) ? [{ path: '/admin', icon: Zap, label: 'Dashboard' }] : []),
     { path: '/', icon: Calendar, label: 'Calendar' },
-    ...(user?.isAdmin ? [
-      { path: '/inbox/comments', icon: MessageCircle, label: 'Comments' },
-      { path: '/inbox/dms', icon: Mail, label: 'DMs' },
-    ] : []),
     { path: '/feed', icon: LayoutGrid, label: 'Feed' },
     { path: '/log', icon: ScrollText, label: 'Post Log' },
     { path: '/convention', icon: Tent, label: 'Convention' },

@@ -78,15 +78,6 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
-	m.InboxMessages().Indexes().CreateMany(ctx, []mongo.IndexModel{
-		{Keys: bson.D{{Key: "messageType", Value: 1}}},
-		{Keys: bson.D{{Key: "platform", Value: 1}}},
-		{Keys: bson.D{{Key: "isRead", Value: 1}}},
-		{Keys: bson.D{{Key: "receivedAt", Value: -1}}},
-		{Keys: bson.D{{Key: "externalId", Value: 1}}, Options: options.Index().SetUnique(true)},
-		{Keys: bson.D{{Key: "teamId", Value: 1}}},
-	})
-
 	m.ConventionQueues().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
@@ -136,10 +127,6 @@ func (m *MongoDB) Watermarks() *mongo.Collection {
 
 func (m *MongoDB) Mentions() *mongo.Collection {
 	return m.Database.Collection("mentions")
-}
-
-func (m *MongoDB) InboxMessages() *mongo.Collection {
-	return m.Database.Collection("inbox_messages")
 }
 
 func (m *MongoDB) ConventionQueues() *mongo.Collection {
