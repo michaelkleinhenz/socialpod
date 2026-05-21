@@ -138,7 +138,6 @@ export interface AppSettings {
   aiLanguage: string;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
-  bggFetchMethod?: string;
   updatedAt?: string;
 }
 
@@ -149,7 +148,6 @@ export interface PublicSettings {
   cookieBannerText: string;
   openRouterEnabled: boolean;
   hasBggApiToken: boolean;
-  bggFetchMethod?: string;
 }
 
 export interface AuthResponse {

@@ -53,6 +53,5 @@ type AppSettings struct {
 	OpenRouterModel       string             `bson:"openRouterModel" json:"openRouterModel"`
 	AILanguage            string             `bson:"aiLanguage" json:"aiLanguage"`
 	BGGAPIToken           string             `bson:"bggApiToken" json:"-"`
-	BGGFetchMethod        string             `bson:"bggFetchMethod" json:"bggFetchMethod"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }
