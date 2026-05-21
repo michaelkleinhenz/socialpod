@@ -138,6 +138,7 @@ export interface AppSettings {
   aiLanguage: string;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
+  bggFetchMethod?: string;
   updatedAt?: string;
 }
 

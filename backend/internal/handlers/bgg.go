@@ -24,6 +24,7 @@ import (
 	"socialmedia/internal/models"
 
 	"github.com/gin-gonic/gin"
+	htmlpkg "golang.org/x/net/html"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -124,7 +125,19 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	var settings models.AppSettings
 	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
 
-	item, err := h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+	method := settings.BGGFetchMethod
+	if method == "" {
+		method = "scrape"
+	}
+
+	var item bggItem
+	var err error
+	switch method {
+	case "api":
+		item, err = h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+	default:
+		item, err = h.scrapeBGGGame(ctx, rawURL)
+	}
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -252,6 +265,225 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string, token stri
 		return items.Items[0], nil
 	}
 	return bggItem{}, fmt.Errorf("BGG API not ready, please try again in a moment")
+}
+
+// scrapeBGGGame fetches a BGG game page and extracts game data via HTML scraping.
+// This is the default method used while awaiting BGG API approval.
+func (h *BGGHandler) scrapeBGGGame(ctx context.Context, pageURL string) (bggItem, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
+	if err != nil {
+		return bggItem{}, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Referer", "https://boardgamegeek.com/")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return bggItem{}, fmt.Errorf("failed to fetch BGG page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return bggItem{}, fmt.Errorf("BGG rate limit exceeded, please try again later")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return bggItem{}, fmt.Errorf("BGG page returned HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return bggItem{}, err
+	}
+	return parseBGGPage(body)
+}
+
+func parseBGGPage(body []byte) (bggItem, error) {
+	jsonLDs, metas := extractHTMLData(body)
+
+	item := bggItem{}
+
+	for _, raw := range jsonLDs {
+		data := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(raw), &data); err != nil {
+			// Try array of JSON-LD objects
+			var arr []map[string]interface{}
+			if err2 := json.Unmarshal([]byte(raw), &arr); err2 == nil {
+				for _, d := range arr {
+					if t, _ := d["@type"].(string); t == "BoardGame" || t == "Game" {
+						data = d
+						break
+					}
+				}
+			}
+		}
+		if len(data) == 0 {
+			continue
+		}
+		t, _ := data["@type"].(string)
+		if t != "BoardGame" && t != "Game" {
+			continue
+		}
+
+		if name, ok := data["name"].(string); ok && name != "" {
+			item.Names = []bggName{{Type: "primary", Value: name}}
+		}
+		if desc, ok := data["description"].(string); ok {
+			item.Desc = desc
+		}
+
+		switch v := data["image"].(type) {
+		case string:
+			item.Image = v
+		case []interface{}:
+			if len(v) > 0 {
+				if s, ok := v[0].(string); ok {
+					item.Image = s
+				}
+			}
+		}
+
+		if players, ok := data["numberOfPlayers"].(map[string]interface{}); ok {
+			if min := bggNumStr(players["minValue"]); min != "" && min != "0" {
+				item.MinPlayers = bggVal{Value: min}
+			}
+			if max := bggNumStr(players["maxValue"]); max != "" && max != "0" {
+				item.MaxPlayers = bggVal{Value: max}
+			}
+		}
+
+		if age := bggNumStr(data["suggestedAge"]); age != "" && age != "0" {
+			item.MinAge = bggVal{Value: age}
+		}
+
+		if rating, ok := data["aggregateRating"].(map[string]interface{}); ok {
+			if rv := bggNumStr(rating["ratingValue"]); rv != "" {
+				item.Stats.Ratings.Average = bggVal{Value: rv}
+			}
+		}
+
+		if dateStr, ok := data["datePublished"].(string); ok && len(dateStr) >= 4 {
+			item.YearPub = bggVal{Value: dateStr[:4]}
+		}
+
+		item.Links = append(item.Links, bggExtractPeople(data["author"], "boardgamedesigner")...)
+		item.Links = append(item.Links, bggExtractPeople(data["publisher"], "boardgamepublisher")...)
+
+		break
+	}
+
+	if len(item.Names) == 0 {
+		if title := metas["og:title"]; title != "" {
+			// BGG og:title is often "Game Name | Board Game | BoardGameGeek"
+			parts := strings.SplitN(title, " | ", 2)
+			item.Names = []bggName{{Type: "primary", Value: strings.TrimSpace(parts[0])}}
+		}
+	}
+	if item.Desc == "" {
+		if desc := metas["og:description"]; desc != "" {
+			item.Desc = desc
+		}
+	}
+	if item.Image == "" {
+		if img := metas["og:image"]; img != "" {
+			item.Image = img
+		}
+	}
+
+	if len(item.Names) == 0 {
+		return bggItem{}, fmt.Errorf("could not extract game data from BGG page — try the BGG API method instead")
+	}
+	return item, nil
+}
+
+func extractHTMLData(body []byte) (jsonLDs []string, metas map[string]string) {
+	metas = make(map[string]string)
+	doc, err := htmlpkg.Parse(bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	var walk func(*htmlpkg.Node)
+	walk = func(n *htmlpkg.Node) {
+		if n.Type == htmlpkg.ElementNode {
+			switch n.Data {
+			case "script":
+				for _, attr := range n.Attr {
+					if attr.Key == "type" && attr.Val == "application/ld+json" {
+						if n.FirstChild != nil {
+							jsonLDs = append(jsonLDs, n.FirstChild.Data)
+						}
+					}
+				}
+			case "meta":
+				property, name, content := "", "", ""
+				for _, attr := range n.Attr {
+					switch attr.Key {
+					case "property":
+						property = attr.Val
+					case "name":
+						name = attr.Val
+					case "content":
+						content = attr.Val
+					}
+				}
+				if property != "" && content != "" {
+					metas[property] = content
+				}
+				if name != "" && content != "" {
+					if _, exists := metas["name:"+name]; !exists {
+						metas["name:"+name] = content
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return
+}
+
+func bggNumStr(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		if val == float64(int64(val)) {
+			return fmt.Sprintf("%d", int64(val))
+		}
+		return fmt.Sprintf("%.4f", val)
+	}
+	return ""
+}
+
+func bggExtractPeople(v interface{}, linkType string) []bggLink {
+	var links []bggLink
+	switch a := v.(type) {
+	case string:
+		if a != "" {
+			links = append(links, bggLink{Type: linkType, Value: a})
+		}
+	case map[string]interface{}:
+		if name, ok := a["name"].(string); ok && name != "" {
+			links = append(links, bggLink{Type: linkType, Value: name})
+		}
+	case []interface{}:
+		for _, item := range a {
+			switch p := item.(type) {
+			case string:
+				if p != "" {
+					links = append(links, bggLink{Type: linkType, Value: p})
+				}
+			case map[string]interface{}:
+				if name, ok := p["name"].(string); ok && name != "" {
+					links = append(links, bggLink{Type: linkType, Value: name})
+				}
+			}
+		}
+	}
+	return links
 }
 
 func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, imgURL string) ([]byte, error) {
