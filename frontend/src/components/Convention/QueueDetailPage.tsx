@@ -720,7 +720,7 @@ export function QueueDetailPage() {
       {/* Item grid */}
       {visibleItems.length > 0 ? (
         <div className="conv-item-grid">
-          {visibleItems.map((item, idx) => (
+          {visibleItems.map((item) => (
             <QueueItemCard
               key={item.id}
               item={item}
