@@ -190,6 +190,7 @@ export interface ConventionQueueItem {
   sortOrder: number;
   platforms?: Platform[];
   accountIds?: Record<string, string>;
+  suffixIds?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

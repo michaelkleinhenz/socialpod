@@ -464,6 +464,12 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
+  replaceConventionItemImage(queueId: string, itemId: string, file: File) {
+    const form = new FormData();
+    form.append('image', file);
+    return this.request<any>(`/convention/queues/${queueId}/items/${itemId}/image`, { method: 'PUT', body: form });
+  }
+
   deleteConventionItem(queueId: string, itemId: string) {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'DELETE' });
   }

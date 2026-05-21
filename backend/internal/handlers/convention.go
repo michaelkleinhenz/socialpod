@@ -321,6 +321,7 @@ type UpdateItemInput struct {
 	SortOrder  *int              `json:"sortOrder,omitempty"`
 	Platforms  []models.Platform `json:"platforms,omitempty"`
 	AccountIDs map[string]string `json:"accountIds"`
+	SuffixIDs  map[string]string `json:"suffixIds"`
 }
 
 func (h *ConventionHandler) UpdateItem(c *gin.Context) {
@@ -360,10 +361,55 @@ func (h *ConventionHandler) UpdateItem(c *gin.Context) {
 	if input.AccountIDs != nil {
 		update["accountIds"] = input.AccountIDs
 	}
+	if input.SuffixIDs != nil {
+		update["suffixIds"] = input.SuffixIDs
+	}
 
 	result, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
 		bson.M{"_id": itemID, "queueId": queueID},
 		bson.M{"$set": update},
+	)
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	var item models.ConventionQueueItem
+	h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID}).Decode(&item)
+	c.JSON(http.StatusOK, item)
+}
+
+func (h *ConventionHandler) ReplaceItemImage(c *gin.Context) {
+	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue ID"})
+		return
+	}
+	itemID, err := primitive.ObjectIDFromHex(c.Param("iid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid item ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, fh, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
+		return
+	}
+
+	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
+	imageURL, err := ph.saveUpload(ctx, fh)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + err.Error()})
+		return
+	}
+
+	result, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
+		bson.M{"_id": itemID, "queueId": queueID},
+		bson.M{"$set": bson.M{"imageUrl": imageURL, "updatedAt": time.Now()}},
 	)
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
@@ -707,7 +753,12 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 			ScheduledAt: slots[i],
 			Status:      models.PostStatusScheduled,
 			AccountIDs:  accountIDs,
-			SuffixIDs:   queue.SuffixIDs,
+			SuffixIDs:   func() map[string]string {
+				if len(item.SuffixIDs) > 0 {
+					return item.SuffixIDs
+				}
+				return queue.SuffixIDs
+			}(),
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}
