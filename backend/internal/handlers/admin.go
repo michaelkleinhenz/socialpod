@@ -56,7 +56,17 @@ func (h *AdminHandler) ListAccounts(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{})
+	// Always scope to the caller's team when they have one.
+	// Global admins without a team see all accounts (system management).
+	filter := bson.M{}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam && teamIDRaw.(string) != "" {
+		tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		if err == nil {
+			filter["teamId"] = tid
+		}
+	}
+
+	cursor, err := h.DB.SocialAccounts().Find(ctx, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch accounts"})
 		return
@@ -76,28 +86,25 @@ func (h *AdminHandler) ListAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
-// ListActiveAccounts returns active accounts scoped to the user's team.
-// Global admins see all active accounts; users without a team see none.
+// ListActiveAccounts returns active accounts scoped to the caller's team.
+// All users (including admins) are scoped to their own team; no team = no accounts.
 func (h *AdminHandler) ListActiveAccounts(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	filter := bson.M{"isActive": true}
 
-	isAdmin, _ := c.Get("isAdmin")
-	if !isAdmin.(bool) {
-		teamIDRaw, hasTeam := c.Get("teamId")
-		if !hasTeam || teamIDRaw.(string) == "" {
-			c.JSON(http.StatusOK, []models.SocialAccount{})
-			return
-		}
-		tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
-		if err != nil {
-			c.JSON(http.StatusOK, []models.SocialAccount{})
-			return
-		}
-		filter["teamId"] = tid
+	teamIDRaw, hasTeam := c.Get("teamId")
+	if !hasTeam || teamIDRaw.(string) == "" {
+		c.JSON(http.StatusOK, []models.SocialAccount{})
+		return
 	}
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusOK, []models.SocialAccount{})
+		return
+	}
+	filter["teamId"] = tid
 
 	cursor, err := h.DB.SocialAccounts().Find(ctx, filter)
 	if err != nil {
