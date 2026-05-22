@@ -522,6 +522,7 @@
     padding: 16px;
     /* Use hidden overflow so the flex child (editor-layout) can scroll */
     overflow: hidden;
+    overflow-x: hidden;
   }
 
   /* Override the overlay to not add padding around this full-screen modal */
@@ -529,6 +530,7 @@
     padding: 0;
     align-items: flex-start;
     overflow: hidden;
+    overflow-x: hidden;
   }
 
   .editor-layout {
