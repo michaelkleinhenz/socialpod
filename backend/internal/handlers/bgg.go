@@ -796,6 +796,8 @@ func compositeLetterbox(src image.Image, size, offsetX, offsetY int) image.Image
 	if scaleY < scaleX {
 		scale = scaleY
 	}
+	// Reduce by ~17.5% so the cover stays fully in frame even when an offset is applied.
+	scale *= 0.825
 	fitW := int(float64(srcW) * scale)
 	fitH := int(float64(srcH) * scale)
 	if fitW < 1 {
