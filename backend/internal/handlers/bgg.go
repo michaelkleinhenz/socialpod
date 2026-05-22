@@ -822,6 +822,7 @@ func compositeLetterbox(src image.Image, size, offsetX, offsetY int) image.Image
 }
 
 // blurredBackground scales src to fill w×h (cropping edges), then blurs it.
+// Three passes of box blur approximate a Gaussian blur for a smooth result.
 func blurredBackground(src image.Image, w, h int) image.Image {
 	smallW, smallH := w/4, h/4
 	if smallW < 1 {
@@ -831,7 +832,9 @@ func blurredBackground(src image.Image, w, h int) image.Image {
 		smallH = 1
 	}
 	small := scaleToFill(src, smallW, smallH)
-	blurred := separableBoxBlur(small, 6)
+	blurred := separableBoxBlur(small, 12)
+	blurred = separableBoxBlur(blurred, 12)
+	blurred = separableBoxBlur(blurred, 12)
 	return resizeImage(blurred, w, h)
 }
 
