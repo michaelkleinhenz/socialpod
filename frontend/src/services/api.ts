@@ -294,6 +294,17 @@ class ApiClient {
     });
   }
 
+  adminResetUserPassword(id: string) {
+    return this.request<{ password: string }>(`/admin/users/${id}/reset-password`, { method: 'POST' });
+  }
+
+  updatePassword(currentPassword: string, newPassword: string) {
+    return this.request<{ message: string }>('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
   getRegistrationStatus() {
     return this.request<{ allowed: boolean; firstUser: boolean }>('/auth/registration-status');
   }

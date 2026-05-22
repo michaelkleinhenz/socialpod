@@ -103,6 +103,7 @@ func main() {
 	auth := api.Group("", middleware.AuthRequired(cfg.JWTSecret, db))
 	{
 		auth.GET("/auth/me", authHandler.Me)
+		auth.PUT("/auth/password", authHandler.UpdatePassword)
 		auth.POST("/auth/api-token", authHandler.GenerateAPIToken)
 
 		// Posts
@@ -179,6 +180,7 @@ func main() {
 		admin.POST("/users", adminHandler.CreateUser)
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
 		admin.PATCH("/users/:id/role", adminHandler.UpdateUserRole)
+		admin.POST("/users/:id/reset-password", adminHandler.ResetUserPassword)
 		admin.GET("/teams", adminHandler.ListTeams)
 		admin.POST("/teams", adminHandler.CreateTeam)
 		admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
