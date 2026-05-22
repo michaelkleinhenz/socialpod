@@ -521,6 +521,18 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // Admin BGG settings (manage any team's BGG overlay config)
+  getAdminTeamBggSettings(teamId: string) {
+    return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);
+  }
+
+  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number }) {
+    return this.request<{ message: string }>(`/admin/teams/${teamId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();

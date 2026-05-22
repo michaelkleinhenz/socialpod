@@ -186,6 +186,8 @@ func main() {
 		admin.DELETE("/teams/:id", adminHandler.DeleteTeam)
 		admin.PUT("/teams/:id/members", adminHandler.SetTeamMembers)
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
+		admin.GET("/teams/:id/settings", bggHandler.AdminGetTeamSettings)
+		admin.PUT("/teams/:id/settings", bggHandler.AdminUpdateTeamSettings)
 	}
 
 	// Team self-creation: team admin flag required, no existing team needed
