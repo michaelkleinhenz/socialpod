@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { Team, User } from '../../types';
-import { Trash2, Plus, X, Key, Copy, RefreshCw } from 'lucide-react';
+import type { Team, User, Watermark, TeamSettings } from '../../types';
+import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Admin.css';
@@ -9,17 +9,22 @@ import './Admin.css';
 export function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [creating, setCreating] = useState(false);
   const [editTeam, setEditTeam] = useState<Team | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [savingMembers, setSavingMembers] = useState(false);
+  const [bggTeam, setBggTeam] = useState<Team | null>(null);
+  const [bggSettings, setBggSettings] = useState<TeamSettings>({});
+  const [savingBgg, setSavingBgg] = useState(false);
 
   const load = () => {
-    Promise.all([api.getTeams(), api.getUsers()]).then(([t, u]) => {
+    Promise.all([api.getTeams(), api.getUsers(), api.getWatermarks()]).then(([t, u, wm]) => {
       setTeams(t);
       setUsers(u);
+      setWatermarks(wm as Watermark[]);
     }).catch(() => toast.error('Failed to load data'));
   };
 
@@ -93,6 +98,34 @@ export function TeamsPage() {
     toast.success('Copied to clipboard');
   };
 
+  const openBggSettings = async (team: Team) => {
+    setBggTeam(team);
+    try {
+      const s = await api.getAdminTeamBggSettings(team.id);
+      setBggSettings(s);
+    } catch {
+      setBggSettings({});
+    }
+  };
+
+  const saveBggSettings = async () => {
+    if (!bggTeam) return;
+    setSavingBgg(true);
+    try {
+      await api.updateAdminTeamBggSettings(bggTeam.id, {
+        bggWatermarkId: bggSettings.bggWatermarkId || null,
+        bggCoverOffsetX: bggSettings.bggCoverOffsetX ?? 0,
+        bggCoverOffsetY: bggSettings.bggCoverOffsetY ?? 0,
+      });
+      toast.success('BGG settings saved');
+      setBggTeam(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save settings');
+    } finally {
+      setSavingBgg(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -120,6 +153,9 @@ export function TeamsPage() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-secondary btn-sm" onClick={() => openMembers(team)}>
                     Manage Members ({team.members.length})
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => openBggSettings(team)}>
+                    <Settings size={14} /> BGG Settings
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => deleteTeam(team.id)}>
                     <Trash2 size={14} color="var(--danger)" />
@@ -192,6 +228,79 @@ export function TeamsPage() {
               <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={createTeam} disabled={creating}>
                 {creating ? 'Creating...' : 'Create Team'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BGG Settings Modal */}
+      {bggTeam && (
+        <div className="modal-overlay" onClick={() => setBggTeam(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2>BGG Settings: {bggTeam.name}</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setBggTeam(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+              Configure the BGG overlay and cover offset for this team. When a member imports a BGG game, the selected overlay is applied on top of the cover image.
+            </p>
+
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>BGG Overlay</label>
+              <select
+                className="select"
+                value={bggSettings.bggWatermarkId || ''}
+                onChange={e => setBggSettings(s => ({ ...s, bggWatermarkId: e.target.value }))}
+              >
+                <option value="">None (no overlay)</option>
+                {watermarks.map(wm => (
+                  <option key={wm.id} value={wm.id}>{wm.name}</option>
+                ))}
+              </select>
+              {watermarks.length === 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                  No watermarks uploaded yet. Add watermarks on the Watermarks page first.
+                </span>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: 14 }}>Cover position offset</label>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 10, marginTop: 0 }}>
+                Shift the scaled cover within the canvas. Use a negative X offset to push the cover away from a left sidebar overlay, for example.
+              </p>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>Horizontal offset (px)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={bggSettings.bggCoverOffsetX ?? 0}
+                    onChange={e => setBggSettings(s => ({ ...s, bggCoverOffsetX: parseInt(e.target.value, 10) || 0 }))}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>Vertical offset (px)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={bggSettings.bggCoverOffsetY ?? 0}
+                    onChange={e => setBggSettings(s => ({ ...s, bggCoverOffsetY: parseInt(e.target.value, 10) || 0 }))}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setBggTeam(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveBggSettings} disabled={savingBgg}>
+                {savingBgg ? 'Saving...' : 'Save Settings'}
               </button>
             </div>
           </div>

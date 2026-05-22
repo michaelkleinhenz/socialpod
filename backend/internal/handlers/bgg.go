@@ -499,6 +499,91 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Settings updated"})
 }
 
+// AdminGetTeamSettings returns BGG settings for any team (admin only).
+func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	wmID := ""
+	if team.BGGWatermarkID != nil {
+		wmID = team.BGGWatermarkID.Hex()
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"bggWatermarkId":  wmID,
+		"bggCoverOffsetX": team.BGGCoverOffsetX,
+		"bggCoverOffsetY": team.BGGCoverOffsetY,
+	})
+}
+
+// AdminUpdateTeamSettings updates BGG settings for any team (admin only).
+func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input struct {
+		BGGWatermarkID  *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY *int    `json:"bggCoverOffsetY"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	setFields := bson.M{"updatedAt": time.Now()}
+	unsetFields := bson.M{}
+
+	if input.BGGWatermarkID == nil || *input.BGGWatermarkID == "" {
+		unsetFields["bggWatermarkId"] = ""
+	} else {
+		wmID, err := primitive.ObjectIDFromHex(*input.BGGWatermarkID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+			return
+		}
+		setFields["bggWatermarkId"] = wmID
+	}
+
+	if input.BGGCoverOffsetX != nil {
+		setFields["bggCoverOffsetX"] = *input.BGGCoverOffsetX
+	}
+	if input.BGGCoverOffsetY != nil {
+		setFields["bggCoverOffsetY"] = *input.BGGCoverOffsetY
+	}
+
+	var updateDoc bson.M
+	if len(unsetFields) > 0 {
+		updateDoc = bson.M{"$set": setFields, "$unset": unsetFields}
+	} else {
+		updateDoc = bson.M{"$set": setFields}
+	}
+
+	result, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, updateDoc)
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Settings updated"})
+}
+
 // --- helpers ---
 
 func buildPostContent(title string, designers, artists, publishers []string, item bggItem, aiSummary string) string {
