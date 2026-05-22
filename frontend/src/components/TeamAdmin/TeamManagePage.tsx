@@ -55,6 +55,8 @@ export function TeamManagePage() {
   // Settings state
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [bggWatermarkId, setBggWatermarkId] = useState('');
+  const [bggCoverOffsetX, setBggCoverOffsetX] = useState(0);
+  const [bggCoverOffsetY, setBggCoverOffsetY] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
@@ -90,6 +92,8 @@ export function TeamManagePage() {
         api.getWatermarks(),
       ]);
       setBggWatermarkId(settings.bggWatermarkId || '');
+      setBggCoverOffsetX(settings.bggCoverOffsetX ?? 0);
+      setBggCoverOffsetY(settings.bggCoverOffsetY ?? 0);
       setWatermarks(wms as Watermark[]);
     } catch {
       // settings tab may not be visible if no team
@@ -99,7 +103,11 @@ export function TeamManagePage() {
   const saveSettings = async () => {
     setSavingSettings(true);
     try {
-      await api.updateTeamSettings({ bggWatermarkId: bggWatermarkId || null });
+      await api.updateTeamSettings({
+        bggWatermarkId: bggWatermarkId || null,
+        bggCoverOffsetX,
+        bggCoverOffsetY,
+      });
       toast.success('Settings saved');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save settings');
@@ -698,16 +706,16 @@ export function TeamManagePage() {
           <div className="card" style={{ padding: 24 }}>
             <h2 style={{ marginBottom: 4, fontSize: '1rem' }}>BoardGameGeek Integration</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
-              When importing a game from BGG, the cover image will be cropped to a square and overlaid with the selected watermark at full frame.
+              When importing a game from BGG, the cover is scaled to fit fully within a 1080×1080 square. A blurred version of the cover fills any remaining space. The optional overlay is applied on top at full frame.
             </p>
             <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>BGG Watermark</label>
+              <label>BGG Overlay</label>
               <select
                 className="select"
                 value={bggWatermarkId}
                 onChange={e => setBggWatermarkId(e.target.value)}
               >
-                <option value="">None (no watermark)</option>
+                <option value="">None (no overlay)</option>
                 {watermarks.map(wm => (
                   <option key={wm.id} value={wm.id}>{wm.name}</option>
                 ))}
@@ -717,6 +725,34 @@ export function TeamManagePage() {
                   No watermarks uploaded yet. Add watermarks on the Watermarks page first.
                 </span>
               )}
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: 14 }}>Cover position offset</label>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 10, marginTop: 0 }}>
+                Shift the scaled cover within the canvas. Useful when your overlay has a sidebar or header that occupies part of the frame — use a negative X offset to push the cover away from a left sidebar, for example.
+              </p>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>Horizontal offset (px)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={bggCoverOffsetX}
+                    onChange={e => setBggCoverOffsetX(parseInt(e.target.value, 10) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>Vertical offset (px)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={bggCoverOffsetY}
+                    onChange={e => setBggCoverOffsetY(parseInt(e.target.value, 10) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
             </div>
             <button
               className="btn btn-primary"

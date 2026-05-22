@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/jpeg"
 	_ "image/png"
@@ -257,6 +258,12 @@ func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string, token stri
 	return bggItem{}, fmt.Errorf("BGG API not ready, please try again in a moment")
 }
 
+type bggTeamConfig struct {
+	watermark image.Image
+	offsetX   int
+	offsetY   int
+}
+
 func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, imgURL string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
 	if err != nil {
@@ -287,59 +294,62 @@ func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, img
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	// Crop to square
-	src = cropSquare(src)
+	cfg := h.loadTeamBGGConfig(ctx, c)
 
-	// Resize to 1080×1080 for social media
-	src = resizeImage(src, 1080, 1080)
+	// Letterbox: blurred fill background + scaled-to-fit cover with offset
+	const size = 1080
+	composed := compositeLetterbox(src, size, cfg.offsetX, cfg.offsetY)
 
 	// Overlay team BGG watermark if configured
-	if wm := h.loadBGGWatermark(ctx, c); wm != nil {
-		bounds := src.Bounds()
-		wmScaled := resizeImage(wm, bounds.Dx(), bounds.Dy())
+	if cfg.watermark != nil {
+		bounds := composed.Bounds()
+		wmScaled := resizeImage(cfg.watermark, bounds.Dx(), bounds.Dy())
 		dst := image.NewRGBA(bounds)
-		draw.Draw(dst, bounds, src, bounds.Min, draw.Src)
+		draw.Draw(dst, bounds, composed, bounds.Min, draw.Src)
 		draw.Draw(dst, bounds, wmScaled, image.Point{}, draw.Over)
-		src = dst
+		composed = dst
 	}
 
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, src, &jpeg.Options{Quality: 90}); err != nil {
+	if err := jpeg.Encode(&buf, composed, &jpeg.Options{Quality: 90}); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func (h *BGGHandler) loadBGGWatermark(ctx context.Context, c *gin.Context) image.Image {
+func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context) bggTeamConfig {
 	teamIDStr, ok := c.Get("teamId")
 	if !ok || teamIDStr.(string) == "" {
-		return nil
+		return bggTeamConfig{}
 	}
 	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
 	if err != nil {
-		return nil
+		return bggTeamConfig{}
 	}
 
 	var team models.Team
-	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil || team.BGGWatermarkID == nil {
-		return nil
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		return bggTeamConfig{}
 	}
 
-	var wm models.Watermark
-	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *team.BGGWatermarkID}).Decode(&wm); err != nil {
-		return nil
+	cfg := bggTeamConfig{
+		offsetX: team.BGGCoverOffsetX,
+		offsetY: team.BGGCoverOffsetY,
 	}
 
-	filename := filepath.Base(wm.URL)
-	data, err := os.ReadFile(filepath.Join(h.UploadDir, filename))
-	if err != nil {
-		return nil
+	if team.BGGWatermarkID != nil {
+		var wm models.Watermark
+		if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *team.BGGWatermarkID}).Decode(&wm); err == nil {
+			filename := filepath.Base(wm.URL)
+			if data, err := os.ReadFile(filepath.Join(h.UploadDir, filename)); err == nil {
+				if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+					cfg.watermark = img
+				}
+			}
+		}
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil
-	}
-	return img
+
+	return cfg
 }
 
 func (h *BGGHandler) generateGameSummary(ctx context.Context, description, title string, settings models.AppSettings) (string, error) {
@@ -420,7 +430,11 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.BGGWatermarkID != nil {
 		wmID = team.BGGWatermarkID.Hex()
 	}
-	c.JSON(http.StatusOK, gin.H{"bggWatermarkId": wmID})
+	c.JSON(http.StatusOK, gin.H{
+		"bggWatermarkId":  wmID,
+		"bggCoverOffsetX": team.BGGCoverOffsetX,
+		"bggCoverOffsetY": team.BGGCoverOffsetY,
+	})
 }
 
 // UpdateTeamSettings updates BGG settings for the current team.
@@ -437,7 +451,9 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID *string `json:"bggWatermarkId"`
+		BGGWatermarkID  *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY *int    `json:"bggCoverOffsetY"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -447,19 +463,32 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var updateDoc bson.M
+	setFields := bson.M{"updatedAt": time.Now()}
+	unsetFields := bson.M{}
+
 	if input.BGGWatermarkID == nil || *input.BGGWatermarkID == "" {
-		updateDoc = bson.M{
-			"$unset": bson.M{"bggWatermarkId": ""},
-			"$set":   bson.M{"updatedAt": time.Now()},
-		}
+		unsetFields["bggWatermarkId"] = ""
 	} else {
 		wmID, err := primitive.ObjectIDFromHex(*input.BGGWatermarkID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
 			return
 		}
-		updateDoc = bson.M{"$set": bson.M{"bggWatermarkId": wmID, "updatedAt": time.Now()}}
+		setFields["bggWatermarkId"] = wmID
+	}
+
+	if input.BGGCoverOffsetX != nil {
+		setFields["bggCoverOffsetX"] = *input.BGGCoverOffsetX
+	}
+	if input.BGGCoverOffsetY != nil {
+		setFields["bggCoverOffsetY"] = *input.BGGCoverOffsetY
+	}
+
+	var updateDoc bson.M
+	if len(unsetFields) > 0 {
+		updateDoc = bson.M{"$set": setFields, "$unset": unsetFields}
+	} else {
+		updateDoc = bson.M{"$set": setFields}
 	}
 
 	result, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, updateDoc)
@@ -559,23 +588,140 @@ func nilSlice(s []string) []string {
 	return s
 }
 
-func cropSquare(img image.Image) image.Image {
-	b := img.Bounds()
-	w, h := b.Dx(), b.Dy()
-	if w == h {
-		return img
+// compositeLetterbox scales src to fit within size×size (preserving aspect ratio),
+// places it centered with the given pixel offset, and fills the background with
+// a blurred, scaled-to-fill version of src.
+func compositeLetterbox(src image.Image, size, offsetX, offsetY int) image.Image {
+	b := src.Bounds()
+	srcW, srcH := b.Dx(), b.Dy()
+
+	scaleX := float64(size) / float64(srcW)
+	scaleY := float64(size) / float64(srcH)
+	scale := scaleX
+	if scaleY < scaleX {
+		scale = scaleY
 	}
-	size := w
-	ox, oy := 0, 0
-	if h < w {
-		size = h
-		ox = (w - h) / 2
-	} else {
-		size = w
-		oy = (h - w) / 2
+	fitW := int(float64(srcW) * scale)
+	fitH := int(float64(srcH) * scale)
+	if fitW < 1 {
+		fitW = 1
 	}
+	if fitH < 1 {
+		fitH = 1
+	}
+
+	coverScaled := resizeImage(src, fitW, fitH)
+	bg := blurredBackground(src, size, size)
+
 	dst := image.NewRGBA(image.Rect(0, 0, size, size))
-	draw.Draw(dst, dst.Bounds(), img, image.Point{b.Min.X + ox, b.Min.Y + oy}, draw.Src)
+	draw.Draw(dst, dst.Bounds(), bg, image.Point{}, draw.Src)
+
+	x := (size-fitW)/2 + offsetX
+	y := (size-fitH)/2 + offsetY
+	coverRect := image.Rect(x, y, x+fitW, y+fitH)
+	draw.Draw(dst, coverRect, coverScaled, image.Point{}, draw.Over)
+
+	return dst
+}
+
+// blurredBackground scales src to fill w×h (cropping edges), then blurs it.
+func blurredBackground(src image.Image, w, h int) image.Image {
+	smallW, smallH := w/4, h/4
+	if smallW < 1 {
+		smallW = 1
+	}
+	if smallH < 1 {
+		smallH = 1
+	}
+	small := scaleToFill(src, smallW, smallH)
+	blurred := separableBoxBlur(small, 6)
+	return resizeImage(blurred, w, h)
+}
+
+// scaleToFill scales src so it covers the entire w×h area (no empty bars),
+// then center-crops to exactly w×h.
+func scaleToFill(src image.Image, w, h int) image.Image {
+	b := src.Bounds()
+	srcW, srcH := b.Dx(), b.Dy()
+
+	scaleX := float64(w) / float64(srcW)
+	scaleY := float64(h) / float64(srcH)
+	scale := scaleX
+	if scaleY > scaleX {
+		scale = scaleY
+	}
+	newW := int(float64(srcW) * scale)
+	newH := int(float64(srcH) * scale)
+	if newW < 1 {
+		newW = 1
+	}
+	if newH < 1 {
+		newH = 1
+	}
+
+	scaled := resizeImage(src, newW, newH)
+	ox := (newW - w) / 2
+	oy := (newH - h) / 2
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.Draw(dst, dst.Bounds(), scaled, image.Point{ox, oy}, draw.Src)
+	return dst
+}
+
+// separableBoxBlur applies a two-pass (horizontal then vertical) box blur.
+func separableBoxBlur(src image.Image, radius int) image.Image {
+	bounds := src.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+
+	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, src, bounds.Min, draw.Src)
+
+	d := uint32(2*radius + 1)
+
+	// Horizontal pass
+	tmp := image.NewRGBA(bounds)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			var r, g, b uint32
+			for dx := -radius; dx <= radius; dx++ {
+				nx := x + dx
+				if nx < 0 {
+					nx = 0
+				} else if nx >= w {
+					nx = w - 1
+				}
+				c := rgba.RGBAAt(bounds.Min.X+nx, bounds.Min.Y+y)
+				r += uint32(c.R)
+				g += uint32(c.G)
+				b += uint32(c.B)
+			}
+			tmp.SetRGBA(bounds.Min.X+x, bounds.Min.Y+y, color.RGBA{
+				R: uint8(r / d), G: uint8(g / d), B: uint8(b / d), A: 255,
+			})
+		}
+	}
+
+	// Vertical pass
+	dst := image.NewRGBA(bounds)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			var r, g, b uint32
+			for dy := -radius; dy <= radius; dy++ {
+				ny := y + dy
+				if ny < 0 {
+					ny = 0
+				} else if ny >= h {
+					ny = h - 1
+				}
+				c := tmp.RGBAAt(bounds.Min.X+x, bounds.Min.Y+ny)
+				r += uint32(c.R)
+				g += uint32(c.G)
+				b += uint32(c.B)
+			}
+			dst.SetRGBA(bounds.Min.X+x, bounds.Min.Y+y, color.RGBA{
+				R: uint8(r / d), G: uint8(g / d), B: uint8(b / d), A: 255,
+			})
+		}
+	}
 	return dst
 }
 

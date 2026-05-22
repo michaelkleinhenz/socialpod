@@ -515,7 +515,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>('/team/settings');
   }
 
-  updateTeamSettings(data: { bggWatermarkId?: string | null }) {
+  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
