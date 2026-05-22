@@ -841,7 +841,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       disabled={fetchingBgg || !bggUrl.trim()}
                       style={{ whiteSpace: 'nowrap' }}
                     >
-                      {fetchingBgg ? 'Fetching...' : 'Import from BGG'}
+                      {fetchingBgg ? 'Fetching...' : 'Import'}
                     </button>
                   </div>
                   {bggError && (
