@@ -23,6 +23,8 @@ export interface Team {
 
 export interface TeamSettings {
   bggWatermarkId?: string;
+  bggCoverOffsetX?: number;
+  bggCoverOffsetY?: number;
 }
 
 export interface Watermark {
