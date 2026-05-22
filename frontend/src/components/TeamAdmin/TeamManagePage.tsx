@@ -323,13 +323,13 @@ export function TeamManagePage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
         {(['accounts', 'members', 'settings'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             style={{
-              padding: '8px 20px',
+              padding: '8px 12px',
               background: 'none',
               border: 'none',
               borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
@@ -340,6 +340,8 @@ export function TeamManagePage() {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
             {t === 'accounts' ? <Share2 size={15} /> : t === 'members' ? <Users size={15} /> : <Settings size={15} />}
@@ -731,7 +733,7 @@ export function TeamManagePage() {
               <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 10, marginTop: 0 }}>
                 Shift the scaled cover within the canvas. Useful when your overlay has a sidebar or header that occupies part of the frame — use a negative X offset to push the cover away from a left sidebar, for example.
               </p>
-              <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                   <label style={{ fontSize: 13 }}>Horizontal offset (px)</label>
                   <input
