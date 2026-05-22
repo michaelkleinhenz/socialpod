@@ -1,13 +1,18 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
-import { Key, Copy, RefreshCw, UsersRound } from 'lucide-react';
+import { Key, Copy, RefreshCw, UsersRound, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function ProfilePage() {
   const { user } = useAuth();
   const [apiToken, setApiToken] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const generateToken = async () => {
     setGenerating(true);
@@ -26,6 +31,33 @@ export function ProfilePage() {
     if (apiToken) {
       navigator.clipboard.writeText(apiToken);
       toast.success('Copied to clipboard');
+    }
+  };
+
+  const changePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('All fields are required');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await api.updatePassword(currentPassword, newPassword);
+      toast.success('Password updated successfully');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -66,6 +98,49 @@ export function ProfilePage() {
             </span>
           </div>
         )}
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+        <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Lock size={18} /> Change Password
+        </h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+          <div className="form-group">
+            <label>Current Password</label>
+            <input
+              className="input"
+              type="password"
+              placeholder="Enter current password"
+              value={currentPassword}
+              onChange={e => setCurrentPassword(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>New Password</label>
+            <input
+              className="input"
+              type="password"
+              placeholder="Min 8 characters"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Confirm New Password</label>
+            <input
+              className="input"
+              type="password"
+              placeholder="Repeat new password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <button className="btn btn-primary" onClick={changePassword} disabled={changingPassword}>
+          {changingPassword ? 'Updating...' : 'Update Password'}
+        </button>
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
 

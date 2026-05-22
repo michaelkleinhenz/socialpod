@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { User } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { Trash2, Shield, Plus, X, Star } from 'lucide-react';
+import { Trash2, Shield, Plus, X, Star, KeyRound, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Admin.css';
@@ -16,6 +16,7 @@ export function UsersPage() {
   const [password, setPassword] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [resetPassword, setResetPassword] = useState<{ userId: string; password: string } | null>(null);
 
   useEffect(() => {
     api.getUsers().then(setUsers).catch(() => toast.error('Failed to load users'));
@@ -65,6 +66,23 @@ export function UsersPage() {
       toast.success(updated.isTeamAdmin ? 'Team admin enabled' : 'Team admin disabled');
     } catch (err: any) {
       toast.error(err.message);
+    }
+  };
+
+  const handleResetPassword = async (user: User) => {
+    if (!confirm(`Reset password for ${user.name}? A new random password will be generated and shown once.`)) return;
+    try {
+      const res = await api.adminResetUserPassword(user.id);
+      setResetPassword({ userId: user.id, password: res.password });
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const copyResetPassword = () => {
+    if (resetPassword) {
+      navigator.clipboard.writeText(resetPassword.password);
+      toast.success('Copied to clipboard');
     }
   };
 
@@ -121,11 +139,22 @@ export function UsersPage() {
                     {format(new Date(user.createdAt), 'MMM d, yyyy')}
                   </td>
                   <td>
-                    {user.id !== currentUser?.id && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => deleteUser(user.id)}>
-                        <Trash2 size={14} color="var(--danger)" />
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {user.id !== currentUser?.id && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleResetPassword(user)}
+                          title="Reset password"
+                        >
+                          <KeyRound size={14} color="var(--text-muted)" />
+                        </button>
+                      )}
+                      {user.id !== currentUser?.id && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => deleteUser(user.id)}>
+                          <Trash2 size={14} color="var(--danger)" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -133,6 +162,45 @@ export function UsersPage() {
           </table>
         </div>
       </div>
+
+      {resetPassword && (
+        <div className="modal-overlay" onClick={() => setResetPassword(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2>Password Reset</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setResetPassword(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+              The password has been reset. Copy it now and send it to the user — it will not be shown again.
+            </p>
+
+            <div style={{
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '12px 16px',
+              marginBottom: 20,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              fontFamily: 'monospace',
+              fontSize: 15,
+            }}>
+              <span style={{ flex: 1 }}>{resetPassword.password}</span>
+              <button className="btn btn-ghost btn-sm" onClick={copyResetPassword} title="Copy">
+                <Copy size={14} />
+              </button>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={() => setResetPassword(null)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
