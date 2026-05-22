@@ -132,8 +132,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   <span>{entry.label}</span>
                   <ChevronDown size={14} className={`nav-group-chevron ${isOpen ? 'open' : ''}`} />
                 </button>
-                {isOpen && (
-                  <div className="nav-group-children">
+                <div className={`nav-group-children${isOpen ? '' : ' collapsed'}`}>
                     {entry.children.map(child => (
                       <Link
                         key={child.path}
@@ -145,7 +144,6 @@ export function Layout({ children }: { children: ReactNode }) {
                       </Link>
                     ))}
                   </div>
-                )}
               </div>
             );
           })}
