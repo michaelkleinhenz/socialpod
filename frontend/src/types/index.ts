@@ -186,6 +186,7 @@ export interface ConventionQueueItem {
   queueId: string;
   postId?: string;
   imageUrl: string;
+  bggUrl?: string;
   caption?: string;
   status: ConventionQueueItemStatus;
   aiError?: string;

@@ -411,6 +411,33 @@
   padding: 4px 8px;
 }
 
+.conv-bgg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conv-bgg-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.conv-bgg-input {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  transition: border-color 0.15s;
+}
+
+.conv-bgg-input::placeholder { color: var(--text-muted); }
+.conv-bgg-input:focus { outline: none; border-color: var(--accent); }
+.conv-bgg-input:disabled { opacity: 0.6; }
+
 .conv-caption-input {
   width: 100%;
   background: var(--bg-secondary);

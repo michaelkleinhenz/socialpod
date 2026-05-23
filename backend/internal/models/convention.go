@@ -40,6 +40,7 @@ type ConventionQueueItem struct {
 	QueueID    primitive.ObjectID  `bson:"queueId" json:"queueId"`
 	PostID     *primitive.ObjectID `bson:"postId,omitempty" json:"postId,omitempty"`
 	ImageURL   string              `bson:"imageUrl" json:"imageUrl"`
+	BGGURL     string              `bson:"bggUrl,omitempty" json:"bggUrl,omitempty"`
 	Caption    string              `bson:"caption,omitempty" json:"caption,omitempty"`
 	Status     string              `bson:"status" json:"status"`
 	AIError    string              `bson:"aiError,omitempty" json:"aiError,omitempty"`

@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Pencil,
   Filter,
+  Link,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
@@ -77,6 +78,7 @@ function QueueItemCard({
   onEditImage: () => void;
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
+  const [bggUrl, setBggUrl] = useState(item.bggUrl ?? '');
   const [showOverrides, setShowOverrides] = useState(false);
   const [itemPlatforms, setItemPlatforms] = useState<Platform[]>(item.platforms ?? []);
   const [itemAccountIds, setItemAccountIds] = useState<Record<string, string>>(item.accountIds ?? {});
@@ -84,11 +86,29 @@ function QueueItemCard({
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const bggSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const suffixSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     setCaption(item.caption ?? '');
   }, [item.caption]);
+
+  useEffect(() => {
+    setBggUrl(item.bggUrl ?? '');
+  }, [item.bggUrl]);
+
+  const debouncedSaveBggUrl = (value: string) => {
+    setBggUrl(value);
+    clearTimeout(bggSaveTimer.current);
+    bggSaveTimer.current = setTimeout(async () => {
+      try {
+        const updated = await api.updateConventionItem(queueId, item.id, { bggUrl: value });
+        onUpdate(updated);
+      } catch {
+        // silently fail
+      }
+    }, 800);
+  };
 
   const debouncedSaveCaption = (value: string) => {
     setCaption(value);
@@ -197,6 +217,18 @@ function QueueItemCard({
             <AlertTriangle size={12} /> AI error: {item.aiError}
           </div>
         )}
+
+        <div className="conv-bgg-row">
+          <Link size={12} className="conv-bgg-icon" />
+          <input
+            type="url"
+            className="conv-bgg-input"
+            value={bggUrl}
+            onChange={e => debouncedSaveBggUrl(e.target.value)}
+            placeholder="BGG URL (optional, used by AI caption)"
+            disabled={isLocked}
+          />
+        </div>
 
         <textarea
           className="conv-caption-input"

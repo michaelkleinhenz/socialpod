@@ -319,6 +319,7 @@ type UpdateItemInput struct {
 	Caption    *string           `json:"caption,omitempty"`
 	Status     *string           `json:"status,omitempty"`
 	SortOrder  *int              `json:"sortOrder,omitempty"`
+	BGGURL     *string           `json:"bggUrl,omitempty"`
 	Platforms  []models.Platform `json:"platforms,omitempty"`
 	AccountIDs map[string]string `json:"accountIds"`
 	SuffixIDs  map[string]string `json:"suffixIds"`
@@ -354,6 +355,9 @@ func (h *ConventionHandler) UpdateItem(c *gin.Context) {
 	}
 	if input.SortOrder != nil {
 		update["sortOrder"] = *input.SortOrder
+	}
+	if input.BGGURL != nil {
+		update["bggUrl"] = *input.BGGURL
 	}
 	if input.Platforms != nil {
 		update["platforms"] = input.Platforms
@@ -474,7 +478,8 @@ func (h *ConventionHandler) AnalyzeItem(c *gin.Context) {
 		return
 	}
 
-	caption, aiErr := h.generateCaption(ctx, item.ImageURL, queue)
+	bggInfo := h.fetchBGGGameInfo(ctx, item.BGGURL)
+	caption, aiErr := h.generateCaption(ctx, item.ImageURL, queue, bggInfo)
 	now := time.Now()
 	if aiErr != nil {
 		h.DB.ConventionQueueItems().UpdateOne(ctx,
@@ -539,7 +544,8 @@ func (h *ConventionHandler) AnalyzeAll(c *gin.Context) {
 				defer func() { <-sem }()
 				bgCtx, bgCancel := context.WithTimeout(context.Background(), 90*time.Second)
 				defer bgCancel()
-				caption, aiErr := h.generateCaption(bgCtx, it.ImageURL, queue)
+				bggInfo := h.fetchBGGGameInfo(bgCtx, it.BGGURL)
+				caption, aiErr := h.generateCaption(bgCtx, it.ImageURL, queue, bggInfo)
 				now := time.Now()
 				if aiErr != nil {
 					h.DB.ConventionQueueItems().UpdateOne(bgCtx,
@@ -786,7 +792,56 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 	})
 }
 
-func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string, queue models.ConventionQueue) (string, error) {
+type bggGameInfo struct {
+	Title       string
+	Designers   []string
+	Description string
+}
+
+func (h *ConventionHandler) fetchBGGGameInfo(ctx context.Context, bggURL string) *bggGameInfo {
+	if bggURL == "" {
+		return nil
+	}
+	m := bggGameIDRe.FindStringSubmatch(bggURL)
+	if m == nil {
+		return nil
+	}
+	gameID := m[1]
+
+	var settings models.AppSettings
+	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	item, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+	if err != nil {
+		return nil
+	}
+
+	title := ""
+	for _, n := range item.Names {
+		if n.Type == "primary" {
+			title = n.Value
+			break
+		}
+	}
+	if title == "" && len(item.Names) > 0 {
+		title = item.Names[0].Value
+	}
+
+	var designers []string
+	for _, link := range item.Links {
+		if link.Type == "boardgamedesigner" {
+			designers = append(designers, link.Value)
+		}
+	}
+
+	return &bggGameInfo{
+		Title:       title,
+		Designers:   designers,
+		Description: cleanBGGText(item.Desc),
+	}
+}
+
+func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string, queue models.ConventionQueue, bggInfo *bggGameInfo) (string, error) {
 	var settings models.AppSettings
 	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil || settings.OpenRouterAPIKey == "" {
 		return "", fmt.Errorf("OpenRouter is not configured")
@@ -806,6 +861,19 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 	contextLines = append(contextLines, fmt.Sprintf("Convention: %s", queue.Name))
 	if queue.ConventionURL != "" {
 		contextLines = append(contextLines, fmt.Sprintf("Convention URL: %s", queue.ConventionURL))
+	}
+	if bggInfo != nil {
+		contextLines = append(contextLines, fmt.Sprintf("Board game shown: %s", bggInfo.Title))
+		if len(bggInfo.Designers) > 0 {
+			contextLines = append(contextLines, fmt.Sprintf("Designers: %s", strings.Join(bggInfo.Designers, ", ")))
+		}
+		if bggInfo.Description != "" {
+			desc := bggInfo.Description
+			if len(desc) > 300 {
+				desc = desc[:300] + "…"
+			}
+			contextLines = append(contextLines, fmt.Sprintf("Game description: %s", desc))
+		}
 	}
 	if len(queue.Hashtags) > 0 {
 		contextLines = append(contextLines, fmt.Sprintf("Hashtags to include: %s", strings.Join(queue.Hashtags, " ")))
