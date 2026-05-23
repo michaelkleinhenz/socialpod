@@ -100,6 +100,22 @@ func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string, teamI
 	return suffix.Content
 }
 
+// resolveAccountID returns the first active account ID for the given platform and
+// team. Used as a fallback when a post was saved without an explicit accountId
+// (e.g. posts created before accountIds tracking, or accounts added before team
+// scoping was in place).
+func (s *Scheduler) resolveAccountID(ctx context.Context, platform models.Platform, teamID *primitive.ObjectID) string {
+	filter := bson.M{"platform": platform, "isActive": true}
+	if teamID != nil {
+		filter["teamId"] = teamID
+	}
+	var account models.SocialAccount
+	if err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account); err != nil {
+		return ""
+	}
+	return account.ID.Hex()
+}
+
 // accountBelongsToTeam checks that an account ID is owned by the given team.
 // Returns true when accountID is empty (no specific account requested).
 func (s *Scheduler) accountBelongsToTeam(ctx context.Context, accountID string, teamID *primitive.ObjectID) bool {
@@ -214,6 +230,9 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			accountID := ""
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["instagram"]
+			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformInstagram, post.TeamID)
 			}
 			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
 				log.Printf("Instagram account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
