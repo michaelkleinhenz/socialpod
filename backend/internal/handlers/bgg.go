@@ -125,7 +125,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	var settings models.AppSettings
 	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
 
-	item, err := h.fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+	item, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -202,7 +202,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *BGGHandler) fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, error) {
+func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, error) {
 	apiURL := fmt.Sprintf("https://boardgamegeek.com/xmlapi2/thing?id=%s&stats=1", gameID)
 
 	for attempt := 0; attempt < 5; attempt++ {
