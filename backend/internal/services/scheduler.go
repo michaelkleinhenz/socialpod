@@ -100,17 +100,19 @@ func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string, teamI
 	return suffix.Content
 }
 
-// resolveAccountID returns the first active account ID for the given platform and
-// team. Used as a fallback when a post was saved without an explicit accountId
-// (e.g. posts created before accountIds tracking, or accounts added before team
-// scoping was in place).
+// resolveAccountID returns the first active account ID for the given platform
+// that belongs to the specified team. Only fires when teamID is non-nil so we
+// never fall back to an arbitrary account across team boundaries.
 func (s *Scheduler) resolveAccountID(ctx context.Context, platform models.Platform, teamID *primitive.ObjectID) string {
-	filter := bson.M{"platform": platform, "isActive": true}
-	if teamID != nil {
-		filter["teamId"] = teamID
+	if teamID == nil {
+		return ""
 	}
 	var account models.SocialAccount
-	if err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account); err != nil {
+	if err := s.DB.SocialAccounts().FindOne(ctx, bson.M{
+		"platform": platform,
+		"isActive": true,
+		"teamId":   teamID,
+	}).Decode(&account); err != nil {
 		return ""
 	}
 	return account.ID.Hex()
