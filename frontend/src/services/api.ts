@@ -380,20 +380,6 @@ class ApiClient {
     return this.request<any>(`/mentions/${id}`, { method: 'DELETE' });
   }
 
-  // Account feed (Instagram or Bluesky)
-  getFeed(accountId?: string, platform?: string) {
-    const query = new URLSearchParams();
-    if (accountId) query.set('accountId', accountId);
-    if (platform) query.set('platform', platform);
-    const qs = query.toString();
-    return this.request<any[]>(`/inbox/feed${qs ? '?' + qs : ''}`);
-  }
-
-  // Backwards compat alias
-  getInstagramFeed(accountId?: string) {
-    return this.getFeed(accountId, 'instagram');
-  }
-
   // Watermarks
   getWatermarks() {
     return this.request<any[]>('/watermarks');

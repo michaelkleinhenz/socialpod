@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
-  ScrollText, UsersRound, Signature, Image, LayoutGrid,
+  ScrollText, UsersRound, Signature, Image,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
 } from 'lucide-react';
 import './Layout.css';
@@ -28,7 +28,6 @@ export function Layout({ children }: { children: ReactNode }) {
       label: 'Content',
       children: [
         { kind: 'leaf' as const, path: '/', icon: Calendar, label: 'Calendar' },
-        { kind: 'leaf' as const, path: '/feed', icon: LayoutGrid, label: 'Feed' },
         { kind: 'leaf' as const, path: '/log', icon: ScrollText, label: 'Post Log' },
         { kind: 'leaf' as const, path: '/convention', icon: Tent, label: 'Convention' },
       ],

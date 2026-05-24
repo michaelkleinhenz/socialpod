@@ -72,7 +72,6 @@ func main() {
 	threadsService := &services.ThreadsService{DB: db}
 	linkedInService := &services.LinkedInService{DB: db, UploadDir: cfg.UploadDir}
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, UploadDir: cfg.UploadDir}
-	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 
@@ -123,9 +122,6 @@ func main() {
 		auth.GET("/bgg/fetch", bggHandler.FetchGame)
 		auth.POST("/dashboard/ai-insights", adminHandler.DashboardInsights)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
-
-		// Feed
-		auth.GET("/inbox/feed", inboxHandler.GetFeed)
 
 		// Watermarks (team/user scoped)
 		auth.GET("/watermarks", adminHandler.ListWatermarks)

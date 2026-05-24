@@ -6,8 +6,7 @@ import type { Post } from '../../types';
 import {
   Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock,
   CheckCircle, AlertCircle, Image, Sparkles, ArrowUp, ArrowDown, Minus,
-  RefreshCw, AlertTriangle, Lightbulb, MessageCircle, Mail, Heart, BarChart2,
-  Flame, TrendingDown,
+  RefreshCw, AlertTriangle, Lightbulb, BarChart2,
 } from 'lucide-react';
 import './Admin.css';
 
@@ -28,19 +27,6 @@ interface DashStats {
   thisWeekPosts: number;
   lastWeekPosts: number;
   successRate: number;
-  inboxStats?: { comments: number; dms: number; unread: number; liked: number };
-}
-
-interface FeedItem {
-  id: string;
-  caption: string;
-  mediaType: string;
-  mediaUrl: string;
-  thumbnailUrl: string;
-  permalink: string;
-  timestamp: string;
-  likeCount: number;
-  commentsCount: number;
 }
 
 // ─── Mini chart primitives ─────────────────────────────────────────────────────
@@ -95,9 +81,6 @@ export function AdminPage() {
     accounts: 0, users: 0, teams: 0,
   });
   const [dashStats, setDashStats] = useState<DashStats | null>(null);
-  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
-  const [feedLoading, setFeedLoading] = useState(false);
-  const [activeAccounts, setActiveAccounts] = useState<any[]>([]);
 
   const [insights, setInsights] = useState<InsightsData | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
@@ -118,7 +101,6 @@ export function AdminPage() {
         accounts: active.length,
       }));
       setDashStats(ds);
-      setActiveAccounts(active);
     });
 
     if (user?.isAdmin) {
@@ -136,20 +118,6 @@ export function AdminPage() {
       });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Load feed engagement data for all active accounts
-  useEffect(() => {
-    if (activeAccounts.length === 0) return;
-    setFeedLoading(true);
-    Promise.all(
-      activeAccounts.map((a: any) => api.getFeed(a.id, a.platform).catch(() => []))
-    )
-      .then(results => {
-        const all: FeedItem[] = (results as FeedItem[][]).flat();
-        setFeedItems(all);
-      })
-      .finally(() => setFeedLoading(false));
-  }, [activeAccounts]);
 
   const loadInsights = () => {
     setInsightsLoading(true);
@@ -171,16 +139,6 @@ export function AdminPage() {
     medium: { color: 'var(--warning)', label: 'Medium' },
     low: { color: 'var(--success)', label: 'Low' },
   };
-
-  // ─── Derived engagement metrics ──────────────────────────────────────────────
-  const sortedByLikes = [...feedItems].sort((a, b) => b.likeCount - a.likeCount);
-  const mostPopular = sortedByLikes[0] ?? null;
-  const leastPopular = sortedByLikes.length > 1 ? sortedByLikes[sortedByLikes.length - 1] : null;
-  const totalFeedLikes = feedItems.reduce((s, f) => s + f.likeCount, 0);
-  const totalFeedComments = feedItems.reduce((s, f) => s + f.commentsCount, 0);
-  const avgEngagement = feedItems.length > 0
-    ? Math.round((totalFeedLikes + totalFeedComments) / feedItems.length)
-    : 0;
 
   // ─── Derived chart helpers ───────────────────────────────────────────────────
   const bestHour = dashStats
@@ -323,32 +281,6 @@ export function AdminPage() {
               )}
             </div>
 
-            {/* Inbox overview */}
-            <div className="analytics-card">
-              <div className="analytics-card-label" style={{ marginBottom: 16 }}>Inbox overview</div>
-              <div className="inbox-overview-rows">
-                <div className="inbox-overview-row">
-                  <MessageCircle size={15} style={{ color: 'var(--accent)' }} />
-                  <span>Comments</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats?.comments ?? 0}</span>
-                </div>
-                <div className="inbox-overview-row">
-                  <Mail size={15} style={{ color: '#f59e0b' }} />
-                  <span>DMs</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats?.dms ?? 0}</span>
-                </div>
-                <div className="inbox-overview-row">
-                  <AlertCircle size={15} style={{ color: 'var(--danger)' }} />
-                  <span>Unread</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats?.unread ?? 0}</span>
-                </div>
-                <div className="inbox-overview-row">
-                  <Heart size={15} style={{ color: '#e84040' }} />
-                  <span>Liked by us</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats?.liked ?? 0}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Row 2: platform, post types, success rate */}
@@ -471,120 +403,6 @@ export function AdminPage() {
             </div>
           </div>
 
-          {/* Row 4: engagement from feed */}
-          {feedLoading ? (
-            <div className="analytics-row">
-              <div className="analytics-card" style={{ alignItems: 'center', justifyContent: 'center', minHeight: 80 }}>
-                <div className="spinner" style={{ width: 20, height: 20 }} />
-                <span style={{ fontSize: 13, color: 'var(--text-muted)', marginLeft: 10 }}>
-                  Loading engagement data…
-                </span>
-              </div>
-            </div>
-          ) : feedItems.length > 0 ? (
-            <div className="analytics-row">
-              {/* Engagement summary */}
-              <div className="analytics-card">
-                <div className="analytics-card-label" style={{ marginBottom: 14 }}>Live engagement</div>
-                <div className="inbox-overview-rows">
-                  <div className="inbox-overview-row">
-                    <Heart size={15} style={{ color: '#e84040' }} />
-                    <span>Total likes</span>
-                    <span className="inbox-overview-val">{totalFeedLikes.toLocaleString()}</span>
-                  </div>
-                  <div className="inbox-overview-row">
-                    <MessageCircle size={15} style={{ color: 'var(--accent)' }} />
-                    <span>Total comments</span>
-                    <span className="inbox-overview-val">{totalFeedComments.toLocaleString()}</span>
-                  </div>
-                  <div className="inbox-overview-row">
-                    <TrendingUp size={15} style={{ color: 'var(--success)' }} />
-                    <span>Avg per post</span>
-                    <span className="inbox-overview-val">{avgEngagement}</span>
-                  </div>
-                  <div className="inbox-overview-row">
-                    <BarChart2 size={15} style={{ color: '#f59e0b' }} />
-                    <span>Posts tracked</span>
-                    <span className="inbox-overview-val">{feedItems.length}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Most popular */}
-              {mostPopular && (
-                <div className="analytics-card popular-post-card">
-                  <div className="popular-post-badge most">
-                    <Flame size={13} /> Most popular
-                  </div>
-                  <div className="popular-post-caption">
-                    {mostPopular.caption
-                      ? mostPopular.caption.slice(0, 100) + (mostPopular.caption.length > 100 ? '…' : '')
-                      : <em style={{ color: 'var(--text-muted)' }}>No caption</em>}
-                  </div>
-                  <div className="popular-post-stats">
-                    <span><Heart size={12} /> {mostPopular.likeCount.toLocaleString()} likes</span>
-                    <span><MessageCircle size={12} /> {mostPopular.commentsCount.toLocaleString()} comments</span>
-                  </div>
-                  {mostPopular.permalink && (
-                    <a
-                      href={mostPopular.permalink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="popular-post-link"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      View post →
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {/* Least popular */}
-              {leastPopular && leastPopular.id !== mostPopular?.id && (
-                <div className="analytics-card popular-post-card">
-                  <div className="popular-post-badge least">
-                    <TrendingDown size={13} /> Least popular
-                  </div>
-                  <div className="popular-post-caption">
-                    {leastPopular.caption
-                      ? leastPopular.caption.slice(0, 100) + (leastPopular.caption.length > 100 ? '…' : '')
-                      : <em style={{ color: 'var(--text-muted)' }}>No caption</em>}
-                  </div>
-                  <div className="popular-post-stats">
-                    <span><Heart size={12} /> {leastPopular.likeCount.toLocaleString()} likes</span>
-                    <span><MessageCircle size={12} /> {leastPopular.commentsCount.toLocaleString()} comments</span>
-                  </div>
-                  {leastPopular.permalink && (
-                    <a
-                      href={leastPopular.permalink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="popular-post-link"
-                    >
-                      View post →
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {/* Likes over time (last 10 feed posts) */}
-              <div className="analytics-card">
-                <div className="analytics-card-header">
-                  <span className="analytics-card-label">Likes — recent posts</span>
-                  <span className="analytics-card-meta">{feedItems.length} posts</span>
-                </div>
-                <BarChart
-                  data={feedItems.slice(0, 20).map(f => ({ value: f.likeCount }))}
-                  color="#e84040"
-                  height={64}
-                />
-                <div className="chart-axis-labels">
-                  <span>oldest</span>
-                  <span>newest</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
       )}
 
