@@ -389,11 +389,6 @@ class ApiClient {
     return this.request<any[]>(`/inbox/feed${qs ? '?' + qs : ''}`);
   }
 
-  // Backwards compat alias
-  getInstagramFeed(accountId?: string) {
-    return this.getFeed(accountId, 'instagram');
-  }
-
   // Watermarks
   getWatermarks() {
     return this.request<any[]>('/watermarks');
