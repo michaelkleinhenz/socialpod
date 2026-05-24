@@ -28,7 +28,7 @@ interface DashStats {
   thisWeekPosts: number;
   lastWeekPosts: number;
   successRate: number;
-  inboxStats: { comments: number; dms: number; unread: number; liked: number };
+  inboxStats?: { comments: number; dms: number; unread: number; liked: number };
 }
 
 interface FeedItem {
@@ -330,22 +330,22 @@ export function AdminPage() {
                 <div className="inbox-overview-row">
                   <MessageCircle size={15} style={{ color: 'var(--accent)' }} />
                   <span>Comments</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats.comments}</span>
+                  <span className="inbox-overview-val">{dashStats.inboxStats?.comments ?? 0}</span>
                 </div>
                 <div className="inbox-overview-row">
                   <Mail size={15} style={{ color: '#f59e0b' }} />
                   <span>DMs</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats.dms}</span>
+                  <span className="inbox-overview-val">{dashStats.inboxStats?.dms ?? 0}</span>
                 </div>
                 <div className="inbox-overview-row">
                   <AlertCircle size={15} style={{ color: 'var(--danger)' }} />
                   <span>Unread</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats.unread}</span>
+                  <span className="inbox-overview-val">{dashStats.inboxStats?.unread ?? 0}</span>
                 </div>
                 <div className="inbox-overview-row">
                   <Heart size={15} style={{ color: '#e84040' }} />
                   <span>Liked by us</span>
-                  <span className="inbox-overview-val">{dashStats.inboxStats.liked}</span>
+                  <span className="inbox-overview-val">{dashStats.inboxStats?.liked ?? 0}</span>
                 </div>
               </div>
             </div>

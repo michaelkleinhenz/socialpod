@@ -2014,6 +2014,12 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 		"thisWeekPosts":       thisWeekPosts,
 		"lastWeekPosts":       lastWeekPosts,
 		"successRate":         successRate,
+		"inboxStats": gin.H{
+			"comments": 0,
+			"dms":      0,
+			"unread":   0,
+			"liked":    0,
+		},
 	})
 }
 
