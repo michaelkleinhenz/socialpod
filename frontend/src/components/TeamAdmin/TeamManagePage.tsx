@@ -24,6 +24,7 @@ export function TeamManagePage() {
   const [handle, setHandle] = useState('');
   const [appPassword, setAppPassword] = useState('');
   const [pdsHost, setPdsHost] = useState('');
+  const [pdsHostConfirmed, setPdsHostConfirmed] = useState(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const [showTwitterForm, setShowTwitterForm] = useState(false);
   const [twConsumerKey, setTwConsumerKey] = useState('');
@@ -118,12 +119,13 @@ export function TeamManagePage() {
 
   const addBluesky = async () => {
     if (!handle || !appPassword) { toast.error('Handle and app password required'); return; }
+    if (pdsHost && !pdsHostConfirmed) { toast.error('Please confirm the custom PDS host before adding the account'); return; }
     setAddingAccount(true);
     try {
       await api.addTeamBlueskyAccount({ handle, appPassword, pdsHost: pdsHost || undefined });
       toast.success('Bluesky account added');
       setShowBlueskyForm(false);
-      setHandle(''); setAppPassword(''); setPdsHost('');
+      setHandle(''); setAppPassword(''); setPdsHost(''); setPdsHostConfirmed(false);
       loadAccounts();
     } catch (err: any) {
       toast.error(err.message);
@@ -580,7 +582,7 @@ export function TeamManagePage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div className="form-group">
                     <label>Handle</label>
-                    <input className="input" placeholder="user.bsky.social" value={handle} onChange={e => setHandle(e.target.value)} />
+                    <input className="input" placeholder="user.bsky.social" value={handle} onChange={e => setHandle(e.target.value.replace(/^@+/, ''))} />
                   </div>
                   <div className="form-group">
                     <label>App Password</label>
@@ -591,7 +593,15 @@ export function TeamManagePage() {
                   </div>
                   <div className="form-group">
                     <label>PDS Host (optional)</label>
-                    <input className="input" placeholder="https://bsky.social" value={pdsHost} onChange={e => setPdsHost(e.target.value)} />
+                    <input className="input" placeholder="https://bsky.social" value={pdsHost} onChange={e => { setPdsHost(e.target.value); setPdsHostConfirmed(false); }} />
+                    {pdsHost && (
+                      <div style={{ marginTop: 8, background: 'var(--warning-bg, #fff8e1)', border: '1px solid var(--warning-border, #f9a825)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--warning-text, #7a5c00)' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontWeight: 'normal' }}>
+                          <input type="checkbox" checked={pdsHostConfirmed} onChange={e => setPdsHostConfirmed(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+                          <span>Normal Bluesky accounts (bsky.social) do not need a custom PDS host. Only check this if you are connecting a self-hosted PDS account.</span>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="modal-actions">
