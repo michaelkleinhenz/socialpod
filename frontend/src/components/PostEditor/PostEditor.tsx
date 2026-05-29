@@ -722,7 +722,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
         const blob = new Blob([arr], { type: 'image/jpeg' });
         const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
-        setImages([{ kind: 'file', file }]);
+        setImages(prev => [{ kind: 'file', file }, ...prev]);
       }
       toast.success('BGG data imported');
     } catch (e: any) {
