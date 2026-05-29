@@ -272,6 +272,14 @@ class ApiClient {
     return this.request<{ url: string }>('/admin/instagram/auth-url');
   }
 
+  getMastodonAuthUrl(instance: string) {
+    return this.request<{ url: string; redirectUri: string }>(`/admin/mastodon/auth-url?instance=${encodeURIComponent(instance)}`);
+  }
+
+  getTeamMastodonAuthUrl(instance: string) {
+    return this.request<{ url: string; redirectUri: string }>(`/team/mastodon/auth-url?instance=${encodeURIComponent(instance)}`);
+  }
+
   getUsers() {
     return this.request<any[]>('/admin/users');
   }
