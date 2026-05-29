@@ -38,6 +38,19 @@ type SocialAccount struct {
 	UpdatedAt    time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
+// MastodonOAuthState holds temporary state for the Mastodon OAuth flow.
+type MastodonOAuthState struct {
+	ID           primitive.ObjectID  `bson:"_id,omitempty"`
+	State        string              `bson:"state"`
+	Instance     string              `bson:"instance"`
+	ClientID     string              `bson:"clientId"`
+	ClientSecret string              `bson:"clientSecret"`
+	RedirectURI  string              `bson:"redirectUri"`
+	TeamID       *primitive.ObjectID `bson:"teamId,omitempty"`
+	IsTeamAdmin  bool                `bson:"isTeamAdmin"`
+	CreatedAt    time.Time           `bson:"createdAt"`
+}
+
 type AppSettings struct {
 	ID                    primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	AppURL                string             `bson:"appUrl" json:"appUrl"`

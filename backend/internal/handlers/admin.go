@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -1738,6 +1739,201 @@ func (h *AdminHandler) TeamInstagramAuthURL(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"url": url})
+}
+
+// mastodonAuthURL registers a Mastodon OAuth app on the given instance (if not cached),
+// persists the OAuth state, and returns the authorization URL.
+func (h *AdminHandler) mastodonAuthURL(c *gin.Context, teamID *primitive.ObjectID, isTeamAdmin bool) {
+	instance := strings.TrimSpace(c.Query("instance"))
+	if instance == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "instance parameter required"})
+		return
+	}
+	if !strings.HasPrefix(instance, "http://") && !strings.HasPrefix(instance, "https://") {
+		instance = "https://" + instance
+	}
+	instance = strings.TrimRight(instance, "/")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "settings not found"})
+		return
+	}
+	if settings.AppURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "APP_URL not configured in settings"})
+		return
+	}
+
+	redirectURI := settings.AppURL + "/api/auth/mastodon/callback"
+
+	// Register the application with the Mastodon instance.
+	regBody, _ := json.Marshal(map[string]string{
+		"client_name":   "SocialPod",
+		"redirect_uris": redirectURI,
+		"scopes":        "read write",
+		"website":       settings.AppURL,
+	})
+	resp, err := http.Post(instance+"/api/v1/apps", "application/json", bytes.NewReader(regBody))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach Mastodon instance: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("app registration failed (%d): %s", resp.StatusCode, string(body))})
+		return
+	}
+
+	var reg struct {
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&reg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse app registration response"})
+		return
+	}
+
+	// Generate a random state token.
+	stateBytes := make([]byte, 16)
+	rand.Read(stateBytes)
+	state := hex.EncodeToString(stateBytes)
+
+	oauthState := models.MastodonOAuthState{
+		State:        state,
+		Instance:     instance,
+		ClientID:     reg.ClientID,
+		ClientSecret: reg.ClientSecret,
+		RedirectURI:  redirectURI,
+		TeamID:       teamID,
+		IsTeamAdmin:  isTeamAdmin,
+		CreatedAt:    time.Now(),
+	}
+	if _, err := h.DB.MastodonOAuthStates().InsertOne(ctx, oauthState); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save OAuth state"})
+		return
+	}
+
+	authURL := instance + "/oauth/authorize" +
+		"?client_id=" + url.QueryEscape(reg.ClientID) +
+		"&redirect_uri=" + url.QueryEscape(redirectURI) +
+		"&scope=read+write" +
+		"&response_type=code" +
+		"&state=" + url.QueryEscape(state)
+
+	c.JSON(http.StatusOK, gin.H{"url": authURL, "redirectUri": redirectURI})
+}
+
+func (h *AdminHandler) MastodonAuthURL(c *gin.Context) {
+	h.mastodonAuthURL(c, nil, false)
+}
+
+func (h *AdminHandler) TeamMastodonAuthURL(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+	h.mastodonAuthURL(c, &tid, true)
+}
+
+func (h *AdminHandler) MastodonCallback(c *gin.Context) {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	if code == "" {
+		errMsg := c.Query("error_description")
+		if errMsg == "" {
+			errMsg = c.Query("error")
+		}
+		if errMsg == "" {
+			errMsg = "no_code"
+		}
+		c.Redirect(http.StatusFound, "/admin/accounts?error="+url.QueryEscape(errMsg))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var oauthState models.MastodonOAuthState
+	if err := h.DB.MastodonOAuthStates().FindOne(ctx, bson.M{"state": state}).Decode(&oauthState); err != nil {
+		c.Redirect(http.StatusFound, "/admin/accounts?error=invalid_state")
+		return
+	}
+	// Clean up the used state.
+	h.DB.MastodonOAuthStates().DeleteOne(ctx, bson.M{"state": state})
+
+	successRedirect := "/admin/accounts?mastodon=connected"
+	errorRedirect := "/admin/accounts?error="
+	if oauthState.IsTeamAdmin {
+		successRedirect = "/team/accounts?mastodon=connected"
+		errorRedirect = "/team/accounts?error="
+	}
+
+	// Exchange code for access token.
+	tokenBody, _ := json.Marshal(map[string]string{
+		"client_id":     oauthState.ClientID,
+		"client_secret": oauthState.ClientSecret,
+		"redirect_uri":  oauthState.RedirectURI,
+		"grant_type":    "authorization_code",
+		"code":          code,
+		"scope":         "read write",
+	})
+	resp, err := http.Post(oauthState.Instance+"/oauth/token", "application/json", bytes.NewReader(tokenBody))
+	if err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+"token_exchange_failed")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Mastodon token exchange failed (%d): %s", resp.StatusCode, string(body))
+		c.Redirect(http.StatusFound, errorRedirect+"token_exchange_failed")
+		return
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil || tokenResp.AccessToken == "" {
+		c.Redirect(http.StatusFound, errorRedirect+"invalid_token_response")
+		return
+	}
+
+	account := models.SocialAccount{
+		Platform:         models.PlatformMastodon,
+		AccountName:      oauthState.Instance,
+		DisplayName:      oauthState.Instance,
+		AccessToken:      tokenResp.AccessToken,
+		MastodonInstance: oauthState.Instance,
+		TeamID:           oauthState.TeamID,
+		IsActive:         true,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+
+	if h.Mastodon != nil {
+		if dn, av, err := h.Mastodon.FetchProfile(&account); err == nil {
+			if dn != "" {
+				account.DisplayName = dn
+				account.AccountName = dn
+			}
+			account.AvatarURL = av
+		}
+	}
+
+	if _, err := h.DB.SocialAccounts().InsertOne(ctx, account); err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+"save_failed")
+		return
+	}
+
+	c.Redirect(http.StatusFound, successRedirect)
 }
 
 func (h *AdminHandler) TeamListMembers(c *gin.Context) {

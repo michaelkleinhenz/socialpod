@@ -40,6 +40,18 @@ export function AccountsPage() {
   useEffect(() => {
     loadAccounts();
     api.getTeams().then(setTeams).catch(() => {});
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mastodon') === 'connected') {
+      toast.success('Mastodon account connected');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('instagram') === 'connected') {
+      toast.success('Instagram account connected');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('error')) {
+      toast.error('Connection failed: ' + params.get('error'));
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const loadAccounts = async () => {
@@ -159,6 +171,18 @@ export function AccountsPage() {
       toast.error(err.message);
     } finally {
       setAddingLinkedIn(false);
+    }
+  };
+
+  const connectMastodonOAuth = async () => {
+    if (!mastodonInstance) { toast.error('Please enter your instance URL first'); return; }
+    setAddingMastodon(true);
+    try {
+      const { url } = await api.getMastodonAuthUrl(mastodonInstance);
+      window.location.href = url;
+    } catch (err: any) {
+      toast.error(err.message);
+      setAddingMastodon(false);
     }
   };
 
@@ -325,31 +349,43 @@ export function AccountsPage() {
                 <label>Instance URL</label>
                 <input className="input" placeholder="mastodon.social" value={mastodonInstance} onChange={e => setMastodonInstance(e.target.value)} />
                 <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Your Mastodon server, e.g. mastodon.social
+                  Your Mastodon server, e.g. mastodon.social or fosstodon.org
                 </span>
               </div>
-              <div className="form-group">
-                <label>Access Token</label>
-                <input className="input" type="password" placeholder="Access token" value={mastodonAccessToken} onChange={e => setMastodonAccessToken(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Generate at your instance under Settings &gt; Development &gt; New application
-                </span>
-              </div>
-              <div className="form-group">
-                <label>Assign to Team</label>
-                <select className="input" value={mastodonTeamId} onChange={e => setMastodonTeamId(e.target.value)}>
-                  <option value="">— Unassigned —</option>
-                  {teams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
+              {teams.length > 0 && (
+                <div className="form-group">
+                  <label>Assign to Team</label>
+                  <select className="input" value={mastodonTeamId} onChange={e => setMastodonTeamId(e.target.value)}>
+                    <option value="">— Unassigned —</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <button className="btn btn-primary" onClick={connectMastodonOAuth} disabled={addingMastodon} style={{ borderColor: 'var(--mastodon)', backgroundColor: 'var(--mastodon)', color: '#fff' }}>
+                {addingMastodon ? 'Redirecting…' : 'Connect via OAuth'}
+              </button>
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ fontSize: 13, cursor: 'pointer', color: 'var(--text-muted)' }}>
+                  Or enter an access token manually
+                </summary>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+                  <div className="form-group">
+                    <label>Access Token</label>
+                    <input className="input" type="password" placeholder="Access token" value={mastodonAccessToken} onChange={e => setMastodonAccessToken(e.target.value)} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Generate at your instance under Settings &gt; Development &gt; New application. Required scopes: <code>read write</code>.
+                    </span>
+                  </div>
+                  <button className="btn btn-secondary" onClick={addMastodon} disabled={addingMastodon}>
+                    {addingMastodon ? 'Adding…' : 'Add with Token'}
+                  </button>
+                </div>
+              </details>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowMastodonForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addMastodon} disabled={addingMastodon}>
-                {addingMastodon ? 'Adding...' : 'Add Account'}
-              </button>
             </div>
           </div>
         </div>
