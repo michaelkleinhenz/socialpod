@@ -760,6 +760,8 @@ func buildPostContent(title string, designers, artists, publishers []string, ite
 
 	if aiSummary != "" {
 		sb.WriteString(aiSummary)
+		sb.WriteString(" ")
+		sb.WriteString(l.DescriptionAttribution)
 		sb.WriteString("\n\n")
 	}
 
@@ -809,13 +811,6 @@ func buildPostContent(title string, designers, artists, publishers []string, ite
 	if len(artists) > 0 {
 		n := min(3, len(artists))
 		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Artist, strings.Join(artists[:n], ", ")))
-	}
-
-	if desc := cleanBGGText(item.Desc); desc != "" {
-		sb.WriteString("\n")
-		sb.WriteString(desc)
-		sb.WriteString(" ")
-		sb.WriteString(l.DescriptionAttribution)
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
