@@ -620,8 +620,8 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
 		}
-		successRedirect = "/team/accounts?instagram=connected"
-		errorRedirect = "/team/accounts?error="
+		successRedirect = "/team/manage?instagram=connected"
+		errorRedirect = "/team/manage?error="
 	} else {
 		successRedirect = "/admin/accounts?instagram=connected"
 		errorRedirect = "/admin/accounts?error="
@@ -723,8 +723,8 @@ func (h *AdminHandler) LinkedInCallback(c *gin.Context) {
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
 		}
-		successRedirect = "/team/accounts?linkedin=connected"
-		errorRedirect = "/team/accounts?error="
+		successRedirect = "/team/manage?linkedin=connected"
+		errorRedirect = "/team/manage?error="
 	} else {
 		successRedirect = "/admin/accounts?linkedin=connected"
 		errorRedirect = "/admin/accounts?error="
@@ -1986,8 +1986,8 @@ func (h *AdminHandler) MastodonCallback(c *gin.Context) {
 	successRedirect := "/admin/accounts?mastodon=connected"
 	errorRedirect := "/admin/accounts?error="
 	if oauthState.IsTeamAdmin {
-		successRedirect = "/team/accounts?mastodon=connected"
-		errorRedirect = "/team/accounts?error="
+		successRedirect = "/team/manage?mastodon=connected"
+		errorRedirect = "/team/manage?error="
 	}
 
 	// Exchange code for access token.
