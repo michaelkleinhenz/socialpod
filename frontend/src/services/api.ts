@@ -276,6 +276,14 @@ class ApiClient {
     return this.request<{ url: string }>('/admin/instagram/auth-url');
   }
 
+  getLinkedInAuthUrl() {
+    return this.request<{ url: string }>('/admin/linkedin/auth-url');
+  }
+
+  getTeamLinkedInAuthUrl() {
+    return this.request<{ url: string }>('/team/linkedin/auth-url');
+  }
+
   getMastodonAuthUrl(instance: string) {
     return this.request<{ url: string; redirectUri: string }>(`/admin/mastodon/auth-url?instance=${encodeURIComponent(instance)}`);
   }

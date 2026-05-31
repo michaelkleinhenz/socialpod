@@ -478,13 +478,15 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 	// Add hasOpenRouterKey so the admin UI can show key status without leaking it.
 	type settingsResponse struct {
 		models.AppSettings
-		HasOpenRouterKey bool `json:"hasOpenRouterKey"`
-		HasBGGAPIToken   bool `json:"hasBggApiToken"`
+		HasOpenRouterKey        bool `json:"hasOpenRouterKey"`
+		HasBGGAPIToken          bool `json:"hasBggApiToken"`
+		HasLinkedInClientSecret bool `json:"hasLinkedInClientSecret"`
 	}
 	c.JSON(http.StatusOK, settingsResponse{
-		AppSettings:      settings,
-		HasOpenRouterKey: settings.OpenRouterAPIKey != "",
-		HasBGGAPIToken:   settings.BGGAPIToken != "",
+		AppSettings:             settings,
+		HasOpenRouterKey:        settings.OpenRouterAPIKey != "",
+		HasBGGAPIToken:          settings.BGGAPIToken != "",
+		HasLinkedInClientSecret: settings.LinkedInClientSecret != "",
 	})
 }
 
@@ -502,6 +504,8 @@ type UpdateSettingsInput struct {
 	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
 	AILanguage            *string `json:"aiLanguage,omitempty"`
 	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
+	LinkedInClientID      *string `json:"linkedInClientId,omitempty"`
+	LinkedInClientSecret  *string `json:"linkedInClientSecret,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -553,6 +557,12 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.BGGAPIToken != nil {
 		update["bggApiToken"] = *input.BGGAPIToken
+	}
+	if input.LinkedInClientID != nil {
+		update["linkedInClientId"] = *input.LinkedInClientID
+	}
+	if input.LinkedInClientSecret != nil {
+		update["linkedInClientSecret"] = *input.LinkedInClientSecret
 	}
 
 	upsert := true
@@ -645,6 +655,101 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 	}
 
 	_ = result
+	c.Redirect(http.StatusFound, successRedirect)
+}
+
+func (h *AdminHandler) linkedInAuthURL(ctx context.Context, state string) (string, error) {
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		return "", fmt.Errorf("settings not found")
+	}
+	if settings.LinkedInClientID == "" {
+		return "", fmt.Errorf("LinkedIn Client ID not configured in settings")
+	}
+	redirectURI := settings.AppURL + "/api/auth/linkedin/callback"
+	authURL := "https://www.linkedin.com/oauth/v2/authorization" +
+		"?response_type=code" +
+		"&client_id=" + settings.LinkedInClientID +
+		"&redirect_uri=" + url.QueryEscape(redirectURI) +
+		"&state=" + state +
+		"&scope=openid%20profile%20w_member_social"
+	return authURL, nil
+}
+
+func (h *AdminHandler) LinkedInAuthURL(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	authURL, err := h.linkedInAuthURL(ctx, "linkedin_auth")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": authURL})
+}
+
+func (h *AdminHandler) TeamLinkedInAuthURL(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	state := "linkedin_auth:" + teamIDRaw.(string)
+	authURL, err := h.linkedInAuthURL(ctx, state)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": authURL})
+}
+
+func (h *AdminHandler) LinkedInCallback(c *gin.Context) {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	var teamID *primitive.ObjectID
+	var successRedirect, errorRedirect string
+	if strings.HasPrefix(state, "linkedin_auth:") {
+		rawID := strings.TrimPrefix(state, "linkedin_auth:")
+		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
+			teamID = &tid
+		}
+		successRedirect = "/team/accounts?linkedin=connected"
+		errorRedirect = "/team/accounts?error="
+	} else {
+		successRedirect = "/admin/accounts?linkedin=connected"
+		errorRedirect = "/admin/accounts?error="
+	}
+
+	if code == "" {
+		c.Redirect(http.StatusFound, errorRedirect+"no_code")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+"no_settings")
+		return
+	}
+
+	redirectURI := settings.AppURL + "/api/auth/linkedin/callback"
+	account, err := h.LinkedIn.ExchangeCodeForToken(ctx, code, settings.LinkedInClientID, settings.LinkedInClientSecret, redirectURI)
+	if err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+url.QueryEscape(err.Error()))
+		return
+	}
+
+	account.TeamID = teamID
+	account.CreatedAt = time.Now()
+	account.UpdatedAt = time.Now()
+
+	if _, err := h.DB.SocialAccounts().InsertOne(ctx, account); err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+"save_failed")
+		return
+	}
+
 	c.Redirect(http.StatusFound, successRedirect)
 }
 

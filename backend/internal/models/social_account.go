@@ -66,5 +66,7 @@ type AppSettings struct {
 	OpenRouterModel       string             `bson:"openRouterModel" json:"openRouterModel"`
 	AILanguage            string             `bson:"aiLanguage" json:"aiLanguage"`
 	BGGAPIToken           string             `bson:"bggApiToken" json:"-"`
+	LinkedInClientID      string             `bson:"linkedInClientId" json:"linkedInClientId"`
+	LinkedInClientSecret  string             `bson:"linkedInClientSecret" json:"-"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

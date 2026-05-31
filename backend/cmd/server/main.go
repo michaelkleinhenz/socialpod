@@ -90,6 +90,7 @@ func main() {
 		api.GET("/auth/registration-status", authHandler.RegistrationStatus)
 		api.GET("/auth/instagram/callback", adminHandler.InstagramCallback)
 		api.GET("/auth/mastodon/callback", adminHandler.MastodonCallback)
+		api.GET("/auth/linkedin/callback", adminHandler.LinkedInCallback)
 		api.GET("/uploads/:filename", postHandler.ServeImage)
 		api.HEAD("/uploads/:filename", postHandler.ServeImage)
 		api.GET("/health", func(c *gin.Context) {
@@ -179,6 +180,7 @@ func main() {
 		admin.PUT("/settings", adminHandler.UpdateSettings)
 		admin.GET("/instagram/auth-url", adminHandler.InstagramAuthURL)
 		admin.GET("/mastodon/auth-url", adminHandler.MastodonAuthURL)
+		admin.GET("/linkedin/auth-url", adminHandler.LinkedInAuthURL)
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.POST("/users", adminHandler.CreateUser)
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
@@ -209,6 +211,7 @@ func main() {
 		teamAdmin.PATCH("/accounts/:id/toggle", adminHandler.TeamToggleAccount)
 		teamAdmin.GET("/instagram/auth-url", adminHandler.TeamInstagramAuthURL)
 		teamAdmin.GET("/mastodon/auth-url", adminHandler.TeamMastodonAuthURL)
+		teamAdmin.GET("/linkedin/auth-url", adminHandler.TeamLinkedInAuthURL)
 		teamAdmin.GET("/members", adminHandler.TeamListMembers)
 		teamAdmin.POST("/members", adminHandler.TeamAddMember)
 		teamAdmin.DELETE("/members/:id", adminHandler.TeamRemoveMember)

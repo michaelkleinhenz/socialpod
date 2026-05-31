@@ -19,6 +19,7 @@ export function SettingsPage() {
     aiLanguage: '',
   });
   const [igSecret, setIgSecret] = useState('');
+  const [linkedInClientSecret, setLinkedInClientSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
   const [bggApiToken, setBggApiToken] = useState('');
   const [saving, setSaving] = useState(false);
@@ -39,8 +40,10 @@ export function SettingsPage() {
         imprintHtml: settings.imprintHtml,
         cookieBannerEnabled: settings.cookieBannerEnabled,
         cookieBannerText: settings.cookieBannerText,
+        linkedInClientId: settings.linkedInClientId || '',
       };
       if (igSecret) data.instagramAppSecret = igSecret;
+      if (linkedInClientSecret) data.linkedInClientSecret = linkedInClientSecret;
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
       if (bggApiToken) data.bggApiToken = bggApiToken;
       data.openRouterModel = settings.openRouterModel;
@@ -129,6 +132,36 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Enter any secret string here, then use the same value when configuring the webhook callback URL in the Meta App Dashboard. Webhook URL: <code>{settings.appUrl}/api/webhooks/instagram</code>
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>LinkedIn App</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>LinkedIn Client ID</label>
+            <input
+              className="input"
+              placeholder="Your LinkedIn App Client ID"
+              value={settings.linkedInClientId || ''}
+              onChange={e => setSettings(s => ({ ...s, linkedInClientId: e.target.value }))}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>LinkedIn Client Secret</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasLinkedInClientSecret ? 'Secret configured (enter to update)' : 'Enter to set'}
+              value={linkedInClientSecret}
+              onChange={e => setLinkedInClientSecret(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Create an app at the LinkedIn Developer Portal. Set the redirect URL to <code>{settings.appUrl}/api/auth/linkedin/callback</code>. Required scopes: <code>openid profile w_member_social</code>.
             </span>
           </div>
         </div>

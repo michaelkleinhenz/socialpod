@@ -157,6 +157,8 @@ export interface AppSettings {
   cookieBannerText: string;
   openRouterModel: string;
   aiLanguage: string;
+  linkedInClientId?: string;
+  hasLinkedInClientSecret?: boolean;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
   updatedAt?: string;
