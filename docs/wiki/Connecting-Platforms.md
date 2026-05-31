@@ -1,6 +1,6 @@
 # Connecting Platforms
 
-SocialPod supports six social networks. Each requires its own credentials, generated from the platform's developer portal.
+SocialPod supports seven social networks. Each requires its own credentials, generated from the platform's developer portal.
 
 ---
 
@@ -197,7 +197,7 @@ Threads uses the **Meta Threads API** with a long-lived user access token.
 
 ## LinkedIn
 
-LinkedIn uses **OAuth 2.0** for authentication.
+SocialPod uses the **LinkedIn OAuth 2.0 Authorization Code** web flow — no manual token handling required.
 
 ### 1. Create a LinkedIn App
 
@@ -205,23 +205,29 @@ LinkedIn uses **OAuth 2.0** for authentication.
 2. Fill in the required fields (app name, associated LinkedIn Page, logo).
 3. Click **Create App**.
 
-### 2. Configure App Permissions
+### 2. Configure App Permissions and Redirect URI
 
-1. Go to the **Products** tab and request access to **Share on LinkedIn** (grants `w_member_social` scope).
-2. Wait for approval (usually instant for Share on LinkedIn).
+1. Go to the **Products** tab and request access to **Sign In with LinkedIn using OpenID Connect** and **Share on LinkedIn** (grants `openid`, `profile`, and `w_member_social` scopes).
+2. Wait for approval (usually instant for both products).
+3. Go to the **Auth** tab and add the OAuth 2.0 redirect URL:
+   ```
+   https://your-domain.com/api/auth/linkedin/callback
+   ```
+4. Note your **Client ID** and **Client Secret** from the Auth tab.
 
-### 3. Get an Access Token
+### 3. Configure SocialPod
 
-1. In the **Auth** tab, add a redirect URL.
-2. Use LinkedIn's OAuth 2.0 authorization flow to obtain a token with `w_member_social` scope.
-   - The [OAuth 2.0 PKCE tool](https://www.linkedin.com/developers/tools/oauth) in the LinkedIn Developer Portal can generate a token quickly for testing.
-3. The access token expires after 60 days.
+1. Log in as admin and go to **Settings**.
+2. Enter your **LinkedIn Client ID** and **LinkedIn Client Secret**.
+3. Click **Save Settings**.
 
-### 4. Add the Account in SocialPod
+### 4. Connect a LinkedIn Account
 
-1. Navigate to **Accounts → Add LinkedIn**.
-2. Enter your OAuth 2.0 access token.
-3. Click **Add Account**.
+1. Navigate to **Accounts → Connect LinkedIn**.
+2. SocialPod redirects you to the LinkedIn OAuth consent page.
+3. After authorizing, the account is saved automatically and you are redirected back.
+
+> Team admins can connect LinkedIn accounts from the **Team Management** page.
 
 ### Post Capabilities
 
@@ -229,3 +235,61 @@ LinkedIn uses **OAuth 2.0** for authentication.
 - Single or multiple image posts
 - Posts published to member's feed with public visibility
 - Per-platform text customization and suffix support
+
+---
+
+## YouTube
+
+SocialPod uses the **Google OAuth 2.0 Authorization Code** web flow to connect YouTube channels and upload videos and Shorts.
+
+### 1. Create a Google Cloud Project and Enable the API
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com/) and create a new project (or select an existing one).
+2. Navigate to **APIs & Services → Library** and enable **YouTube Data API v3**.
+
+### 2. Create OAuth 2.0 Credentials
+
+1. Go to **APIs & Services → Credentials** and click **Create Credentials → OAuth client ID**.
+2. Set the application type to **Web application**.
+3. Under **Authorized redirect URIs**, add:
+   ```
+   https://your-domain.com/api/auth/youtube/callback
+   ```
+4. Click **Create** and note your **Client ID** and **Client Secret**.
+
+### 3. Configure the OAuth Consent Screen
+
+1. Go to **APIs & Services → OAuth consent screen**.
+2. Set the publishing status to **Production** (or add your Google account as a test user while in Testing mode).
+3. Add the scope `https://www.googleapis.com/auth/youtube.upload`.
+
+### 4. Configure SocialPod
+
+1. Log in as admin and go to **Settings**.
+2. Enter your **YouTube Client ID** and **YouTube Client Secret**.
+3. Click **Save Settings**.
+
+### 5. Connect a YouTube Account
+
+1. Navigate to **Accounts → Connect YouTube**.
+2. SocialPod redirects you to the Google OAuth consent page.
+3. After authorizing, the channel is saved automatically and you are redirected back.
+4. The access token is refreshed automatically using the stored refresh token.
+
+> Team admins can connect YouTube accounts from the **Team Management** page.
+
+### Post Types
+
+| Post Type | Media Required | Description |
+|---|---|---|
+| `post` (default) | 1 video (MP4 or MOV) | Regular YouTube video upload, published publicly |
+| `reel` | 1 video (MP4 or MOV) | YouTube Short — title is prefixed with `#Shorts` automatically |
+
+### Post Capabilities
+
+- Video uploads (MP4 and MOV)
+- Title derived from post content (truncated to 100 characters)
+- Description set from full post content
+- Published publicly with category "People & Blogs" (ID 22)
+- Per-platform text customization and suffix support
+- Automatic token refresh via stored refresh token

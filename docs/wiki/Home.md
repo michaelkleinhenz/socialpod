@@ -1,6 +1,6 @@
 # SocialPod Wiki
 
-SocialPod is a self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, and **LinkedIn**. It ships as a single Docker-based binary with a built-in React UI, background scheduler, REST API, and native n8n integration.
+SocialPod is a self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, **LinkedIn**, and **YouTube**. It ships as a single Docker-based binary with a built-in React UI, background scheduler, REST API, and native n8n integration.
 
 ## Pages
 

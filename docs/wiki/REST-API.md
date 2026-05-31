@@ -34,7 +34,7 @@ curl http://localhost:8080/api/health
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `content` | string | Yes* | Post text (*not required for Stories) |
-| `platforms` | array | Yes | Any of `"bluesky"`, `"instagram"`, `"twitter"`, `"mastodon"`, `"threads"`, `"linkedin"` |
+| `platforms` | array | Yes | Any of `"bluesky"`, `"instagram"`, `"twitter"`, `"mastodon"`, `"threads"`, `"linkedin"`, `"youtube"` |
 | `postType` | string | No | `post` (default), `story`, or `reel` |
 | `scheduledAt` | string | Yes | ISO 8601 datetime (e.g. `2025-06-01T09:00:00Z`) |
 | `status` | string | No | `scheduled` (default) or `draft` |
@@ -45,7 +45,10 @@ curl http://localhost:8080/api/health
 | `contentOverrides` | object | No | Per-platform caption overrides; missing platforms fall back to `content` |
 | `tags` | array | No | Tags for internal organisation |
 
-> `story` and `reel` are Instagram-only. Reels require an MP4 video file. The `content` field is used as the caption for Reels and is ignored for Stories.
+> `story` and `reel` post types apply differently per platform:
+> - **Instagram**: `story` posts a Story (media required), `reel` posts a Reel (MP4 video required).
+> - **YouTube**: `reel` posts a YouTube Short (video required; the title is prefixed with `#Shorts` automatically). `post` uploads a regular video.
+> - `content` is used as the caption for Instagram Reels and as the YouTube video description. It is ignored for Instagram Stories.
 
 ### Examples
 
@@ -76,7 +79,19 @@ curl -X POST http://localhost:8080/api/posts \
 # Cross-post with per-platform text overrides
 curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
-  -F 'data={"content":"Default caption","platforms":["bluesky","instagram","twitter","mastodon","threads","linkedin"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","contentOverrides":{"twitter":"Short tweet (280 chars max)","mastodon":"Fediverse post","linkedin":"Professional update"}}'
+  -F 'data={"content":"Default caption","platforms":["bluesky","instagram","twitter","mastodon","threads","linkedin","youtube"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","contentOverrides":{"twitter":"Short tweet (280 chars max)","mastodon":"Fediverse post","linkedin":"Professional update","youtube":"Full video description"}}'
+
+# Upload a YouTube video
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"My new video description","platforms":["youtube"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
+  -F "images=@video.mp4"
+
+# Upload a YouTube Short
+curl -X POST http://localhost:8080/api/posts \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"content":"Short clip caption","platforms":["youtube"],"postType":"reel","scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
+  -F "images=@short.mp4"
 
 # Create a post with suffixes
 curl -X POST http://localhost:8080/api/posts \

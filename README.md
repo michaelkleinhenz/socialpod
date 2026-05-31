@@ -1,6 +1,6 @@
 # SocialPod — Social Media Scheduler
 
-A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, and **LinkedIn**.
+A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, **LinkedIn**, and **YouTube**.
 
 ![Calendar View](screenshots/calendar.png)
 
@@ -41,7 +41,8 @@ make up
 - For X (Twitter): a Twitter Developer App with OAuth 1.0a keys (paid API plan required)
 - For Mastodon: an access token from your Mastodon instance
 - For Threads: a long-lived user access token from the Meta Threads API
-- For LinkedIn: an OAuth 2.0 access token from the LinkedIn Developer Portal
+- For LinkedIn: a LinkedIn app with OAuth 2.0 credentials (Client ID + Client Secret)
+- For YouTube: a Google Cloud project with the YouTube Data API v3 enabled and OAuth 2.0 credentials
 
 ## Documentation
 
