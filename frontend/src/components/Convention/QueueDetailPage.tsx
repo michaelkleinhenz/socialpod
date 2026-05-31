@@ -447,6 +447,8 @@ export function QueueDetailPage() {
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [bggUrls, setBggUrls] = useState('');
+  const [importingBgg, setImportingBgg] = useState(false);
   const [analyzingAll, setAnalyzingAll] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -513,6 +515,31 @@ export function QueueDetailPage() {
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) uploadFiles(Array.from(e.target.files));
     e.target.value = '';
+  };
+
+  const handleBGGImport = async () => {
+    if (!id) return;
+    const urls = bggUrls.trim().split(/\s+/).filter(Boolean);
+    if (urls.length === 0) return;
+    setImportingBgg(true);
+    try {
+      const res = await api.addBGGItems(id, urls);
+      if (res.items && res.items.length > 0) {
+        setItems(prev => [...prev, ...res.items]);
+        toast.success(`Added ${res.items.length} BGG item${res.items.length > 1 ? 's' : ''}`);
+        setBggUrls('');
+      }
+      if (res.errors && res.errors.length > 0) {
+        res.errors.forEach(e => toast.error(`${e.url}: ${e.error}`));
+      }
+      if (!res.items || res.items.length === 0) {
+        toast.error('No items could be imported');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'BGG import failed');
+    } finally {
+      setImportingBgg(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -719,6 +746,33 @@ export function QueueDetailPage() {
             <p className="conv-upload-hint">Supports JPG, PNG, WebP · Multiple files OK</p>
           </>
         )}
+      </div>
+
+      {/* BGG import */}
+      <div className="conv-bgg-import">
+        <div className="conv-bgg-import-header">
+          <Link size={14} />
+          <span>Import from BoardGameGeek</span>
+        </div>
+        <div className="conv-bgg-import-row">
+          <textarea
+            className="conv-bgg-import-input"
+            value={bggUrls}
+            onChange={e => setBggUrls(e.target.value)}
+            placeholder="Paste one or more BGG URLs separated by spaces or newlines&#10;e.g. https://boardgamegeek.com/boardgame/174430/gloomhaven"
+            rows={3}
+            disabled={importingBgg}
+          />
+          <button
+            className="btn btn-secondary conv-bgg-import-btn"
+            onClick={handleBGGImport}
+            disabled={importingBgg || !bggUrls.trim()}
+          >
+            {importingBgg ? <Loader size={14} className="spin" /> : <Upload size={14} />}
+            {importingBgg ? 'Importing…' : 'Import'}
+          </button>
+        </div>
+        <p className="conv-upload-hint">Fetches cover image and generates post text for each game</p>
       </div>
 
       {/* Toolbar */}
