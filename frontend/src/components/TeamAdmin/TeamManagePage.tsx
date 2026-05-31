@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { SocialAccount, User, Watermark } from '../../types';
+import type { SocialAccount, User } from '../../types';
 import {
-  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2, Settings,
+  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2,
 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { format } from 'date-fns';
@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import '../Admin/Admin.css';
 
-type Tab = 'accounts' | 'members' | 'settings';
+type Tab = 'accounts' | 'members';
 
 export function TeamManagePage() {
   const [searchParams] = useSearchParams();
@@ -53,21 +53,11 @@ export function TeamManagePage() {
   const [newTeamName, setNewTeamName] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
 
-  // Settings state
-  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
-  const [bggWatermarkId, setBggWatermarkId] = useState('');
-  const [bggCoverOffsetX, setBggCoverOffsetX] = useState(0);
-  const [bggCoverOffsetY, setBggCoverOffsetY] = useState(0);
-  const [episodeNewsUrl, setEpisodeNewsUrl] = useState('');
-  const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
-  const [hasExistingNewsToken, setHasExistingNewsToken] = useState(false);
-  const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
     if (!user?.teamId) return;
     loadAccounts();
     loadMembers();
-    loadSettings();
     if (searchParams.get('instagram') === 'connected') {
       toast.success('Instagram account connected');
     }
@@ -95,47 +85,6 @@ export function TeamManagePage() {
     }
   };
 
-  const loadSettings = async () => {
-    try {
-      const [settings, wms] = await Promise.all([
-        api.getTeamSettings(),
-        api.getWatermarks(),
-      ]);
-      setBggWatermarkId(settings.bggWatermarkId || '');
-      setBggCoverOffsetX(settings.bggCoverOffsetX ?? 0);
-      setBggCoverOffsetY(settings.bggCoverOffsetY ?? 0);
-      setEpisodeNewsUrl(settings.episodeNewsUrl || '');
-      setHasExistingNewsToken(settings.hasEpisodeNewsBearerToken || false);
-      setWatermarks(wms as Watermark[]);
-    } catch {
-      // settings tab may not be visible if no team
-    }
-  };
-
-  const saveSettings = async () => {
-    setSavingSettings(true);
-    try {
-      const data: any = {
-        bggWatermarkId: bggWatermarkId || null,
-        bggCoverOffsetX,
-        bggCoverOffsetY,
-        episodeNewsUrl: episodeNewsUrl || '',
-      };
-      if (episodeNewsBearerToken) {
-        data.episodeNewsBearerToken = episodeNewsBearerToken;
-      }
-      await api.updateTeamSettings(data);
-      if (episodeNewsBearerToken) {
-        setHasExistingNewsToken(true);
-        setEpisodeNewsBearerToken('');
-      }
-      toast.success('Settings saved');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save settings');
-    } finally {
-      setSavingSettings(false);
-    }
-  };
 
   const addBluesky = async () => {
     if (!handle || !appPassword) { toast.error('Handle and app password required'); return; }
@@ -358,7 +307,7 @@ export function TeamManagePage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
-        {(['accounts', 'members', 'settings'] as Tab[]).map(t => (
+        {(['accounts', 'members'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -378,8 +327,8 @@ export function TeamManagePage() {
               flexShrink: 0,
             }}
           >
-            {t === 'accounts' ? <Share2 size={15} /> : t === 'members' ? <Users size={15} /> : <Settings size={15} />}
-            {t === 'accounts' ? 'Social Accounts' : t === 'members' ? 'Members' : 'Settings'}
+            {t === 'accounts' ? <Share2 size={15} /> : <Users size={15} />}
+            {t === 'accounts' ? 'Social Accounts' : 'Members'}
           </button>
         ))}
       </div>
@@ -754,110 +703,6 @@ export function TeamManagePage() {
         </>
       )}
 
-      {/* Settings Tab */}
-      {tab === 'settings' && (
-        <div style={{ maxWidth: 560 }}>
-          <div className="card" style={{ padding: 24 }}>
-            <h2 style={{ marginBottom: 4, fontSize: '1rem' }}>BoardGameGeek Integration</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
-              When importing a game from BGG, the cover is scaled to fit fully within a 1080×1080 square. A blurred version of the cover fills any remaining space. The optional overlay is applied on top at full frame.
-            </p>
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>BGG Overlay</label>
-              <select
-                className="select"
-                value={bggWatermarkId}
-                onChange={e => setBggWatermarkId(e.target.value)}
-              >
-                <option value="">None (no overlay)</option>
-                {watermarks.map(wm => (
-                  <option key={wm.id} value={wm.id}>{wm.name}</option>
-                ))}
-              </select>
-              {watermarks.length === 0 && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                  No watermarks uploaded yet. Add watermarks on the Watermarks page first.
-                </span>
-              )}
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: 14 }}>Cover position offset</label>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 10, marginTop: 0 }}>
-                Shift the scaled cover within the canvas. Useful when your overlay has a sidebar or header that occupies part of the frame — use a negative X offset to push the cover away from a left sidebar, for example.
-              </p>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label style={{ fontSize: 13 }}>Horizontal offset (px)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={bggCoverOffsetX}
-                    onChange={e => setBggCoverOffsetX(parseInt(e.target.value, 10) || 0)}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label style={{ fontSize: 13 }}>Vertical offset (px)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={bggCoverOffsetY}
-                    onChange={e => setBggCoverOffsetY(parseInt(e.target.value, 10) || 0)}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-            </div>
-            <button
-              className="btn btn-primary"
-              onClick={saveSettings}
-              disabled={savingSettings}
-              style={{ marginBottom: 32 }}
-            >
-              {savingSettings ? 'Saving...' : 'Save Settings'}
-            </button>
-          </div>
-
-          <div className="card" style={{ padding: 24 }}>
-            <h2 style={{ marginBottom: 4, fontSize: '1rem' }}>Episode News Integration</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
-              When configured, an "Add News" option appears in the post editor. Submitting a post with news enabled sends episode details to this URL.
-            </p>
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>News Endpoint URL</label>
-              <input
-                type="url"
-                className="input"
-                value={episodeNewsUrl}
-                onChange={e => setEpisodeNewsUrl(e.target.value)}
-                placeholder="https://example.com/api/episode-news"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Bearer Token</label>
-              <input
-                type="password"
-                className="input"
-                value={episodeNewsBearerToken}
-                onChange={e => setEpisodeNewsBearerToken(e.target.value)}
-                placeholder={hasExistingNewsToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
-              />
-              {hasExistingNewsToken && !episodeNewsBearerToken && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                  A bearer token is already configured. Enter a new value to replace it.
-                </span>
-              )}
-            </div>
-            <button
-              className="btn btn-primary"
-              onClick={saveSettings}
-              disabled={savingSettings}
-            >
-              {savingSettings ? 'Saving...' : 'Save Settings'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
