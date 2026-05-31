@@ -272,12 +272,14 @@ class ApiClient {
     });
   }
 
-  getInstagramAuthUrl() {
-    return this.request<{ url: string }>('/admin/instagram/auth-url');
+  getInstagramAuthUrl(teamId?: string) {
+    const qs = teamId ? `?teamId=${teamId}` : '';
+    return this.request<{ url: string }>(`/admin/instagram/auth-url${qs}`);
   }
 
-  getLinkedInAuthUrl() {
-    return this.request<{ url: string }>('/admin/linkedin/auth-url');
+  getLinkedInAuthUrl(teamId?: string) {
+    const qs = teamId ? `?teamId=${teamId}` : '';
+    return this.request<{ url: string }>(`/admin/linkedin/auth-url${qs}`);
   }
 
   getTeamLinkedInAuthUrl() {
