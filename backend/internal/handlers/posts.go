@@ -670,16 +670,22 @@ func (h *PostHandler) suffixContent(ctx context.Context, suffixIDStr string, tea
 }
 
 func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
+	log.Printf("[EpisodeNews] Sending episode news for post %s (episode %s)", post.ID.Hex(), post.EpisodeNews.EpisodeNumber)
+
 	var team models.Team
 	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": post.TeamID}).Decode(&team); err != nil {
+		log.Printf("[EpisodeNews] Error: team not found for post %s: %v", post.ID.Hex(), err)
 		h.updateNewsResult(ctx, post.ID, false, "Team not found")
 		return
 	}
 
 	if team.EpisodeNewsURL == "" || team.EpisodeNewsBearerToken == "" {
+		log.Printf("[EpisodeNews] Error: URL or bearer token not configured for team %s", team.ID.Hex())
 		h.updateNewsResult(ctx, post.ID, false, "Episode news URL or bearer token not configured")
 		return
 	}
+
+	log.Printf("[EpisodeNews] Target URL: %s", team.EpisodeNewsURL)
 
 	platformContent := func(platform string) string {
 		if post.ContentOverrides != nil {
@@ -732,24 +738,29 @@ func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
 
 	req, err := http.NewRequestWithContext(ctx, "POST", team.EpisodeNewsURL, &body)
 	if err != nil {
+		log.Printf("[EpisodeNews] Error: failed to create request for post %s: %v", post.ID.Hex(), err)
 		h.updateNewsResult(ctx, post.ID, false, "Failed to create request: "+err.Error())
 		return
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+team.EpisodeNewsBearerToken)
 
+	log.Printf("[EpisodeNews] Executing POST request to %s for post %s", team.EpisodeNewsURL, post.ID.Hex())
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[EpisodeNews] Error: request failed for post %s: %v", post.ID.Hex(), err)
 		h.updateNewsResult(ctx, post.ID, false, "Request failed: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		log.Printf("[EpisodeNews] Success: post %s sent successfully (HTTP %d)", post.ID.Hex(), resp.StatusCode)
 		h.updateNewsResult(ctx, post.ID, true, "")
 	} else {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		log.Printf("[EpisodeNews] Error: post %s received HTTP %d: %s", post.ID.Hex(), resp.StatusCode, string(respBody))
 		h.updateNewsResult(ctx, post.ID, false, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody)))
 	}
 }
