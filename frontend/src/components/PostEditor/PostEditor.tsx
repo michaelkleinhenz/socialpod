@@ -1198,7 +1198,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           </div>
           <div className="footer-right">
             <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || overLimit}>
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || overLimit || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}>
               <Send size={16} /> {saving ? 'Saving...' : post ? 'Update' : 'Schedule'}
             </button>
           </div>
