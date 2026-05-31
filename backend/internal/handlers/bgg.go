@@ -353,16 +353,17 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context) bggT
 }
 
 type bggLabels struct {
-	Players   string
-	Time      string
-	Min       string
-	Age       string
-	Weight    string
-	BGGRating string
-	Published string
-	Publisher string
-	Designer  string
-	Artist    string
+	Players                string
+	Time                   string
+	Min                    string
+	Age                    string
+	Weight                 string
+	BGGRating              string
+	Published              string
+	Publisher              string
+	Designer               string
+	Artist                 string
+	DescriptionAttribution string
 }
 
 var bggLabelsByLanguage = map[string]bggLabels{
@@ -370,81 +371,97 @@ var bggLabelsByLanguage = map[string]bggLabels{
 		Players: "Spieler", Time: "Dauer", Min: "Min", Age: "Alter",
 		Weight: "Komplexität", BGGRating: "BGG-Wertung", Published: "Erschienen",
 		Publisher: "Verlag", Designer: "Autor", Artist: "Illustrator",
+		DescriptionAttribution: "(Beschreibung des Verlags)",
 	},
 	"French": {
 		Players: "Joueurs", Time: "Durée", Min: "min", Age: "Âge",
 		Weight: "Complexité", BGGRating: "Note BGG", Published: "Publié",
 		Publisher: "Éditeur", Designer: "Auteur", Artist: "Illustrateur",
+		DescriptionAttribution: "(description de l'éditeur)",
 	},
 	"Spanish": {
 		Players: "Jugadores", Time: "Duración", Min: "min", Age: "Edad",
 		Weight: "Peso", BGGRating: "Nota BGG", Published: "Publicado",
 		Publisher: "Editorial", Designer: "Diseñador", Artist: "Artista",
+		DescriptionAttribution: "(descripción del editor)",
 	},
 	"Italian": {
 		Players: "Giocatori", Time: "Durata", Min: "min", Age: "Età",
 		Weight: "Complessità", BGGRating: "Valutazione BGG", Published: "Pubblicato",
 		Publisher: "Editore", Designer: "Autore", Artist: "Illustratore",
+		DescriptionAttribution: "(descrizione dell'editore)",
 	},
 	"Dutch": {
 		Players: "Spelers", Time: "Speeltijd", Min: "min", Age: "Leeftijd",
 		Weight: "Complexiteit", BGGRating: "BGG Score", Published: "Gepubliceerd",
 		Publisher: "Uitgever", Designer: "Ontwerper", Artist: "Illustrator",
+		DescriptionAttribution: "(beschrijving van de uitgever)",
 	},
 	"Portuguese": {
 		Players: "Jogadores", Time: "Duração", Min: "min", Age: "Idade",
 		Weight: "Peso", BGGRating: "Nota BGG", Published: "Publicado",
 		Publisher: "Editora", Designer: "Designer", Artist: "Artista",
+		DescriptionAttribution: "(descrição do editor)",
 	},
 	"Brazilian Portuguese": {
 		Players: "Jogadores", Time: "Duração", Min: "min", Age: "Idade",
 		Weight: "Complexidade", BGGRating: "Nota BGG", Published: "Publicado",
 		Publisher: "Editora", Designer: "Designer", Artist: "Artista",
+		DescriptionAttribution: "(descrição da editora)",
 	},
 	"Japanese": {
 		Players: "プレイ人数", Time: "プレイ時間", Min: "分", Age: "対象年齢",
 		Weight: "複雑さ", BGGRating: "BGG評価", Published: "発行年",
 		Publisher: "出版社", Designer: "デザイナー", Artist: "アーティスト",
+		DescriptionAttribution: "(出版社による説明)",
 	},
 	"Korean": {
 		Players: "플레이어", Time: "플레이 시간", Min: "분", Age: "나이",
 		Weight: "복잡도", BGGRating: "BGG 평점", Published: "출판 연도",
 		Publisher: "출판사", Designer: "디자이너", Artist: "아티스트",
+		DescriptionAttribution: "(출판사의 설명)",
 	},
 	"Chinese": {
 		Players: "玩家人数", Time: "游戏时长", Min: "分钟", Age: "年龄",
 		Weight: "复杂度", BGGRating: "BGG评分", Published: "出版年份",
 		Publisher: "出版商", Designer: "设计师", Artist: "插画师",
+		DescriptionAttribution: "(出版商的描述)",
 	},
 	"Arabic": {
 		Players: "اللاعبون", Time: "الوقت", Min: "دقيقة", Age: "العمر",
 		Weight: "التعقيد", BGGRating: "تقييم BGG", Published: "سنة النشر",
 		Publisher: "الناشر", Designer: "المصمم", Artist: "الرسام",
+		DescriptionAttribution: "(وصف الناشر)",
 	},
 	"Polish": {
 		Players: "Gracze", Time: "Czas", Min: "min", Age: "Wiek",
 		Weight: "Złożoność", BGGRating: "Ocena BGG", Published: "Wydano",
 		Publisher: "Wydawca", Designer: "Projektant", Artist: "Ilustrator",
+		DescriptionAttribution: "(opis wydawcy)",
 	},
 	"Swedish": {
 		Players: "Spelare", Time: "Speltid", Min: "min", Age: "Ålder",
 		Weight: "Komplexitet", BGGRating: "BGG-betyg", Published: "Publicerad",
 		Publisher: "Förlag", Designer: "Designer", Artist: "Illustratör",
+		DescriptionAttribution: "(beskrivning från förlaget)",
 	},
 	"Norwegian": {
 		Players: "Spillere", Time: "Spilletid", Min: "min", Age: "Alder",
 		Weight: "Kompleksitet", BGGRating: "BGG-vurdering", Published: "Publisert",
 		Publisher: "Utgiver", Designer: "Designer", Artist: "Illustratør",
+		DescriptionAttribution: "(beskrivelse fra forlaget)",
 	},
 	"Danish": {
 		Players: "Spillere", Time: "Spilletid", Min: "min", Age: "Alder",
 		Weight: "Kompleksitet", BGGRating: "BGG-vurdering", Published: "Udgivet",
 		Publisher: "Udgiver", Designer: "Designer", Artist: "Illustratør",
+		DescriptionAttribution: "(beskrivelse fra forlaget)",
 	},
 	"Finnish": {
 		Players: "Pelaajat", Time: "Peliaika", Min: "min", Age: "Ikä",
 		Weight: "Monimutkaisuus", BGGRating: "BGG-arvosana", Published: "Julkaistu",
 		Publisher: "Kustantaja", Designer: "Suunnittelija", Artist: "Taiteilija",
+		DescriptionAttribution: "(kustantajan kuvaus)",
 	},
 }
 
@@ -452,6 +469,7 @@ var defaultBGGLabels = bggLabels{
 	Players: "Players", Time: "Time", Min: "min", Age: "Age",
 	Weight: "Weight", BGGRating: "BGG Rating", Published: "Published",
 	Publisher: "Publisher", Designer: "Designer", Artist: "Artist",
+	DescriptionAttribution: "(description from the publisher)",
 }
 
 func labelsFor(language string) bggLabels {
@@ -791,6 +809,13 @@ func buildPostContent(title string, designers, artists, publishers []string, ite
 	if len(artists) > 0 {
 		n := min(3, len(artists))
 		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Artist, strings.Join(artists[:n], ", ")))
+	}
+
+	if desc := cleanBGGText(item.Desc); desc != "" {
+		sb.WriteString("\n")
+		sb.WriteString(desc)
+		sb.WriteString(" ")
+		sb.WriteString(l.DescriptionAttribution)
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
