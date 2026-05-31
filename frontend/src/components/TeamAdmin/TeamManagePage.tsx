@@ -58,6 +58,9 @@ export function TeamManagePage() {
   const [bggWatermarkId, setBggWatermarkId] = useState('');
   const [bggCoverOffsetX, setBggCoverOffsetX] = useState(0);
   const [bggCoverOffsetY, setBggCoverOffsetY] = useState(0);
+  const [episodeNewsUrl, setEpisodeNewsUrl] = useState('');
+  const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
+  const [hasExistingNewsToken, setHasExistingNewsToken] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
@@ -101,6 +104,8 @@ export function TeamManagePage() {
       setBggWatermarkId(settings.bggWatermarkId || '');
       setBggCoverOffsetX(settings.bggCoverOffsetX ?? 0);
       setBggCoverOffsetY(settings.bggCoverOffsetY ?? 0);
+      setEpisodeNewsUrl(settings.episodeNewsUrl || '');
+      setHasExistingNewsToken(settings.hasEpisodeNewsBearerToken || false);
       setWatermarks(wms as Watermark[]);
     } catch {
       // settings tab may not be visible if no team
@@ -110,11 +115,20 @@ export function TeamManagePage() {
   const saveSettings = async () => {
     setSavingSettings(true);
     try {
-      await api.updateTeamSettings({
+      const data: any = {
         bggWatermarkId: bggWatermarkId || null,
         bggCoverOffsetX,
         bggCoverOffsetY,
-      });
+        episodeNewsUrl: episodeNewsUrl || '',
+      };
+      if (episodeNewsBearerToken) {
+        data.episodeNewsBearerToken = episodeNewsBearerToken;
+      }
+      await api.updateTeamSettings(data);
+      if (episodeNewsBearerToken) {
+        setHasExistingNewsToken(true);
+        setEpisodeNewsBearerToken('');
+      }
       toast.success('Settings saved');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save settings');
@@ -793,6 +807,46 @@ export function TeamManagePage() {
                   />
                 </div>
               </div>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={saveSettings}
+              disabled={savingSettings}
+              style={{ marginBottom: 32 }}
+            >
+              {savingSettings ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+
+          <div className="card" style={{ padding: 24 }}>
+            <h2 style={{ marginBottom: 4, fontSize: '1rem' }}>Episode News Integration</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
+              When configured, an "Add News" option appears in the post editor. Submitting a post with news enabled sends episode details to this URL.
+            </p>
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>News Endpoint URL</label>
+              <input
+                type="url"
+                className="input"
+                value={episodeNewsUrl}
+                onChange={e => setEpisodeNewsUrl(e.target.value)}
+                placeholder="https://example.com/api/episode-news"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Bearer Token</label>
+              <input
+                type="password"
+                className="input"
+                value={episodeNewsBearerToken}
+                onChange={e => setEpisodeNewsBearerToken(e.target.value)}
+                placeholder={hasExistingNewsToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+              />
+              {hasExistingNewsToken && !episodeNewsBearerToken && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                  A bearer token is already configured. Enter a new value to replace it.
+                </span>
+              )}
             </div>
             <button
               className="btn btn-primary"

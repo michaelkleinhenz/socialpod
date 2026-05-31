@@ -25,6 +25,8 @@ export interface TeamSettings {
   bggWatermarkId?: string;
   bggCoverOffsetX?: number;
   bggCoverOffsetY?: number;
+  episodeNewsUrl?: string;
+  hasEpisodeNewsBearerToken?: boolean;
 }
 
 export interface Watermark {
@@ -68,6 +70,21 @@ export interface PostResult {
   postedAt?: string;
 }
 
+export interface NewsResult {
+  success: boolean;
+  error?: string;
+  sentAt?: string;
+}
+
+export interface EpisodeNews {
+  enabled: boolean;
+  episodeNumber?: string;
+  title?: string;
+  additionalText?: string;
+  bggLink?: string;
+  result?: NewsResult;
+}
+
 export interface Post {
   id: string;
   userId: string;
@@ -83,6 +100,7 @@ export interface Post {
   accountIds?: Record<string, string>;
   suffixIds?: Record<string, string>;
   contentOverrides?: Record<string, string>;
+  episodeNews?: EpisodeNews;
   createdAt: string;
   updatedAt: string;
 }

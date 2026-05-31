@@ -108,6 +108,7 @@ function getPostUrl(platform: string, postId: string): string | null {
 
 function LogEntry({ post, onRetry }: { post: Post; onRetry: () => void }) {
   const [retrying, setRetrying] = useState(false);
+  const [retryingNews, setRetryingNews] = useState(false);
   const preview = post.content.length > 120 ? post.content.slice(0, 120) + '...' : post.content;
   const isSuccess = post.status === 'published';
   const isFailed = post.status === 'failed';
@@ -122,6 +123,19 @@ function LogEntry({ post, onRetry }: { post: Post; onRetry: () => void }) {
       toast.error(err.message || 'Retry failed');
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const handleRetryNews = async () => {
+    setRetryingNews(true);
+    try {
+      await api.retryEpisodeNews(post.id);
+      toast.success('Episode news resent');
+      onRetry();
+    } catch (err: any) {
+      toast.error(err.message || 'News retry failed');
+    } finally {
+      setRetryingNews(false);
     }
   };
 
@@ -185,6 +199,31 @@ function LogEntry({ post, onRetry }: { post: Post; onRetry: () => void }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {post.episodeNews?.enabled && post.episodeNews.result && (
+          <div className="log-entry-results" style={{ marginTop: 6 }}>
+            <div className={`log-result ${post.episodeNews.result.success ? 'success' : 'error'}`}>
+              <span className="log-result-platform" style={{ fontWeight: 500 }}>Episode News</span>
+              {post.episodeNews.result.success ? (
+                <>
+                  <CheckCircle size={12} color="var(--success)" />
+                  <span className="log-result-text">
+                    Sent{post.episodeNews.result.sentAt ? ` at ${format(parseISO(post.episodeNews.result.sentAt), 'HH:mm:ss')}` : ''}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <XCircle size={12} color="var(--danger)" />
+                  <span className="log-result-text log-error-text">{post.episodeNews.result.error || 'Unknown error'}</span>
+                  <button className="log-retry-btn" onClick={handleRetryNews} disabled={retryingNews} style={{ marginLeft: 8 }}>
+                    <RotateCcw size={11} />
+                    {retryingNews ? 'Retrying...' : 'Retry News'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
 

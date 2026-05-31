@@ -115,6 +115,7 @@ func main() {
 		auth.DELETE("/posts/:id", postHandler.Delete)
 		auth.PATCH("/posts/:id/reschedule", postHandler.Reschedule)
 		auth.POST("/posts/:id/retry", postHandler.Retry)
+		auth.POST("/posts/:id/retry-news", postHandler.RetryEpisodeNews)
 		auth.POST("/upload", postHandler.UploadImage)
 		auth.POST("/upload-from-url", postHandler.UploadFromURL)
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
