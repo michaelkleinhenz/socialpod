@@ -60,7 +60,7 @@ export interface BGGGameData {
 
 export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';
 export type PostType = 'post' | 'story' | 'reel';
-export type Platform = 'bluesky' | 'instagram' | 'twitter' | 'mastodon' | 'threads' | 'linkedin';
+export type Platform = 'bluesky' | 'instagram' | 'twitter' | 'mastodon' | 'threads' | 'linkedin' | 'youtube';
 
 export interface PostResult {
   platform: Platform;
@@ -141,6 +141,7 @@ export interface SocialAccount {
   mastodonInstance?: string;
   threadsUserId?: string;
   linkedinPersonUrn?: string;
+  youtubeChannelId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -159,6 +160,8 @@ export interface AppSettings {
   aiLanguage: string;
   linkedInClientId?: string;
   hasLinkedInClientSecret?: boolean;
+  youtubeClientId?: string;
+  hasYouTubeClientSecret?: boolean;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
   updatedAt?: string;
@@ -171,6 +174,7 @@ export interface PublicSettings {
   cookieBannerText: string;
   openRouterEnabled: boolean;
   hasBggApiToken: boolean;
+  youtubeConfigured: boolean;
 }
 
 export interface AuthResponse {

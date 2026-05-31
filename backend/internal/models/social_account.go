@@ -32,6 +32,8 @@ type SocialAccount struct {
 	ThreadsUserID string `bson:"threadsUserId,omitempty" json:"threadsUserId,omitempty"`
 	// LinkedIn-specific
 	LinkedInPersonURN string `bson:"linkedinPersonUrn,omitempty" json:"linkedinPersonUrn,omitempty"`
+	// YouTube-specific
+	YouTubeChannelID string `bson:"youtubeChannelId,omitempty" json:"youtubeChannelId,omitempty"`
 	AvatarURL    string `bson:"avatarUrl,omitempty" json:"avatarUrl,omitempty"`
 	IsActive     bool   `bson:"isActive" json:"isActive"`
 	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`
@@ -68,5 +70,7 @@ type AppSettings struct {
 	BGGAPIToken           string             `bson:"bggApiToken" json:"-"`
 	LinkedInClientID      string             `bson:"linkedInClientId" json:"linkedInClientId"`
 	LinkedInClientSecret  string             `bson:"linkedInClientSecret" json:"-"`
+	YouTubeClientID       string             `bson:"youtubeClientId" json:"youtubeClientId"`
+	YouTubeClientSecret   string             `bson:"youtubeClientSecret" json:"-"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

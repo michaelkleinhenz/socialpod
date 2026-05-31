@@ -20,6 +20,7 @@ export function SettingsPage() {
   });
   const [igSecret, setIgSecret] = useState('');
   const [linkedInClientSecret, setLinkedInClientSecret] = useState('');
+  const [youtubeClientSecret, setYoutubeClientSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
   const [bggApiToken, setBggApiToken] = useState('');
   const [saving, setSaving] = useState(false);
@@ -44,6 +45,8 @@ export function SettingsPage() {
       };
       if (igSecret) data.instagramAppSecret = igSecret;
       if (linkedInClientSecret) data.linkedInClientSecret = linkedInClientSecret;
+      if (youtubeClientSecret) data.youtubeClientSecret = youtubeClientSecret;
+      data.youtubeClientId = settings.youtubeClientId || '';
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
       if (bggApiToken) data.bggApiToken = bggApiToken;
       data.openRouterModel = settings.openRouterModel;
@@ -162,6 +165,36 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Create an app at the LinkedIn Developer Portal. Set the redirect URL to <code>{settings.appUrl}/api/auth/linkedin/callback</code>. Required scopes: <code>openid profile w_member_social</code>.
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>YouTube App</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>YouTube Client ID</label>
+            <input
+              className="input"
+              placeholder="Your Google Cloud OAuth Client ID"
+              value={settings.youtubeClientId || ''}
+              onChange={e => setSettings(s => ({ ...s, youtubeClientId: e.target.value }))}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>YouTube Client Secret</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasYouTubeClientSecret ? 'Secret configured (enter to update)' : 'Enter to set'}
+              value={youtubeClientSecret}
+              onChange={e => setYoutubeClientSecret(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Create a project in the Google Cloud Console, enable the YouTube Data API v3, and create OAuth 2.0 credentials. Set the redirect URL to <code>{settings.appUrl}/api/auth/youtube/callback</code>. Required scopes: <code>youtube.upload youtube.readonly</code>.
             </span>
           </div>
         </div>

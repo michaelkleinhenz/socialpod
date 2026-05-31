@@ -244,6 +244,11 @@
   color: var(--linkedin);
 }
 
+.preview-platform-badge.youtube {
+  background: rgba(255, 0, 0, 0.15);
+  color: var(--youtube);
+}
+
 .preview-content {
   padding: 2px 14px 10px;
 }

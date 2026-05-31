@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { SocialAccount, User } from '../../types';
+import type { SocialAccount, User, PublicSettings } from '../../types';
 import {
   Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2,
 } from 'lucide-react';
@@ -40,6 +40,8 @@ export function TeamManagePage() {
   const [threadsAccessToken, setThreadsAccessToken] = useState('');
   const [addingThreads, setAddingThreads] = useState(false);
   const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
+  const [connectingYouTube, setConnectingYouTube] = useState(false);
+  const [youtubeConfigured, setYoutubeConfigured] = useState(false);
 
   // Members state
   const [members, setMembers] = useState<User[]>([]);
@@ -65,6 +67,12 @@ export function TeamManagePage() {
     if (searchParams.get('linkedin') === 'connected') {
       toast.success('LinkedIn account connected');
     }
+    if (searchParams.get('youtube') === 'connected') {
+      toast.success('YouTube account connected');
+    }
+    api.getPublicSettings().then((s: PublicSettings) => {
+      setYoutubeConfigured(s.youtubeConfigured);
+    }).catch(() => {});
     if (searchParams.get('error')) {
       toast.error('Connection failed: ' + searchParams.get('error'));
     }
@@ -192,6 +200,17 @@ export function TeamManagePage() {
       window.location.href = url;
     } catch (err: any) {
       toast.error(err.message);
+    }
+  };
+
+  const connectYouTube = async () => {
+    setConnectingYouTube(true);
+    try {
+      const { url } = await api.getTeamYouTubeAuthUrl();
+      window.location.href = url;
+    } catch (err: any) {
+      toast.error(err.message);
+      setConnectingYouTube(false);
     }
   };
 
@@ -374,6 +393,16 @@ export function TeamManagePage() {
               >
                 <ExternalLink size={16} /> Connect LinkedIn
               </button>
+              {youtubeConfigured && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={connectYouTube}
+                  disabled={connectingYouTube}
+                  style={{ borderColor: 'var(--youtube)', color: 'var(--youtube)' }}
+                >
+                  <ExternalLink size={16} /> Connect YouTube
+                </button>
+              )}
             </div>
           </div>
 

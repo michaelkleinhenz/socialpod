@@ -282,8 +282,17 @@ class ApiClient {
     return this.request<{ url: string }>(`/admin/linkedin/auth-url${qs}`);
   }
 
+  getYouTubeAuthUrl(teamId?: string) {
+    const qs = teamId ? `?teamId=${teamId}` : '';
+    return this.request<{ url: string }>(`/admin/youtube/auth-url${qs}`);
+  }
+
   getTeamLinkedInAuthUrl() {
     return this.request<{ url: string }>('/team/linkedin/auth-url');
+  }
+
+  getTeamYouTubeAuthUrl() {
+    return this.request<{ url: string }>('/team/youtube/auth-url');
   }
 
   getMastodonAuthUrl(instance: string) {

@@ -49,6 +49,7 @@ type AdminHandler struct {
 	Mastodon  *services.MastodonService
 	Threads   *services.ThreadsService
 	LinkedIn  *services.LinkedInService
+	YouTube   *services.YouTubeService
 	UploadDir string
 }
 
@@ -460,6 +461,7 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 		"cookieBannerText":     settings.CookieBannerText,
 		"openRouterEnabled": settings.OpenRouterAPIKey != "",
 		"hasBggApiToken":    settings.BGGAPIToken != "",
+		"youtubeConfigured": settings.YouTubeClientID != "" && settings.YouTubeClientSecret != "",
 	})
 }
 
@@ -475,18 +477,20 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		}
 	}
 
-	// Add hasOpenRouterKey so the admin UI can show key status without leaking it.
+	// Add has-secret flags so the admin UI can show key status without leaking it.
 	type settingsResponse struct {
 		models.AppSettings
-		HasOpenRouterKey        bool `json:"hasOpenRouterKey"`
-		HasBGGAPIToken          bool `json:"hasBggApiToken"`
-		HasLinkedInClientSecret bool `json:"hasLinkedInClientSecret"`
+		HasOpenRouterKey         bool `json:"hasOpenRouterKey"`
+		HasBGGAPIToken           bool `json:"hasBggApiToken"`
+		HasLinkedInClientSecret  bool `json:"hasLinkedInClientSecret"`
+		HasYouTubeClientSecret   bool `json:"hasYouTubeClientSecret"`
 	}
 	c.JSON(http.StatusOK, settingsResponse{
-		AppSettings:             settings,
-		HasOpenRouterKey:        settings.OpenRouterAPIKey != "",
-		HasBGGAPIToken:          settings.BGGAPIToken != "",
-		HasLinkedInClientSecret: settings.LinkedInClientSecret != "",
+		AppSettings:              settings,
+		HasOpenRouterKey:         settings.OpenRouterAPIKey != "",
+		HasBGGAPIToken:           settings.BGGAPIToken != "",
+		HasLinkedInClientSecret:  settings.LinkedInClientSecret != "",
+		HasYouTubeClientSecret:   settings.YouTubeClientSecret != "",
 	})
 }
 
@@ -506,6 +510,8 @@ type UpdateSettingsInput struct {
 	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
 	LinkedInClientID      *string `json:"linkedInClientId,omitempty"`
 	LinkedInClientSecret  *string `json:"linkedInClientSecret,omitempty"`
+	YouTubeClientID       *string `json:"youtubeClientId,omitempty"`
+	YouTubeClientSecret   *string `json:"youtubeClientSecret,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -563,6 +569,12 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.LinkedInClientSecret != nil {
 		update["linkedInClientSecret"] = *input.LinkedInClientSecret
+	}
+	if input.YouTubeClientID != nil {
+		update["youtubeClientId"] = *input.YouTubeClientID
+	}
+	if input.YouTubeClientSecret != nil {
+		update["youtubeClientSecret"] = *input.YouTubeClientSecret
 	}
 
 	upsert := true
@@ -746,6 +758,108 @@ func (h *AdminHandler) LinkedInCallback(c *gin.Context) {
 
 	redirectURI := settings.AppURL + "/api/auth/linkedin/callback"
 	account, err := h.LinkedIn.ExchangeCodeForToken(ctx, code, settings.LinkedInClientID, settings.LinkedInClientSecret, redirectURI)
+	if err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+url.QueryEscape(err.Error()))
+		return
+	}
+
+	account.TeamID = teamID
+	account.CreatedAt = time.Now()
+	account.UpdatedAt = time.Now()
+
+	if _, err := h.DB.SocialAccounts().InsertOne(ctx, account); err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+"save_failed")
+		return
+	}
+
+	c.Redirect(http.StatusFound, successRedirect)
+}
+
+func (h *AdminHandler) youtubeAuthURL(ctx context.Context, state string) (string, error) {
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		return "", fmt.Errorf("settings not found")
+	}
+	if settings.YouTubeClientID == "" {
+		return "", fmt.Errorf("YouTube Client ID not configured in settings")
+	}
+	redirectURI := settings.AppURL + "/api/auth/youtube/callback"
+	authURL := "https://accounts.google.com/o/oauth2/v2/auth" +
+		"?client_id=" + url.QueryEscape(settings.YouTubeClientID) +
+		"&redirect_uri=" + url.QueryEscape(redirectURI) +
+		"&response_type=code" +
+		"&scope=" + url.QueryEscape("https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly") +
+		"&access_type=offline" +
+		"&prompt=consent" +
+		"&state=" + state
+	return authURL, nil
+}
+
+func (h *AdminHandler) YouTubeAuthURL(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	state := "youtube_auth"
+	if teamID := c.Query("teamId"); teamID != "" {
+		state = "youtube_auth:" + teamID
+	}
+
+	authURL, err := h.youtubeAuthURL(ctx, state)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": authURL})
+}
+
+func (h *AdminHandler) TeamYouTubeAuthURL(c *gin.Context) {
+	teamIDRaw, _ := c.Get("teamId")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	state := "youtube_auth:" + teamIDRaw.(string)
+	authURL, err := h.youtubeAuthURL(ctx, state)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": authURL})
+}
+
+func (h *AdminHandler) YouTubeCallback(c *gin.Context) {
+	code := c.Query("code")
+	state := c.Query("state")
+
+	var teamID *primitive.ObjectID
+	var successRedirect, errorRedirect string
+	if strings.HasPrefix(state, "youtube_auth:") {
+		rawID := strings.TrimPrefix(state, "youtube_auth:")
+		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
+			teamID = &tid
+		}
+		successRedirect = "/team/manage?youtube=connected"
+		errorRedirect = "/team/manage?error="
+	} else {
+		successRedirect = "/admin/accounts?youtube=connected"
+		errorRedirect = "/admin/accounts?error="
+	}
+
+	if code == "" {
+		c.Redirect(http.StatusFound, errorRedirect+"no_code")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		c.Redirect(http.StatusFound, errorRedirect+"no_settings")
+		return
+	}
+
+	redirectURI := settings.AppURL + "/api/auth/youtube/callback"
+	account, err := h.YouTube.ExchangeCodeForToken(ctx, code, settings.YouTubeClientID, settings.YouTubeClientSecret, redirectURI)
 	if err != nil {
 		c.Redirect(http.StatusFound, errorRedirect+url.QueryEscape(err.Error()))
 		return
