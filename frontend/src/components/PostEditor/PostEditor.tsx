@@ -402,13 +402,15 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const hasMst = accounts.some(a => a.platform === 'mastodon');
     const hasThreads = accounts.some(a => a.platform === 'threads');
     const hasLinkedin = accounts.some(a => a.platform === 'linkedin');
+    const hasYoutube = accounts.some(a => a.platform === 'youtube');
     setPlatforms(prev => prev.filter(p =>
       (p === 'bluesky' && hasBsky) ||
       (p === 'instagram' && hasIg) ||
       (p === 'twitter' && hasTw) ||
       (p === 'mastodon' && hasMst) ||
       (p === 'threads' && hasThreads) ||
-      (p === 'linkedin' && hasLinkedin)
+      (p === 'linkedin' && hasLinkedin) ||
+      (p === 'youtube' && hasYoutube)
     ));
   }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -658,6 +660,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const mastodonAccount = accounts.find(a => a.platform === 'mastodon') ?? null;
   const threadsAccount = accounts.find(a => a.platform === 'threads') ?? null;
   const linkedinAccount = accounts.find(a => a.platform === 'linkedin') ?? null;
+  const youtubeAccount = accounts.find(a => a.platform === 'youtube') ?? null;
 
   const handleSubmit = async () => {
     if (isStory) {
@@ -687,6 +690,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     if (platforms.includes('mastodon') && mastodonAccount) accountIds['mastodon'] = mastodonAccount.id;
     if (platforms.includes('threads') && threadsAccount) accountIds['threads'] = threadsAccount.id;
     if (platforms.includes('linkedin') && linkedinAccount) accountIds['linkedin'] = linkedinAccount.id;
+    if (platforms.includes('youtube') && youtubeAccount) accountIds['youtube'] = youtubeAccount.id;
 
     setSaving(true);
     try {
@@ -839,6 +843,19 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       <span className="platform-account-hint">{linkedinAccount.displayName || linkedinAccount.accountName}</span>
                     )}
                   </div>
+                  {youtubeAccount && (
+                    <div
+                      className={`platform-option youtube ${platforms.includes('youtube') ? 'selected' : ''}`}
+                      onClick={() => togglePlatform('youtube')}
+                      title={`Will post to ${youtubeAccount.displayName || youtubeAccount.accountName}`}
+                    >
+                      <PlatformIcon platform="youtube" size={14} />
+                      <span className="platform-label">YouTube</span>
+                      {platforms.includes('youtube') && (
+                        <span className="platform-account-hint">{youtubeAccount.displayName || youtubeAccount.accountName}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* BGG Import */}

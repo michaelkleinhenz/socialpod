@@ -228,6 +228,7 @@
 .platform-dot.mastodon { background: var(--mastodon); }
 .platform-dot.threads { background: var(--threads); }
 .platform-dot.linkedin { background: var(--linkedin); }
+.platform-dot.youtube { background: var(--youtube); }
 
 /* View Toggle */
 .view-toggle {

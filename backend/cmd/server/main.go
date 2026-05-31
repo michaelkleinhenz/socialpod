@@ -71,7 +71,8 @@ func main() {
 	mastodonService := &services.MastodonService{DB: db, UploadDir: cfg.UploadDir}
 	threadsService := &services.ThreadsService{DB: db}
 	linkedInService := &services.LinkedInService{DB: db, UploadDir: cfg.UploadDir}
-	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, UploadDir: cfg.UploadDir}
+	youtubeService := &services.YouTubeService{DB: db, UploadDir: cfg.UploadDir}
+	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, YouTube: youtubeService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
@@ -91,6 +92,7 @@ func main() {
 		api.GET("/auth/instagram/callback", adminHandler.InstagramCallback)
 		api.GET("/auth/mastodon/callback", adminHandler.MastodonCallback)
 		api.GET("/auth/linkedin/callback", adminHandler.LinkedInCallback)
+		api.GET("/auth/youtube/callback", adminHandler.YouTubeCallback)
 		api.GET("/uploads/:filename", postHandler.ServeImage)
 		api.HEAD("/uploads/:filename", postHandler.ServeImage)
 		api.GET("/health", func(c *gin.Context) {
@@ -181,6 +183,7 @@ func main() {
 		admin.GET("/instagram/auth-url", adminHandler.InstagramAuthURL)
 		admin.GET("/mastodon/auth-url", adminHandler.MastodonAuthURL)
 		admin.GET("/linkedin/auth-url", adminHandler.LinkedInAuthURL)
+		admin.GET("/youtube/auth-url", adminHandler.YouTubeAuthURL)
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.POST("/users", adminHandler.CreateUser)
 		admin.DELETE("/users/:id", adminHandler.DeleteUser)
@@ -212,6 +215,7 @@ func main() {
 		teamAdmin.GET("/instagram/auth-url", adminHandler.TeamInstagramAuthURL)
 		teamAdmin.GET("/mastodon/auth-url", adminHandler.TeamMastodonAuthURL)
 		teamAdmin.GET("/linkedin/auth-url", adminHandler.TeamLinkedInAuthURL)
+		teamAdmin.GET("/youtube/auth-url", adminHandler.TeamYouTubeAuthURL)
 		teamAdmin.GET("/members", adminHandler.TeamListMembers)
 		teamAdmin.POST("/members", adminHandler.TeamAddMember)
 		teamAdmin.DELETE("/members/:id", adminHandler.TeamRemoveMember)

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { SocialAccount, Team } from '../../types';
+import type { SocialAccount, Team, PublicSettings } from '../../types';
 import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
@@ -37,10 +37,17 @@ export function AccountsPage() {
   const [linkedInTeamId, setLinkedInTeamId] = useState('');
   const [showInstagramTeamPicker, setShowInstagramTeamPicker] = useState(false);
   const [instagramTeamId, setInstagramTeamId] = useState('');
+  const [connectingYouTube, setConnectingYouTube] = useState(false);
+  const [showYouTubeTeamPicker, setShowYouTubeTeamPicker] = useState(false);
+  const [youtubeTeamId, setYoutubeTeamId] = useState('');
+  const [youtubeConfigured, setYoutubeConfigured] = useState(false);
 
   useEffect(() => {
     loadAccounts();
     api.getTeams().then(setTeams).catch(() => {});
+    api.getPublicSettings().then((s: PublicSettings) => {
+      setYoutubeConfigured(s.youtubeConfigured);
+    }).catch(() => {});
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('mastodon') === 'connected') {
@@ -51,6 +58,9 @@ export function AccountsPage() {
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('linkedin') === 'connected') {
       toast.success('LinkedIn account connected');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('youtube') === 'connected') {
+      toast.success('YouTube account connected');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('error')) {
       toast.error('Connection failed: ' + params.get('error'));
@@ -185,6 +195,17 @@ export function AccountsPage() {
     }
   };
 
+  const connectYouTube = async (teamId?: string) => {
+    setConnectingYouTube(true);
+    try {
+      const { url } = await api.getYouTubeAuthUrl(teamId || undefined);
+      window.location.href = url;
+    } catch (err: any) {
+      toast.error(err.message);
+      setConnectingYouTube(false);
+    }
+  };
+
   const connectInstagram = async (teamId?: string) => {
     try {
       const { url } = await api.getInstagramAuthUrl(teamId || undefined);
@@ -237,6 +258,11 @@ export function AccountsPage() {
           <button className="btn btn-secondary" onClick={() => { setLinkedInTeamId(''); setShowLinkedInTeamPicker(true); }} disabled={connectingLinkedIn} style={{ borderColor: 'var(--linkedin)', color: 'var(--linkedin)' }}>
             <ExternalLink size={16} /> Connect LinkedIn
           </button>
+          {youtubeConfigured && (
+            <button className="btn btn-secondary" onClick={() => { setYoutubeTeamId(''); setShowYouTubeTeamPicker(true); }} disabled={connectingYouTube} style={{ borderColor: 'var(--youtube)', color: 'var(--youtube)' }}>
+              <ExternalLink size={16} /> Connect YouTube
+            </button>
+          )}
         </div>
       </div>
 
@@ -441,6 +467,31 @@ export function AccountsPage() {
               <button className="btn btn-secondary" onClick={() => setShowLinkedInTeamPicker(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={() => { setShowLinkedInTeamPicker(false); connectLinkedIn(linkedInTeamId); }} disabled={connectingLinkedIn}>
                 {connectingLinkedIn ? 'Redirecting…' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showYouTubeTeamPicker && (
+        <div className="modal-overlay" onClick={() => setShowYouTubeTeamPicker(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Connect YouTube</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-group">
+                <label>Assign to Team</label>
+                <select className="input" value={youtubeTeamId} onChange={e => setYoutubeTeamId(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowYouTubeTeamPicker(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { setShowYouTubeTeamPicker(false); connectYouTube(youtubeTeamId); }} disabled={connectingYouTube}>
+                {connectingYouTube ? 'Redirecting…' : 'Continue'}
               </button>
             </div>
           </div>

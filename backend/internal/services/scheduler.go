@@ -20,6 +20,7 @@ type Scheduler struct {
 	Mastodon  *MastodonService
 	Threads   *ThreadsService
 	LinkedIn  *LinkedInService
+	YouTube   *YouTubeService
 	stop      chan struct{}
 }
 
@@ -32,6 +33,7 @@ func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
 		Mastodon:  &MastodonService{DB: db, UploadDir: uploadDir},
 		Threads:   &ThreadsService{DB: db},
 		LinkedIn:  &LinkedInService{DB: db, UploadDir: uploadDir},
+		YouTube:   &YouTubeService{DB: db, UploadDir: uploadDir},
 		stop:      make(chan struct{}),
 	}
 }
@@ -142,6 +144,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	mastodonSuffix := ""
 	threadsSuffix := ""
 	linkedInSuffix := ""
+	youtubeSuffix := ""
 	if post.SuffixIDs != nil {
 		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"], post.TeamID)
 		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"], post.TeamID)
@@ -149,6 +152,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 		mastodonSuffix = s.suffixContent(ctx, post.SuffixIDs["mastodon"], post.TeamID)
 		threadsSuffix = s.suffixContent(ctx, post.SuffixIDs["threads"], post.TeamID)
 		linkedInSuffix = s.suffixContent(ctx, post.SuffixIDs["linkedin"], post.TeamID)
+		youtubeSuffix = s.suffixContent(ctx, post.SuffixIDs["youtube"], post.TeamID)
 	}
 
 	platformContent := func(platform models.Platform) string {
@@ -374,6 +378,55 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				result.Success = true
 				result.PostID = postID
 				result.PostedAt = time.Now()
+			}
+
+		case models.PlatformYouTube:
+			accountID := ""
+			if post.AccountIDs != nil {
+				accountID = post.AccountIDs["youtube"]
+			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformYouTube, post.TeamID)
+			}
+			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
+				log.Printf("YouTube account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
+				result.Success = false
+				result.Error = "account not authorized for this team"
+				allSuccess = false
+				results = append(results, result)
+				continue
+			}
+
+			if post.PostType == models.PostTypeReel {
+				if len(post.ImageURLs) == 0 {
+					result.Success = false
+					result.Error = "YouTube Short requires a video"
+					allSuccess = false
+				} else {
+					postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), accountID)
+					if err != nil {
+						result.Success = false
+						result.Error = err.Error()
+						allSuccess = false
+						log.Printf("YouTube Short failed: %v", err)
+					} else {
+						result.Success = true
+						result.PostID = postID
+						result.PostedAt = time.Now()
+					}
+				}
+			} else {
+				postID, err := s.YouTube.Post(ctx, applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), post.ImageURLs, accountID)
+				if err != nil {
+					result.Success = false
+					result.Error = err.Error()
+					allSuccess = false
+					log.Printf("YouTube post failed: %v", err)
+				} else {
+					result.Success = true
+					result.PostID = postID
+					result.PostedAt = time.Now()
+				}
 			}
 		}
 
