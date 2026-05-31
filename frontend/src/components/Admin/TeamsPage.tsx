@@ -18,6 +18,7 @@ export function TeamsPage() {
   const [savingMembers, setSavingMembers] = useState(false);
   const [bggTeam, setBggTeam] = useState<Team | null>(null);
   const [bggSettings, setBggSettings] = useState<TeamSettings>({});
+  const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
   const load = () => {
@@ -100,6 +101,7 @@ export function TeamsPage() {
 
   const openBggSettings = async (team: Team) => {
     setBggTeam(team);
+    setEpisodeNewsBearerToken('');
     try {
       const s = await api.getAdminTeamBggSettings(team.id);
       setBggSettings(s);
@@ -112,12 +114,17 @@ export function TeamsPage() {
     if (!bggTeam) return;
     setSavingBgg(true);
     try {
-      await api.updateAdminTeamBggSettings(bggTeam.id, {
+      const data: any = {
         bggWatermarkId: bggSettings.bggWatermarkId || null,
         bggCoverOffsetX: bggSettings.bggCoverOffsetX ?? 0,
         bggCoverOffsetY: bggSettings.bggCoverOffsetY ?? 0,
-      });
-      toast.success('BGG settings saved');
+        episodeNewsUrl: bggSettings.episodeNewsUrl || '',
+      };
+      if (episodeNewsBearerToken) {
+        data.episodeNewsBearerToken = episodeNewsBearerToken;
+      }
+      await api.updateAdminTeamBggSettings(bggTeam.id, data);
+      toast.success('Team settings saved');
       setBggTeam(null);
     } catch (err: any) {
       toast.error(err.message || 'Failed to save settings');
@@ -155,7 +162,7 @@ export function TeamsPage() {
                     Manage Members ({team.members.length})
                   </button>
                   <button className="btn btn-secondary btn-sm" onClick={() => openBggSettings(team)}>
-                    <Settings size={14} /> BGG Settings
+                    <Settings size={14} /> Team Settings
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => deleteTeam(team.id)}>
                     <Trash2 size={14} color="var(--danger)" />
@@ -234,19 +241,20 @@ export function TeamsPage() {
         </div>
       )}
 
-      {/* BGG Settings Modal */}
+      {/* Team Settings Modal */}
       {bggTeam && (
         <div className="modal-overlay" onClick={() => setBggTeam(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>BGG Settings: {bggTeam.name}</h2>
+              <h2>Team Settings: {bggTeam.name}</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setBggTeam(null)}>
                 <X size={18} />
               </button>
             </div>
 
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-              Configure the BGG overlay and cover offset for this team. When a member imports a BGG game, the selected overlay is applied on top of the cover image.
+            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>BoardGameGeek Integration</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+              When importing a game from BGG, the cover is scaled to fit within a 1080x1080 square. The optional overlay is applied on top at full frame.
             </p>
 
             <div className="form-group" style={{ marginBottom: 20 }}>
@@ -295,6 +303,39 @@ export function TeamsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Episode News Integration</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+              When configured, an "Add News" option appears in the post editor. Submitting a post with news enabled sends episode details to this URL.
+            </p>
+
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>News Endpoint URL</label>
+              <input
+                type="url"
+                className="input"
+                value={bggSettings.episodeNewsUrl || ''}
+                onChange={e => setBggSettings(s => ({ ...s, episodeNewsUrl: e.target.value }))}
+                placeholder="https://example.com/api/episode-news"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Bearer Token</label>
+              <input
+                type="password"
+                className="input"
+                value={episodeNewsBearerToken}
+                onChange={e => setEpisodeNewsBearerToken(e.target.value)}
+                placeholder={bggSettings.hasEpisodeNewsBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+              />
+              {bggSettings.hasEpisodeNewsBearerToken && !episodeNewsBearerToken && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                  A bearer token is already configured. Enter a new value to replace it.
+                </span>
+              )}
             </div>
 
             <div className="modal-actions">
