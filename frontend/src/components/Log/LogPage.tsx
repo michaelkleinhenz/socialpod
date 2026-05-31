@@ -202,7 +202,38 @@ function LogEntry({ post, onRetry }: { post: Post; onRetry: () => void }) {
           </div>
         )}
 
-        {post.episodeNews?.enabled && post.episodeNews.result && (
+        {post.episodeNews?.enabled && post.episodeNews.resultHistory && post.episodeNews.resultHistory.length > 0 ? (
+          <div className="log-entry-results" style={{ marginTop: 6 }}>
+            {post.episodeNews.resultHistory.map((nr, i) => (
+              <div key={i} className={`log-result ${nr.success ? 'success' : 'error'}`}>
+                <span className="log-result-platform" style={{ fontWeight: 500 }}>
+                  Episode News{post.episodeNews!.resultHistory!.length > 1 ? ` #${i + 1}` : ''}
+                </span>
+                {nr.success ? (
+                  <>
+                    <CheckCircle size={12} color="var(--success)" />
+                    <span className="log-result-text">
+                      Sent{nr.sentAt ? ` at ${format(parseISO(nr.sentAt), 'HH:mm:ss')}` : ''}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle size={12} color="var(--danger)" />
+                    <span className="log-result-text log-error-text">{nr.error || 'Unknown error'}</span>
+                  </>
+                )}
+              </div>
+            ))}
+            {post.episodeNews.result && !post.episodeNews.result.success && (
+              <div style={{ marginTop: 4 }}>
+                <button className="log-retry-btn" onClick={handleRetryNews} disabled={retryingNews}>
+                  <RotateCcw size={11} />
+                  {retryingNews ? 'Retrying...' : 'Retry News'}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : post.episodeNews?.enabled && post.episodeNews.result && (
           <div className="log-entry-results" style={{ marginTop: 6 }}>
             <div className={`log-result ${post.episodeNews.result.success ? 'success' : 'error'}`}>
               <span className="log-result-platform" style={{ fontWeight: 500 }}>Episode News</span>

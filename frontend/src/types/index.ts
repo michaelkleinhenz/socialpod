@@ -83,6 +83,7 @@ export interface EpisodeNews {
   additionalText?: string;
   bggLink?: string;
   result?: NewsResult;
+  resultHistory?: NewsResult[];
 }
 
 export interface Post {
