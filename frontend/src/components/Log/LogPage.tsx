@@ -17,7 +17,7 @@ export function LogPage() {
     api.getPosts({})
       .then(data => {
         const withActivity = data.filter(
-          (p: Post) => p.status === 'published' || p.status === 'failed' || (p.results && p.results.length > 0)
+          (p: Post) => p.status === 'published' || p.status === 'failed' || (p.results && p.results.length > 0) || (p.episodeNews?.enabled && p.episodeNews.result)
         );
         withActivity.sort((a: Post, b: Post) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
