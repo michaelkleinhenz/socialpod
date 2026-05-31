@@ -191,8 +191,7 @@ func (s *LinkedInService) uploadImage(ctx context.Context, account *models.Socia
 // FetchProfile fetches the LinkedIn user's display name and avatar, and sets
 // account.LinkedInPersonURN as a side effect.
 func (s *LinkedInService) FetchProfile(account *models.SocialAccount) (displayName, avatarURL string, err error) {
-	req, err := http.NewRequest("GET",
-		linkedInAPIv2+"/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))", nil)
+	req, err := http.NewRequest("GET", "https://api.linkedin.com/v2/userinfo", nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -206,41 +205,28 @@ func (s *LinkedInService) FetchProfile(account *models.SocialAccount) (displayNa
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", "", fmt.Errorf("LinkedIn /me failed (%d): %s", resp.StatusCode, string(body))
+		return "", "", fmt.Errorf("LinkedIn /userinfo failed (%d): %s", resp.StatusCode, string(body))
 	}
 
 	var profile struct {
-		ID                 string `json:"id"`
-		LocalizedFirstName string `json:"localizedFirstName"`
-		LocalizedLastName  string `json:"localizedLastName"`
-		ProfilePicture     struct {
-			DisplayImage struct {
-				Elements []struct {
-					Identifiers []struct {
-						Identifier string `json:"identifier"`
-					} `json:"identifiers"`
-				} `json:"elements"`
-			} `json:"displayImage~"`
-		} `json:"profilePicture"`
+		Sub        string `json:"sub"`
+		Name       string `json:"name"`
+		GivenName  string `json:"given_name"`
+		FamilyName string `json:"family_name"`
+		Picture    string `json:"picture"`
 	}
 	json.Unmarshal(body, &profile)
 
-	if profile.ID != "" && account.LinkedInPersonURN == "" {
-		account.LinkedInPersonURN = "urn:li:person:" + profile.ID
+	if profile.Sub != "" && account.LinkedInPersonURN == "" {
+		account.LinkedInPersonURN = "urn:li:person:" + profile.Sub
 	}
 
-	name := strings.TrimSpace(profile.LocalizedFirstName + " " + profile.LocalizedLastName)
-
-	avatar := ""
-	elements := profile.ProfilePicture.DisplayImage.Elements
-	if len(elements) > 0 {
-		last := elements[len(elements)-1]
-		if len(last.Identifiers) > 0 {
-			avatar = last.Identifiers[0].Identifier
-		}
+	name := profile.Name
+	if name == "" {
+		name = strings.TrimSpace(profile.GivenName + " " + profile.FamilyName)
 	}
 
-	return name, avatar, nil
+	return name, profile.Picture, nil
 }
 
 // ExchangeCodeForToken exchanges an OAuth 2.0 authorization code for an access
