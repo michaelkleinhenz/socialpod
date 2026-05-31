@@ -738,7 +738,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     setBggError('');
     try {
       const data = await api.fetchBGGGame(bggUrl.trim());
-      setContent(data.suggestedContent);
       setBggImportedUrl(bggUrl.trim());
       if (data.imageBase64) {
         const byteStr = atob(data.imageBase64);
@@ -748,7 +747,35 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
         setImages(prev => [{ kind: 'file', file }, ...prev]);
       }
-      toast.success('BGG data imported');
+      if (customizePerPlatform && platforms.length > 1) {
+        // Route full text to the platform with the highest character limit,
+        // then use AI to produce shorter versions for the remaining platforms.
+        const sorted = [...platforms].sort((a, b) => effectiveLimit(b) - effectiveLimit(a));
+        const primary = sorted[0];
+        const rest = sorted.slice(1);
+        const overrides: Record<string, string> = { [primary]: data.suggestedContent };
+        if (aiEnabled) {
+          for (const p of rest) {
+            try {
+              const { text } = await api.generateText(data.suggestedContent, [p]);
+              overrides[p] = text;
+            } catch {
+              overrides[p] = data.suggestedContent;
+            }
+          }
+          toast.success('BGG data imported and text adapted per platform');
+        } else {
+          for (const p of rest) {
+            overrides[p] = data.suggestedContent;
+          }
+          toast.success('BGG data imported');
+        }
+        setContentOverrides(overrides);
+        setContent(data.suggestedContent);
+      } else {
+        setContent(data.suggestedContent);
+        toast.success('BGG data imported');
+      }
     } catch (e: any) {
       setBggError(e.message || 'Failed to fetch BGG data');
     } finally {
