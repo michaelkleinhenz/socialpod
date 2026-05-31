@@ -940,6 +940,157 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
 }
 
+func (h *ConventionHandler) AddBGGItems(c *gin.Context) {
+	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue ID"})
+		return
+	}
+
+	var input struct {
+		URLs []string `json:"urls"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || len(input.URLs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "urls array is required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	queueFilter := conventionQueueFilter(c)
+	queueFilter["_id"] = queueID
+	var queue models.ConventionQueue
+	if err := h.DB.ConventionQueues().FindOne(ctx, queueFilter).Decode(&queue); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Queue not found"})
+		return
+	}
+
+	var settings models.AppSettings
+	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	bggH := &BGGHandler{DB: h.DB, UploadDir: h.UploadDir}
+	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
+
+	count, _ := h.DB.ConventionQueueItems().CountDocuments(ctx, bson.M{"queueId": queueID})
+
+	type itemError struct {
+		URL   string `json:"url"`
+		Error string `json:"error"`
+	}
+
+	var created []models.ConventionQueueItem
+	var errs []itemError
+
+	for _, rawURL := range input.URLs {
+		rawURL = strings.TrimSpace(rawURL)
+		if rawURL == "" {
+			continue
+		}
+
+		m := bggGameIDRe.FindStringSubmatch(rawURL)
+		if m == nil {
+			errs = append(errs, itemError{URL: rawURL, Error: "could not extract game ID from URL"})
+			continue
+		}
+		gameID := m[1]
+
+		game, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+		if err != nil {
+			errs = append(errs, itemError{URL: rawURL, Error: err.Error()})
+			continue
+		}
+
+		title := ""
+		for _, n := range game.Names {
+			if n.Type == "primary" {
+				title = n.Value
+				break
+			}
+		}
+		if title == "" && len(game.Names) > 0 {
+			title = game.Names[0].Value
+		}
+
+		var designers, artists, publishers []string
+		for _, link := range game.Links {
+			switch link.Type {
+			case "boardgamedesigner":
+				designers = append(designers, link.Value)
+			case "boardgameartist":
+				artists = append(artists, link.Value)
+			case "boardgamepublisher":
+				publishers = append(publishers, link.Value)
+			}
+		}
+
+		aiSummary := ""
+		if settings.OpenRouterAPIKey != "" {
+			if s, err := bggH.generateGameSummary(ctx, cleanBGGText(game.Desc), title, settings); err == nil {
+				aiSummary = s
+			}
+		}
+
+		imgURL := strings.TrimSpace(game.Image)
+		if imgURL == "" {
+			imgURL = strings.TrimSpace(game.Thumbnail)
+		}
+		if strings.HasPrefix(imgURL, "//") {
+			imgURL = "https:" + imgURL
+		}
+
+		if imgURL == "" {
+			errs = append(errs, itemError{URL: rawURL, Error: "no cover image available"})
+			continue
+		}
+
+		imageData, err := bggH.downloadAndProcess(ctx, c, imgURL)
+		if err != nil {
+			errs = append(errs, itemError{URL: rawURL, Error: "image processing failed: " + err.Error()})
+			continue
+		}
+
+		filename := fmt.Sprintf("bgg-%s-%d.jpg", gameID, time.Now().UnixNano())
+		imageURL, err := ph.storeFile(filename, "image/jpeg", imageData)
+		if err != nil {
+			errs = append(errs, itemError{URL: rawURL, Error: "failed to store image"})
+			continue
+		}
+
+		caption := buildPostContent(title, designers, artists, publishers, game, aiSummary, settings.AILanguage)
+
+		queueItem := models.ConventionQueueItem{
+			QueueID:   queueID,
+			ImageURL:  imageURL,
+			Caption:   caption,
+			BGGURL:    rawURL,
+			Status:    models.ConventionQueueItemStatusPending,
+			SortOrder: int(count),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		count++
+
+		res, err := h.DB.ConventionQueueItems().InsertOne(ctx, queueItem)
+		if err != nil {
+			errs = append(errs, itemError{URL: rawURL, Error: "failed to create queue item"})
+			continue
+		}
+
+		queueItem.ID = res.InsertedID.(primitive.ObjectID)
+		created = append(created, queueItem)
+	}
+
+	status := http.StatusCreated
+	if len(created) == 0 {
+		status = http.StatusBadRequest
+	}
+	c.JSON(status, gin.H{
+		"items":  created,
+		"errors": errs,
+	})
+}
+
 func (h *ConventionHandler) readImageData(ctx context.Context, imageURL string) ([]byte, string, error) {
 	filename := filepath.Base(imageURL)
 	diskPath := filepath.Join(h.UploadDir, filename)

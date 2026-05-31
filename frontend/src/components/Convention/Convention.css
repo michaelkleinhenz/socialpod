@@ -290,6 +290,59 @@
 
 .conv-upload-hint { font-size: 12px; }
 
+/* BGG import */
+.conv-bgg-import {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.conv-bgg-import-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.conv-bgg-import-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.conv-bgg-import-input {
+  flex: 1;
+  resize: vertical;
+  min-height: 64px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 8px 10px;
+}
+
+.conv-bgg-import-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.conv-bgg-import-input::placeholder {
+  color: var(--text-muted);
+}
+
+.conv-bgg-import-btn {
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
 /* Toolbar */
 .conv-toolbar {
   display: flex;

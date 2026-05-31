@@ -497,6 +497,13 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/items`, { method: 'POST', body: form });
   }
 
+  addBGGItems(queueId: string, urls: string[]) {
+    return this.request<{ items: any[]; errors: { url: string; error: string }[] }>(
+      `/convention/queues/${queueId}/items/bgg`,
+      { method: 'POST', body: JSON.stringify({ urls }) },
+    );
+  }
+
   updateConventionItem(queueId: string, itemId: string, data: any) {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
   }
