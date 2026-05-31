@@ -50,12 +50,13 @@ type NewsResult struct {
 }
 
 type EpisodeNews struct {
-	Enabled        bool        `bson:"enabled" json:"enabled"`
-	EpisodeNumber  string      `bson:"episodeNumber,omitempty" json:"episodeNumber,omitempty"`
-	Title          string      `bson:"title,omitempty" json:"title,omitempty"`
-	AdditionalText string      `bson:"additionalText,omitempty" json:"additionalText,omitempty"`
-	BGGLink        string      `bson:"bggLink,omitempty" json:"bggLink,omitempty"`
-	Result         *NewsResult `bson:"result,omitempty" json:"result,omitempty"`
+	Enabled        bool          `bson:"enabled" json:"enabled"`
+	EpisodeNumber  string        `bson:"episodeNumber,omitempty" json:"episodeNumber,omitempty"`
+	Title          string        `bson:"title,omitempty" json:"title,omitempty"`
+	AdditionalText string        `bson:"additionalText,omitempty" json:"additionalText,omitempty"`
+	BGGLink        string        `bson:"bggLink,omitempty" json:"bggLink,omitempty"`
+	Result         *NewsResult   `bson:"result,omitempty" json:"result,omitempty"`
+	ResultHistory  []NewsResult  `bson:"resultHistory,omitempty" json:"resultHistory,omitempty"`
 }
 
 type Post struct {

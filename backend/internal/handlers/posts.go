@@ -745,7 +745,18 @@ func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+team.EpisodeNewsBearerToken)
 
-	log.Printf("[EpisodeNews] Executing POST request to %s for post %s", team.EpisodeNewsURL, post.ID.Hex())
+	// DEBUG: log full request details including headers
+	log.Printf("[EpisodeNews] === DEBUG REQUEST for post %s ===", post.ID.Hex())
+	log.Printf("[EpisodeNews] Method: %s", req.Method)
+	log.Printf("[EpisodeNews] URL: %s", req.URL.String())
+	for name, values := range req.Header {
+		for _, v := range values {
+			log.Printf("[EpisodeNews] Header: %s: %s", name, v)
+		}
+	}
+	log.Printf("[EpisodeNews] Body size: %d bytes", body.Len())
+	log.Printf("[EpisodeNews] === END DEBUG REQUEST ===")
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -775,6 +786,9 @@ func (h *PostHandler) updateNewsResult(ctx context.Context, postID primitive.Obj
 		"$set": bson.M{
 			"episodeNews.result": result,
 			"updatedAt":          time.Now(),
+		},
+		"$push": bson.M{
+			"episodeNews.resultHistory": result,
 		},
 	})
 }
