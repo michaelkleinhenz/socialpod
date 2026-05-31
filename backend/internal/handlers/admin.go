@@ -597,7 +597,7 @@ func (h *AdminHandler) InstagramAuthURL(c *gin.Context) {
 
 	state := "instagram_auth"
 	if teamID := c.Query("teamId"); teamID != "" {
-		state = "instagram_auth:" + teamID
+		state = "instagram_admin_auth:" + teamID
 	}
 
 	url, err := h.instagramAuthURL(ctx, state)
@@ -612,10 +612,16 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
 
-	// Parse optional team ID from state (format: "instagram_auth:TEAMID" or "instagram_auth")
 	var teamID *primitive.ObjectID
 	var successRedirect, errorRedirect string
-	if strings.HasPrefix(state, "instagram_auth:") {
+	if strings.HasPrefix(state, "instagram_admin_auth:") {
+		rawID := strings.TrimPrefix(state, "instagram_admin_auth:")
+		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
+			teamID = &tid
+		}
+		successRedirect = "/admin/accounts?instagram=connected"
+		errorRedirect = "/admin/accounts?error="
+	} else if strings.HasPrefix(state, "instagram_auth:") {
 		rawID := strings.TrimPrefix(state, "instagram_auth:")
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
@@ -687,7 +693,7 @@ func (h *AdminHandler) LinkedInAuthURL(c *gin.Context) {
 
 	state := "linkedin_auth"
 	if teamID := c.Query("teamId"); teamID != "" {
-		state = "linkedin_auth:" + teamID
+		state = "linkedin_admin_auth:" + teamID
 	}
 
 	authURL, err := h.linkedInAuthURL(ctx, state)
@@ -718,7 +724,14 @@ func (h *AdminHandler) LinkedInCallback(c *gin.Context) {
 
 	var teamID *primitive.ObjectID
 	var successRedirect, errorRedirect string
-	if strings.HasPrefix(state, "linkedin_auth:") {
+	if strings.HasPrefix(state, "linkedin_admin_auth:") {
+		rawID := strings.TrimPrefix(state, "linkedin_admin_auth:")
+		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
+			teamID = &tid
+		}
+		successRedirect = "/admin/accounts?linkedin=connected"
+		errorRedirect = "/admin/accounts?error="
+	} else if strings.HasPrefix(state, "linkedin_auth:") {
 		rawID := strings.TrimPrefix(state, "linkedin_auth:")
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
