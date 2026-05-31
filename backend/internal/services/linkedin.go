@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -240,6 +241,71 @@ func (s *LinkedInService) FetchProfile(account *models.SocialAccount) (displayNa
 	}
 
 	return name, avatar, nil
+}
+
+// ExchangeCodeForToken exchanges an OAuth 2.0 authorization code for an access
+// token and returns a populated SocialAccount ready to be persisted.
+func (s *LinkedInService) ExchangeCodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string) (*models.SocialAccount, error) {
+	params := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {code},
+		"redirect_uri":  {redirectURI},
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"https://www.linkedin.com/oauth/v2/accessToken",
+		strings.NewReader(params.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("token exchange failed (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken           string `json:"access_token"`
+		ExpiresIn             int64  `json:"expires_in"`
+		RefreshToken          string `json:"refresh_token"`
+		RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"`
+	}
+	if err := json.Unmarshal(body, &tokenResp); err != nil || tokenResp.AccessToken == "" {
+		return nil, fmt.Errorf("invalid token response from LinkedIn")
+	}
+
+	account := &models.SocialAccount{
+		Platform:    models.PlatformLinkedIn,
+		AccountName: "linkedin",
+		DisplayName: "LinkedIn Account",
+		AccessToken: tokenResp.AccessToken,
+		IsActive:    true,
+	}
+	if tokenResp.ExpiresIn > 0 {
+		account.TokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	}
+	if tokenResp.RefreshToken != "" {
+		account.RefreshToken = tokenResp.RefreshToken
+	}
+
+	if dn, av, err := s.FetchProfile(account); err == nil {
+		if dn != "" {
+			account.DisplayName = dn
+			account.AccountName = dn
+		}
+		account.AvatarURL = av
+	}
+
+	return account, nil
 }
 
 func (s *LinkedInService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
