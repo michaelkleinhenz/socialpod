@@ -33,6 +33,10 @@ export function AccountsPage() {
   const [threadsTeamId, setThreadsTeamId] = useState('');
   const [addingThreads, setAddingThreads] = useState(false);
   const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
+  const [showLinkedInTeamPicker, setShowLinkedInTeamPicker] = useState(false);
+  const [linkedInTeamId, setLinkedInTeamId] = useState('');
+  const [showInstagramTeamPicker, setShowInstagramTeamPicker] = useState(false);
+  const [instagramTeamId, setInstagramTeamId] = useState('');
 
   useEffect(() => {
     loadAccounts();
@@ -158,10 +162,10 @@ export function AccountsPage() {
     }
   };
 
-  const connectLinkedIn = async () => {
+  const connectLinkedIn = async (teamId?: string) => {
     setConnectingLinkedIn(true);
     try {
-      const { url } = await api.getLinkedInAuthUrl();
+      const { url } = await api.getLinkedInAuthUrl(teamId || undefined);
       window.location.href = url;
     } catch (err: any) {
       toast.error(err.message);
@@ -181,9 +185,9 @@ export function AccountsPage() {
     }
   };
 
-  const connectInstagram = async () => {
+  const connectInstagram = async (teamId?: string) => {
     try {
-      const { url } = await api.getInstagramAuthUrl();
+      const { url } = await api.getInstagramAuthUrl(teamId || undefined);
       window.location.href = url;
     } catch (err: any) {
       toast.error(err.message);
@@ -224,13 +228,13 @@ export function AccountsPage() {
           <button className="btn btn-secondary" onClick={() => setShowMastodonForm(true)} style={{ borderColor: 'var(--mastodon)', color: 'var(--mastodon)' }}>
             <Plus size={16} /> Add Mastodon
           </button>
-          <button className="btn btn-secondary" onClick={connectInstagram} style={{ borderColor: 'var(--instagram)', color: 'var(--instagram)' }}>
+          <button className="btn btn-secondary" onClick={() => { setInstagramTeamId(''); setShowInstagramTeamPicker(true); }} style={{ borderColor: 'var(--instagram)', color: 'var(--instagram)' }}>
             <ExternalLink size={16} /> Connect Instagram
           </button>
           <button className="btn btn-secondary" onClick={() => setShowThreadsForm(true)} style={{ borderColor: 'var(--threads)', color: 'var(--threads)' }}>
             <Plus size={16} /> Add Threads
           </button>
-          <button className="btn btn-secondary" onClick={connectLinkedIn} disabled={connectingLinkedIn} style={{ borderColor: 'var(--linkedin)', color: 'var(--linkedin)' }}>
+          <button className="btn btn-secondary" onClick={() => { setLinkedInTeamId(''); setShowLinkedInTeamPicker(true); }} disabled={connectingLinkedIn} style={{ borderColor: 'var(--linkedin)', color: 'var(--linkedin)' }}>
             <ExternalLink size={16} /> Connect LinkedIn
           </button>
         </div>
@@ -412,6 +416,56 @@ export function AccountsPage() {
               <button className="btn btn-secondary" onClick={() => setShowThreadsForm(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={addThreads} disabled={addingThreads}>
                 {addingThreads ? 'Adding...' : 'Add Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLinkedInTeamPicker && (
+        <div className="modal-overlay" onClick={() => setShowLinkedInTeamPicker(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Connect LinkedIn</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-group">
+                <label>Assign to Team</label>
+                <select className="input" value={linkedInTeamId} onChange={e => setLinkedInTeamId(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowLinkedInTeamPicker(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { setShowLinkedInTeamPicker(false); connectLinkedIn(linkedInTeamId); }} disabled={connectingLinkedIn}>
+                {connectingLinkedIn ? 'Redirecting…' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInstagramTeamPicker && (
+        <div className="modal-overlay" onClick={() => setShowInstagramTeamPicker(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Connect Instagram</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="form-group">
+                <label>Assign to Team</label>
+                <select className="input" value={instagramTeamId} onChange={e => setInstagramTeamId(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {teams.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowInstagramTeamPicker(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { setShowInstagramTeamPicker(false); connectInstagram(instagramTeamId); }}>
+                Continue
               </button>
             </div>
           </div>

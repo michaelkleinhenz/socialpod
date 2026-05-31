@@ -595,7 +595,12 @@ func (h *AdminHandler) InstagramAuthURL(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	url, err := h.instagramAuthURL(ctx, "instagram_auth")
+	state := "instagram_auth"
+	if teamID := c.Query("teamId"); teamID != "" {
+		state = "instagram_auth:" + teamID
+	}
+
+	url, err := h.instagramAuthURL(ctx, state)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -680,7 +685,12 @@ func (h *AdminHandler) LinkedInAuthURL(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	authURL, err := h.linkedInAuthURL(ctx, "linkedin_auth")
+	state := "linkedin_auth"
+	if teamID := c.Query("teamId"); teamID != "" {
+		state = "linkedin_auth:" + teamID
+	}
+
+	authURL, err := h.linkedInAuthURL(ctx, state)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
