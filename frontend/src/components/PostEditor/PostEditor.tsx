@@ -880,8 +880,19 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                           type="checkbox"
                           checked={customizePerPlatform}
                           onChange={e => {
-                            setCustomizePerPlatform(e.target.checked);
-                            if (!e.target.checked) setContentOverrides({});
+                            const checked = e.target.checked;
+                            setCustomizePerPlatform(checked);
+                            if (checked) {
+                              setContentOverrides(prev => {
+                                const merged: Record<string, string> = { ...prev };
+                                platforms.forEach(p => {
+                                  if (!merged[p]) merged[p] = content;
+                                });
+                                return merged;
+                              });
+                            } else {
+                              setContentOverrides({});
+                            }
                           }}
                         />
                         Customize per platform
@@ -990,7 +1001,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
                 {/* First Comment */}
                 <div className="form-group">
-                  <label><MessageSquare size={14} /> First Comment <span className="first-comment-label-hint">(optional — posted right after)</span></label>
+                  <label style={{ whiteSpace: 'nowrap' }}><MessageSquare size={14} /> First Comment <span className="first-comment-label-hint">(optional)</span></label>
                   <textarea
                     className="textarea first-comment-textarea"
                     value={firstComment}

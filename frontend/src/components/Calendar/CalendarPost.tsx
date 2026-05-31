@@ -20,11 +20,15 @@ export function CalendarPost({ post, onClick, isDragging }: Props) {
   const isStory = post.postType === 'story';
   const isReel = post.postType === 'reel';
   const time = format(parseISO(post.scheduledAt), 'HH:mm');
+  const displayContent = post.content
+    || (post.contentOverrides && Object.keys(post.contentOverrides).length > 0
+      ? post.contentOverrides[post.platforms[0]] || Object.values(post.contentOverrides).find(v => v) || ''
+      : '');
   const preview = isStory
     ? 'Story'
     : isReel
-    ? (post.content ? (post.content.length > 60 ? post.content.slice(0, 60) + '...' : post.content) : 'Reel')
-    : (post.content.length > 60 ? post.content.slice(0, 60) + '...' : post.content);
+    ? (displayContent ? (displayContent.length > 60 ? displayContent.slice(0, 60) + '...' : displayContent) : 'Reel')
+    : (displayContent.length > 60 ? displayContent.slice(0, 60) + '...' : displayContent);
   const cfg = statusConfig[post.status] || statusConfig.scheduled;
   const StatusIcon = cfg.icon;
 
