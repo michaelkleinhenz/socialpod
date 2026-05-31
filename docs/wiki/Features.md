@@ -86,6 +86,7 @@ Write different text for each platform when posting to multiple networks simulta
 | Mastodon | 500 |
 | Instagram | 2,200 |
 | LinkedIn | 3,000 |
+| YouTube | 5,000 (description) |
 
 ---
 

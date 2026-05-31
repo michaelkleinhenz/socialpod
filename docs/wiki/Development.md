@@ -13,12 +13,12 @@
                     │      Port 8080       │
                     └──────────┬───────────┘
                                │
-           ┌───────────┬───────┴───────┬───────────┐
-           ▼           ▼               ▼           ▼
-    ┌─────────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────────┐
-    │   Bluesky   │ │  Instagram   │ │ X/Twitter│ │   Mastodon   │
-    │   AT Proto  │ │  Graph API   │ │  API v2  │ │  REST API    │
-    └─────────────┘ └──────────────┘ └──────────┘ └──────────────┘
+      ┌────────┬───────┬───────┴──────┬──────────┬──────────┬──────────┐
+      ▼        ▼       ▼              ▼          ▼          ▼          ▼
+ ┌────────┐ ┌──────┐ ┌──────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+ │Bluesky │ │Insta │ │X/Twitter │ │Mastodon│ │Threads │ │LinkedIn│ │YouTube │
+ │AT Proto│ │Graph │ │  API v2  │ │REST API│ │  API   │ │OAuth2  │ │Data v3 │
+ └────────┘ └──────┘ └──────────┘ └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
 ### Single-binary deployment
@@ -39,7 +39,7 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 | `internal/models/` | BSON-tagged Go structs for each collection |
 | `internal/handlers/` | One file per handler group (`auth.go`, `posts.go`, `admin.go`, etc.) |
 | `internal/middleware/auth.go` | `AuthRequired` — tries JWT → user API token → team API token |
-| `internal/services/` | `bluesky.go`, `instagram.go`, `scheduler.go`, `imageutil.go` |
+| `internal/services/` | `bluesky.go`, `instagram.go`, `linkedin.go`, `mastodon.go`, `threads.go`, `twitter.go`, `youtube.go`, `scheduler.go`, `imageutil.go` |
 
 The scheduler runs every 30 seconds, queries for `status == "scheduled"` and `scheduledAt <= now`, and publishes posts. Suffixes are fetched from the DB and appended at publish time.
 
