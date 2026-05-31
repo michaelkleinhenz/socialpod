@@ -6,7 +6,7 @@ import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import './Mentions.css';
 
-const PLATFORMS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
+const PLATFORMS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin', 'youtube'];
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   bluesky: 'Bluesky',
@@ -15,6 +15,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   mastodon: 'Mastodon',
   threads: 'Threads',
   linkedin: 'LinkedIn',
+  youtube: 'YouTube',
 };
 
 const PLATFORM_PLACEHOLDERS: Record<Platform, string> = {
@@ -24,6 +25,7 @@ const PLATFORM_PLACEHOLDERS: Record<Platform, string> = {
   mastodon: '@alice@mastodon.social',
   threads: '@alice',
   linkedin: '@alice',
+  youtube: '@channel',
 };
 
 interface HandleFormState {
