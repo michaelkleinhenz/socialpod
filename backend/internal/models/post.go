@@ -43,6 +43,21 @@ type PostResult struct {
 	PostedAt  time.Time `bson:"postedAt,omitempty" json:"postedAt,omitempty"`
 }
 
+type NewsResult struct {
+	Success bool      `bson:"success" json:"success"`
+	Error   string    `bson:"error,omitempty" json:"error,omitempty"`
+	SentAt  time.Time `bson:"sentAt,omitempty" json:"sentAt,omitempty"`
+}
+
+type EpisodeNews struct {
+	Enabled        bool        `bson:"enabled" json:"enabled"`
+	EpisodeNumber  string      `bson:"episodeNumber,omitempty" json:"episodeNumber,omitempty"`
+	Title          string      `bson:"title,omitempty" json:"title,omitempty"`
+	AdditionalText string      `bson:"additionalText,omitempty" json:"additionalText,omitempty"`
+	BGGLink        string      `bson:"bggLink,omitempty" json:"bggLink,omitempty"`
+	Result         *NewsResult `bson:"result,omitempty" json:"result,omitempty"`
+}
+
 type Post struct {
 	ID           primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
 	UserID       primitive.ObjectID  `bson:"userId" json:"userId"`
@@ -56,9 +71,10 @@ type Post struct {
 	Status       PostStatus         `bson:"status" json:"status"`
 	Results      []PostResult       `bson:"results,omitempty" json:"results,omitempty"`
 	Tags         []string           `bson:"tags,omitempty" json:"tags,omitempty"`
-	AccountIDs      map[string]string  `bson:"accountIds,omitempty" json:"accountIds,omitempty"`      // platform -> accountId
-	SuffixIDs       map[string]string  `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`       // platform -> suffixId
-	ContentOverrides map[string]string `bson:"contentOverrides,omitempty" json:"contentOverrides,omitempty"` // platform -> custom content
+	AccountIDs      map[string]string  `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
+	SuffixIDs       map[string]string  `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
+	ContentOverrides map[string]string `bson:"contentOverrides,omitempty" json:"contentOverrides,omitempty"`
+	EpisodeNews  *EpisodeNews       `bson:"episodeNews,omitempty" json:"episodeNews,omitempty"`
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt    time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

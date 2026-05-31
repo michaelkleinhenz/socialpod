@@ -540,9 +540,11 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		wmID = team.BGGWatermarkID.Hex()
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"bggWatermarkId":  wmID,
-		"bggCoverOffsetX": team.BGGCoverOffsetX,
-		"bggCoverOffsetY": team.BGGCoverOffsetY,
+		"bggWatermarkId":         wmID,
+		"bggCoverOffsetX":        team.BGGCoverOffsetX,
+		"bggCoverOffsetY":        team.BGGCoverOffsetY,
+		"episodeNewsUrl":         team.EpisodeNewsURL,
+		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
 	})
 }
 
@@ -560,9 +562,11 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID  *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY *int    `json:"bggCoverOffsetY"`
+		BGGWatermarkID         *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX        *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -591,6 +595,21 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 	if input.BGGCoverOffsetY != nil {
 		setFields["bggCoverOffsetY"] = *input.BGGCoverOffsetY
+	}
+
+	if input.EpisodeNewsURL != nil {
+		if *input.EpisodeNewsURL == "" {
+			unsetFields["episodeNewsUrl"] = ""
+		} else {
+			setFields["episodeNewsUrl"] = *input.EpisodeNewsURL
+		}
+	}
+	if input.EpisodeNewsBearerToken != nil {
+		if *input.EpisodeNewsBearerToken == "" {
+			unsetFields["episodeNewsBearerToken"] = ""
+		} else {
+			setFields["episodeNewsBearerToken"] = *input.EpisodeNewsBearerToken
+		}
 	}
 
 	var updateDoc bson.M
@@ -630,9 +649,11 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		wmID = team.BGGWatermarkID.Hex()
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"bggWatermarkId":  wmID,
-		"bggCoverOffsetX": team.BGGCoverOffsetX,
-		"bggCoverOffsetY": team.BGGCoverOffsetY,
+		"bggWatermarkId":            wmID,
+		"bggCoverOffsetX":           team.BGGCoverOffsetX,
+		"bggCoverOffsetY":           team.BGGCoverOffsetY,
+		"episodeNewsUrl":            team.EpisodeNewsURL,
+		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
 	})
 }
 
@@ -645,9 +666,11 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID  *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY *int    `json:"bggCoverOffsetY"`
+		BGGWatermarkID         *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX        *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -676,6 +699,21 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 	}
 	if input.BGGCoverOffsetY != nil {
 		setFields["bggCoverOffsetY"] = *input.BGGCoverOffsetY
+	}
+
+	if input.EpisodeNewsURL != nil {
+		if *input.EpisodeNewsURL == "" {
+			unsetFields["episodeNewsUrl"] = ""
+		} else {
+			setFields["episodeNewsUrl"] = *input.EpisodeNewsURL
+		}
+	}
+	if input.EpisodeNewsBearerToken != nil {
+		if *input.EpisodeNewsBearerToken == "" {
+			unsetFields["episodeNewsBearerToken"] = ""
+		} else {
+			setFields["episodeNewsBearerToken"] = *input.EpisodeNewsBearerToken
+		}
 	}
 
 	var updateDoc bson.M

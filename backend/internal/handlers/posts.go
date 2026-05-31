@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -26,6 +28,13 @@ type PostHandler struct {
 	UploadDir string
 }
 
+type EpisodeNewsInput struct {
+	EpisodeNumber  string `json:"episodeNumber"`
+	Title          string `json:"title"`
+	AdditionalText string `json:"additionalText,omitempty"`
+	BGGLink        string `json:"bggLink,omitempty"`
+}
+
 type CreatePostInput struct {
 	Content          string            `json:"content"`
 	PostType         models.PostType   `json:"postType,omitempty"`
@@ -38,6 +47,7 @@ type CreatePostInput struct {
 	Status           models.PostStatus `json:"status,omitempty"`
 	SuffixIDs        map[string]string `json:"suffixIds,omitempty"`
 	ContentOverrides map[string]string `json:"contentOverrides,omitempty"`
+	EpisodeNews      *EpisodeNewsInput `json:"episodeNews,omitempty"`
 }
 
 type UpdatePostInput struct {
@@ -161,6 +171,16 @@ func (h *PostHandler) Create(c *gin.Context) {
 		UpdatedAt:        time.Now(),
 	}
 
+	if input.EpisodeNews != nil {
+		post.EpisodeNews = &models.EpisodeNews{
+			Enabled:        true,
+			EpisodeNumber:  input.EpisodeNews.EpisodeNumber,
+			Title:          input.EpisodeNews.Title,
+			AdditionalText: input.EpisodeNews.AdditionalText,
+			BGGLink:        input.EpisodeNews.BGGLink,
+		}
+	}
+
 	if teamID, ok := c.Get("teamId"); ok {
 		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
 		post.TeamID = &tid
@@ -173,6 +193,11 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	post.ID = result.InsertedID.(primitive.ObjectID)
+
+	if post.EpisodeNews != nil && post.EpisodeNews.Enabled && post.TeamID != nil {
+		h.sendEpisodeNews(ctx, &post)
+	}
+
 	c.JSON(http.StatusCreated, post)
 }
 
@@ -620,6 +645,154 @@ func (h *PostHandler) Retry(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retry post"})
 		return
 	}
+
+	h.DB.Posts().FindOne(ctx, bson.M{"_id": postID}).Decode(&post)
+	c.JSON(http.StatusOK, post)
+}
+
+func (h *PostHandler) suffixContent(ctx context.Context, suffixIDStr string, teamID *primitive.ObjectID) string {
+	if suffixIDStr == "" {
+		return ""
+	}
+	oid, err := primitive.ObjectIDFromHex(suffixIDStr)
+	if err != nil {
+		return ""
+	}
+	filter := bson.M{"_id": oid}
+	if teamID != nil {
+		filter["teamId"] = teamID
+	}
+	var suffix models.Suffix
+	if err := h.DB.Suffixes().FindOne(ctx, filter).Decode(&suffix); err != nil {
+		return ""
+	}
+	return suffix.Content
+}
+
+func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": post.TeamID}).Decode(&team); err != nil {
+		h.updateNewsResult(ctx, post.ID, false, "Team not found")
+		return
+	}
+
+	if team.EpisodeNewsURL == "" || team.EpisodeNewsBearerToken == "" {
+		h.updateNewsResult(ctx, post.ID, false, "Episode news URL or bearer token not configured")
+		return
+	}
+
+	platformContent := func(platform string) string {
+		if post.ContentOverrides != nil {
+			if override, ok := post.ContentOverrides[platform]; ok && override != "" {
+				return override
+			}
+		}
+		return post.Content
+	}
+
+	instagramText := platformContent("instagram")
+	bskyText := platformContent("bluesky")
+
+	if post.SuffixIDs != nil {
+		if s := h.suffixContent(ctx, post.SuffixIDs["instagram"], post.TeamID); s != "" {
+			instagramText = instagramText + "\n" + s
+		}
+		if s := h.suffixContent(ctx, post.SuffixIDs["bluesky"], post.TeamID); s != "" {
+			bskyText = bskyText + "\n" + s
+		}
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	writer.WriteField("episodeNumber", post.EpisodeNews.EpisodeNumber)
+	writer.WriteField("title", post.EpisodeNews.Title)
+	writer.WriteField("link", post.EpisodeNews.BGGLink)
+	writer.WriteField("additionalText", post.EpisodeNews.AdditionalText)
+	writer.WriteField("instagramText", instagramText)
+	writer.WriteField("bskyText", bskyText)
+	writer.WriteField("postingDate", post.ScheduledAt.Format(time.RFC3339))
+
+	if len(post.ImageURLs) > 0 {
+		imgPath := post.ImageURLs[0]
+		if imgPath != "" && imgPath[0] == '/' {
+			imgPath = imgPath[1:]
+		}
+		fullPath := filepath.Join(h.UploadDir, filepath.Base(imgPath))
+		if fileData, err := os.ReadFile(fullPath); err == nil {
+			ext := filepath.Ext(fullPath)
+			mimeType := mime.TypeByExtension(ext)
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+			part, _ := writer.CreateFormFile("image", filepath.Base(fullPath))
+			part.Write(fileData)
+		}
+	}
+	writer.Close()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", team.EpisodeNewsURL, &body)
+	if err != nil {
+		h.updateNewsResult(ctx, post.ID, false, "Failed to create request: "+err.Error())
+		return
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+team.EpisodeNewsBearerToken)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		h.updateNewsResult(ctx, post.ID, false, "Request failed: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		h.updateNewsResult(ctx, post.ID, true, "")
+	} else {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		h.updateNewsResult(ctx, post.ID, false, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody)))
+	}
+}
+
+func (h *PostHandler) updateNewsResult(ctx context.Context, postID primitive.ObjectID, success bool, errMsg string) {
+	result := models.NewsResult{
+		Success: success,
+		SentAt:  time.Now(),
+		Error:   errMsg,
+	}
+	h.DB.Posts().UpdateOne(ctx, bson.M{"_id": postID}, bson.M{
+		"$set": bson.M{
+			"episodeNews.result": result,
+			"updatedAt":          time.Now(),
+		},
+	})
+}
+
+func (h *PostHandler) RetryEpisodeNews(c *gin.Context) {
+	postID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+
+	filter := postFilter(c)
+	filter["_id"] = postID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var post models.Post
+	if err := h.DB.Posts().FindOne(ctx, filter).Decode(&post); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		return
+	}
+
+	if post.EpisodeNews == nil || !post.EpisodeNews.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Post has no episode news configured"})
+		return
+	}
+
+	h.sendEpisodeNews(ctx, &post)
 
 	h.DB.Posts().FindOne(ctx, bson.M{"_id": postID}).Decode(&post)
 	c.JSON(http.StatusOK, post)

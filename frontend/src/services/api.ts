@@ -107,6 +107,10 @@ class ApiClient {
     return this.request<any>(`/posts/${id}/retry`, { method: 'POST' });
   }
 
+  retryEpisodeNews(id: string) {
+    return this.request<any>(`/posts/${id}/retry-news`, { method: 'POST' });
+  }
+
   reschedulePost(id: string, scheduledAt: string) {
     return this.request<any>(`/posts/${id}/reschedule`, {
       method: 'PATCH',
@@ -518,7 +522,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>('/team/settings');
   }
 
-  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number }) {
+  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -530,7 +534,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);
   }
 
-  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number }) {
+  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string }) {
     return this.request<{ message: string }>(`/admin/teams/${teamId}/settings`, {
       method: 'PUT',
       body: JSON.stringify(data),
