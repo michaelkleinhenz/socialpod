@@ -1378,13 +1378,20 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 	}
 
 	systemPrompt := "You are a social media copywriter. The user gives you a prompt (which may include URLs for context). Write a ready-to-post social media post based on the prompt. Reply with ONLY the post text, no quotes, no commentary, no labels."
+	hasBluesky := false
 	if len(input.Platforms) > 0 {
 		var platforms []models.Platform
 		for _, p := range input.Platforms {
 			platforms = append(platforms, models.Platform(p))
+			if models.Platform(p) == models.PlatformBluesky {
+				hasBluesky = true
+			}
 		}
 		limit := contentLimit(platforms)
 		systemPrompt += fmt.Sprintf(" The post must fit within %d characters.", limit)
+	}
+	if hasBluesky {
+		systemPrompt += " Do not include hashtags."
 	}
 	if settings.AILanguage != "" {
 		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
