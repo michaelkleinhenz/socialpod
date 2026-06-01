@@ -27,6 +27,7 @@ const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
 const TWITTER_LIMIT = 280;
 const MASTODON_LIMIT = 500;
+const LINKEDIN_LIMIT = 3000;
 
 function renderWithHashtags(text: string) {
   if (!text) return null;
@@ -49,13 +50,15 @@ interface PreviewProps {
   instagramAccount?: SocialAccount | null;
   twitterAccount?: SocialAccount | null;
   mastodonAccount?: SocialAccount | null;
+  linkedinAccount?: SocialAccount | null;
   bluskySuffix?: string;
   instagramSuffix?: string;
   twitterSuffix?: string;
   mastodonSuffix?: string;
+  linkedinSuffix?: string;
 }
 
-function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, mastodonAccount, bluskySuffix, instagramSuffix, twitterSuffix, mastodonSuffix }: PreviewProps) {
+function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, mastodonAccount, linkedinAccount, bluskySuffix, instagramSuffix, twitterSuffix, mastodonSuffix, linkedinSuffix }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
@@ -70,10 +73,12 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
   const igBase = (contentOverrides?.['instagram'] ?? '') || content;
   const twBase = (contentOverrides?.['twitter'] ?? '') || content;
   const mstBase = (contentOverrides?.['mastodon'] ?? '') || content;
+  const liBase = (contentOverrides?.['linkedin'] ?? '') || content;
   const bskyContent = bluskySuffix ? bskyBase + '\n' + bluskySuffix : bskyBase;
   const igContent = instagramSuffix ? igBase + '\n' + instagramSuffix : igBase;
   const twContent = twitterSuffix ? twBase + '\n' + twitterSuffix : twBase;
   const mstContent = mastodonSuffix ? mstBase + '\n' + mastodonSuffix : mstBase;
+  const liContent = linkedinSuffix ? liBase + '\n' + linkedinSuffix : liBase;
 
   if (platforms.length === 0) {
     return (
@@ -92,6 +97,8 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
   const mstHandle = mastodonAccount?.accountName || 'yourhandle';
   const mstInstance = mastodonAccount?.mastodonInstance || 'mastodon.social';
   const mstAvatarUrl = mastodonAccount?.avatarUrl;
+  const liDisplayName = linkedinAccount?.displayName || linkedinAccount?.accountName || 'Your Name';
+  const liAvatarUrl = linkedinAccount?.avatarUrl;
 
   return (
     <div className="preview-cards">
@@ -211,6 +218,39 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
           <div className="preview-content">
             {content
               ? <p className="preview-text">{renderWithHashtags(mstContent)}</p>
+              : <p className="preview-placeholder">Start typing to see a preview…</p>
+            }
+          </div>
+          {imageUrls.length > 0 && (
+            <div className={`preview-images preview-images-${Math.min(imageUrls.length, 4)}`}>
+              {imageUrls.slice(0, 4).map((url, i) => {
+                const src = url.startsWith('/') ? apiUrl + url : url;
+                return /\.(mp4|mov)$/i.test(url)
+                  ? <video key={i} src={src} muted className="preview-image" />
+                  : <img key={i} src={src} alt="" className="preview-image" />;
+              })}
+            </div>
+          )}
+          <div className="preview-footer">
+            <span className="preview-time">{time}</span>
+          </div>
+        </div>
+      )}
+
+      {platforms.includes('linkedin') && (
+        <div className="preview-card preview-linkedin">
+          <div className="preview-card-header">
+            {liAvatarUrl
+              ? <img src={liAvatarUrl} alt="" className="preview-avatar" />
+              : <div className="preview-avatar preview-avatar-placeholder" />}
+            <div className="preview-user-info">
+              <span className="preview-display-name">{liDisplayName}</span>
+            </div>
+            <div className="preview-platform-badge linkedin">LinkedIn</div>
+          </div>
+          <div className="preview-content">
+            {content
+              ? <p className="preview-text">{renderWithHashtags(liContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
           </div>
@@ -593,6 +633,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     if (platform === 'bluesky') return BLUESKY_LIMIT;
     if (platform === 'twitter') return TWITTER_LIMIT;
     if (platform === 'mastodon') return MASTODON_LIMIT;
+    if (platform === 'linkedin') return LINKEDIN_LIMIT;
     return INSTAGRAM_LIMIT;
   };
 
@@ -604,6 +645,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     ...(platforms.includes('instagram') ? [effectiveLimit('instagram')] : []),
     ...(platforms.includes('twitter') ? [effectiveLimit('twitter')] : []),
     ...(platforms.includes('mastodon') ? [effectiveLimit('mastodon')] : []),
+    ...(platforms.includes('linkedin') ? [effectiveLimit('linkedin')] : []),
   );
   const charCount = content.length;
   const overLimit = charCount > charLimit || (customizePerPlatform && platforms.some(p => {
@@ -1198,10 +1240,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 instagramAccount={instagramAccount}
                 twitterAccount={twitterAccount}
                 mastodonAccount={mastodonAccount}
+                linkedinAccount={linkedinAccount}
                 bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
                 instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
                 twitterSuffix={suffixes.find(s => s.id === suffixIds['twitter'])?.content}
                 mastodonSuffix={suffixes.find(s => s.id === suffixIds['mastodon'])?.content}
+                linkedinSuffix={suffixes.find(s => s.id === suffixIds['linkedin'])?.content}
               />
             )}
           </div>
