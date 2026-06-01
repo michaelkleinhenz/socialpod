@@ -1169,7 +1169,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               <input
                 ref={fileRef}
                 type="file"
-                accept={isReel ? 'video/mp4,video/quicktime' : isStory ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
+                accept={isReel ? 'video/mp4,video/quicktime' : isStory || platforms.includes('youtube') ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
                 multiple={!isStory && !isReel}
                 style={{ display: 'none' }}
                 onChange={e => handleImageUpload(e.target.files)}
