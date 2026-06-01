@@ -34,32 +34,6 @@ type YouTubeService struct {
 	UploadDir string
 }
 
-func (s *YouTubeService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
-	account, err := s.getAccount(ctx, accountID)
-	if err != nil {
-		return "", fmt.Errorf("no active YouTube account: %w", err)
-	}
-
-	if len(imageURLs) == 0 {
-		return "", fmt.Errorf("YouTube post requires at least one image")
-	}
-
-	var settings models.AppSettings
-	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
-
-	imgURL := imageURLs[0]
-	if !strings.HasPrefix(imgURL, "http") {
-		imgURL = settings.AppURL + imgURL
-	}
-
-	accessToken, err := s.ensureValidToken(ctx, account, &settings)
-	if err != nil {
-		return "", fmt.Errorf("failed to refresh YouTube token: %w", err)
-	}
-
-	return s.uploadVideo(ctx, accessToken, content, imgURL, false)
-}
-
 func (s *YouTubeService) PostShort(ctx context.Context, videoURL string, caption string, accountID string) (string, error) {
 	account, err := s.getAccount(ctx, accountID)
 	if err != nil {
@@ -181,6 +155,9 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 		if ct == "" {
 			ct = "video/mp4"
 		}
+		if !strings.HasPrefix(ct, "video/") {
+			return nil, "", fmt.Errorf("YouTube requires a video file, but got %q — upload a video (MP4, MOV, etc.) instead of an image", ct)
+		}
 		return data, ct, nil
 	}
 
@@ -190,11 +167,20 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	ext := strings.ToLower(filepath.Ext(path))
-	ct := "video/mp4"
-	if ext == ".mov" {
-		ct = "video/quicktime"
+	switch ext {
+	case ".mov":
+		return data, "video/quicktime", nil
+	case ".mp4", ".m4v":
+		return data, "video/mp4", nil
+	case ".avi":
+		return data, "video/x-msvideo", nil
+	case ".wmv":
+		return data, "video/x-ms-wmv", nil
+	case ".webm":
+		return data, "video/webm", nil
+	default:
+		return nil, "", fmt.Errorf("YouTube requires a video file, but got a %q file — upload a video (MP4, MOV, etc.) instead of an image", ext)
 	}
-	return data, ct, nil
 }
 
 func (s *YouTubeService) ensureValidToken(ctx context.Context, account *models.SocialAccount, settings *models.AppSettings) (string, error) {

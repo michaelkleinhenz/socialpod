@@ -397,31 +397,21 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				continue
 			}
 
-			if post.PostType == models.PostTypeReel {
-				if len(post.ImageURLs) == 0 {
-					result.Success = false
-					result.Error = "YouTube Short requires a video"
-					allSuccess = false
-				} else {
-					postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), accountID)
-					if err != nil {
-						result.Success = false
-						result.Error = err.Error()
-						allSuccess = false
-						log.Printf("YouTube Short failed: %v", err)
-					} else {
-						result.Success = true
-						result.PostID = postID
-						result.PostedAt = time.Now()
-					}
-				}
+			if post.PostType != models.PostTypeReel {
+				log.Printf("YouTube skipped for post %s: only Shorts (reels) are supported", post.ID.Hex())
+				result.Success = true
+				result.PostedAt = time.Now()
+			} else if len(post.ImageURLs) == 0 {
+				result.Success = false
+				result.Error = "YouTube Short requires a video"
+				allSuccess = false
 			} else {
-				postID, err := s.YouTube.Post(ctx, applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), post.ImageURLs, accountID)
+				postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), accountID)
 				if err != nil {
 					result.Success = false
 					result.Error = err.Error()
 					allSuccess = false
-					log.Printf("YouTube post failed: %v", err)
+					log.Printf("YouTube Short failed: %v", err)
 				} else {
 					result.Success = true
 					result.PostID = postID
@@ -446,3 +436,4 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 		},
 	})
 }
+

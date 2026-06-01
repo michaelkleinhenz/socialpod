@@ -809,78 +809,50 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     onClick={() => blueskyAccount && togglePlatform('bluesky')}
                     title={!blueskyAccount ? 'No Bluesky account configured' : `Will post as @${blueskyAccount.accountName}`}
                   >
-                    <PlatformIcon platform="bluesky" size={14} />
-                    <span className="platform-label">Bluesky</span>
-                    {blueskyAccount && platforms.includes('bluesky') && (
-                      <span className="platform-account-hint">@{blueskyAccount.displayName || blueskyAccount.accountName}</span>
-                    )}
+                    <PlatformIcon platform="bluesky" size={18} />
                   </div>
                   <div
                     className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''} ${!instagramAccount ? 'disabled' : ''}`}
                     onClick={() => instagramAccount && togglePlatform('instagram')}
                     title={!instagramAccount ? 'No Instagram account configured' : `Will post as @${instagramAccount.accountName}`}
                   >
-                    <PlatformIcon platform="instagram" size={14} />
-                    <span className="platform-label">Instagram</span>
-                    {instagramAccount && platforms.includes('instagram') && (
-                      <span className="platform-account-hint">@{instagramAccount.displayName || instagramAccount.accountName}</span>
-                    )}
+                    <PlatformIcon platform="instagram" size={18} />
                   </div>
                   <div
                     className={`platform-option twitter ${platforms.includes('twitter') ? 'selected' : ''} ${!twitterAccount ? 'disabled' : ''}`}
                     onClick={() => twitterAccount && togglePlatform('twitter')}
                     title={!twitterAccount ? 'No X/Twitter account configured' : `Will post as @${twitterAccount.accountName}`}
                   >
-                    <PlatformIcon platform="twitter" size={14} />
-                    <span className="platform-label">X / Twitter</span>
-                    {twitterAccount && platforms.includes('twitter') && (
-                      <span className="platform-account-hint">@{twitterAccount.displayName || twitterAccount.accountName}</span>
-                    )}
+                    <PlatformIcon platform="twitter" size={18} />
                   </div>
                   <div
                     className={`platform-option mastodon ${platforms.includes('mastodon') ? 'selected' : ''} ${!mastodonAccount ? 'disabled' : ''}`}
                     onClick={() => mastodonAccount && togglePlatform('mastodon')}
                     title={!mastodonAccount ? 'No Mastodon account configured' : `Will post as @${mastodonAccount.accountName}`}
                   >
-                    <PlatformIcon platform="mastodon" size={14} />
-                    <span className="platform-label">Mastodon</span>
-                    {mastodonAccount && platforms.includes('mastodon') && (
-                      <span className="platform-account-hint">@{mastodonAccount.displayName || mastodonAccount.accountName}</span>
-                    )}
+                    <PlatformIcon platform="mastodon" size={18} />
                   </div>
                   <div
                     className={`platform-option threads ${platforms.includes('threads') ? 'selected' : ''} ${!threadsAccount ? 'disabled' : ''}`}
                     onClick={() => threadsAccount && togglePlatform('threads')}
                     title={!threadsAccount ? 'No Threads account configured' : `Will post as @${threadsAccount.accountName}`}
                   >
-                    <PlatformIcon platform="threads" size={14} />
-                    <span className="platform-label">Threads</span>
-                    {threadsAccount && platforms.includes('threads') && (
-                      <span className="platform-account-hint">@{threadsAccount.displayName || threadsAccount.accountName}</span>
-                    )}
+                    <PlatformIcon platform="threads" size={18} />
                   </div>
                   <div
                     className={`platform-option linkedin ${platforms.includes('linkedin') ? 'selected' : ''} ${!linkedinAccount ? 'disabled' : ''}`}
                     onClick={() => linkedinAccount && togglePlatform('linkedin')}
                     title={!linkedinAccount ? 'No LinkedIn account configured' : `Will post as ${linkedinAccount.displayName || linkedinAccount.accountName}`}
                   >
-                    <PlatformIcon platform="linkedin" size={14} />
-                    <span className="platform-label">LinkedIn</span>
-                    {linkedinAccount && platforms.includes('linkedin') && (
-                      <span className="platform-account-hint">{linkedinAccount.displayName || linkedinAccount.accountName}</span>
-                    )}
+                    <PlatformIcon platform="linkedin" size={18} />
                   </div>
-                  {youtubeAccount && (
+                  {youtubeAccount && isReel && (
                     <div
                       className={`platform-option youtube ${platforms.includes('youtube') ? 'selected' : ''}`}
                       onClick={() => togglePlatform('youtube')}
                       title={`Will post to ${youtubeAccount.displayName || youtubeAccount.accountName}`}
                     >
-                      <PlatformIcon platform="youtube" size={14} />
-                      <span className="platform-label">YouTube</span>
-                      {platforms.includes('youtube') && (
-                        <span className="platform-account-hint">{youtubeAccount.displayName || youtubeAccount.accountName}</span>
-                      )}
+                      <PlatformIcon platform="youtube" size={18} />
                     </div>
                   )}
                 </div>
