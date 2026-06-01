@@ -131,6 +131,7 @@
 .editor-preview {
   border-left: 1px solid var(--border);
   padding-left: 24px;
+  padding-right: 8px;
   overflow-y: auto;
   max-height: 65vh;
 }
