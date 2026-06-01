@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"log"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -399,42 +397,25 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				continue
 			}
 
-			if post.PostType == models.PostTypeReel {
-				if len(post.ImageURLs) == 0 {
-					result.Success = false
-					result.Error = "YouTube Short requires a video"
-					allSuccess = false
-				} else {
-					postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), accountID)
-					if err != nil {
-						result.Success = false
-						result.Error = err.Error()
-						allSuccess = false
-						log.Printf("YouTube Short failed: %v", err)
-					} else {
-						result.Success = true
-						result.PostID = postID
-						result.PostedAt = time.Now()
-					}
-				}
+			if post.PostType != models.PostTypeReel {
+				log.Printf("YouTube skipped for post %s: only Shorts (reels) are supported", post.ID.Hex())
+				result.Success = true
+				result.PostedAt = time.Now()
+			} else if len(post.ImageURLs) == 0 {
+				result.Success = false
+				result.Error = "YouTube Short requires a video"
+				allSuccess = false
 			} else {
-				videoURLs := filterVideoURLs(post.ImageURLs)
-				if len(videoURLs) == 0 {
-					log.Printf("YouTube skipped for post %s: no video files attached", post.ID.Hex())
-					result.Success = true
-					result.PostedAt = time.Now()
+				postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), accountID)
+				if err != nil {
+					result.Success = false
+					result.Error = err.Error()
+					allSuccess = false
+					log.Printf("YouTube Short failed: %v", err)
 				} else {
-					postID, err := s.YouTube.Post(ctx, applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), videoURLs, accountID)
-					if err != nil {
-						result.Success = false
-						result.Error = err.Error()
-						allSuccess = false
-						log.Printf("YouTube post failed: %v", err)
-					} else {
-						result.Success = true
-						result.PostID = postID
-						result.PostedAt = time.Now()
-					}
+					result.Success = true
+					result.PostID = postID
+					result.PostedAt = time.Now()
 				}
 			}
 		}
@@ -456,14 +437,3 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	})
 }
 
-func filterVideoURLs(urls []string) []string {
-	var videos []string
-	for _, u := range urls {
-		ext := strings.ToLower(filepath.Ext(u))
-		switch ext {
-		case ".mp4", ".mov", ".avi", ".wmv", ".webm", ".m4v":
-			videos = append(videos, u)
-		}
-	}
-	return videos
-}

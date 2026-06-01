@@ -870,7 +870,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       <span className="platform-account-hint">{linkedinAccount.displayName || linkedinAccount.accountName}</span>
                     )}
                   </div>
-                  {youtubeAccount && (
+                  {youtubeAccount && isReel && (
                     <div
                       className={`platform-option youtube ${platforms.includes('youtube') ? 'selected' : ''}`}
                       onClick={() => togglePlatform('youtube')}
@@ -1169,7 +1169,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               <input
                 ref={fileRef}
                 type="file"
-                accept={isReel ? 'video/mp4,video/quicktime' : isStory || platforms.includes('youtube') ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
+                accept={isReel ? 'video/mp4,video/quicktime' : isStory ? 'image/*,video/mp4,video/quicktime' : 'image/*'}
                 multiple={!isStory && !isReel}
                 style={{ display: 'none' }}
                 onChange={e => handleImageUpload(e.target.files)}

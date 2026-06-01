@@ -34,32 +34,6 @@ type YouTubeService struct {
 	UploadDir string
 }
 
-func (s *YouTubeService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
-	account, err := s.getAccount(ctx, accountID)
-	if err != nil {
-		return "", fmt.Errorf("no active YouTube account: %w", err)
-	}
-
-	if len(imageURLs) == 0 {
-		return "", fmt.Errorf("YouTube post requires at least one image")
-	}
-
-	var settings models.AppSettings
-	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
-
-	imgURL := imageURLs[0]
-	if !strings.HasPrefix(imgURL, "http") {
-		imgURL = settings.AppURL + imgURL
-	}
-
-	accessToken, err := s.ensureValidToken(ctx, account, &settings)
-	if err != nil {
-		return "", fmt.Errorf("failed to refresh YouTube token: %w", err)
-	}
-
-	return s.uploadVideo(ctx, accessToken, content, imgURL, false)
-}
-
 func (s *YouTubeService) PostShort(ctx context.Context, videoURL string, caption string, accountID string) (string, error) {
 	account, err := s.getAccount(ctx, accountID)
 	if err != nil {
