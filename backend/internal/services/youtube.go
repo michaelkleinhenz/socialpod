@@ -181,6 +181,9 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 		if ct == "" {
 			ct = "video/mp4"
 		}
+		if !strings.HasPrefix(ct, "video/") {
+			return nil, "", fmt.Errorf("YouTube requires a video file, but got %q — upload a video (MP4, MOV, etc.) instead of an image", ct)
+		}
 		return data, ct, nil
 	}
 
@@ -190,11 +193,20 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	ext := strings.ToLower(filepath.Ext(path))
-	ct := "video/mp4"
-	if ext == ".mov" {
-		ct = "video/quicktime"
+	switch ext {
+	case ".mov":
+		return data, "video/quicktime", nil
+	case ".mp4", ".m4v":
+		return data, "video/mp4", nil
+	case ".avi":
+		return data, "video/x-msvideo", nil
+	case ".wmv":
+		return data, "video/x-ms-wmv", nil
+	case ".webm":
+		return data, "video/webm", nil
+	default:
+		return nil, "", fmt.Errorf("YouTube requires a video file, but got a %q file — upload a video (MP4, MOV, etc.) instead of an image", ext)
 	}
-	return data, ct, nil
 }
 
 func (s *YouTubeService) ensureValidToken(ctx context.Context, account *models.SocialAccount, settings *models.AppSettings) (string, error) {
