@@ -454,6 +454,17 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     ));
   }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (customizePerPlatform && platforms.length <= 1) {
+      if (platforms.length === 1) {
+        const override = contentOverrides[platforms[0]];
+        if (override) setContent(override);
+      }
+      setContentOverrides({});
+      setCustomizePerPlatform(false);
+    }
+  }, [platforms.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
   const launchAdobeExpress = useCallback(async () => {
@@ -648,10 +659,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     ...(platforms.includes('linkedin') ? [effectiveLimit('linkedin')] : []),
   );
   const charCount = content.length;
-  const overLimit = charCount > charLimit || (customizePerPlatform && platforms.some(p => {
-    const val = contentOverrides[p];
-    return val != null && val.length > effectiveLimit(p);
-  }));
+  const overLimit = (customizePerPlatform && platforms.length > 1)
+    ? platforms.some(p => {
+        const val = contentOverrides[p];
+        return val != null && val.length > effectiveLimit(p);
+      })
+    : charCount > charLimit;
   const charClass = charCount > charLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
   const handleImageUpload = (files: FileList | null) => {
@@ -813,7 +826,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           toast.success('BGG data imported');
         }
         setContentOverrides(overrides);
-        setContent(data.suggestedContent);
+        setContent('');
       } else {
         setContent(data.suggestedContent);
         toast.success('BGG data imported');
@@ -939,17 +952,46 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                           checked={customizePerPlatform}
                           onChange={e => {
                             const checked = e.target.checked;
-                            setCustomizePerPlatform(checked);
                             if (checked) {
-                              setContentOverrides(prev => {
-                                const merged: Record<string, string> = { ...prev };
-                                platforms.forEach(p => {
-                                  if (!merged[p]) merged[p] = content;
-                                });
-                                return merged;
-                              });
+                              const baseText = content;
+                              setCustomizePerPlatform(true);
+                              setContent('');
+                              const sorted = [...platforms].sort((a, b) => effectiveLimit(b) - effectiveLimit(a));
+                              const primary = sorted[0];
+                              const rest = sorted.slice(1);
+                              const newOverrides: Record<string, string> = { [primary]: baseText };
+                              for (const p of rest) {
+                                newOverrides[p] = baseText;
+                              }
+                              setContentOverrides(newOverrides);
+                              if (aiEnabled && baseText.trim()) {
+                                (async () => {
+                                  for (const p of rest) {
+                                    if (baseText.length > effectiveLimit(p)) {
+                                      setGenerating(p);
+                                      try {
+                                        const { text } = await api.generateText(baseText, [p]);
+                                        setContentOverrides(prev => ({ ...prev, [p]: text }));
+                                      } catch {}
+                                      setGenerating(false);
+                                    }
+                                  }
+                                })();
+                              }
                             } else {
+                              if (Object.values(contentOverrides).some(v => v.trim())) {
+                                if (!window.confirm('Per-platform text will be merged back into a single text box. The longest text will be kept. Continue?')) {
+                                  return;
+                                }
+                              }
+                              let longest = '';
+                              for (const p of platforms) {
+                                const val = contentOverrides[p] || '';
+                                if (val.length > longest.length) longest = val;
+                              }
+                              setContent(longest);
                               setContentOverrides({});
+                              setCustomizePerPlatform(false);
                             }
                           }}
                         />
