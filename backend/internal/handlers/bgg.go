@@ -80,22 +80,23 @@ type bggRatings struct {
 }
 
 type BGGGameResponse struct {
-	GameID           string   `json:"gameId"`
-	Title            string   `json:"title"`
-	YearPublished    string   `json:"yearPublished,omitempty"`
-	MinPlayers       string   `json:"minPlayers"`
-	MaxPlayers       string   `json:"maxPlayers"`
-	MinPlaytime      string   `json:"minPlaytime"`
-	MaxPlaytime      string   `json:"maxPlaytime"`
-	MinAge           string   `json:"minAge"`
-	Designers        []string `json:"designers"`
-	Artists          []string `json:"artists"`
-	Publishers       []string `json:"publishers"`
-	Rating           string   `json:"rating,omitempty"`
-	Weight           string   `json:"weight,omitempty"`
-	ImageBase64      string   `json:"imageBase64"`
-	ImageFilename    string   `json:"imageFilename"`
-	SuggestedContent string   `json:"suggestedContent"`
+	GameID                      string            `json:"gameId"`
+	Title                       string            `json:"title"`
+	YearPublished               string            `json:"yearPublished,omitempty"`
+	MinPlayers                  string            `json:"minPlayers"`
+	MaxPlayers                  string            `json:"maxPlayers"`
+	MinPlaytime                 string            `json:"minPlaytime"`
+	MaxPlaytime                 string            `json:"maxPlaytime"`
+	MinAge                      string            `json:"minAge"`
+	Designers                   []string          `json:"designers"`
+	Artists                     []string          `json:"artists"`
+	Publishers                  []string          `json:"publishers"`
+	Rating                      string            `json:"rating,omitempty"`
+	Weight                      string            `json:"weight,omitempty"`
+	ImageBase64                 string            `json:"imageBase64"`
+	ImageFilename               string            `json:"imageFilename"`
+	SuggestedContent            string            `json:"suggestedContent"`
+	SuggestedContentByPlatform  map[string]string `json:"suggestedContentByPlatform,omitempty"`
 }
 
 var (
@@ -181,23 +182,45 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		}
 	}
 
+	baseContent := buildPostContent(title, designers, artists, publishers, item, aiSummary, settings.AILanguage, nil)
+
+	// Resolve social handles if enabled for this team and OpenRouter is configured.
+	var contentByPlatform map[string]string
+	if settings.OpenRouterAPIKey != "" && h.teamHandleLookupEnabled(ctx, c) {
+		allNames := append(append(publishers, designers...), artists...)
+		handlesByPlatform := h.resolveHandlesWithAI(ctx, allNames, settings)
+		if len(handlesByPlatform) > 0 {
+			contentByPlatform = make(map[string]string)
+			for platform, handles := range handlesByPlatform {
+				text := buildPostContent(title, designers, artists, publishers, item, aiSummary, settings.AILanguage, handles)
+				if text != baseContent {
+					contentByPlatform[platform] = text
+				}
+			}
+			if len(contentByPlatform) == 0 {
+				contentByPlatform = nil
+			}
+		}
+	}
+
 	resp := BGGGameResponse{
-		GameID:           gameID,
-		Title:            title,
-		YearPublished:    item.YearPub.Value,
-		MinPlayers:       item.MinPlayers.Value,
-		MaxPlayers:       item.MaxPlayers.Value,
-		MinPlaytime:      item.MinTime.Value,
-		MaxPlaytime:      item.MaxTime.Value,
-		MinAge:           item.MinAge.Value,
-		Designers:        nilSlice(designers),
-		Artists:          nilSlice(artists),
-		Publishers:       nilSlice(publishers),
-		Rating:           trimFloat(item.Stats.Ratings.Average.Value),
-		Weight:           trimFloat(item.Stats.Ratings.Weight.Value),
-		ImageBase64:      imageBase64,
-		ImageFilename:    imageFilename,
-		SuggestedContent: buildPostContent(title, designers, artists, publishers, item, aiSummary, settings.AILanguage),
+		GameID:                     gameID,
+		Title:                      title,
+		YearPublished:              item.YearPub.Value,
+		MinPlayers:                 item.MinPlayers.Value,
+		MaxPlayers:                 item.MaxPlayers.Value,
+		MinPlaytime:                item.MinTime.Value,
+		MaxPlaytime:                item.MaxTime.Value,
+		MinAge:                     item.MinAge.Value,
+		Designers:                  nilSlice(designers),
+		Artists:                    nilSlice(artists),
+		Publishers:                 nilSlice(publishers),
+		Rating:                     trimFloat(item.Stats.Ratings.Average.Value),
+		Weight:                     trimFloat(item.Stats.Ratings.Weight.Value),
+		ImageBase64:                imageBase64,
+		ImageFilename:              imageFilename,
+		SuggestedContent:           baseContent,
+		SuggestedContentByPlatform: contentByPlatform,
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -531,6 +554,178 @@ func (h *BGGHandler) generateGameSummary(ctx context.Context, description, title
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
 }
 
+// teamHandleLookupEnabled returns true if the team (or user without a team) has
+// handle lookup enabled. When the flag is not set on the team we default to true.
+func (h *BGGHandler) teamHandleLookupEnabled(ctx context.Context, c *gin.Context) bool {
+	teamIDStr, ok := c.Get("teamId")
+	if !ok || teamIDStr.(string) == "" {
+		return true
+	}
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
+	if err != nil {
+		return true
+	}
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		return true
+	}
+	if team.BGGHandleLookupEnabled == nil {
+		return true
+	}
+	return *team.BGGHandleLookupEnabled
+}
+
+// resolveHandlesWithAI looks up handles for each name across all platforms.
+// It first checks the local catalog; names not found there are sent to the AI
+// in a single batched request. Returns map[platform]map[name]handle.
+func (h *BGGHandler) resolveHandlesWithAI(ctx context.Context, names []string, settings models.AppSettings) map[string]map[string]string {
+	if len(names) == 0 || settings.OpenRouterAPIKey == "" {
+		return nil
+	}
+
+	// Dedup names
+	seen := map[string]bool{}
+	unique := names[:0]
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			unique = append(unique, n)
+		}
+	}
+
+	// Load catalog from DB
+	fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cursor, err := h.DB.PublisherHandles().Find(fetchCtx, bson.M{})
+	catalog := map[string]map[string]string{} // name → (platform → handle)
+	if err == nil {
+		var entries []models.PublisherHandle
+		cursor.All(fetchCtx, &entries)
+		for _, e := range entries {
+			catalog[e.Name] = e.Handles
+		}
+	}
+
+	// Separate known from unknown names
+	result := map[string]map[string]string{} // platform → (name → handle)
+	addHandle := func(platform, name, handle string) {
+		if handle == "" {
+			return
+		}
+		if result[platform] == nil {
+			result[platform] = map[string]string{}
+		}
+		result[platform][name] = handle
+	}
+
+	var unknown []string
+	for _, name := range unique {
+		if handles, ok := catalog[name]; ok {
+			for platform, handle := range handles {
+				addHandle(platform, name, handle)
+			}
+		} else {
+			unknown = append(unknown, name)
+		}
+	}
+
+	// Ask AI for unknown names
+	if len(unknown) > 0 {
+		aiHandles := h.lookupHandlesViaAI(ctx, unknown, catalog, settings)
+		for name, handles := range aiHandles {
+			for platform, handle := range handles {
+				addHandle(platform, name, handle)
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// lookupHandlesViaAI asks the configured model to find social-media handles for
+// a list of board-game publisher/designer/artist names. It uses existing catalog
+// entries as few-shot examples to improve accuracy.
+func (h *BGGHandler) lookupHandlesViaAI(ctx context.Context, names []string, catalog map[string]map[string]string, settings models.AppSettings) map[string]map[string]string {
+	model := settings.OpenRouterModel
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	// Build few-shot examples from catalog (up to 5)
+	examples := ""
+	count := 0
+	for name, handles := range catalog {
+		if count >= 5 {
+			break
+		}
+		for platform, handle := range handles {
+			examples += fmt.Sprintf("  %q -> %s: %q\n", name, platform, handle)
+		}
+		count++
+	}
+
+	platformList := "instagram, bluesky, threads, mastodon, twitter"
+	systemPrompt := `You are a board game industry expert. Given a list of board game publisher, designer, or artist names, find their social media handles.
+Return ONLY a JSON object where keys are the exact input names and values are objects mapping platform names to handles (with @ prefix).
+Only include platforms where you are confident the handle is correct. If you don't know a handle, omit that platform.
+Platforms to consider: ` + platformList + `.
+Example output format:
+{
+  "Lookout Games": {"instagram": "@lookoutgames", "bluesky": "@lookout.bsky.social"},
+  "Uwe Rosenberg": {"instagram": "@uwerosenberg"}
+}`
+	if examples != "" {
+		systemPrompt += "\n\nKnown handles from our catalog (use as reference):\n" + examples
+	}
+
+	namesJSON, _ := json.Marshal(names)
+	userMsg := fmt.Sprintf("Find social media handles for these names: %s", string(namesJSON))
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]any{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userMsg},
+		},
+		"response_format": map[string]string{"type": "json_object"},
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var aiResp struct {
+		Choices []struct {
+			Message struct{ Content string `json:"content"` } `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &aiResp); err != nil || len(aiResp.Choices) == 0 {
+		return nil
+	}
+
+	var parsed map[string]map[string]string
+	if err := json.Unmarshal([]byte(aiResp.Choices[0].Message.Content), &parsed); err != nil {
+		return nil
+	}
+	return parsed
+}
+
 // GetTeamSettings returns BGG settings for the current team.
 func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	teamIDStr, ok := c.Get("teamId")
@@ -557,12 +752,17 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.BGGWatermarkID != nil {
 		wmID = team.BGGWatermarkID.Hex()
 	}
+	handleLookup := true
+	if team.BGGHandleLookupEnabled != nil {
+		handleLookup = *team.BGGHandleLookupEnabled
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"bggWatermarkId":         wmID,
-		"bggCoverOffsetX":        team.BGGCoverOffsetX,
-		"bggCoverOffsetY":        team.BGGCoverOffsetY,
-		"episodeNewsUrl":         team.EpisodeNewsURL,
+		"bggWatermarkId":            wmID,
+		"bggCoverOffsetX":           team.BGGCoverOffsetX,
+		"bggCoverOffsetY":           team.BGGCoverOffsetY,
+		"episodeNewsUrl":            team.EpisodeNewsURL,
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
+		"bggHandleLookupEnabled":    handleLookup,
 	})
 }
 
@@ -585,6 +785,7 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
 		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
 		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
+		BGGHandleLookupEnabled *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -628,6 +829,9 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		} else {
 			setFields["episodeNewsBearerToken"] = *input.EpisodeNewsBearerToken
 		}
+	}
+	if input.BGGHandleLookupEnabled != nil {
+		setFields["bggHandleLookupEnabled"] = *input.BGGHandleLookupEnabled
 	}
 
 	var updateDoc bson.M
@@ -666,12 +870,17 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 	if team.BGGWatermarkID != nil {
 		wmID = team.BGGWatermarkID.Hex()
 	}
+	adminHandleLookup := true
+	if team.BGGHandleLookupEnabled != nil {
+		adminHandleLookup = *team.BGGHandleLookupEnabled
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"bggWatermarkId":            wmID,
 		"bggCoverOffsetX":           team.BGGCoverOffsetX,
 		"bggCoverOffsetY":           team.BGGCoverOffsetY,
 		"episodeNewsUrl":            team.EpisodeNewsURL,
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
+		"bggHandleLookupEnabled":    adminHandleLookup,
 	})
 }
 
@@ -689,6 +898,7 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
 		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
 		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
+		BGGHandleLookupEnabled *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -733,6 +943,9 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 			setFields["episodeNewsBearerToken"] = *input.EpisodeNewsBearerToken
 		}
 	}
+	if input.BGGHandleLookupEnabled != nil {
+		setFields["bggHandleLookupEnabled"] = *input.BGGHandleLookupEnabled
+	}
 
 	var updateDoc bson.M
 	if len(unsetFields) > 0 {
@@ -751,7 +964,9 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 
 // --- helpers ---
 
-func buildPostContent(title string, designers, artists, publishers []string, item bggItem, aiSummary, language string) string {
+// buildPostContent generates the post text. handles maps BGG name → @handle for the
+// target platform; pass nil to get plain names (no handle substitution).
+func buildPostContent(title string, designers, artists, publishers []string, item bggItem, aiSummary, language string, handles map[string]string) string {
 	l := labelsFor(language)
 	var sb strings.Builder
 
@@ -800,20 +1015,37 @@ func buildPostContent(title string, designers, artists, publishers []string, ite
 	}
 	if len(publishers) > 0 {
 		n := min(3, len(publishers))
-		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Publisher, strings.Join(publishers[:n], ", ")))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Publisher, formatNamesWithHandles(publishers[:n], handles)))
 	}
 
 	sb.WriteString("\n")
 
 	if len(designers) > 0 {
-		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Designer, strings.Join(designers, ", ")))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Designer, formatNamesWithHandles(designers, handles)))
 	}
 	if len(artists) > 0 {
 		n := min(3, len(artists))
-		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Artist, strings.Join(artists[:n], ", ")))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", l.Artist, formatNamesWithHandles(artists[:n], handles)))
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// formatNamesWithHandles returns names joined with ", ", substituting "@handle (name)"
+// where a handle exists for that name.
+func formatNamesWithHandles(names []string, handles map[string]string) string {
+	if len(handles) == 0 {
+		return strings.Join(names, ", ")
+	}
+	parts := make([]string, len(names))
+	for i, name := range names {
+		if h, ok := handles[name]; ok && h != "" {
+			parts[i] = h + " (" + name + ")"
+		} else {
+			parts[i] = name
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func cleanBGGText(s string) string {

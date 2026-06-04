@@ -1057,7 +1057,7 @@ func (h *ConventionHandler) AddBGGItems(c *gin.Context) {
 			continue
 		}
 
-		caption := buildPostContent(title, designers, artists, publishers, game, aiSummary, settings.AILanguage)
+		caption := buildPostContent(title, designers, artists, publishers, game, aiSummary, settings.AILanguage, nil)
 
 		queueItem := models.ConventionQueueItem{
 			QueueID:   queueID,

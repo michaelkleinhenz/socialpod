@@ -804,33 +804,50 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         setImages(prev => [{ kind: 'file', file }, ...prev]);
       }
       if (customizePerPlatform && platforms.length > 1) {
-        // Route full text to the platform with the highest character limit,
-        // then use AI to produce shorter versions for the remaining platforms.
+        // Start with handle-resolved content per platform where available,
+        // then fall back to AI shortening for the rest.
         const sorted = [...platforms].sort((a, b) => effectiveLimit(b) - effectiveLimit(a));
         const primary = sorted[0];
         const rest = sorted.slice(1);
-        const overrides: Record<string, string> = { [primary]: data.suggestedContent };
+        const byPlatform = data.suggestedContentByPlatform || {};
+        const overrides: Record<string, string> = {
+          [primary]: byPlatform[primary] || data.suggestedContent,
+        };
         if (aiEnabled) {
           for (const p of rest) {
-            try {
-              const { text } = await api.generateText(data.suggestedContent, [p]);
-              overrides[p] = text;
-            } catch {
-              overrides[p] = data.suggestedContent;
+            if (byPlatform[p]) {
+              overrides[p] = byPlatform[p];
+            } else {
+              try {
+                const baseText = byPlatform[primary] || data.suggestedContent;
+                const { text } = await api.generateText(baseText, [p]);
+                overrides[p] = text;
+              } catch {
+                overrides[p] = byPlatform[p] || data.suggestedContent;
+              }
             }
           }
-          toast.success('BGG data imported and text adapted per platform');
+          const hasHandles = Object.keys(byPlatform).length > 0;
+          toast.success(hasHandles ? 'BGG data imported with handles and adapted per platform' : 'BGG data imported and text adapted per platform');
         } else {
           for (const p of rest) {
-            overrides[p] = data.suggestedContent;
+            overrides[p] = byPlatform[p] || data.suggestedContent;
           }
           toast.success('BGG data imported');
         }
         setContentOverrides(overrides);
         setContent('');
       } else {
-        setContent(data.suggestedContent);
-        toast.success('BGG data imported');
+        // Single platform or no per-platform customisation: use the platform-specific
+        // handle-resolved text if available, otherwise the base content.
+        const platform = platforms[0];
+        const resolved = data.suggestedContentByPlatform?.[platform];
+        setContent(resolved || data.suggestedContent);
+        if (resolved) {
+          toast.success('BGG data imported with handles');
+        } else {
+          toast.success('BGG data imported');
+        }
       }
     } catch (e: any) {
       setBggError(e.message || 'Failed to fetch BGG data');

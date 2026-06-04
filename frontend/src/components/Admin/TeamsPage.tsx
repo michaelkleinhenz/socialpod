@@ -119,6 +119,7 @@ export function TeamsPage() {
         bggCoverOffsetX: bggSettings.bggCoverOffsetX ?? 0,
         bggCoverOffsetY: bggSettings.bggCoverOffsetY ?? 0,
         episodeNewsUrl: bggSettings.episodeNewsUrl || '',
+        bggHandleLookupEnabled: bggSettings.bggHandleLookupEnabled ?? true,
       };
       if (episodeNewsBearerToken) {
         data.episodeNewsBearerToken = episodeNewsBearerToken;
@@ -303,6 +304,24 @@ export function TeamsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={bggSettings.bggHandleLookupEnabled ?? true}
+                  onChange={e => setBggSettings(s => ({ ...s, bggHandleLookupEnabled: e.target.checked }))}
+                />
+                <span>Enable AI handle lookup for BGG imports</span>
+              </label>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0 22px' }}>
+                When enabled and an OpenRouter API key is configured, publisher and designer handles are
+                automatically resolved during BGG imports. Requires a catalog entry or AI lookup per
+                platform (Instagram, Bluesky, etc.).
+              </p>
             </div>
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
