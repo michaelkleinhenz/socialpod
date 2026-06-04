@@ -97,6 +97,7 @@ type BGGGameResponse struct {
 	ImageFilename               string            `json:"imageFilename"`
 	SuggestedContent            string            `json:"suggestedContent"`
 	SuggestedContentByPlatform  map[string]string `json:"suggestedContentByPlatform,omitempty"`
+	SuggestedHashtags           []string          `json:"suggestedHashtags,omitempty"`
 }
 
 var (
@@ -143,7 +144,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		title = item.Names[0].Value
 	}
 
-	var designers, artists, publishers []string
+	var designers, artists, publishers, categories, mechanics []string
 	for _, link := range item.Links {
 		switch link.Type {
 		case "boardgamedesigner":
@@ -152,6 +153,10 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 			artists = append(artists, link.Value)
 		case "boardgamepublisher":
 			publishers = append(publishers, link.Value)
+		case "boardgamecategory":
+			categories = append(categories, link.Value)
+		case "boardgamemechanic":
+			mechanics = append(mechanics, link.Value)
 		}
 	}
 
@@ -183,6 +188,14 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	}
 
 	baseContent := buildPostContent(title, designers, artists, publishers, item, aiSummary, settings.AILanguage, nil)
+
+	// Generate hashtags for Instagram/Twitter (best-effort; omitted if not configured)
+	var suggestedHashtags []string
+	if settings.OpenRouterAPIKey != "" {
+		if tags, err := h.generateGameHashtags(ctx, title, categories, mechanics, settings); err == nil {
+			suggestedHashtags = tags
+		}
+	}
 
 	// Resolve social handles if enabled for this team and OpenRouter is configured.
 	var contentByPlatform map[string]string
@@ -221,6 +234,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		ImageFilename:              imageFilename,
 		SuggestedContent:           baseContent,
 		SuggestedContentByPlatform: contentByPlatform,
+		SuggestedHashtags:          suggestedHashtags,
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -552,6 +566,87 @@ func (h *BGGHandler) generateGameSummary(ctx context.Context, description, title
 		return "", fmt.Errorf("invalid OpenRouter response")
 	}
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
+// generateGameHashtags generates 3-5 conservative hashtags for Instagram/Twitter posts.
+func (h *BGGHandler) generateGameHashtags(ctx context.Context, title string, categories []string, mechanics []string, settings models.AppSettings) ([]string, error) {
+	model := settings.OpenRouterModel
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	systemPrompt := `You are a social media expert for board game content. Generate 3 to 5 hashtags for an Instagram/Twitter post about a board game.
+
+Rules:
+- Always include #boardgames
+- Include the game title as a hashtag if it forms a clean single-word or well-known tag (e.g. #Carcassonne, #Wingspan)
+- Add at most 1-2 thematic hashtags drawn from the categories or mechanics if they are well-known tags (e.g. #cardgame, #familygame, #strategygame)
+- Be conservative: 3 strong hashtags beat 5 weak ones
+- Do NOT include niche, obscure, or overly specific tags
+- Reply with ONLY the hashtags separated by spaces, no other text, no punctuation besides #`
+
+	var inputParts []string
+	inputParts = append(inputParts, "Game: "+title)
+	if len(categories) > 0 {
+		cats := categories
+		if len(cats) > 6 {
+			cats = cats[:6]
+		}
+		inputParts = append(inputParts, "Categories: "+strings.Join(cats, ", "))
+	}
+	if len(mechanics) > 0 {
+		mechs := mechanics
+		if len(mechs) > 6 {
+			mechs = mechs[:6]
+		}
+		inputParts = append(inputParts, "Mechanics: "+strings.Join(mechs, ", "))
+	}
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": strings.Join(inputParts, "\n")},
+		},
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OpenRouter returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct{ Content string `json:"content"` } `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
+		return nil, fmt.Errorf("invalid OpenRouter response")
+	}
+
+	raw := strings.TrimSpace(result.Choices[0].Message.Content)
+	var tags []string
+	for _, word := range strings.Fields(raw) {
+		if strings.HasPrefix(word, "#") && len(word) > 1 {
+			tags = append(tags, word)
+		}
+	}
+	if len(tags) > 5 {
+		tags = tags[:5]
+	}
+	return tags, nil
 }
 
 // teamHandleLookupEnabled returns true if the team (or user without a team) has

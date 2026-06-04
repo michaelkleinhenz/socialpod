@@ -804,6 +804,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
         setImages(prev => [{ kind: 'file', file }, ...prev]);
       }
+      const hashtagSuffix = (data.suggestedHashtags && data.suggestedHashtags.length > 0)
+        ? '\n\n' + data.suggestedHashtags.join(' ')
+        : '';
+      const withHashtags = (text: string, platform: Platform) =>
+        (platform === 'instagram' || platform === 'twitter') ? text + hashtagSuffix : text;
+
       if (customizePerPlatform && platforms.length > 1) {
         // Start with handle-resolved content per platform where available,
         // then fall back to AI shortening for the rest.
@@ -812,19 +818,19 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         const rest = sorted.slice(1);
         const byPlatform = data.suggestedContentByPlatform || {};
         const overrides: Record<string, string> = {
-          [primary]: byPlatform[primary] || data.suggestedContent,
+          [primary]: withHashtags(byPlatform[primary] || data.suggestedContent, primary),
         };
         if (aiEnabled) {
           for (const p of rest) {
             if (byPlatform[p]) {
-              overrides[p] = byPlatform[p];
+              overrides[p] = withHashtags(byPlatform[p], p);
             } else {
               try {
                 const baseText = byPlatform[primary] || data.suggestedContent;
                 const { text } = await api.generateText(baseText, [p]);
-                overrides[p] = text;
+                overrides[p] = withHashtags(text, p);
               } catch {
-                overrides[p] = byPlatform[p] || data.suggestedContent;
+                overrides[p] = withHashtags(byPlatform[p] || data.suggestedContent, p);
               }
             }
           }
@@ -832,7 +838,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           toast.success(hasHandles ? 'BGG data imported with handles and adapted per platform' : 'BGG data imported and text adapted per platform');
         } else {
           for (const p of rest) {
-            overrides[p] = byPlatform[p] || data.suggestedContent;
+            overrides[p] = withHashtags(byPlatform[p] || data.suggestedContent, p);
           }
           toast.success('BGG data imported');
         }
@@ -845,7 +851,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         setBggSuggestedByPlatform(data.suggestedContentByPlatform || {});
         const platform = platforms[0];
         const resolved = data.suggestedContentByPlatform?.[platform];
-        setContent(resolved || data.suggestedContent);
+        const baseText = resolved || data.suggestedContent;
+        setContent(withHashtags(baseText, platform));
         if (resolved) {
           toast.success('BGG data imported with handles');
         } else {
