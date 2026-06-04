@@ -76,6 +76,7 @@ func main() {
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
+	publisherHandleHandler := &handlers.PublisherHandleHandler{DB: db}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -197,6 +198,12 @@ func main() {
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
 		admin.GET("/teams/:id/settings", bggHandler.AdminGetTeamSettings)
 		admin.PUT("/teams/:id/settings", bggHandler.AdminUpdateTeamSettings)
+
+		// Publisher handle catalog (global, admin-managed)
+		admin.GET("/publisher-handles", publisherHandleHandler.List)
+		admin.POST("/publisher-handles", publisherHandleHandler.Create)
+		admin.PUT("/publisher-handles/:id", publisherHandleHandler.Update)
+		admin.DELETE("/publisher-handles/:id", publisherHandleHandler.Delete)
 	}
 
 	// Team self-creation: team admin flag required, no existing team needed

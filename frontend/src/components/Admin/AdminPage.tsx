@@ -6,7 +6,7 @@ import type { Post } from '../../types';
 import {
   Calendar, Share2, Users, UsersRound, Settings, TrendingUp, Clock,
   CheckCircle, AlertCircle, Image, Sparkles, ArrowUp, ArrowDown, Minus,
-  RefreshCw, AlertTriangle, Lightbulb, BarChart2,
+  RefreshCw, AlertTriangle, Lightbulb, BarChart2, BookUser,
 } from 'lucide-react';
 import './Admin.css';
 
@@ -517,6 +517,14 @@ export function AdminPage() {
               <div>
                 <h3>Settings</h3>
                 <p>App configuration</p>
+              </div>
+            </Link>
+
+            <Link to="/admin/publisher-handles" className="admin-link-card">
+              <BookUser size={24} />
+              <div>
+                <h3>Publisher Handles</h3>
+                <p>BGG social handle catalog</p>
               </div>
             </Link>
           </>

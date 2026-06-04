@@ -548,7 +548,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>('/team/settings');
   }
 
-  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string }) {
+  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -560,11 +560,34 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);
   }
 
-  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string }) {
+  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean }) {
     return this.request<{ message: string }>(`/admin/teams/${teamId}/settings`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  // Publisher handles catalog (admin-managed, global)
+  getPublisherHandles() {
+    return this.request<import('../types').PublisherHandle[]>('/admin/publisher-handles');
+  }
+
+  createPublisherHandle(data: { name: string; handles: Record<string, string> }) {
+    return this.request<import('../types').PublisherHandle>('/admin/publisher-handles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  updatePublisherHandle(id: string, data: { name?: string; handles?: Record<string, string> }) {
+    return this.request<import('../types').PublisherHandle>(`/admin/publisher-handles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deletePublisherHandle(id: string) {
+    return this.request<{ message: string }>(`/admin/publisher-handles/${id}`, { method: 'DELETE' });
   }
 }
 

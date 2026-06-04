@@ -90,6 +90,10 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "queueId", Value: 1}, {Key: "sortOrder", Value: 1}}},
 	})
 
+	m.PublisherHandles().Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "name", Value: 1}},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -135,6 +139,10 @@ func (m *MongoDB) ConventionQueues() *mongo.Collection {
 
 func (m *MongoDB) ConventionQueueItems() *mongo.Collection {
 	return m.Database.Collection("convention_queue_items")
+}
+
+func (m *MongoDB) PublisherHandles() *mongo.Collection {
+	return m.Database.Collection("publisher_handles")
 }
 
 func (m *MongoDB) MastodonOAuthStates() *mongo.Collection {

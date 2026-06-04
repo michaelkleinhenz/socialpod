@@ -10,6 +10,7 @@ import { AccountsPage } from './components/Admin/AccountsPage';
 import { SettingsPage } from './components/Admin/SettingsPage';
 import { UsersPage } from './components/Admin/UsersPage';
 import { TeamsPage } from './components/Admin/TeamsPage';
+import { PublisherHandlesPage } from './components/Admin/PublisherHandlesPage';
 import { WatermarksPage } from './components/Admin/WatermarksPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
 import { LogPage } from './components/Log/LogPage';
@@ -65,6 +66,7 @@ function AppRoutes() {
       <Route path="/admin/settings" element={<ProtectedRoute adminOnly><Layout><SettingsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute adminOnly><Layout><UsersPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/teams" element={<ProtectedRoute adminOnly><Layout><TeamsPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin/publisher-handles" element={<ProtectedRoute adminOnly><Layout><PublisherHandlesPage /></Layout></ProtectedRoute>} />
       <Route path="/watermarks" element={<ProtectedRoute><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
       {/* Convention mode */}
       <Route path="/convention" element={<ProtectedRoute><Layout><ConventionPage /></Layout></ProtectedRoute>} />

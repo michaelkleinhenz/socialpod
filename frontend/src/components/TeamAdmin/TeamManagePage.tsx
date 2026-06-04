@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { SocialAccount, User, PublicSettings } from '../../types';
+import type { SocialAccount, User, PublicSettings, TeamSettings } from '../../types';
 import {
-  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2,
+  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2, Settings,
 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { format } from 'date-fns';
@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import '../Admin/Admin.css';
 
-type Tab = 'accounts' | 'members';
+type Tab = 'accounts' | 'members' | 'settings';
 
 export function TeamManagePage() {
   const [searchParams] = useSearchParams();
@@ -49,6 +49,10 @@ export function TeamManagePage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
 
+  // Team settings state
+  const [teamSettings, setTeamSettings] = useState<TeamSettings>({});
+  const [savingSettings, setSavingSettings] = useState(false);
+
   // Team self-creation state (when team admin has no team yet)
   const [newTeamName, setNewTeamName] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -58,6 +62,7 @@ export function TeamManagePage() {
     if (!user?.teamId) return;
     loadAccounts();
     loadMembers();
+    api.getTeamSettings().then(s => setTeamSettings(s)).catch(() => {});
     if (searchParams.get('instagram') === 'connected') {
       toast.success('Instagram account connected');
     }
@@ -278,6 +283,18 @@ export function TeamManagePage() {
     }
   };
 
+  const saveTeamSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await api.updateTeamSettings({ bggHandleLookupEnabled: teamSettings.bggHandleLookupEnabled ?? true });
+      toast.success('Settings saved');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   if (!user?.teamId) {
     return (
       <div className="page">
@@ -322,7 +339,7 @@ export function TeamManagePage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
-        {(['accounts', 'members'] as Tab[]).map(t => (
+        {(['accounts', 'members', 'settings'] as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -342,8 +359,8 @@ export function TeamManagePage() {
               flexShrink: 0,
             }}
           >
-            {t === 'accounts' ? <Share2 size={15} /> : <Users size={15} />}
-            {t === 'accounts' ? 'Social Accounts' : 'Members'}
+            {t === 'accounts' ? <Share2 size={15} /> : t === 'members' ? <Users size={15} /> : <Settings size={15} />}
+            {t === 'accounts' ? 'Social Accounts' : t === 'members' ? 'Members' : 'Settings'}
           </button>
         ))}
       </div>
@@ -699,6 +716,37 @@ export function TeamManagePage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Settings Tab */}
+      {tab === 'settings' && (
+        <div style={{ maxWidth: 540 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>BGG Import</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 16px' }}>
+              Controls whether publisher and designer handles are automatically looked up
+              when importing games from BoardGameGeek. Requires an OpenRouter API key
+              configured by the admin.
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 6 }}>
+              <input
+                type="checkbox"
+                checked={teamSettings.bggHandleLookupEnabled ?? true}
+                onChange={e => setTeamSettings(s => ({ ...s, bggHandleLookupEnabled: e.target.checked }))}
+              />
+              <span style={{ fontSize: 14 }}>Enable AI handle lookup for BGG imports</span>
+            </label>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 20px 22px' }}>
+              When enabled, publisher and designer names are resolved to @handles
+              (Instagram, Bluesky, etc.) and inserted into the post content automatically.
+            </p>
+
+            <button className="btn btn-primary" onClick={saveTeamSettings} disabled={savingSettings}>
+              {savingSettings ? 'Saving…' : 'Save Settings'}
+            </button>
+          </div>
+        </div>
       )}
 
     </div>

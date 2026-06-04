@@ -27,6 +27,7 @@ export interface TeamSettings {
   bggCoverOffsetY?: number;
   episodeNewsUrl?: string;
   hasEpisodeNewsBearerToken?: boolean;
+  bggHandleLookupEnabled?: boolean;
 }
 
 export interface Watermark {
@@ -56,6 +57,15 @@ export interface BGGGameData {
   imageBase64: string;
   imageFilename: string;
   suggestedContent: string;
+  suggestedContentByPlatform?: Record<string, string>;
+}
+
+export interface PublisherHandle {
+  id: string;
+  name: string;
+  handles: Record<string, string>; // platform → @handle
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';
