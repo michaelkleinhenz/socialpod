@@ -625,3 +625,11 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+.post-editor-spin {
+  animation: post-editor-spin 0.8s linear infinite;
+}
+
+@keyframes post-editor-spin {
+  to { transform: rotate(360deg); }
+}

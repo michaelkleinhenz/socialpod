@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
@@ -400,6 +400,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [adobeActive, setAdobeActive] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState<boolean | Platform>(false);
+  const [preparingPlatforms, setPreparingPlatforms] = useState(false);
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -925,6 +926,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       onKeyDown={e => e.key === 'Enter' && fetchBGGData()}
                       placeholder="https://boardgamegeek.com/boardgame/822/carcassonne"
                       style={{ flex: 1 }}
+                      disabled={fetchingBgg}
                     />
                     <button
                       className="btn btn-secondary btn-sm"
@@ -932,7 +934,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       disabled={fetchingBgg || !bggUrl.trim()}
                       style={{ whiteSpace: 'nowrap' }}
                     >
-                      {fetchingBgg ? 'Fetching...' : 'Import'}
+                      {fetchingBgg ? <><Loader size={14} className="post-editor-spin" /> Importing…</> : 'Import'}
                     </button>
                   </div>
                   {bggError && (
@@ -965,16 +967,22 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                               }
                               setContentOverrides(newOverrides);
                               if (aiEnabled && baseText.trim()) {
+                                const needsShortening = rest.some(p => baseText.length > effectiveLimit(p));
+                                if (needsShortening) setPreparingPlatforms(true);
                                 (async () => {
-                                  for (const p of rest) {
-                                    if (baseText.length > effectiveLimit(p)) {
-                                      setGenerating(p);
-                                      try {
-                                        const { text } = await api.generateText(baseText, [p]);
-                                        setContentOverrides(prev => ({ ...prev, [p]: text }));
-                                      } catch {}
-                                      setGenerating(false);
+                                  try {
+                                    for (const p of rest) {
+                                      if (baseText.length > effectiveLimit(p)) {
+                                        setGenerating(p);
+                                        try {
+                                          const { text } = await api.generateText(baseText, [p]);
+                                          setContentOverrides(prev => ({ ...prev, [p]: text }));
+                                        } catch {}
+                                        setGenerating(false);
+                                      }
                                     }
+                                  } finally {
+                                    setPreparingPlatforms(false);
                                   }
                                 })();
                               }
@@ -1002,17 +1010,25 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
                   {customizePerPlatform && platforms.length > 1 ? (
                     <>
+                      {(preparingPlatforms || fetchingBgg) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          <Loader size={14} className="post-editor-spin" /> {fetchingBgg ? 'Importing and adapting text…' : 'Shortening text for platforms…'}
+                        </div>
+                      )}
                       {platforms.map(platform => {
                         const overrideVal = contentOverrides[platform] ?? '';
                         const platformLimit = effectiveLimit(platform);
                         const platformCount = overrideVal.length;
                         const platformOver = platformCount > platformLimit;
                         const platformClass = platformOver ? 'danger' : platformCount > platformLimit * 0.9 ? 'warning' : '';
+                        const textsBusy = preparingPlatforms || fetchingBgg;
+                        const isPreparing = textsBusy && generating === platform;
                         return (
-                          <div key={platform} style={{ marginBottom: 8 }}>
+                          <div key={platform} style={{ marginBottom: 8, opacity: textsBusy ? 0.6 : 1, transition: 'opacity 0.2s' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                               <PlatformIcon platform={platform} size={12} />
                               <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{platform}</span>
+                              {isPreparing && <Loader size={12} className="post-editor-spin" />}
                             </div>
                             <MentionTextarea
                               className="textarea post-textarea"
@@ -1022,10 +1038,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                               platform={platform}
                               placeholder={`Text for ${platform}…`}
                               rows={4}
+                              disabled={textsBusy}
                             />
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               {aiEnabled && (
-                                <button className="btn btn-ghost btn-sm" onClick={() => generateText(platform)} disabled={!!generating || !overrideVal.trim()}>
+                                <button className="btn btn-ghost btn-sm" onClick={() => generateText(platform)} disabled={!!generating || textsBusy || !overrideVal.trim()}>
                                   <Sparkles size={14} /> {generating === platform ? 'Generating...' : 'Generate'}
                                 </button>
                               )}
