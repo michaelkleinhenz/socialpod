@@ -387,6 +387,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [fetchingBgg, setFetchingBgg] = useState(false);
   const [bggError, setBggError] = useState('');
   const [bggEnabled, setBggEnabled] = useState(false);
+  const [bggSuggestedByPlatform, setBggSuggestedByPlatform] = useState<Record<string, string>>({});
   const [newsEnabled, setNewsEnabled] = useState(false);
   const [addNews, setAddNews] = useState(post?.episodeNews?.enabled || false);
   const [newsEpisodeNumber, setNewsEpisodeNumber] = useState(post?.episodeNews?.episodeNumber || '');
@@ -835,11 +836,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           }
           toast.success('BGG data imported');
         }
+        setBggSuggestedByPlatform(byPlatform);
         setContentOverrides(overrides);
         setContent('');
       } else {
         // Single platform or no per-platform customisation: use the platform-specific
         // handle-resolved text if available, otherwise the base content.
+        setBggSuggestedByPlatform(data.suggestedContentByPlatform || {});
         const platform = platforms[0];
         const resolved = data.suggestedContentByPlatform?.[platform];
         setContent(resolved || data.suggestedContent);
@@ -978,21 +981,24 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                               const sorted = [...platforms].sort((a, b) => effectiveLimit(b) - effectiveLimit(a));
                               const primary = sorted[0];
                               const rest = sorted.slice(1);
-                              const newOverrides: Record<string, string> = { [primary]: baseText };
+                              const newOverrides: Record<string, string> = {
+                                [primary]: bggSuggestedByPlatform[primary] || baseText,
+                              };
                               for (const p of rest) {
-                                newOverrides[p] = baseText;
+                                newOverrides[p] = bggSuggestedByPlatform[p] || baseText;
                               }
                               setContentOverrides(newOverrides);
                               if (aiEnabled && baseText.trim()) {
-                                const needsShortening = rest.some(p => baseText.length > effectiveLimit(p));
+                                const needsShortening = rest.some(p => (bggSuggestedByPlatform[p] || baseText).length > effectiveLimit(p));
                                 if (needsShortening) setPreparingPlatforms(true);
                                 (async () => {
                                   try {
                                     for (const p of rest) {
-                                      if (baseText.length > effectiveLimit(p)) {
+                                      const textForP = bggSuggestedByPlatform[p] || baseText;
+                                      if (textForP.length > effectiveLimit(p)) {
                                         setGenerating(p);
                                         try {
-                                          const { text } = await api.generateText(baseText, [p]);
+                                          const { text } = await api.generateText(textForP, [p]);
                                           setContentOverrides(prev => ({ ...prev, [p]: text }));
                                         } catch {}
                                         setGenerating(false);
@@ -1075,7 +1081,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                         textareaRef={textareaRef}
                         className="textarea post-textarea"
                         value={content}
-                        onChange={setContent}
+                        onChange={val => { setContent(val); setBggSuggestedByPlatform({}); }}
                         onMentionInsert={handleMentionInsert}
                         mentions={mentions}
                         placeholder="What's on your mind? Use #hashtags for tags..."
