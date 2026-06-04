@@ -58,6 +58,7 @@ export interface BGGGameData {
   imageFilename: string;
   suggestedContent: string;
   suggestedContentByPlatform?: Record<string, string>;
+  suggestedHashtags?: string[];
 }
 
 export interface PublisherHandle {
