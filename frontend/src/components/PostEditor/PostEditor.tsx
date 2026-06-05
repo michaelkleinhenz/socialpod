@@ -388,6 +388,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [bggError, setBggError] = useState('');
   const [bggEnabled, setBggEnabled] = useState(false);
   const [bggSuggestedByPlatform, setBggSuggestedByPlatform] = useState<Record<string, string>>({});
+  const [bggHashtagSuffix, setBggHashtagSuffix] = useState('');
   const [newsEnabled, setNewsEnabled] = useState(false);
   const [addNews, setAddNews] = useState(post?.episodeNews?.enabled || false);
   const [newsEpisodeNumber, setNewsEpisodeNumber] = useState(post?.episodeNews?.episodeNumber || '');
@@ -807,6 +808,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       const hashtagSuffix = (data.suggestedHashtags && data.suggestedHashtags.length > 0)
         ? '\n\n' + data.suggestedHashtags.join(' ')
         : '';
+      setBggHashtagSuffix(hashtagSuffix);
       const withHashtags = (text: string, platform: Platform) =>
         (platform === 'instagram' || platform === 'twitter') ? text + hashtagSuffix : text;
 
@@ -985,14 +987,17 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                               const baseText = content;
                               setCustomizePerPlatform(true);
                               setContent('');
+                              const addHashtags = (text: string, platform: Platform) =>
+                                (platform === 'instagram' || platform === 'twitter') && bggHashtagSuffix && !text.includes(bggHashtagSuffix)
+                                  ? text + bggHashtagSuffix : text;
                               const sorted = [...platforms].sort((a, b) => effectiveLimit(b) - effectiveLimit(a));
                               const primary = sorted[0];
                               const rest = sorted.slice(1);
                               const newOverrides: Record<string, string> = {
-                                [primary]: bggSuggestedByPlatform[primary] || baseText,
+                                [primary]: addHashtags(bggSuggestedByPlatform[primary] || baseText, primary),
                               };
                               for (const p of rest) {
-                                newOverrides[p] = bggSuggestedByPlatform[p] || baseText;
+                                newOverrides[p] = addHashtags(bggSuggestedByPlatform[p] || baseText, p);
                               }
                               setContentOverrides(newOverrides);
                               if (aiEnabled && baseText.trim()) {
@@ -1006,7 +1011,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                                         setGenerating(p);
                                         try {
                                           const { text } = await api.generateText(textForP, [p]);
-                                          setContentOverrides(prev => ({ ...prev, [p]: text }));
+                                          setContentOverrides(prev => ({ ...prev, [p]: addHashtags(text, p) }));
                                         } catch {}
                                         setGenerating(false);
                                       }
