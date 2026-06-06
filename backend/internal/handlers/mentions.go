@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -56,6 +57,7 @@ func (h *MentionHandler) List(c *gin.Context) {
 func (h *MentionHandler) Create(c *gin.Context) {
 	var input struct {
 		Name    string            `json:"name" binding:"required"`
+		Country string            `json:"country"`
 		Handles map[string]string `json:"handles"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -73,6 +75,7 @@ func (h *MentionHandler) Create(c *gin.Context) {
 	mention := models.MentionEntry{
 		UserID:    objID,
 		Name:      input.Name,
+		Country:   input.Country,
 		Handles:   input.Handles,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -105,6 +108,7 @@ func (h *MentionHandler) Update(c *gin.Context) {
 
 	var input struct {
 		Name    *string           `json:"name"`
+		Country *string           `json:"country"`
 		Handles map[string]string `json:"handles"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -118,6 +122,9 @@ func (h *MentionHandler) Update(c *gin.Context) {
 	update := bson.M{"updatedAt": time.Now()}
 	if input.Name != nil {
 		update["name"] = *input.Name
+	}
+	if input.Country != nil {
+		update["country"] = *input.Country
 	}
 	if input.Handles != nil {
 		update["handles"] = input.Handles
@@ -157,4 +164,146 @@ func (h *MentionHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Mention deleted"})
+}
+
+var exportPlatforms = []string{"instagram", "bluesky", "twitter", "mastodon", "threads", "linkedin", "youtube"}
+
+func (h *MentionHandler) Export(c *gin.Context) {
+	filter := mentionFilter(c)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	opts := options.Find().SetSort(bson.D{{Key: "name", Value: 1}})
+	cursor, err := h.DB.Mentions().Find(ctx, filter, opts)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch mentions"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var mentions []models.MentionEntry
+	if err := cursor.All(ctx, &mentions); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode mentions"})
+		return
+	}
+
+	type exportEntry struct {
+		Name      string  `json:"name"`
+		Country   string  `json:"country"`
+		Instagram *string `json:"instagram"`
+		Bluesky   *string `json:"bluesky"`
+		Twitter   *string `json:"twitter"`
+		Mastodon  *string `json:"mastodon"`
+		Threads   *string `json:"threads"`
+		LinkedIn  *string `json:"linkedin"`
+		YouTube   *string `json:"youtube"`
+	}
+
+	result := make([]exportEntry, 0, len(mentions))
+	for _, m := range mentions {
+		e := exportEntry{Name: m.Name, Country: m.Country}
+		for _, p := range exportPlatforms {
+			if v, ok := m.Handles[p]; ok && v != "" {
+				s := v
+				switch p {
+				case "instagram":
+					e.Instagram = &s
+				case "bluesky":
+					e.Bluesky = &s
+				case "twitter":
+					e.Twitter = &s
+				case "mastodon":
+					e.Mastodon = &s
+				case "threads":
+					e.Threads = &s
+				case "linkedin":
+					e.LinkedIn = &s
+				case "youtube":
+					e.YouTube = &s
+				}
+			}
+		}
+		result = append(result, e)
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *MentionHandler) Import(c *gin.Context) {
+	type importEntry struct {
+		Name      string  `json:"name"`
+		Country   string  `json:"country"`
+		Instagram *string `json:"instagram"`
+		Bluesky   *string `json:"bluesky"`
+		Twitter   *string `json:"twitter"`
+		Mastodon  *string `json:"mastodon"`
+		Threads   *string `json:"threads"`
+		LinkedIn  *string `json:"linkedin"`
+		YouTube   *string `json:"youtube"`
+	}
+
+	var entries []importEntry
+	if err := json.NewDecoder(c.Request.Body).Decode(&entries); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON: " + err.Error()})
+		return
+	}
+
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+	var teamObjID *primitive.ObjectID
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		teamObjID = &tid
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	created := 0
+	for _, e := range entries {
+		if e.Name == "" {
+			continue
+		}
+		handles := map[string]string{}
+		if e.Instagram != nil {
+			handles["instagram"] = *e.Instagram
+		}
+		if e.Bluesky != nil {
+			handles["bluesky"] = *e.Bluesky
+		}
+		if e.Twitter != nil {
+			handles["twitter"] = *e.Twitter
+		}
+		if e.Mastodon != nil {
+			handles["mastodon"] = *e.Mastodon
+		}
+		if e.Threads != nil {
+			handles["threads"] = *e.Threads
+		}
+		if e.LinkedIn != nil {
+			handles["linkedin"] = *e.LinkedIn
+		}
+		if e.YouTube != nil {
+			handles["youtube"] = *e.YouTube
+		}
+
+		mention := models.MentionEntry{
+			UserID:    objID,
+			TeamID:    teamObjID,
+			Name:      e.Name,
+			Country:   e.Country,
+			Handles:   handles,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		if _, err := h.DB.Mentions().InsertOne(ctx, mention); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to import mention: " + e.Name})
+			return
+		}
+		created++
+	}
+
+	c.JSON(http.StatusOK, gin.H{"imported": created})
 }

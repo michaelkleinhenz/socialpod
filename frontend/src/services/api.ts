@@ -393,14 +393,14 @@ class ApiClient {
     return this.request<any[]>('/mentions');
   }
 
-  createMention(data: { name: string; handles: Record<string, string> }) {
+  createMention(data: { name: string; country?: string; handles: Record<string, string> }) {
     return this.request<any>('/mentions', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  updateMention(id: string, data: { name?: string; handles?: Record<string, string> }) {
+  updateMention(id: string, data: { name?: string; country?: string; handles?: Record<string, string> }) {
     return this.request<any>(`/mentions/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -409,6 +409,17 @@ class ApiClient {
 
   deleteMention(id: string) {
     return this.request<any>(`/mentions/${id}`, { method: 'DELETE' });
+  }
+
+  exportMentions() {
+    return this.request<any[]>('/mentions/export');
+  }
+
+  importMentions(data: any[]) {
+    return this.request<{ imported: number }>('/mentions/import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   // Account feed (Instagram or Bluesky)
