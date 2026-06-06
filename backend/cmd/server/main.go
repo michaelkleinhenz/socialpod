@@ -149,6 +149,8 @@ func main() {
 		auth.POST("/mentions", mentionHandler.Create)
 		auth.PUT("/mentions/:id", mentionHandler.Update)
 		auth.DELETE("/mentions/:id", mentionHandler.Delete)
+		auth.GET("/mentions/export", mentionHandler.Export)
+		auth.POST("/mentions/import", mentionHandler.Import)
 
 		// Convention mode
 		auth.GET("/convention/queues", conventionHandler.ListQueues)

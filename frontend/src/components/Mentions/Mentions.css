@@ -14,6 +14,27 @@
   font-weight: 600;
 }
 
+.mention-name-country-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.mention-name-field {
+  flex: 2;
+}
+
+.mention-country-field {
+  flex: 1;
+}
+
+@media (max-width: 540px) {
+  .mention-name-country-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
 .mention-handles-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -71,6 +92,15 @@
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mention-country {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .mention-handles {
@@ -91,6 +121,18 @@
   padding: 2px 6px;
 }
 
+.mention-handle-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.mention-handle-link:hover {
+  background: var(--bg-hover, var(--bg-secondary));
+  border-color: var(--primary, #3b82f6);
+  color: var(--primary, #3b82f6);
+}
+
 .mention-no-handles {
   font-size: 12px;
   color: var(--text-muted);
@@ -106,4 +148,16 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.mention-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 540px) {
+  .mention-header-actions {
+    flex-wrap: wrap;
+  }
 }

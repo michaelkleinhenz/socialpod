@@ -11,6 +11,7 @@ type MentionEntry struct {
 	UserID    primitive.ObjectID  `bson:"userId" json:"userId"`
 	TeamID    *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
 	Name      string              `bson:"name" json:"name"`
+	Country   string              `bson:"country,omitempty" json:"country,omitempty"`
 	Handles   map[string]string   `bson:"handles" json:"handles"` // platform -> @handle
 	CreatedAt time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time           `bson:"updatedAt" json:"updatedAt"`

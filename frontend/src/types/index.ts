@@ -131,6 +131,7 @@ export interface MentionEntry {
   userId: string;
   teamId?: string;
   name: string;
+  country?: string;
   handles: Record<string, string>; // platform -> @handle
   createdAt: string;
   updatedAt: string;
