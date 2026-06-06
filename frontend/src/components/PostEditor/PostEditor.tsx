@@ -23,6 +23,14 @@ interface Props {
   onClose: () => void;
 }
 
+function handleAvatarError(e: React.SyntheticEvent<HTMLImageElement>) {
+  const el = e.currentTarget;
+  el.style.display = 'none';
+  const placeholder = document.createElement('div');
+  placeholder.className = el.className + ' preview-avatar-placeholder';
+  el.parentNode?.insertBefore(placeholder, el);
+}
+
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
 const TWITTER_LIMIT = 280;
@@ -106,7 +114,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
         <div className="preview-card preview-bluesky">
           <div className="preview-card-header">
             {bskyAvatarUrl
-              ? <img src={bskyAvatarUrl} alt="" className="preview-avatar" />
+              ? <img src={bskyAvatarUrl} alt="" className="preview-avatar" onError={handleAvatarError} />
               : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
               <span className="preview-display-name">{bskyDisplayName}</span>
@@ -140,7 +148,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
         <div className="preview-card preview-instagram">
           <div className="preview-card-header">
             {igAvatarUrl
-              ? <img src={igAvatarUrl} alt="" className="preview-avatar" />
+              ? <img src={igAvatarUrl} alt="" className="preview-avatar" onError={handleAvatarError} />
               : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
               <span className="preview-display-name">
@@ -173,7 +181,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
         <div className="preview-card preview-twitter">
           <div className="preview-card-header">
             {twAvatarUrl
-              ? <img src={twAvatarUrl} alt="" className="preview-avatar" />
+              ? <img src={twAvatarUrl} alt="" className="preview-avatar" onError={handleAvatarError} />
               : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
               <span className="preview-display-name">{twDisplayName}</span>
@@ -207,7 +215,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
         <div className="preview-card preview-mastodon">
           <div className="preview-card-header">
             {mstAvatarUrl
-              ? <img src={mstAvatarUrl} alt="" className="preview-avatar" />
+              ? <img src={mstAvatarUrl} alt="" className="preview-avatar" onError={handleAvatarError} />
               : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
               <span className="preview-display-name">{mstDisplayName}</span>
@@ -241,7 +249,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
         <div className="preview-card preview-linkedin">
           <div className="preview-card-header">
             {liAvatarUrl
-              ? <img src={liAvatarUrl} alt="" className="preview-avatar" />
+              ? <img src={liAvatarUrl} alt="" className="preview-avatar" onError={handleAvatarError} />
               : <div className="preview-avatar preview-avatar-placeholder" />}
             <div className="preview-user-info">
               <span className="preview-display-name">{liDisplayName}</span>
@@ -301,7 +309,7 @@ function StoryPreview({ imageUrl, apiUrl, instagramAccount, isVideo }: StoryPrev
           )}
           <div className="preview-story-header">
             {igAvatarUrl
-              ? <img src={igAvatarUrl} alt="" className="preview-story-avatar" />
+              ? <img src={igAvatarUrl} alt="" className="preview-story-avatar" onError={handleAvatarError} />
               : <div className="preview-story-avatar preview-avatar-placeholder" />}
             <span className="preview-story-handle">{igHandle}</span>
           </div>
@@ -338,7 +346,7 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
           )}
           <div className="preview-story-header">
             {igAvatarUrl
-              ? <img src={igAvatarUrl} alt="" className="preview-story-avatar" />
+              ? <img src={igAvatarUrl} alt="" className="preview-story-avatar" onError={handleAvatarError} />
               : <div className="preview-story-avatar preview-avatar-placeholder" />}
             <span className="preview-story-handle">{igHandle}</span>
           </div>

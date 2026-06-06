@@ -41,13 +41,18 @@ func NewScheduler(db *database.MongoDB, uploadDir string) *Scheduler {
 func (s *Scheduler) Start() {
 	log.Println("Post scheduler started")
 	ticker := time.NewTicker(30 * time.Second)
+	avatarTicker := time.NewTicker(6 * time.Hour)
 	go func() {
+		s.refreshAccountAvatars()
 		for {
 			select {
 			case <-ticker.C:
 				s.processScheduledPosts()
+			case <-avatarTicker.C:
+				s.refreshAccountAvatars()
 			case <-s.stop:
 				ticker.Stop()
+				avatarTicker.Stop()
 				return
 			}
 		}
@@ -56,6 +61,64 @@ func (s *Scheduler) Start() {
 
 func (s *Scheduler) Stop() {
 	close(s.stop)
+}
+
+func (s *Scheduler) refreshAccountAvatars() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	cursor, err := s.DB.SocialAccounts().Find(ctx, bson.M{"isActive": true})
+	if err != nil {
+		log.Printf("Avatar refresh: failed to list accounts: %v", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var accounts []models.SocialAccount
+	if err := cursor.All(ctx, &accounts); err != nil {
+		log.Printf("Avatar refresh: failed to decode accounts: %v", err)
+		return
+	}
+
+	for _, account := range accounts {
+		var displayName, avatarURL string
+		var fetchErr error
+
+		switch account.Platform {
+		case models.PlatformBluesky:
+			displayName, avatarURL, fetchErr = s.Bluesky.FetchProfile(&account)
+		case models.PlatformInstagram:
+			displayName, avatarURL, fetchErr = s.Instagram.FetchProfile(&account)
+		case models.PlatformTwitter:
+			displayName, _, avatarURL, fetchErr = s.Twitter.FetchProfile(&account)
+		case models.PlatformMastodon:
+			displayName, avatarURL, fetchErr = s.Mastodon.FetchProfile(&account)
+		case models.PlatformThreads:
+			displayName, avatarURL, fetchErr = s.Threads.FetchProfile(&account)
+		case models.PlatformLinkedIn:
+			displayName, avatarURL, fetchErr = s.LinkedIn.FetchProfile(&account)
+		case models.PlatformYouTube:
+			displayName, avatarURL, fetchErr = s.YouTube.FetchProfile(&account)
+		default:
+			continue
+		}
+
+		if fetchErr != nil {
+			log.Printf("Avatar refresh: %s account %s: %v", account.Platform, account.AccountName, fetchErr)
+			continue
+		}
+
+		update := bson.M{"updatedAt": time.Now()}
+		if avatarURL != "" {
+			update["avatarUrl"] = avatarURL
+		}
+		if displayName != "" {
+			update["displayName"] = displayName
+		}
+		s.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": account.ID}, bson.M{"$set": update})
+	}
+
+	log.Printf("Avatar refresh: processed %d accounts", len(accounts))
 }
 
 func (s *Scheduler) processScheduledPosts() {
