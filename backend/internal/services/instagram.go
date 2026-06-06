@@ -462,6 +462,33 @@ func (s *InstagramService) getAccount(ctx context.Context, accountID string) (*m
 	return &account, nil
 }
 
+// FetchProfile retrieves the current profile picture URL for an existing account.
+func (s *InstagramService) FetchProfile(account *models.SocialAccount) (displayName, avatarURL string, err error) {
+	if account.AccessToken == "" || account.IGUserID == "" {
+		return "", "", fmt.Errorf("account missing access token or user ID")
+	}
+
+	resp, err := http.Get(fmt.Sprintf(
+		"%s/%s?fields=username,profile_picture_url&access_token=%s",
+		igGraphAPI, account.IGUserID, account.AccessToken))
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	var profile struct {
+		Username          string `json:"username"`
+		ProfilePictureURL string `json:"profile_picture_url"`
+	}
+	json.NewDecoder(resp.Body).Decode(&profile)
+
+	dn := profile.Username
+	if dn == "" {
+		dn = account.AccountName
+	}
+	return dn, profile.ProfilePictureURL, nil
+}
+
 // ExchangeCodeForToken handles the Instagram OAuth code exchange
 func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clientID, clientSecret, redirectURI string) (*models.SocialAccount, error) {
 	// Exchange code for short-lived token
