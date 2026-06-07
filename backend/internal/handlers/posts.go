@@ -679,6 +679,19 @@ func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
 		return
 	}
 
+	pluginEnabled := false
+	for _, p := range team.EnabledPlugins {
+		if p == "episode_news" {
+			pluginEnabled = true
+			break
+		}
+	}
+	if !pluginEnabled {
+		log.Printf("[EpisodeNews] Skipped: episode_news plugin not enabled for team %s", team.ID.Hex())
+		h.updateNewsResult(ctx, post.ID, false, "Episode news plugin not enabled for this team")
+		return
+	}
+
 	if team.EpisodeNewsURL == "" || team.EpisodeNewsBearerToken == "" {
 		log.Printf("[EpisodeNews] Error: URL or bearer token not configured for team %s", team.ID.Hex())
 		h.updateNewsResult(ctx, post.ID, false, "Episode news URL or bearer token not configured")
