@@ -559,7 +559,14 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>('/team/settings');
   }
 
-  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean }) {
+  submitNews(data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('images', f));
+    return this.request<any>('/news/submit', { method: 'POST', body: form });
+  }
+
+  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -571,7 +578,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);
   }
 
-  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean }) {
+  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string }) {
     return this.request<{ message: string }>(`/admin/teams/${teamId}/settings`, {
       method: 'PUT',
       body: JSON.stringify(data),

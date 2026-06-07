@@ -77,6 +77,7 @@ func main() {
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 	publisherHandleHandler := &handlers.PublisherHandleHandler{DB: db}
+	newsHandler := &handlers.NewsHandler{DB: db, UploadDir: cfg.UploadDir}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -124,6 +125,7 @@ func main() {
 		auth.POST("/upload-from-url", postHandler.UploadFromURL)
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)
+		auth.POST("/news/submit", newsHandler.Submit)
 
 		// BGG integration
 		auth.GET("/bgg/fetch", bggHandler.FetchGame)

@@ -861,6 +861,8 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"bggCoverOffsetY":           team.BGGCoverOffsetY,
 		"episodeNewsUrl":            team.EpisodeNewsURL,
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
+		"newsCreatorUrl":            team.NewsCreatorURL,
+		"hasNewsCreatorBearerToken": team.NewsCreatorBearerToken != "",
 		"bggHandleLookupEnabled":    handleLookup,
 		"enabledPlugins":            enabledPlugins,
 	})
@@ -885,6 +887,8 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
 		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
 		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL         *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken *string `json:"newsCreatorBearerToken"`
 		BGGHandleLookupEnabled *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -928,6 +932,20 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 			unsetFields["episodeNewsBearerToken"] = ""
 		} else {
 			setFields["episodeNewsBearerToken"] = *input.EpisodeNewsBearerToken
+		}
+	}
+	if input.NewsCreatorURL != nil {
+		if *input.NewsCreatorURL == "" {
+			unsetFields["newsCreatorUrl"] = ""
+		} else {
+			setFields["newsCreatorUrl"] = *input.NewsCreatorURL
+		}
+	}
+	if input.NewsCreatorBearerToken != nil {
+		if *input.NewsCreatorBearerToken == "" {
+			unsetFields["newsCreatorBearerToken"] = ""
+		} else {
+			setFields["newsCreatorBearerToken"] = *input.NewsCreatorBearerToken
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {
@@ -984,6 +1002,8 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"bggCoverOffsetY":           team.BGGCoverOffsetY,
 		"episodeNewsUrl":            team.EpisodeNewsURL,
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
+		"newsCreatorUrl":            team.NewsCreatorURL,
+		"hasNewsCreatorBearerToken": team.NewsCreatorBearerToken != "",
 		"bggHandleLookupEnabled":    adminHandleLookup,
 		"enabledPlugins":            adminEnabledPlugins,
 	})
@@ -1003,6 +1023,8 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
 		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
 		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL         *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken *string `json:"newsCreatorBearerToken"`
 		BGGHandleLookupEnabled *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -1046,6 +1068,20 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 			unsetFields["episodeNewsBearerToken"] = ""
 		} else {
 			setFields["episodeNewsBearerToken"] = *input.EpisodeNewsBearerToken
+		}
+	}
+	if input.NewsCreatorURL != nil {
+		if *input.NewsCreatorURL == "" {
+			unsetFields["newsCreatorUrl"] = ""
+		} else {
+			setFields["newsCreatorUrl"] = *input.NewsCreatorURL
+		}
+	}
+	if input.NewsCreatorBearerToken != nil {
+		if *input.NewsCreatorBearerToken == "" {
+			unsetFields["newsCreatorBearerToken"] = ""
+		} else {
+			setFields["newsCreatorBearerToken"] = *input.NewsCreatorBearerToken
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {

@@ -53,6 +53,10 @@ export function TeamManagePage() {
   const [teamSettings, setTeamSettings] = useState<TeamSettings>({});
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // News Creator settings state
+  const [newsCreatorUrl, setNewsCreatorUrl] = useState('');
+  const [newsCreatorBearerToken, setNewsCreatorBearerToken] = useState('');
+
   // Team self-creation state (when team admin has no team yet)
   const [newTeamName, setNewTeamName] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -62,7 +66,10 @@ export function TeamManagePage() {
     if (!user?.teamId) return;
     loadAccounts();
     loadMembers();
-    api.getTeamSettings().then(s => setTeamSettings(s)).catch(() => {});
+    api.getTeamSettings().then(s => {
+      setTeamSettings(s);
+      if (s.newsCreatorUrl) setNewsCreatorUrl(s.newsCreatorUrl);
+    }).catch(() => {});
     if (searchParams.get('instagram') === 'connected') {
       toast.success('Instagram account connected');
     }
@@ -286,7 +293,14 @@ export function TeamManagePage() {
   const saveTeamSettings = async () => {
     setSavingSettings(true);
     try {
-      await api.updateTeamSettings({ bggHandleLookupEnabled: teamSettings.bggHandleLookupEnabled ?? true });
+      const payload: any = { bggHandleLookupEnabled: teamSettings.bggHandleLookupEnabled ?? true };
+      if (newsCreatorUrl !== undefined) payload.newsCreatorUrl = newsCreatorUrl;
+      if (newsCreatorBearerToken) payload.newsCreatorBearerToken = newsCreatorBearerToken;
+      await api.updateTeamSettings(payload);
+      if (newsCreatorBearerToken) {
+        setNewsCreatorBearerToken('');
+        setTeamSettings(s => ({ ...s, hasNewsCreatorBearerToken: true }));
+      }
       toast.success('Settings saved');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save settings');
@@ -741,6 +755,43 @@ export function TeamManagePage() {
               When enabled, publisher and designer names are resolved to @handles
               (Instagram, Bluesky, etc.) and inserted into the post content automatically.
             </p>
+
+            {teamSettings.enabledPlugins?.includes('news_creator') && (
+              <>
+                <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+                <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>News Creator</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 16px' }}>
+                  Configure the n8n webhook URL and bearer token for the News Creator plugin.
+                </p>
+
+                <div className="form-group">
+                  <label>N8N Webhook URL</label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="https://n8n.example.com/webhook/..."
+                    value={newsCreatorUrl}
+                    onChange={e => setNewsCreatorUrl(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>N8N Bearer Token</label>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder={teamSettings.hasNewsCreatorBearerToken ? '(token is set — enter new value to replace)' : 'Enter bearer token'}
+                    value={newsCreatorBearerToken}
+                    onChange={e => setNewsCreatorBearerToken(e.target.value)}
+                  />
+                  {teamSettings.hasNewsCreatorBearerToken && !newsCreatorBearerToken && (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      A bearer token is already configured. Leave blank to keep the current token.
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
 
             <button className="btn btn-primary" onClick={saveTeamSettings} disabled={savingSettings}>
               {savingSettings ? 'Saving…' : 'Save Settings'}

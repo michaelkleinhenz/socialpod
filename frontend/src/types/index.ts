@@ -29,6 +29,8 @@ export interface TeamSettings {
   hasEpisodeNewsBearerToken?: boolean;
   bggHandleLookupEnabled?: boolean;
   enabledPlugins?: string[];
+  newsCreatorUrl?: string;
+  hasNewsCreatorBearerToken?: boolean;
 }
 
 export interface Plugin {
@@ -42,6 +44,11 @@ export const AVAILABLE_PLUGINS: Plugin[] = [
     id: 'episode_news',
     label: 'Episode News',
     description: 'Adds an "Add News" section to the post creation dialog, allowing team members to send episode metadata to a configured webhook when creating a post.',
+  },
+  {
+    id: 'news_creator',
+    label: 'News Creator',
+    description: 'Adds a "News" page for creating news episodes and optionally scheduling social media posts.',
   },
 ];
 
