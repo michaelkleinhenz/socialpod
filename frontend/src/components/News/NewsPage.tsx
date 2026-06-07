@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
-import { Newspaper, Image, Send, Pencil, Clock, Tag, MessageSquare } from 'lucide-react';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
