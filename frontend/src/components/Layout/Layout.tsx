@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../services/api';
 import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
   ScrollText, UsersRound, Signature, Image, LayoutGrid,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
+  Newspaper,
 } from 'lucide-react';
 import './Layout.css';
 
@@ -16,6 +18,17 @@ type NavEntry = NavLeaf | NavGroup;
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [newsPluginEnabled, setNewsPluginEnabled] = useState(false);
+
+  useEffect(() => {
+    if (user?.teamId) {
+      api.getTeamSettings().then(s => {
+        if (s.enabledPlugins?.includes('news_creator') && s.newsCreatorUrl && s.hasNewsCreatorBearerToken) {
+          setNewsPluginEnabled(true);
+        }
+      }).catch(() => {});
+    }
+  }, [user?.teamId]);
 
   const navEntries = useMemo<NavEntry[]>(() => [
     ...((user?.isAdmin || user?.isTeamAdmin) ? [
@@ -31,6 +44,7 @@ export function Layout({ children }: { children: ReactNode }) {
         { kind: 'leaf' as const, path: '/feed', icon: LayoutGrid, label: 'Feed' },
         { kind: 'leaf' as const, path: '/log', icon: ScrollText, label: 'Post Log' },
         { kind: 'leaf' as const, path: '/convention', icon: Tent, label: 'Convention' },
+        ...(newsPluginEnabled ? [{ kind: 'leaf' as const, path: '/news', icon: Newspaper, label: 'News' }] : []),
       ],
     },
     {
@@ -61,7 +75,7 @@ export function Layout({ children }: { children: ReactNode }) {
         ] : []),
       ],
     }] : []),
-  ], [user?.isAdmin, user?.isTeamAdmin]);
+  ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled]);
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const initial = new Set<string>(['content']);

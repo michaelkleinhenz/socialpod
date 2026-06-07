@@ -10,6 +10,7 @@ import (
 // enabled per team by a global admin.
 var AvailablePlugins = []string{
 	"episode_news",
+	"news_creator",
 }
 
 type Team struct {
@@ -21,6 +22,8 @@ type Team struct {
 	BGGCoverOffsetY         int                 `bson:"bggCoverOffsetY,omitempty" json:"bggCoverOffsetY,omitempty"`
 	EpisodeNewsURL          string              `bson:"episodeNewsUrl,omitempty" json:"episodeNewsUrl,omitempty"`
 	EpisodeNewsBearerToken  string              `bson:"episodeNewsBearerToken,omitempty" json:"-"`
+	NewsCreatorURL          string              `bson:"newsCreatorUrl,omitempty" json:"newsCreatorUrl,omitempty"`
+	NewsCreatorBearerToken  string              `bson:"newsCreatorBearerToken,omitempty" json:"-"`
 	BGGHandleLookupEnabled  *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
 	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`
