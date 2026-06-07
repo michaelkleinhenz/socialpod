@@ -2297,6 +2297,85 @@ func (h *AdminHandler) TeamRemoveMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Member removed from team"})
 }
 
+// ─── Optional Plugins ─────────────────────────────────────────────────────────
+
+// GetTeamPlugins returns the list of enabled optional plugins for a team.
+func (h *AdminHandler) GetTeamPlugins(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	plugins := team.EnabledPlugins
+	if plugins == nil {
+		plugins = []string{}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"availablePlugins": models.AvailablePlugins,
+		"enabledPlugins":   plugins,
+	})
+}
+
+// UpdateTeamPlugins sets the enabled optional plugins for a team.
+func (h *AdminHandler) UpdateTeamPlugins(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input struct {
+		EnabledPlugins []string `json:"enabledPlugins"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate all requested plugins are known.
+	known := make(map[string]bool, len(models.AvailablePlugins))
+	for _, p := range models.AvailablePlugins {
+		known[p] = true
+	}
+	for _, p := range input.EnabledPlugins {
+		if !known[p] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown plugin: " + p})
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	plugins := input.EnabledPlugins
+	if plugins == nil {
+		plugins = []string{}
+	}
+
+	result, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{
+		"$set": bson.M{"enabledPlugins": plugins, "updatedAt": time.Now()},
+	})
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"availablePlugins": models.AvailablePlugins,
+		"enabledPlugins":   plugins,
+	})
+}
+
 func formatSnippets(snippets []string) string {
 	if len(snippets) == 0 {
 		return "(no published posts yet)"
