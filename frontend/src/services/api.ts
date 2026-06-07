@@ -578,15 +578,15 @@ class ApiClient {
     });
   }
 
-  // Optional features (admin-managed per team)
-  getTeamFeatures(teamId: string) {
-    return this.request<{ availableFeatures: string[]; enabledFeatures: string[] }>(`/admin/teams/${teamId}/features`);
+  // Plugins (admin-managed per team)
+  getTeamPlugins(teamId: string) {
+    return this.request<{ availablePlugins: string[]; enabledPlugins: string[] }>(`/admin/teams/${teamId}/plugins`);
   }
 
-  updateTeamFeatures(teamId: string, enabledFeatures: string[]) {
-    return this.request<{ availableFeatures: string[]; enabledFeatures: string[] }>(`/admin/teams/${teamId}/features`, {
+  updateTeamPlugins(teamId: string, enabledPlugins: string[]) {
+    return this.request<{ availablePlugins: string[]; enabledPlugins: string[] }>(`/admin/teams/${teamId}/plugins`, {
       method: 'PUT',
-      body: JSON.stringify({ enabledFeatures }),
+      body: JSON.stringify({ enabledPlugins }),
     });
   }
 

@@ -2297,10 +2297,10 @@ func (h *AdminHandler) TeamRemoveMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Member removed from team"})
 }
 
-// ─── Optional Features ────────────────────────────────────────────────────────
+// ─── Optional Plugins ─────────────────────────────────────────────────────────
 
-// GetTeamFeatures returns the list of enabled optional features for a team.
-func (h *AdminHandler) GetTeamFeatures(c *gin.Context) {
+// GetTeamPlugins returns the list of enabled optional plugins for a team.
+func (h *AdminHandler) GetTeamPlugins(c *gin.Context) {
 	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
@@ -2316,18 +2316,18 @@ func (h *AdminHandler) GetTeamFeatures(c *gin.Context) {
 		return
 	}
 
-	features := team.EnabledFeatures
-	if features == nil {
-		features = []string{}
+	plugins := team.EnabledPlugins
+	if plugins == nil {
+		plugins = []string{}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"availableFeatures": models.AvailableFeatures,
-		"enabledFeatures":   features,
+		"availablePlugins": models.AvailablePlugins,
+		"enabledPlugins":   plugins,
 	})
 }
 
-// UpdateTeamFeatures sets the enabled optional features for a team.
-func (h *AdminHandler) UpdateTeamFeatures(c *gin.Context) {
+// UpdateTeamPlugins sets the enabled optional plugins for a team.
+func (h *AdminHandler) UpdateTeamPlugins(c *gin.Context) {
 	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
@@ -2335,21 +2335,21 @@ func (h *AdminHandler) UpdateTeamFeatures(c *gin.Context) {
 	}
 
 	var input struct {
-		EnabledFeatures []string `json:"enabledFeatures"`
+		EnabledPlugins []string `json:"enabledPlugins"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Validate all requested features are known.
-	known := make(map[string]bool, len(models.AvailableFeatures))
-	for _, f := range models.AvailableFeatures {
-		known[f] = true
+	// Validate all requested plugins are known.
+	known := make(map[string]bool, len(models.AvailablePlugins))
+	for _, p := range models.AvailablePlugins {
+		known[p] = true
 	}
-	for _, f := range input.EnabledFeatures {
-		if !known[f] {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown feature: " + f})
+	for _, p := range input.EnabledPlugins {
+		if !known[p] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown plugin: " + p})
 			return
 		}
 	}
@@ -2357,13 +2357,13 @@ func (h *AdminHandler) UpdateTeamFeatures(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	features := input.EnabledFeatures
-	if features == nil {
-		features = []string{}
+	plugins := input.EnabledPlugins
+	if plugins == nil {
+		plugins = []string{}
 	}
 
 	result, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{
-		"$set": bson.M{"enabledFeatures": features, "updatedAt": time.Now()},
+		"$set": bson.M{"enabledPlugins": plugins, "updatedAt": time.Now()},
 	})
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
@@ -2371,8 +2371,8 @@ func (h *AdminHandler) UpdateTeamFeatures(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"availableFeatures": models.AvailableFeatures,
-		"enabledFeatures":   features,
+		"availablePlugins": models.AvailablePlugins,
+		"enabledPlugins":   plugins,
 	})
 }
 

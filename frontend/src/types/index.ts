@@ -28,16 +28,16 @@ export interface TeamSettings {
   episodeNewsUrl?: string;
   hasEpisodeNewsBearerToken?: boolean;
   bggHandleLookupEnabled?: boolean;
-  enabledFeatures?: string[];
+  enabledPlugins?: string[];
 }
 
-export interface OptionalFeature {
+export interface Plugin {
   id: string;
   label: string;
   description: string;
 }
 
-export const AVAILABLE_FEATURES: OptionalFeature[] = [
+export const AVAILABLE_PLUGINS: Plugin[] = [
   {
     id: 'episode_news',
     label: 'Episode News',

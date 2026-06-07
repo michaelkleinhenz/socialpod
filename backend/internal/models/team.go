@@ -6,9 +6,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// AvailableFeatures is the catalog of all optional feature IDs that can be
+// AvailablePlugins is the catalog of all optional plugin IDs that can be
 // enabled per team by a global admin.
-var AvailableFeatures = []string{
+var AvailablePlugins = []string{
 	"episode_news",
 }
 
@@ -22,7 +22,7 @@ type Team struct {
 	EpisodeNewsURL          string              `bson:"episodeNewsUrl,omitempty" json:"episodeNewsUrl,omitempty"`
 	EpisodeNewsBearerToken  string              `bson:"episodeNewsBearerToken,omitempty" json:"-"`
 	BGGHandleLookupEnabled  *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
-	EnabledFeatures         []string            `bson:"enabledFeatures,omitempty" json:"enabledFeatures,omitempty"`
+	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt               time.Time           `bson:"updatedAt" json:"updatedAt"`
 }

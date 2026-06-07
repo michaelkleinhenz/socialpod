@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { Team, User, Watermark, TeamSettings } from '../../types';
-import { AVAILABLE_FEATURES } from '../../types';
+import { AVAILABLE_PLUGINS } from '../../types';
 import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings, Puzzle } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -22,9 +22,9 @@ export function TeamsPage() {
   const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
-  const [featuresTeam, setFeaturesTeam] = useState<Team | null>(null);
-  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
-  const [savingFeatures, setSavingFeatures] = useState(false);
+  const [pluginsTeam, setPluginsTeam] = useState<Team | null>(null);
+  const [enabledPlugins, setEnabledPlugins] = useState<string[]>([]);
+  const [savingPlugins, setSavingPlugins] = useState(false);
 
   const load = () => {
     Promise.all([api.getTeams(), api.getUsers(), api.getWatermarks()]).then(([t, u, wm]) => {
@@ -139,33 +139,33 @@ export function TeamsPage() {
     }
   };
 
-  const openFeatures = async (team: Team) => {
-    setFeaturesTeam(team);
+  const openPlugins = async (team: Team) => {
+    setPluginsTeam(team);
     try {
-      const res = await api.getTeamFeatures(team.id);
-      setEnabledFeatures(res.enabledFeatures ?? []);
+      const res = await api.getTeamPlugins(team.id);
+      setEnabledPlugins(res.enabledPlugins ?? []);
     } catch {
-      setEnabledFeatures([]);
+      setEnabledPlugins([]);
     }
   };
 
-  const toggleFeature = (featureId: string) => {
-    setEnabledFeatures(prev =>
-      prev.includes(featureId) ? prev.filter(f => f !== featureId) : [...prev, featureId]
+  const togglePlugin = (pluginId: string) => {
+    setEnabledPlugins(prev =>
+      prev.includes(pluginId) ? prev.filter(p => p !== pluginId) : [...prev, pluginId]
     );
   };
 
-  const saveFeatures = async () => {
-    if (!featuresTeam) return;
-    setSavingFeatures(true);
+  const savePlugins = async () => {
+    if (!pluginsTeam) return;
+    setSavingPlugins(true);
     try {
-      await api.updateTeamFeatures(featuresTeam.id, enabledFeatures);
-      toast.success('Optional features updated');
-      setFeaturesTeam(null);
+      await api.updateTeamPlugins(pluginsTeam.id, enabledPlugins);
+      toast.success('Plugins updated');
+      setPluginsTeam(null);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save features');
+      toast.error(err.message || 'Failed to save plugins');
     } finally {
-      setSavingFeatures(false);
+      setSavingPlugins(false);
     }
   };
 
@@ -200,8 +200,8 @@ export function TeamsPage() {
                   <button className="btn btn-secondary btn-sm" onClick={() => openBggSettings(team)}>
                     <Settings size={14} /> Team Settings
                   </button>
-                  <button className="btn btn-secondary btn-sm" onClick={() => openFeatures(team)}>
-                    <Puzzle size={14} /> Optional Features
+                  <button className="btn btn-secondary btn-sm" onClick={() => openPlugins(team)}>
+                    <Puzzle size={14} /> Plugins
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => deleteTeam(team.id)}>
                     <Trash2 size={14} color="var(--danger)" />
@@ -405,54 +405,54 @@ export function TeamsPage() {
         </div>
       )}
 
-      {/* Optional Features Modal */}
-      {featuresTeam && (
-        <div className="modal-overlay" onClick={() => setFeaturesTeam(null)}>
+      {/* Plugins Modal */}
+      {pluginsTeam && (
+        <div className="modal-overlay" onClick={() => setPluginsTeam(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Optional Features: {featuresTeam.name}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setFeaturesTeam(null)}>
+              <h2>Plugins: {pluginsTeam.name}</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPluginsTeam(null)}>
                 <X size={18} />
               </button>
             </div>
 
             <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
-              Enable or disable optional features for this team. Disabled features are hidden from all team members.
+              Enable or disable optional plugins for this team. Disabled plugins are hidden from all team members.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {AVAILABLE_FEATURES.map(feature => (
+              {AVAILABLE_PLUGINS.map(plugin => (
                 <label
-                  key={feature.id}
+                  key={plugin.id}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 12,
                     padding: '12px 14px',
                     borderRadius: 'var(--radius-sm)',
-                    background: enabledFeatures.includes(feature.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
+                    background: enabledPlugins.includes(plugin.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
                     border: '1px solid var(--border)',
                     cursor: 'pointer',
                   }}
                 >
                   <input
                     type="checkbox"
-                    checked={enabledFeatures.includes(feature.id)}
-                    onChange={() => toggleFeature(feature.id)}
+                    checked={enabledPlugins.includes(plugin.id)}
+                    onChange={() => togglePlugin(plugin.id)}
                     style={{ marginTop: 2, flexShrink: 0 }}
                   />
                   <div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{feature.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{feature.description}</div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{plugin.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{plugin.description}</div>
                   </div>
                 </label>
               ))}
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setFeaturesTeam(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveFeatures} disabled={savingFeatures}>
-                {savingFeatures ? 'Saving...' : 'Save Features'}
+              <button className="btn btn-secondary" onClick={() => setPluginsTeam(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={savePlugins} disabled={savingPlugins}>
+                {savingPlugins ? 'Saving...' : 'Save Plugins'}
               </button>
             </div>
           </div>
