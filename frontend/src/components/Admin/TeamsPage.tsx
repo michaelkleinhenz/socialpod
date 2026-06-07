@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { Team, User, Watermark, TeamSettings } from '../../types';
-import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings } from 'lucide-react';
+import { AVAILABLE_FEATURES } from '../../types';
+import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings, Puzzle } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Admin.css';
@@ -20,6 +21,10 @@ export function TeamsPage() {
   const [bggSettings, setBggSettings] = useState<TeamSettings>({});
   const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
+
+  const [featuresTeam, setFeaturesTeam] = useState<Team | null>(null);
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+  const [savingFeatures, setSavingFeatures] = useState(false);
 
   const load = () => {
     Promise.all([api.getTeams(), api.getUsers(), api.getWatermarks()]).then(([t, u, wm]) => {
@@ -134,6 +139,36 @@ export function TeamsPage() {
     }
   };
 
+  const openFeatures = async (team: Team) => {
+    setFeaturesTeam(team);
+    try {
+      const res = await api.getTeamFeatures(team.id);
+      setEnabledFeatures(res.enabledFeatures ?? []);
+    } catch {
+      setEnabledFeatures([]);
+    }
+  };
+
+  const toggleFeature = (featureId: string) => {
+    setEnabledFeatures(prev =>
+      prev.includes(featureId) ? prev.filter(f => f !== featureId) : [...prev, featureId]
+    );
+  };
+
+  const saveFeatures = async () => {
+    if (!featuresTeam) return;
+    setSavingFeatures(true);
+    try {
+      await api.updateTeamFeatures(featuresTeam.id, enabledFeatures);
+      toast.success('Optional features updated');
+      setFeaturesTeam(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save features');
+    } finally {
+      setSavingFeatures(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -164,6 +199,9 @@ export function TeamsPage() {
                   </button>
                   <button className="btn btn-secondary btn-sm" onClick={() => openBggSettings(team)}>
                     <Settings size={14} /> Team Settings
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => openFeatures(team)}>
+                    <Puzzle size={14} /> Optional Features
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => deleteTeam(team.id)}>
                     <Trash2 size={14} color="var(--danger)" />
@@ -361,6 +399,60 @@ export function TeamsPage() {
               <button className="btn btn-secondary" onClick={() => setBggTeam(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={saveBggSettings} disabled={savingBgg}>
                 {savingBgg ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Optional Features Modal */}
+      {featuresTeam && (
+        <div className="modal-overlay" onClick={() => setFeaturesTeam(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2>Optional Features: {featuresTeam.name}</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setFeaturesTeam(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
+              Enable or disable optional features for this team. Disabled features are hidden from all team members.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {AVAILABLE_FEATURES.map(feature => (
+                <label
+                  key={feature.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: enabledFeatures.includes(feature.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={enabledFeatures.includes(feature.id)}
+                    onChange={() => toggleFeature(feature.id)}
+                    style={{ marginTop: 2, flexShrink: 0 }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{feature.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{feature.description}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setFeaturesTeam(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveFeatures} disabled={savingFeatures}>
+                {savingFeatures ? 'Saving...' : 'Save Features'}
               </button>
             </div>
           </div>

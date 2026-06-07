@@ -424,7 +424,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       setBggEnabled(true);
     }).catch(() => {});
     api.getTeamSettings().then((s: TeamSettings) => {
-      if (s.episodeNewsUrl && s.hasEpisodeNewsBearerToken) {
+      if (s.episodeNewsUrl && s.hasEpisodeNewsBearerToken && s.enabledFeatures?.includes('episode_news')) {
         setNewsEnabled(true);
       }
     }).catch(() => {});

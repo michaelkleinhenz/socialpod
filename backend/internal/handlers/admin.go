@@ -2297,6 +2297,85 @@ func (h *AdminHandler) TeamRemoveMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Member removed from team"})
 }
 
+// ─── Optional Features ────────────────────────────────────────────────────────
+
+// GetTeamFeatures returns the list of enabled optional features for a team.
+func (h *AdminHandler) GetTeamFeatures(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	features := team.EnabledFeatures
+	if features == nil {
+		features = []string{}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"availableFeatures": models.AvailableFeatures,
+		"enabledFeatures":   features,
+	})
+}
+
+// UpdateTeamFeatures sets the enabled optional features for a team.
+func (h *AdminHandler) UpdateTeamFeatures(c *gin.Context) {
+	teamID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var input struct {
+		EnabledFeatures []string `json:"enabledFeatures"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate all requested features are known.
+	known := make(map[string]bool, len(models.AvailableFeatures))
+	for _, f := range models.AvailableFeatures {
+		known[f] = true
+	}
+	for _, f := range input.EnabledFeatures {
+		if !known[f] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown feature: " + f})
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	features := input.EnabledFeatures
+	if features == nil {
+		features = []string{}
+	}
+
+	result, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{
+		"$set": bson.M{"enabledFeatures": features, "updatedAt": time.Now()},
+	})
+	if err != nil || result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"availableFeatures": models.AvailableFeatures,
+		"enabledFeatures":   features,
+	})
+}
+
 func formatSnippets(snippets []string) string {
 	if len(snippets) == 0 {
 		return "(no published posts yet)"

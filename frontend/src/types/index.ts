@@ -28,7 +28,22 @@ export interface TeamSettings {
   episodeNewsUrl?: string;
   hasEpisodeNewsBearerToken?: boolean;
   bggHandleLookupEnabled?: boolean;
+  enabledFeatures?: string[];
 }
+
+export interface OptionalFeature {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export const AVAILABLE_FEATURES: OptionalFeature[] = [
+  {
+    id: 'episode_news',
+    label: 'Episode News',
+    description: 'Adds an "Add News" section to the post creation dialog, allowing team members to send episode metadata to a configured webhook when creating a post.',
+  },
+];
 
 export interface Watermark {
   id: string;

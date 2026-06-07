@@ -578,6 +578,18 @@ class ApiClient {
     });
   }
 
+  // Optional features (admin-managed per team)
+  getTeamFeatures(teamId: string) {
+    return this.request<{ availableFeatures: string[]; enabledFeatures: string[] }>(`/admin/teams/${teamId}/features`);
+  }
+
+  updateTeamFeatures(teamId: string, enabledFeatures: string[]) {
+    return this.request<{ availableFeatures: string[]; enabledFeatures: string[] }>(`/admin/teams/${teamId}/features`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabledFeatures }),
+    });
+  }
+
   // Publisher handles catalog (admin-managed, global)
   getPublisherHandles() {
     return this.request<import('../types').PublisherHandle[]>('/admin/publisher-handles');

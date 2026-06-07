@@ -851,6 +851,10 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.BGGHandleLookupEnabled != nil {
 		handleLookup = *team.BGGHandleLookupEnabled
 	}
+	enabledFeatures := team.EnabledFeatures
+	if enabledFeatures == nil {
+		enabledFeatures = []string{}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"bggWatermarkId":            wmID,
 		"bggCoverOffsetX":           team.BGGCoverOffsetX,
@@ -858,6 +862,7 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"episodeNewsUrl":            team.EpisodeNewsURL,
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
 		"bggHandleLookupEnabled":    handleLookup,
+		"enabledFeatures":           enabledFeatures,
 	})
 }
 
@@ -969,6 +974,10 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 	if team.BGGHandleLookupEnabled != nil {
 		adminHandleLookup = *team.BGGHandleLookupEnabled
 	}
+	adminEnabledFeatures := team.EnabledFeatures
+	if adminEnabledFeatures == nil {
+		adminEnabledFeatures = []string{}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"bggWatermarkId":            wmID,
 		"bggCoverOffsetX":           team.BGGCoverOffsetX,
@@ -976,6 +985,7 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"episodeNewsUrl":            team.EpisodeNewsURL,
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
 		"bggHandleLookupEnabled":    adminHandleLookup,
+		"enabledFeatures":           adminEnabledFeatures,
 	})
 }
 

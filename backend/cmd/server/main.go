@@ -200,6 +200,8 @@ func main() {
 		admin.POST("/teams/:id/token", adminHandler.GenerateTeamToken)
 		admin.GET("/teams/:id/settings", bggHandler.AdminGetTeamSettings)
 		admin.PUT("/teams/:id/settings", bggHandler.AdminUpdateTeamSettings)
+		admin.GET("/teams/:id/features", adminHandler.GetTeamFeatures)
+		admin.PUT("/teams/:id/features", adminHandler.UpdateTeamFeatures)
 
 		// Publisher handle catalog (global, admin-managed)
 		admin.GET("/publisher-handles", publisherHandleHandler.List)
