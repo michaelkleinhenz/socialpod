@@ -562,7 +562,7 @@ class ApiClient {
   submitNews(data: any, files?: File[]) {
     const form = new FormData();
     form.append('data', JSON.stringify(data));
-    files?.forEach(f => form.append('images', f));
+    files?.forEach(f => form.append('image', f));
     return this.request<any>('/news/submit', { method: 'POST', body: form });
   }
 

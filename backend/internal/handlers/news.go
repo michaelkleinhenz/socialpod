@@ -108,7 +108,7 @@ func (h *NewsHandler) Submit(c *gin.Context) {
 	// Collect uploaded image files for both the n8n request and optional post creation.
 	var uploadedImageFiles []*multipart.FileHeader
 	if form, err := c.MultipartForm(); err == nil {
-		uploadedImageFiles = form.File["images"]
+		uploadedImageFiles = form.File["image"]
 	}
 
 	// Save images to disk (needed for both n8n forwarding and post creation).
