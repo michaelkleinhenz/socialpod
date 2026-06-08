@@ -481,8 +481,8 @@ export function NewsPage() {
     }
   };
 
-  const resetForm = () => {
-    setEpisodeNumber('');
+  const resetForm = (keepEpisodeNumber = false) => {
+    if (!keepEpisodeNumber) setEpisodeNumber('');
     setNewsTagline('');
     setArticleUrl('');
     setShownotes('');
@@ -557,7 +557,7 @@ export function NewsPage() {
     try {
       await api.submitNews(data, fileToSend ? [fileToSend] : undefined);
       toast.success('News submitted successfully');
-      resetForm();
+      resetForm(true);
     } catch (err: any) {
       toast.error(err.message || 'Failed to submit news');
     } finally {
