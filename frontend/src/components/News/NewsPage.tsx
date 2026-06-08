@@ -462,7 +462,15 @@ export function NewsPage() {
         for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
         const blob = new Blob([arr], { type: 'image/jpeg' });
         const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
-        handleFile(file);
+        if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+        if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+        setImageFile(file);
+        setImagePreviewUrl(URL.createObjectURL(file));
+        setCroppedBlob(null);
+        setCroppedPreviewUrl(null);
+        setCroppedSize(null);
+        setCropRect(null);
+        setShowCropper(false);
       }
 
       toast.success('BGG data imported');
