@@ -135,6 +135,12 @@ a:hover { color: var(--accent-hover); }
   transition: border-color 0.2s;
 }
 
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
 .input:focus, .textarea:focus, .select:focus {
   outline: none;
   border-color: var(--accent);
