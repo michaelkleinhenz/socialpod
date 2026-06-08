@@ -21,6 +21,7 @@ export function TeamsPage() {
   const [bggSettings, setBggSettings] = useState<TeamSettings>({});
   const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
   const [newsCreatorUrl, setNewsCreatorUrl] = useState('');
+  const [newsCreatorWatermarkId, setNewsCreatorWatermarkId] = useState('');
   const [newsCreatorBearerToken, setNewsCreatorBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
@@ -114,9 +115,11 @@ export function TeamsPage() {
       const s = await api.getAdminTeamBggSettings(team.id);
       setBggSettings(s);
       setNewsCreatorUrl(s.newsCreatorUrl || '');
+      setNewsCreatorWatermarkId(s.newsCreatorWatermarkId || '');
     } catch {
       setBggSettings({});
       setNewsCreatorUrl('');
+      setNewsCreatorWatermarkId('');
     }
   };
 
@@ -135,6 +138,7 @@ export function TeamsPage() {
         data.episodeNewsBearerToken = episodeNewsBearerToken;
       }
       data.newsCreatorUrl = newsCreatorUrl || '';
+      data.newsCreatorWatermarkId = newsCreatorWatermarkId || null;
       if (newsCreatorBearerToken) {
         data.newsCreatorBearerToken = newsCreatorBearerToken;
       }
@@ -420,6 +424,22 @@ export function TeamsPage() {
                 onChange={e => setNewsCreatorUrl(e.target.value)}
                 placeholder="https://n8n.example.com/webhook/..."
               />
+            </div>
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>News Watermark</label>
+              <select
+                className="select"
+                value={newsCreatorWatermarkId}
+                onChange={e => setNewsCreatorWatermarkId(e.target.value)}
+              >
+                <option value="">None (no overlay)</option>
+                {watermarks.map(wm => (
+                  <option key={wm.id} value={wm.id}>{wm.name}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                Watermark to overlay on cropped news images.
+              </span>
             </div>
             <div className="form-group" style={{ marginBottom: 20 }}>
               <label>Bearer Token</label>
