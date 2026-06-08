@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark } from '../../types';
-import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X } from 'lucide-react';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
+
+const MAX_IMAGE_BYTES = 1_000_000;
 
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
@@ -39,6 +41,7 @@ export function NewsPage() {
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
   const [croppedPreviewUrl, setCroppedPreviewUrl] = useState<string | null>(null);
+  const [croppedSize, setCroppedSize] = useState<number | null>(null);
   const cropImgRef = useRef<HTMLImageElement>(null);
   const cropContainerRef = useRef<HTMLDivElement>(null);
   const [imgNaturalSize, setImgNaturalSize] = useState<{ w: number; h: number } | null>(null);
@@ -48,6 +51,12 @@ export function NewsPage() {
   // Watermark
   const [watermark, setWatermark] = useState<Watermark | null>(null);
   const [watermarkImg, setWatermarkImg] = useState<HTMLImageElement | null>(null);
+
+  // BGG import
+  const [bggUrl, setBggUrl] = useState('');
+  const [fetchingBgg, setFetchingBgg] = useState(false);
+  const [bggError, setBggError] = useState('');
+  const [bggEnabled, setBggEnabled] = useState(false);
 
   // Drag & drop zone
   const [dragOver, setDragOver] = useState(false);
@@ -91,6 +100,9 @@ export function NewsPage() {
         }
       })
       .catch(() => setPluginReady(false));
+    api.getPublicSettings().then(s => {
+      if (s.hasBggApiToken) setBggEnabled(true);
+    }).catch(() => {});
   }, []);
 
   // Load watermark image when watermark is set
@@ -154,6 +166,7 @@ export function NewsPage() {
     setImagePreviewUrl(URL.createObjectURL(file));
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
+    setCroppedSize(null);
     setCropRect(null);
     setShowCropper(true);
   }, [imagePreviewUrl, croppedPreviewUrl]);
@@ -199,6 +212,7 @@ export function NewsPage() {
     setImagePreviewUrl(null);
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
+    setCroppedSize(null);
     setCropRect(null);
     setShowCropper(false);
     if (fileRef.current) fileRef.current.value = '';
@@ -323,13 +337,11 @@ export function NewsPage() {
     }
   }, [dragging, resizing, onCropMouseMove, onCropMouseUp]);
 
-  // Apply crop + watermark
-  const applyCrop = async () => {
-    if (!cropRect || !imagePreviewUrl || !imgNaturalSize) return;
-
+  // Render the crop at a given output size and return the blob
+  const renderCropToBlob = async (outputSize: number): Promise<Blob> => {
     const canvas = document.createElement('canvas');
-    canvas.width = cropRect.size;
-    canvas.height = cropRect.size;
+    canvas.width = outputSize;
+    canvas.height = outputSize;
     const ctx = canvas.getContext('2d')!;
 
     const img = new window.Image();
@@ -337,24 +349,38 @@ export function NewsPage() {
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = reject;
-      img.src = imagePreviewUrl;
+      img.src = imagePreviewUrl!;
     });
 
-    ctx.drawImage(img, cropRect.x, cropRect.y, cropRect.size, cropRect.size, 0, 0, cropRect.size, cropRect.size);
+    ctx.drawImage(img, cropRect!.x, cropRect!.y, cropRect!.size, cropRect!.size, 0, 0, outputSize, outputSize);
 
-    // Overlay watermark
     if (watermarkImg) {
-      const wmSize = cropRect.size;
-      ctx.drawImage(watermarkImg, 0, 0, wmSize, wmSize);
+      ctx.drawImage(watermarkImg, 0, 0, outputSize, outputSize);
     }
 
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(b => b ? resolve(b) : reject(new Error('Failed to create blob')), 'image/png');
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('Failed to create blob')), 'image/jpeg', 0.92);
     });
+  };
+
+  // Apply crop + watermark
+  const applyCrop = async () => {
+    if (!cropRect || !imagePreviewUrl || !imgNaturalSize) return;
+
+    let outputSize = cropRect.size;
+    let blob = await renderCropToBlob(outputSize);
+
+    // If over 1MB, progressively shrink until it fits
+    while (blob.size > MAX_IMAGE_BYTES && outputSize > 100) {
+      const scale = Math.sqrt(MAX_IMAGE_BYTES / blob.size) * 0.95;
+      outputSize = Math.max(100, Math.floor(outputSize * scale));
+      blob = await renderCropToBlob(outputSize);
+    }
 
     if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
     setCroppedBlob(blob);
     setCroppedPreviewUrl(URL.createObjectURL(blob));
+    setCroppedSize(outputSize);
     setShowCropper(false);
   };
 
@@ -406,12 +432,55 @@ export function NewsPage() {
     : charCount > charLimit;
   const charClass = charCount > charLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
+  const fetchBGGData = async () => {
+    if (!bggUrl.trim()) return;
+    setFetchingBgg(true);
+    setBggError('');
+    try {
+      const data = await api.fetchBGGGame(bggUrl.trim());
+
+      setArticleUrl(bggUrl.trim());
+
+      const lines: string[] = [];
+      if (data.title) lines.push(data.title + (data.yearPublished ? ` (${data.yearPublished})` : ''));
+      if (data.designers?.length) lines.push(`Designer: ${data.designers.join(', ')}`);
+      if (data.artists?.length) lines.push(`Artist: ${data.artists.join(', ')}`);
+      if (data.publishers?.length) lines.push(`Publisher: ${data.publishers.join(', ')}`);
+      if (data.minPlayers && data.maxPlayers) lines.push(`Players: ${data.minPlayers}–${data.maxPlayers}`);
+      if (data.minPlaytime && data.maxPlaytime) {
+        lines.push(data.minPlaytime === data.maxPlaytime ? `Playtime: ${data.minPlaytime} min` : `Playtime: ${data.minPlaytime}–${data.maxPlaytime} min`);
+      }
+      if (data.minAge) lines.push(`Age: ${data.minAge}+`);
+      if (data.rating) lines.push(`Rating: ${data.rating}`);
+      if (data.weight) lines.push(`Weight: ${data.weight}`);
+      if (data.suggestedContent) lines.push(data.suggestedContent);
+      setShownotes(lines.filter(l => l.trim()).join('\n'));
+
+      if (data.imageBase64) {
+        const byteStr = atob(data.imageBase64);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'image/jpeg' });
+        const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
+        handleFile(file);
+      }
+
+      toast.success('BGG data imported');
+    } catch (e: any) {
+      setBggError(e.message || 'Failed to fetch BGG data');
+    } finally {
+      setFetchingBgg(false);
+    }
+  };
+
   const resetForm = () => {
     setEpisodeNumber('');
     setNewsTagline('');
     setArticleUrl('');
     setShownotes('');
     removeImage();
+    setBggUrl('');
+    setBggError('');
     setAddSocialPost(false);
     setContent('');
     setContentOverrides({});
@@ -443,7 +512,7 @@ export function NewsPage() {
 
     // Use cropped blob if available, otherwise original file
     const fileToSend = croppedBlob
-      ? new File([croppedBlob], imageFile?.name || 'cropped.png', { type: 'image/png' })
+      ? new File([croppedBlob], (imageFile?.name || 'cropped').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
       : imageFile;
 
     const data: any = {
@@ -622,6 +691,36 @@ export function NewsPage() {
             </div>
           </div>
 
+          {/* BGG Import */}
+          {bggEnabled && (
+            <div className="form-group">
+              <label><Dice5 size={14} /> BoardGameGeek Import</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="url"
+                  className="input"
+                  value={bggUrl}
+                  onChange={e => { setBggUrl(e.target.value); setBggError(''); }}
+                  onKeyDown={e => e.key === 'Enter' && fetchBGGData()}
+                  placeholder="https://boardgamegeek.com/boardgame/822/carcassonne"
+                  style={{ flex: 1 }}
+                  disabled={fetchingBgg}
+                />
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={fetchBGGData}
+                  disabled={fetchingBgg || !bggUrl.trim()}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {fetchingBgg ? <><Loader size={14} className="post-editor-spin" /> Importing…</> : 'Import'}
+                </button>
+              </div>
+              {bggError && (
+                <span style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--danger)', display: 'block' }}>{bggError}</span>
+              )}
+            </div>
+          )}
+
           {/* Article URL */}
           <div className="form-group">
             <label>Article URL <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -701,6 +800,11 @@ export function NewsPage() {
                     <X size={14} />
                   </button>
                 </div>
+                {croppedSize && croppedBlob && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                    {croppedSize} × {croppedSize} px · {(croppedBlob.size / 1024).toFixed(0)} KB
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     className="btn btn-ghost btn-sm"
@@ -754,8 +858,11 @@ export function NewsPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <h3 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Crop size={18} /> Crop Image
+                    {cropRect && <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
+                      ({cropRect.size} × {cropRect.size} px)
+                    </span>}
                     {watermark && <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-                      (watermark: {watermark.name})
+                      · watermark: {watermark.name}
                     </span>}
                   </h3>
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowCropper(false)}>
