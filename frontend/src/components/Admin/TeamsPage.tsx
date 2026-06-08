@@ -20,6 +20,8 @@ export function TeamsPage() {
   const [bggTeam, setBggTeam] = useState<Team | null>(null);
   const [bggSettings, setBggSettings] = useState<TeamSettings>({});
   const [episodeNewsBearerToken, setEpisodeNewsBearerToken] = useState('');
+  const [newsCreatorUrl, setNewsCreatorUrl] = useState('');
+  const [newsCreatorBearerToken, setNewsCreatorBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
   const [pluginsTeam, setPluginsTeam] = useState<Team | null>(null);
@@ -107,11 +109,14 @@ export function TeamsPage() {
   const openBggSettings = async (team: Team) => {
     setBggTeam(team);
     setEpisodeNewsBearerToken('');
+    setNewsCreatorBearerToken('');
     try {
       const s = await api.getAdminTeamBggSettings(team.id);
       setBggSettings(s);
+      setNewsCreatorUrl(s.newsCreatorUrl || '');
     } catch {
       setBggSettings({});
+      setNewsCreatorUrl('');
     }
   };
 
@@ -128,6 +133,10 @@ export function TeamsPage() {
       };
       if (episodeNewsBearerToken) {
         data.episodeNewsBearerToken = episodeNewsBearerToken;
+      }
+      data.newsCreatorUrl = newsCreatorUrl || '';
+      if (newsCreatorBearerToken) {
+        data.newsCreatorBearerToken = newsCreatorBearerToken;
       }
       await api.updateAdminTeamBggSettings(bggTeam.id, data);
       toast.success('Team settings saved');
@@ -389,6 +398,39 @@ export function TeamsPage() {
                 placeholder={bggSettings.hasEpisodeNewsBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
               />
               {bggSettings.hasEpisodeNewsBearerToken && !episodeNewsBearerToken && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                  A bearer token is already configured. Enter a new value to replace it.
+                </span>
+              )}
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>News Creator Integration</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+              Configure the n8n webhook URL and bearer token for the News Creator plugin.
+            </p>
+
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>News Creator URL</label>
+              <input
+                type="url"
+                className="input"
+                value={newsCreatorUrl}
+                onChange={e => setNewsCreatorUrl(e.target.value)}
+                placeholder="https://n8n.example.com/webhook/..."
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Bearer Token</label>
+              <input
+                type="password"
+                className="input"
+                value={newsCreatorBearerToken}
+                onChange={e => setNewsCreatorBearerToken(e.target.value)}
+                placeholder={bggSettings.hasNewsCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+              />
+              {bggSettings.hasNewsCreatorBearerToken && !newsCreatorBearerToken && (
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
                   A bearer token is already configured. Enter a new value to replace it.
                 </span>
