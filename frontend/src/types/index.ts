@@ -31,6 +31,7 @@ export interface TeamSettings {
   enabledPlugins?: string[];
   newsCreatorUrl?: string;
   hasNewsCreatorBearerToken?: boolean;
+  newsCreatorWatermarkId?: string;
 }
 
 export interface Plugin {
