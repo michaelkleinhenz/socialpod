@@ -154,10 +154,10 @@ func (h *NewsHandler) sendToN8N(ctx context.Context, team *models.Team, input *N
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	writer.WriteField("episodeNumber", input.EpisodeNumber)
-	writer.WriteField("newsTagline", input.NewsTagline)
-	writer.WriteField("articleUrl", input.ArticleURL)
-	writer.WriteField("shownotes", input.Shownotes)
+	writer.WriteField("episode_number", input.EpisodeNumber)
+	writer.WriteField("title", input.NewsTagline)
+	writer.WriteField("source_url", input.ArticleURL)
+	writer.WriteField("notes", input.Shownotes)
 
 	// Attach saved images.
 	for _, imgURL := range imageURLs {
