@@ -596,7 +596,7 @@ export function NewsPage() {
         <h1><Newspaper size={24} /> News Creator</h1>
       </div>
 
-      <div style={{ maxWidth: 720 }}>
+      <div>
         <div className="card" style={{ padding: 24 }}>
           {/* Episode Number & Tagline in a row */}
           <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 16 }}>
