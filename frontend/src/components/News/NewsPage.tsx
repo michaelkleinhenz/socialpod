@@ -242,9 +242,9 @@ export function NewsPage() {
 
   const clampRect = (rect: CropRect, natW: number, natH: number): CropRect => {
     let { x, y, size } = rect;
-    size = Math.max(50, Math.min(size, natW, natH));
-    x = Math.max(0, Math.min(x, natW - size));
-    y = Math.max(0, Math.min(y, natH - size));
+    size = Math.round(Math.max(50, Math.min(size, natW, natH)));
+    x = Math.round(Math.max(0, Math.min(x, natW - size)));
+    y = Math.round(Math.max(0, Math.min(y, natH - size)));
     return { x, y, size };
   };
 
