@@ -24,6 +24,7 @@ type Team struct {
 	EpisodeNewsBearerToken  string              `bson:"episodeNewsBearerToken,omitempty" json:"-"`
 	NewsCreatorURL          string              `bson:"newsCreatorUrl,omitempty" json:"newsCreatorUrl,omitempty"`
 	NewsCreatorBearerToken  string              `bson:"newsCreatorBearerToken,omitempty" json:"-"`
+	NewsCreatorWatermarkID  *primitive.ObjectID `bson:"newsCreatorWatermarkId,omitempty" json:"newsCreatorWatermarkId,omitempty"`
 	BGGHandleLookupEnabled  *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
 	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`

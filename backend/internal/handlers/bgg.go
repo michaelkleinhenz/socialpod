@@ -847,6 +847,10 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.BGGWatermarkID != nil {
 		wmID = team.BGGWatermarkID.Hex()
 	}
+	ncWmID := ""
+	if team.NewsCreatorWatermarkID != nil {
+		ncWmID = team.NewsCreatorWatermarkID.Hex()
+	}
 	handleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		handleLookup = *team.BGGHandleLookupEnabled
@@ -863,6 +867,7 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
 		"newsCreatorUrl":            team.NewsCreatorURL,
 		"hasNewsCreatorBearerToken": team.NewsCreatorBearerToken != "",
+		"newsCreatorWatermarkId":    ncWmID,
 		"bggHandleLookupEnabled":    handleLookup,
 		"enabledPlugins":            enabledPlugins,
 	})
@@ -882,14 +887,15 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID         *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX        *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
-		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
-		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
-		NewsCreatorURL         *string `json:"newsCreatorUrl"`
-		NewsCreatorBearerToken *string `json:"newsCreatorBearerToken"`
-		BGGHandleLookupEnabled *bool   `json:"bggHandleLookupEnabled"`
+		BGGWatermarkID           *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX          *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY          *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL           *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken   *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL           *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken   *string `json:"newsCreatorBearerToken"`
+		NewsCreatorWatermarkID   *string `json:"newsCreatorWatermarkId"`
+		BGGHandleLookupEnabled   *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -946,6 +952,18 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 			unsetFields["newsCreatorBearerToken"] = ""
 		} else {
 			setFields["newsCreatorBearerToken"] = *input.NewsCreatorBearerToken
+		}
+	}
+	if input.NewsCreatorWatermarkID != nil {
+		if *input.NewsCreatorWatermarkID == "" {
+			unsetFields["newsCreatorWatermarkId"] = ""
+		} else {
+			ncWmID, err := primitive.ObjectIDFromHex(*input.NewsCreatorWatermarkID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+				return
+			}
+			setFields["newsCreatorWatermarkId"] = ncWmID
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {
@@ -988,6 +1006,10 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 	if team.BGGWatermarkID != nil {
 		wmID = team.BGGWatermarkID.Hex()
 	}
+	adminNcWmID := ""
+	if team.NewsCreatorWatermarkID != nil {
+		adminNcWmID = team.NewsCreatorWatermarkID.Hex()
+	}
 	adminHandleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		adminHandleLookup = *team.BGGHandleLookupEnabled
@@ -1004,6 +1026,7 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
 		"newsCreatorUrl":            team.NewsCreatorURL,
 		"hasNewsCreatorBearerToken": team.NewsCreatorBearerToken != "",
+		"newsCreatorWatermarkId":    adminNcWmID,
 		"bggHandleLookupEnabled":    adminHandleLookup,
 		"enabledPlugins":            adminEnabledPlugins,
 	})
@@ -1018,14 +1041,15 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID         *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX        *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY        *int    `json:"bggCoverOffsetY"`
-		EpisodeNewsURL         *string `json:"episodeNewsUrl"`
-		EpisodeNewsBearerToken *string `json:"episodeNewsBearerToken"`
-		NewsCreatorURL         *string `json:"newsCreatorUrl"`
-		NewsCreatorBearerToken *string `json:"newsCreatorBearerToken"`
-		BGGHandleLookupEnabled *bool   `json:"bggHandleLookupEnabled"`
+		BGGWatermarkID           *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX          *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY          *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL           *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken   *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL           *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken   *string `json:"newsCreatorBearerToken"`
+		NewsCreatorWatermarkID   *string `json:"newsCreatorWatermarkId"`
+		BGGHandleLookupEnabled   *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1082,6 +1106,18 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 			unsetFields["newsCreatorBearerToken"] = ""
 		} else {
 			setFields["newsCreatorBearerToken"] = *input.NewsCreatorBearerToken
+		}
+	}
+	if input.NewsCreatorWatermarkID != nil {
+		if *input.NewsCreatorWatermarkID == "" {
+			unsetFields["newsCreatorWatermarkId"] = ""
+		} else {
+			ncWmID, err := primitive.ObjectIDFromHex(*input.NewsCreatorWatermarkID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+				return
+			}
+			setFields["newsCreatorWatermarkId"] = ncWmID
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {

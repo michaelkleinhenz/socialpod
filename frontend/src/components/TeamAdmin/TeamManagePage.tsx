@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { SocialAccount, User, PublicSettings, TeamSettings } from '../../types';
+import type { SocialAccount, User, PublicSettings, TeamSettings, Watermark } from '../../types';
 import {
   Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2, Settings,
 } from 'lucide-react';
@@ -56,6 +56,8 @@ export function TeamManagePage() {
   // News Creator settings state
   const [newsCreatorUrl, setNewsCreatorUrl] = useState('');
   const [newsCreatorBearerToken, setNewsCreatorBearerToken] = useState('');
+  const [newsCreatorWatermarkId, setNewsCreatorWatermarkId] = useState('');
+  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
 
   // Team self-creation state (when team admin has no team yet)
   const [newTeamName, setNewTeamName] = useState('');
@@ -69,7 +71,9 @@ export function TeamManagePage() {
     api.getTeamSettings().then(s => {
       setTeamSettings(s);
       if (s.newsCreatorUrl) setNewsCreatorUrl(s.newsCreatorUrl);
+      if (s.newsCreatorWatermarkId) setNewsCreatorWatermarkId(s.newsCreatorWatermarkId);
     }).catch(() => {});
+    api.getWatermarks().then(setWatermarks).catch(() => {});
     if (searchParams.get('instagram') === 'connected') {
       toast.success('Instagram account connected');
     }
@@ -296,6 +300,7 @@ export function TeamManagePage() {
       const payload: any = { bggHandleLookupEnabled: teamSettings.bggHandleLookupEnabled ?? true };
       if (newsCreatorUrl !== undefined) payload.newsCreatorUrl = newsCreatorUrl;
       if (newsCreatorBearerToken) payload.newsCreatorBearerToken = newsCreatorBearerToken;
+      payload.newsCreatorWatermarkId = newsCreatorWatermarkId || '';
       await api.updateTeamSettings(payload);
       if (newsCreatorBearerToken) {
         setNewsCreatorBearerToken('');
@@ -773,6 +778,23 @@ export function TeamManagePage() {
                     value={newsCreatorUrl}
                     onChange={e => setNewsCreatorUrl(e.target.value)}
                   />
+                </div>
+
+                <div className="form-group">
+                  <label>News Watermark</label>
+                  <select
+                    className="select"
+                    value={newsCreatorWatermarkId}
+                    onChange={e => setNewsCreatorWatermarkId(e.target.value)}
+                  >
+                    <option value="">None</option>
+                    {watermarks.map(w => (
+                      <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Watermark to overlay on cropped news images.
+                  </span>
                 </div>
 
                 <div className="form-group">
