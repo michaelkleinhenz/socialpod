@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
 import {
@@ -18,7 +18,6 @@ type NavEntry = NavLeaf | NavGroup;
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const [newsPluginEnabled, setNewsPluginEnabled] = useState(false);
 
   useEffect(() => {
@@ -78,6 +77,11 @@ export function Layout({ children }: { children: ReactNode }) {
     }] : []),
   ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled]);
 
+  const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
+  const groupButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => { setMobileOpenGroup(null); }, [location.pathname]);
+
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const initial = new Set<string>(['content']);
     for (const entry of navEntries) {
@@ -109,9 +113,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleGroupHeaderClick = (entry: NavGroup) => {
     if (window.innerWidth <= 768) {
-      const activeChild = entry.children.find(c => isActive(c.path));
-      const target = activeChild || entry.children[0];
-      if (target) navigate(target.path);
+      setMobileOpenGroup(prev => prev === entry.id ? null : entry.id);
     } else {
       toggleGroup(entry.id);
     }
@@ -147,9 +149,14 @@ export function Layout({ children }: { children: ReactNode }) {
             const isOpen = openGroups.has(entry.id);
             const hasActive = entry.children.some(c => isActive(c.path));
 
+            const isMobileFlyoutOpen = mobileOpenGroup === entry.id;
+            const buttonEl = groupButtonRefs.current[entry.id];
+            const flyoutTop = buttonEl ? buttonEl.getBoundingClientRect().top : 0;
+
             return (
               <div key={entry.id} className="nav-group">
                 <button
+                  ref={el => { groupButtonRefs.current[entry.id] = el; }}
                   className={`nav-item nav-group-header ${hasActive ? 'active' : ''}`}
                   onClick={() => handleGroupHeaderClick(entry)}
                 >
@@ -169,10 +176,30 @@ export function Layout({ children }: { children: ReactNode }) {
                       </Link>
                     ))}
                   </div>
+                {isMobileFlyoutOpen && (
+                  <div className="mobile-flyout" style={{ top: flyoutTop }}>
+                    <div className="mobile-flyout-label">{entry.label}</div>
+                    {entry.children.map(child => (
+                      <Link
+                        key={child.path}
+                        to={child.path}
+                        className={`nav-item nav-flyout-item ${isActive(child.path) ? 'active' : ''}`}
+                        onClick={() => setMobileOpenGroup(null)}
+                      >
+                        <child.icon size={16} />
+                        <span>{child.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
         </nav>
+
+        {mobileOpenGroup && (
+          <div className="mobile-flyout-backdrop" onClick={() => setMobileOpenGroup(null)} />
+        )}
 
         <div className="sidebar-footer">
           <Link to="/profile" className="nav-item user-item">

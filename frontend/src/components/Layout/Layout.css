@@ -181,4 +181,44 @@ body.adobe-express-open .sidebar {
   .nav-group-children {
     display: none !important;
   }
+
+  .mobile-flyout-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+  }
+
+  .mobile-flyout {
+    position: fixed;
+    left: 64px;
+    z-index: 100;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    min-width: 180px;
+    box-shadow: 4px 4px 16px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mobile-flyout-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 6px 14px 4px;
+  }
+
+  .nav-flyout-item {
+    justify-content: flex-start !important;
+    padding: 10px 14px !important;
+    width: 100%;
+  }
+
+  .nav-flyout-item span {
+    display: inline !important;
+  }
 }
