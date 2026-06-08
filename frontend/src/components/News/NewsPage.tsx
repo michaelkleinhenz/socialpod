@@ -7,6 +7,7 @@ import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
+import './News.css';
 
 const MAX_IMAGE_BYTES = 1_000_000;
 
@@ -241,24 +242,23 @@ export function NewsPage() {
 
   const clampRect = (rect: CropRect, natW: number, natH: number): CropRect => {
     let { x, y, size } = rect;
-    size = Math.max(50, Math.min(size, natW, natH));
-    x = Math.max(0, Math.min(x, natW - size));
-    y = Math.max(0, Math.min(y, natH - size));
+    size = Math.round(Math.max(50, Math.min(size, natW, natH)));
+    x = Math.round(Math.max(0, Math.min(x, natW - size)));
+    y = Math.round(Math.max(0, Math.min(y, natH - size)));
     return { x, y, size };
   };
 
-  const onCropMouseDown = (e: React.MouseEvent) => {
-    if (!cropRect || !imgNaturalSize) return;
-    e.preventDefault();
+  const handleCropStart = (clientX: number, clientY: number) => {
+    if (!cropRect || !imgNaturalSize || !cropImgRef.current) return;
     const scale = getDisplayScale();
-    const imgBounds = cropImgRef.current!.getBoundingClientRect();
-    const mx = (e.clientX - imgBounds.left) / scale;
-    const my = (e.clientY - imgBounds.top) / scale;
+    const imgBounds = cropImgRef.current.getBoundingClientRect();
+    const mx = (clientX - imgBounds.left) / scale;
+    const my = (clientY - imgBounds.top) / scale;
 
     const { x, y, size } = cropRect;
-    const handleSize = 20 / scale;
+    // 28px hit area in display coordinates — large enough for touch targets
+    const handleHit = 28 / scale;
 
-    // Check resize handles (corners)
     const corners = [
       { corner: 'tl', cx: x, cy: y },
       { corner: 'tr', cx: x + size, cy: y },
@@ -266,25 +266,36 @@ export function NewsPage() {
       { corner: 'br', cx: x + size, cy: y + size },
     ];
     for (const c of corners) {
-      if (Math.abs(mx - c.cx) < handleSize && Math.abs(my - c.cy) < handleSize) {
-        setResizing({ corner: c.corner, startX: e.clientX, startY: e.clientY, origRect: { ...cropRect } });
+      if (Math.abs(mx - c.cx) < handleHit && Math.abs(my - c.cy) < handleHit) {
+        setResizing({ corner: c.corner, startX: clientX, startY: clientY, origRect: { ...cropRect } });
         return;
       }
     }
 
-    // Check if inside crop rect -> drag
     if (mx >= x && mx <= x + size && my >= y && my <= y + size) {
-      setDragging({ startX: e.clientX, startY: e.clientY, origRect: { ...cropRect } });
+      setDragging({ startX: clientX, startY: clientY, origRect: { ...cropRect } });
     }
   };
 
-  const onCropMouseMove = useCallback((e: MouseEvent) => {
+  const onCropMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleCropStart(e.clientX, e.clientY);
+  };
+
+  const onCropTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length > 0) {
+      handleCropStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const onCropMouseMove = useCallback((clientX: number, clientY: number) => {
     if (!imgNaturalSize) return;
     const scale = getDisplayScale();
 
     if (dragging) {
-      const dx = (e.clientX - dragging.startX) / scale;
-      const dy = (e.clientY - dragging.startY) / scale;
+      const dx = (clientX - dragging.startX) / scale;
+      const dy = (clientY - dragging.startY) / scale;
       setCropRect(clampRect({
         x: dragging.origRect.x + dx,
         y: dragging.origRect.y + dy,
@@ -293,8 +304,8 @@ export function NewsPage() {
     }
 
     if (resizing) {
-      const dx = (e.clientX - resizing.startX) / scale;
-      const dy = (e.clientY - resizing.startY) / scale;
+      const dx = (clientX - resizing.startX) / scale;
+      const dy = (clientY - resizing.startY) / scale;
       const { corner, origRect } = resizing;
       let newSize = origRect.size;
       let newX = origRect.x;
@@ -328,11 +339,20 @@ export function NewsPage() {
 
   useEffect(() => {
     if (dragging || resizing) {
-      window.addEventListener('mousemove', onCropMouseMove);
+      const handleMouseMove = (e: MouseEvent) => onCropMouseMove(e.clientX, e.clientY);
+      const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        if (e.touches.length > 0) onCropMouseMove(e.touches[0].clientX, e.touches[0].clientY);
+      };
+      window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', onCropMouseUp);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', onCropMouseUp);
       return () => {
-        window.removeEventListener('mousemove', onCropMouseMove);
+        window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', onCropMouseUp);
+        window.removeEventListener('touchmove', handleTouchMove);
+        window.removeEventListener('touchend', onCropMouseUp);
       };
     }
   }, [dragging, resizing, onCropMouseMove, onCropMouseUp]);
@@ -605,12 +625,13 @@ export function NewsPage() {
     const x = cropRect.x * scale;
     const y = cropRect.y * scale;
     const size = cropRect.size * scale;
-    const handleSz = 10;
+    const handleSz = 14;
 
     return (
       <div
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, cursor: 'default' }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, cursor: 'default', touchAction: 'none' }}
         onMouseDown={onCropMouseDown}
+        onTouchStart={onCropTouchStart}
       >
         {/* Dimmed overlay outside crop */}
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: y, background: 'rgba(0,0,0,0.5)' }} />
@@ -676,7 +697,7 @@ export function NewsPage() {
       <div>
         <div className="card" style={{ padding: 24 }}>
           {/* Episode Number & Tagline in a row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 16 }}>
+          <div className="news-meta-row">
             <div className="form-group">
               <label>Episode Number <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
@@ -845,23 +866,12 @@ export function NewsPage() {
           {/* Crop Modal */}
           {showCropper && imagePreviewUrl && (
             <div
-              className="modal-overlay"
+              className="news-crop-overlay"
               onClick={() => setShowCropper(false)}
-              style={{
-                position: 'fixed', inset: 0, zIndex: 9999,
-                background: 'rgba(0,0,0,0.8)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 24,
-              }}
             >
               <div
-                className="card"
+                className="card news-crop-card"
                 onClick={e => e.stopPropagation()}
-                style={{
-                  maxWidth: 800, width: '100%', maxHeight: '90vh',
-                  display: 'flex', flexDirection: 'column',
-                  padding: 20, overflow: 'hidden',
-                }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <h3 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -890,6 +900,7 @@ export function NewsPage() {
                     background: 'var(--bg-secondary, #0f172a)',
                     borderRadius: 8,
                     userSelect: 'none',
+                    touchAction: 'none',
                   }}
                 >
                   <img
@@ -906,7 +917,7 @@ export function NewsPage() {
                   />
                   {renderCropOverlay()}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                   <button className="btn btn-secondary" onClick={() => setShowCropper(false)}>
                     Cancel
                   </button>

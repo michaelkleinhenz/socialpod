@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
 import {
@@ -18,6 +18,7 @@ type NavEntry = NavLeaf | NavGroup;
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [newsPluginEnabled, setNewsPluginEnabled] = useState(false);
 
   useEffect(() => {
@@ -106,6 +107,16 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const handleGroupHeaderClick = (entry: NavGroup) => {
+    if (window.innerWidth <= 768) {
+      const activeChild = entry.children.find(c => isActive(c.path));
+      const target = activeChild || entry.children[0];
+      if (target) navigate(target.path);
+    } else {
+      toggleGroup(entry.id);
+    }
+  };
+
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -139,8 +150,8 @@ export function Layout({ children }: { children: ReactNode }) {
             return (
               <div key={entry.id} className="nav-group">
                 <button
-                  className={`nav-item nav-group-header ${hasActive && !isOpen ? 'active' : ''}`}
-                  onClick={() => toggleGroup(entry.id)}
+                  className={`nav-item nav-group-header ${hasActive ? 'active' : ''}`}
+                  onClick={() => handleGroupHeaderClick(entry)}
                 >
                   <entry.icon size={18} />
                   <span>{entry.label}</span>

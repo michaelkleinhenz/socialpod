@@ -170,15 +170,15 @@ body.adobe-express-open .sidebar {
     justify-content: center;
     padding: 12px;
   }
+  /* On mobile show only the group icon, hide expanded children */
   .nav-group-header {
+    display: flex;
+    justify-content: center;
+  }
+  .nav-group-chevron {
     display: none;
   }
   .nav-group-children {
-    display: flex !important;
-    margin-top: 0;
-  }
-  .nav-child {
-    padding-left: 12px;
-    font-size: 14px;
+    display: none !important;
   }
 }
