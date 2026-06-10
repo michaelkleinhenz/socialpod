@@ -116,6 +116,10 @@ export function AdminPage() {
           teams: teams.length,
         }));
       });
+    } else if (user?.isTeamAdmin) {
+      api.getTeamAccounts().then(teamAccounts => {
+        setStats(s => ({ ...s, accounts: teamAccounts.length }));
+      }).catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -529,13 +533,23 @@ export function AdminPage() {
             </Link>
           </>
         ) : (
-          <Link to="/team/manage" className="admin-link-card">
-            <UsersRound size={24} />
-            <div>
-              <h3>Team Admin</h3>
-              <p>Manage accounts &amp; members</p>
-            </div>
-          </Link>
+          <>
+            <Link to="/admin/my-team" className="admin-link-card">
+              <UsersRound size={24} />
+              <div>
+                <h3>{user?.teamName || 'My Team'}</h3>
+                <p>Manage members</p>
+              </div>
+            </Link>
+
+            <Link to="/admin/team-accounts" className="admin-link-card">
+              <Share2 size={24} />
+              <div>
+                <h3>Social Accounts</h3>
+                <p>{stats.accounts} connected</p>
+              </div>
+            </Link>
+          </>
         )}
 
         <Link to="/watermarks" className="admin-link-card">

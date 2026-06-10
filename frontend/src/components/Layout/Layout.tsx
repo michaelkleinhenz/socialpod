@@ -69,7 +69,10 @@ export function Layout({ children }: { children: ReactNode }) {
           { kind: 'leaf' as const, path: '/admin/users', icon: Users, label: 'Users' },
           { kind: 'leaf' as const, path: '/admin/teams', icon: UsersRound, label: 'Teams' },
           { kind: 'leaf' as const, path: '/admin/settings', icon: Settings, label: 'Settings' },
-        ] : []),
+        ] : [
+          { kind: 'leaf' as const, path: '/admin/my-team', icon: UsersRound, label: 'Team' },
+          { kind: 'leaf' as const, path: '/admin/team-accounts', icon: Share2, label: 'Accounts' },
+        ]),
       ],
     }] : []),
   ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled]);
