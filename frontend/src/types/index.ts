@@ -200,6 +200,7 @@ export interface AppSettings {
   hasYouTubeClientSecret?: boolean;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
+  mailgunBaseUrl?: string;
   mailgunDomain?: string;
   mailgunFromEmail?: string;
   hasMailgunApiKey?: boolean;

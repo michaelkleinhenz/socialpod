@@ -72,6 +72,7 @@ type AppSettings struct {
 	LinkedInClientSecret  string             `bson:"linkedInClientSecret" json:"-"`
 	YouTubeClientID       string             `bson:"youtubeClientId" json:"youtubeClientId"`
 	YouTubeClientSecret   string             `bson:"youtubeClientSecret" json:"-"`
+	MailgunBaseURL        string             `bson:"mailgunBaseUrl" json:"mailgunBaseUrl"`
 	MailgunAPIKey         string             `bson:"mailgunApiKey" json:"-"`
 	MailgunDomain         string             `bson:"mailgunDomain" json:"mailgunDomain"`
 	MailgunFromEmail      string             `bson:"mailgunFromEmail" json:"mailgunFromEmail"`

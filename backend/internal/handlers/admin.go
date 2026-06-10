@@ -514,6 +514,7 @@ type UpdateSettingsInput struct {
 	LinkedInClientSecret  *string `json:"linkedInClientSecret,omitempty"`
 	YouTubeClientID       *string `json:"youtubeClientId,omitempty"`
 	YouTubeClientSecret   *string `json:"youtubeClientSecret,omitempty"`
+	MailgunBaseURL        *string `json:"mailgunBaseUrl,omitempty"`
 	MailgunAPIKey         *string `json:"mailgunApiKey,omitempty"`
 	MailgunDomain         *string `json:"mailgunDomain,omitempty"`
 	MailgunFromEmail      *string `json:"mailgunFromEmail,omitempty"`
@@ -580,6 +581,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.YouTubeClientSecret != nil {
 		update["youtubeClientSecret"] = *input.YouTubeClientSecret
+	}
+	if input.MailgunBaseURL != nil {
+		update["mailgunBaseUrl"] = *input.MailgunBaseURL
 	}
 	if input.MailgunAPIKey != nil {
 		update["mailgunApiKey"] = *input.MailgunAPIKey

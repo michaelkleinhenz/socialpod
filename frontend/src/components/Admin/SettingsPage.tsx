@@ -51,6 +51,7 @@ export function SettingsPage() {
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
       if (bggApiToken) data.bggApiToken = bggApiToken;
       if (mailgunApiKey) data.mailgunApiKey = mailgunApiKey;
+      data.mailgunBaseUrl = settings.mailgunBaseUrl || '';
       data.mailgunDomain = settings.mailgunDomain || '';
       data.mailgunFromEmail = settings.mailgunFromEmail || '';
       data.openRouterModel = settings.openRouterModel;
@@ -311,6 +312,19 @@ export function SettingsPage() {
         <h3>Mailgun (Email)</h3>
 
         <div className="settings-grid">
+          <div className="form-group">
+            <label>Mailgun API Base URL</label>
+            <input
+              className="input"
+              placeholder="https://api.mailgun.net"
+              value={settings.mailgunBaseUrl || ''}
+              onChange={e => setSettings(s => ({ ...s, mailgunBaseUrl: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Defaults to <code>https://api.mailgun.net</code>. Use <code>https://api.eu.mailgun.net</code> for EU regions.
+            </span>
+          </div>
+
           <div className="form-group">
             <label>Mailgun Domain</label>
             <input

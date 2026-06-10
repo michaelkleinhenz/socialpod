@@ -61,11 +61,16 @@ func (s *EmailService) SendInviteEmail(toEmail, teamName, inviteURL string) erro
 		teamName, inviteURL,
 	)
 
-	return s.sendMailgun(settings.MailgunAPIKey, settings.MailgunDomain, from, toEmail, subject, textBody, htmlBody)
+	baseURL := settings.MailgunBaseURL
+	if baseURL == "" {
+		baseURL = "https://api.mailgun.net"
+	}
+
+	return s.sendMailgun(baseURL, settings.MailgunAPIKey, settings.MailgunDomain, from, toEmail, subject, textBody, htmlBody)
 }
 
-func (s *EmailService) sendMailgun(apiKey, domain, from, to, subject, text, html string) error {
-	apiURL := fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", domain)
+func (s *EmailService) sendMailgun(baseURL, apiKey, domain, from, to, subject, text, html string) error {
+	apiURL := fmt.Sprintf("%s/v3/%s/messages", strings.TrimRight(baseURL, "/"), domain)
 
 	form := url.Values{}
 	form.Set("from", from)
