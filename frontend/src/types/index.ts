@@ -79,6 +79,7 @@ export interface BGGGameData {
   weight?: string;
   imageBase64: string;
   imageFilename: string;
+  description?: string;
   suggestedContent: string;
   suggestedContentByPlatform?: Record<string, string>;
   suggestedHashtags?: string[];

@@ -95,6 +95,7 @@ type BGGGameResponse struct {
 	Weight                      string            `json:"weight,omitempty"`
 	ImageBase64                 string            `json:"imageBase64"`
 	ImageFilename               string            `json:"imageFilename"`
+	Description                 string            `json:"description,omitempty"`
 	SuggestedContent            string            `json:"suggestedContent"`
 	SuggestedContentByPlatform  map[string]string `json:"suggestedContentByPlatform,omitempty"`
 	SuggestedHashtags           []string          `json:"suggestedHashtags,omitempty"`
@@ -232,6 +233,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		Weight:                     trimFloat(item.Stats.Ratings.Weight.Value),
 		ImageBase64:                imageBase64,
 		ImageFilename:              imageFilename,
+		Description:                description,
 		SuggestedContent:           baseContent,
 		SuggestedContentByPlatform: contentByPlatform,
 		SuggestedHashtags:          suggestedHashtags,
