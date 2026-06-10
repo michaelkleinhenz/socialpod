@@ -461,6 +461,8 @@ export function NewsPage() {
 
       setArticleUrl(bggUrl.trim());
 
+      if (data.title) setNewsTagline(`"${data.title}"`);
+
       const lines: string[] = [];
       if (data.title) lines.push(data.title + (data.yearPublished ? ` (${data.yearPublished})` : ''));
       if (data.designers?.length) lines.push(`Designer: ${data.designers.join(', ')}`);
@@ -473,7 +475,7 @@ export function NewsPage() {
       if (data.minAge) lines.push(`Age: ${data.minAge}+`);
       if (data.rating) lines.push(`Rating: ${data.rating}`);
       if (data.weight) lines.push(`Weight: ${data.weight}`);
-      if (data.suggestedContent) lines.push(data.suggestedContent);
+      if (data.description) lines.push(data.description);
       setShownotes(lines.filter(l => l.trim()).join('\n'));
 
       if (data.imageBase64) {
@@ -634,10 +636,10 @@ export function NewsPage() {
         onTouchStart={onCropTouchStart}
       >
         {/* Dimmed overlay outside crop */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: y, background: 'rgba(0,0,0,0.5)' }} />
-        <div style={{ position: 'absolute', top: y, left: 0, width: x, height: size, background: 'rgba(0,0,0,0.5)' }} />
-        <div style={{ position: 'absolute', top: y, left: x + size, right: 0, height: size, background: 'rgba(0,0,0,0.5)' }} />
-        <div style={{ position: 'absolute', top: y + size, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: y, background: '#000' }} />
+        <div style={{ position: 'absolute', top: y, left: 0, width: x, height: size, background: '#000' }} />
+        <div style={{ position: 'absolute', top: y, left: x + size, right: 0, height: size, background: '#000' }} />
+        <div style={{ position: 'absolute', top: y + size, left: 0, right: 0, bottom: 0, background: '#000' }} />
 
         {/* Crop border */}
         <div style={{
@@ -1141,7 +1143,7 @@ export function NewsPage() {
             <button
               className="btn btn-primary"
               onClick={handleSubmit}
-              disabled={submitting || overLimit}
+              disabled={submitting || overLimit || !episodeNumber.trim() || !newsTagline.trim() || !articleUrl.trim()}
             >
               <Send size={16} /> {submitting ? 'Submitting...' : 'Submit News'}
             </button>
