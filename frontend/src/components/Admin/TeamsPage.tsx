@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { Team, User, Watermark, TeamSettings } from '../../types';
+import type { Team, User, Watermark, TeamSettings, TeamInvite } from '../../types';
 import { AVAILABLE_PLUGINS } from '../../types';
-import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings, Puzzle } from 'lucide-react';
+import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings, Puzzle, Mail, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import './Admin.css';
@@ -28,6 +28,11 @@ export function TeamsPage() {
   const [pluginsTeam, setPluginsTeam] = useState<Team | null>(null);
   const [enabledPlugins, setEnabledPlugins] = useState<string[]>([]);
   const [savingPlugins, setSavingPlugins] = useState(false);
+
+  const [invites, setInvites] = useState<TeamInvite[]>([]);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
 
   const load = () => {
     Promise.all([api.getTeams(), api.getUsers(), api.getWatermarks()]).then(([t, u, wm]) => {
@@ -69,6 +74,10 @@ export function TeamsPage() {
   const openMembers = (team: Team) => {
     setEditTeam(team);
     setSelectedUserIds(team.members.map(m => m.id));
+    setInvites([]);
+    setShowInviteForm(false);
+    setInviteEmail('');
+    api.getTeamInvites(team.id).then(setInvites).catch(() => {});
   };
 
   const saveMembers = async () => {
@@ -90,6 +99,37 @@ export function TeamsPage() {
     setSelectedUserIds(prev =>
       prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
     );
+  };
+
+  const sendInvite = async () => {
+    if (!editTeam || !inviteEmail) { toast.error('Email address is required'); return; }
+    setSendingInvite(true);
+    try {
+      const result = await api.createTeamInvite(editTeam.id, inviteEmail);
+      if (result.emailError) {
+        toast.success('Invitation created, but email delivery failed: ' + result.emailError);
+      } else {
+        toast.success('Invitation sent');
+      }
+      setShowInviteForm(false);
+      setInviteEmail('');
+      api.getTeamInvites(editTeam.id).then(setInvites).catch(() => {});
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSendingInvite(false);
+    }
+  };
+
+  const deleteInvite = async (inviteId: string) => {
+    if (!editTeam || !confirm('Delete this invitation?')) return;
+    try {
+      await api.deleteTeamInvite(editTeam.id, inviteId);
+      setInvites(prev => prev.filter(i => i.id !== inviteId));
+      toast.success('Invitation deleted');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
   };
 
   const generateToken = async (teamId: string) => {
@@ -524,7 +564,7 @@ export function TeamsPage() {
       {/* Manage Members Modal */}
       {editTeam && (
         <div className="modal-overlay" onClick={() => setEditTeam(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2>Members: {editTeam.name}</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setEditTeam(null)}>
@@ -570,6 +610,79 @@ export function TeamsPage() {
                 {savingMembers ? 'Saving...' : 'Save Members'}
               </button>
             </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Invite by Email</h3>
+              {!showInviteForm && (
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowInviteForm(true)}>
+                  <Mail size={14} /> Invite
+                </button>
+              )}
+            </div>
+
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 12px' }}>
+              Send an invitation email to someone who doesn't have an account yet.
+            </p>
+
+            {showInviteForm && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <input
+                  className="input"
+                  type="email"
+                  placeholder="newuser@example.com"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                  style={{ flex: 1 }}
+                />
+                <button className="btn btn-primary btn-sm" onClick={sendInvite} disabled={sendingInvite}>
+                  {sendingInvite ? 'Sending...' : 'Send'}
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setShowInviteForm(false); setInviteEmail(''); }}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {invites.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {invites.map(invite => (
+                  <div
+                    key={invite.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-primary)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{invite.email}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        Expires {format(new Date(invite.expiresAt), 'MMM d, yyyy')}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {invite.status === 'pending' && new Date(invite.expiresAt) > new Date() ? (
+                        <span className="badge badge-scheduled"><Clock size={12} style={{ marginRight: 4 }} />Pending</span>
+                      ) : invite.status === 'accepted' ? (
+                        <span className="badge badge-published">Accepted</span>
+                      ) : (
+                        <span className="badge badge-failed">Expired</span>
+                      )}
+                      <button className="btn btn-ghost btn-sm" onClick={() => deleteInvite(invite.id)}>
+                        <Trash2 size={14} color="var(--danger)" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

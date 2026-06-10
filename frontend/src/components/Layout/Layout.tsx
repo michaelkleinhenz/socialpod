@@ -70,9 +70,6 @@ export function Layout({ children }: { children: ReactNode }) {
           { kind: 'leaf' as const, path: '/admin/teams', icon: UsersRound, label: 'Teams' },
           { kind: 'leaf' as const, path: '/admin/settings', icon: Settings, label: 'Settings' },
         ] : []),
-        ...(!user?.isAdmin && user?.isTeamAdmin ? [
-          { kind: 'leaf' as const, path: '/team/manage', icon: UsersRound, label: 'Team Admin' },
-        ] : []),
       ],
     }] : []),
   ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled]);

@@ -18,7 +18,6 @@ import { SuffixesPage } from './components/Suffixes/SuffixesPage';
 import { MentionsPage } from './components/Mentions/MentionsPage';
 import { FeedPage } from './components/Inbox/FeedPage';
 import { ShareTargetPage } from './components/ShareTarget/ShareTargetPage';
-import { TeamManagePage } from './components/TeamAdmin/TeamManagePage';
 import { ConventionPage } from './components/Convention/ConventionPage';
 import { QueueDetailPage } from './components/Convention/QueueDetailPage';
 import { NewsPage } from './components/News/NewsPage';
@@ -76,8 +75,6 @@ function AppRoutes() {
       <Route path="/convention/:id" element={<ProtectedRoute><Layout><QueueDetailPage /></Layout></ProtectedRoute>} />
       {/* News Creator */}
       <Route path="/news" element={<ProtectedRoute><Layout><NewsPage /></Layout></ProtectedRoute>} />
-      {/* Team admin routes */}
-      <Route path="/team/manage" element={<ProtectedRoute teamAdminOnly><Layout><TeamManagePage /></Layout></ProtectedRoute>} />
       {/* PWA Web Share Target — standalone mobile UI, no sidebar */}
       <Route path="/share-target" element={<ShareTargetPage />} />
       <Route path="*" element={<Navigate to="/" />} />
