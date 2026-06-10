@@ -200,7 +200,22 @@ export interface AppSettings {
   hasYouTubeClientSecret?: boolean;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
+  mailgunBaseUrl?: string;
+  mailgunDomain?: string;
+  mailgunFromEmail?: string;
+  hasMailgunApiKey?: boolean;
   updatedAt?: string;
+}
+
+export interface TeamInvite {
+  id: string;
+  teamId: string;
+  email: string;
+  status: string;
+  invitedBy: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PublicSettings {

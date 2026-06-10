@@ -619,6 +619,50 @@ class ApiClient {
   deletePublisherHandle(id: string) {
     return this.request<{ message: string }>(`/admin/publisher-handles/${id}`, { method: 'DELETE' });
   }
+
+  // Team invites (admin)
+  getTeamInvites(teamId: string) {
+    return this.request<import('../types').TeamInvite[]>(`/admin/teams/${teamId}/invites`);
+  }
+
+  createTeamInvite(teamId: string, email: string) {
+    return this.request<{ invite: import('../types').TeamInvite; emailError?: string; inviteUrl?: string }>(`/admin/teams/${teamId}/invites`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  deleteTeamInvite(teamId: string, inviteId: string) {
+    return this.request<{ message: string }>(`/admin/teams/${teamId}/invites/${inviteId}`, { method: 'DELETE' });
+  }
+
+  // Team invites (team admin)
+  getMyTeamInvites() {
+    return this.request<import('../types').TeamInvite[]>('/team/invites');
+  }
+
+  createMyTeamInvite(email: string) {
+    return this.request<{ invite: import('../types').TeamInvite; emailError?: string; inviteUrl?: string }>('/team/invites', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  deleteMyTeamInvite(inviteId: string) {
+    return this.request<{ message: string }>(`/team/invites/${inviteId}`, { method: 'DELETE' });
+  }
+
+  // Public invite endpoints (no auth)
+  getInviteInfo(token: string) {
+    return this.request<{ email: string; teamName: string; expiresAt: string }>(`/invites/info?token=${encodeURIComponent(token)}`);
+  }
+
+  acceptInvite(token: string, name: string, password: string) {
+    return this.request<{ token: string; user: any }>('/invites/accept', {
+      method: 'POST',
+      body: JSON.stringify({ token, name, password }),
+    });
+  }
 }
 
 export const api = new ApiClient();
