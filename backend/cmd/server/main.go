@@ -78,6 +78,8 @@ func main() {
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 	publisherHandleHandler := &handlers.PublisherHandleHandler{DB: db}
 	newsHandler := &handlers.NewsHandler{DB: db, UploadDir: cfg.UploadDir}
+	emailService := &services.EmailService{DB: db}
+	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -103,6 +105,8 @@ func main() {
 		api.GET("/webhooks/instagram", adminHandler.InstagramWebhookVerify)
 		api.POST("/webhooks/instagram", adminHandler.InstagramWebhookEvent)
 		api.GET("/settings/public", adminHandler.GetPublicSettings)
+		api.GET("/invites/info", inviteHandler.GetInviteInfo)
+		api.POST("/invites/accept", inviteHandler.AcceptInvite)
 	}
 
 	// Authenticated routes
@@ -205,6 +209,11 @@ func main() {
 		admin.GET("/teams/:id/plugins", adminHandler.GetTeamPlugins)
 		admin.PUT("/teams/:id/plugins", adminHandler.UpdateTeamPlugins)
 
+		// Team invitations (admin)
+		admin.GET("/teams/:id/invites", inviteHandler.ListTeamInvites)
+		admin.POST("/teams/:id/invites", inviteHandler.CreateInvite)
+		admin.DELETE("/teams/:id/invites/:inviteId", inviteHandler.DeleteInvite)
+
 		// Publisher handle catalog (global, admin-managed)
 		admin.GET("/publisher-handles", publisherHandleHandler.List)
 		admin.POST("/publisher-handles", publisherHandleHandler.Create)
@@ -233,6 +242,11 @@ func main() {
 		teamAdmin.GET("/members", adminHandler.TeamListMembers)
 		teamAdmin.POST("/members", adminHandler.TeamAddMember)
 		teamAdmin.DELETE("/members/:id", adminHandler.TeamRemoveMember)
+
+		// Team invitations
+		teamAdmin.GET("/invites", inviteHandler.TeamListInvites)
+		teamAdmin.POST("/invites", inviteHandler.TeamCreateInvite)
+		teamAdmin.DELETE("/invites/:inviteId", inviteHandler.TeamDeleteInvite)
 
 		// Team-scoped BGG settings
 		teamAdmin.GET("/settings", bggHandler.GetTeamSettings)

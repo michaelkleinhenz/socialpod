@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { SocialAccount, User, PublicSettings, TeamSettings, Watermark } from '../../types';
+import type { SocialAccount, User, PublicSettings, TeamSettings, Watermark, TeamInvite } from '../../types';
 import {
-  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2, Settings,
+  Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, X, Users, Share2, Settings, Mail, Clock,
 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { format } from 'date-fns';
@@ -49,6 +49,12 @@ export function TeamManagePage() {
   const [memberEmail, setMemberEmail] = useState('');
   const [addingMember, setAddingMember] = useState(false);
 
+  // Invite state
+  const [invites, setInvites] = useState<TeamInvite[]>([]);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
+
   // Team settings state
   const [teamSettings, setTeamSettings] = useState<TeamSettings>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -68,6 +74,7 @@ export function TeamManagePage() {
     if (!user?.teamId) return;
     loadAccounts();
     loadMembers();
+    loadInvites();
     api.getTeamSettings().then(s => {
       setTeamSettings(s);
       if (s.newsCreatorUrl) setNewsCreatorUrl(s.newsCreatorUrl);
@@ -110,6 +117,42 @@ export function TeamManagePage() {
     }
   };
 
+  const loadInvites = async () => {
+    try {
+      setInvites(await api.getMyTeamInvites());
+    } catch {}
+  };
+
+  const sendInvite = async () => {
+    if (!inviteEmail) { toast.error('Email address is required'); return; }
+    setSendingInvite(true);
+    try {
+      const result = await api.createMyTeamInvite(inviteEmail);
+      if (result.emailError) {
+        toast.success('Invitation created, but email delivery failed: ' + result.emailError);
+      } else {
+        toast.success('Invitation sent');
+      }
+      setShowInviteForm(false);
+      setInviteEmail('');
+      loadInvites();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSendingInvite(false);
+    }
+  };
+
+  const deleteInvite = async (id: string) => {
+    if (!confirm('Delete this invitation?')) return;
+    try {
+      await api.deleteMyTeamInvite(id);
+      setInvites(prev => prev.filter(i => i.id !== id));
+      toast.success('Invitation deleted');
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
 
   const addBluesky = async () => {
     if (!handle || !appPassword) { toast.error('Handle and app password required'); return; }
@@ -646,9 +689,14 @@ export function TeamManagePage() {
         <>
           <div className="page-header" style={{ marginBottom: 16 }}>
             <div />
-            <button className="btn btn-primary" onClick={() => setShowMemberForm(true)}>
-              <Plus size={16} /> Add Member
-            </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-secondary" onClick={() => setShowInviteForm(true)}>
+                <Mail size={16} /> Invite by Email
+              </button>
+              <button className="btn btn-primary" onClick={() => setShowMemberForm(true)}>
+                <Plus size={16} /> Add Existing User
+              </button>
+            </div>
           </div>
 
           <div className="card">
@@ -700,18 +748,62 @@ export function TeamManagePage() {
             </div>
           </div>
 
+          {invites.length > 0 && (
+            <>
+              <h3 style={{ marginTop: 32, marginBottom: 12, fontSize: 15 }}>Pending Invitations</h3>
+              <div className="card">
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Expires</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invites.map(invite => (
+                        <tr key={invite.id}>
+                          <td style={{ fontWeight: 500 }}>{invite.email}</td>
+                          <td>
+                            {invite.status === 'pending' && new Date(invite.expiresAt) > new Date() ? (
+                              <span className="badge badge-scheduled"><Clock size={12} style={{ marginRight: 4 }} />Pending</span>
+                            ) : invite.status === 'accepted' ? (
+                              <span className="badge badge-published">Accepted</span>
+                            ) : (
+                              <span className="badge badge-failed">Expired</span>
+                            )}
+                          </td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                            {format(new Date(invite.expiresAt), 'MMM d, yyyy')}
+                          </td>
+                          <td>
+                            <button className="btn btn-ghost btn-sm" onClick={() => deleteInvite(invite.id)}>
+                              <Trash2 size={14} color="var(--danger)" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
           {showMemberForm && (
             <div className="modal-overlay" onClick={() => setShowMemberForm(false)}>
               <div className="modal" onClick={e => e.stopPropagation()}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                  <h2>Add Team Member</h2>
+                  <h2>Add Existing User</h2>
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowMemberForm(false)}>
                     <X size={18} />
                   </button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0 }}>
-                    Enter the email address of an existing account. Team admins cannot create new accounts — contact an admin to create one first.
+                    Enter the email address of an existing account to add them to your team.
                   </p>
                   <div className="form-group">
                     <label>Email Address</label>
@@ -729,6 +821,41 @@ export function TeamManagePage() {
                   <button className="btn btn-secondary" onClick={() => setShowMemberForm(false)}>Cancel</button>
                   <button className="btn btn-primary" onClick={addMember} disabled={addingMember}>
                     {addingMember ? 'Adding...' : 'Add Member'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showInviteForm && (
+            <div className="modal-overlay" onClick={() => setShowInviteForm(false)}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h2>Invite by Email</h2>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowInviteForm(false)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0 }}>
+                    Send an invitation email to someone who doesn't have an account yet. They will be able to create an account and automatically join your team.
+                  </p>
+                  <div className="form-group">
+                    <label>Email Address</label>
+                    <input
+                      className="input"
+                      type="email"
+                      placeholder="newuser@example.com"
+                      value={inviteEmail}
+                      onChange={e => setInviteEmail(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                    />
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" onClick={() => setShowInviteForm(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={sendInvite} disabled={sendingInvite}>
+                    {sendingInvite ? 'Sending...' : 'Send Invitation'}
                   </button>
                 </div>
               </div>

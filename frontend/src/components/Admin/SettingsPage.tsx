@@ -23,6 +23,7 @@ export function SettingsPage() {
   const [youtubeClientSecret, setYoutubeClientSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
   const [bggApiToken, setBggApiToken] = useState('');
+  const [mailgunApiKey, setMailgunApiKey] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -49,6 +50,9 @@ export function SettingsPage() {
       data.youtubeClientId = settings.youtubeClientId || '';
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
       if (bggApiToken) data.bggApiToken = bggApiToken;
+      if (mailgunApiKey) data.mailgunApiKey = mailgunApiKey;
+      data.mailgunDomain = settings.mailgunDomain || '';
+      data.mailgunFromEmail = settings.mailgunFromEmail || '';
       data.openRouterModel = settings.openRouterModel;
       data.aiLanguage = settings.aiLanguage;
       const updated = await api.updateSettings(data);
@@ -298,6 +302,49 @@ export function SettingsPage() {
             </select>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Language for all AI-generated text (captions, post copy, dashboard insights).
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>Mailgun (Email)</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>Mailgun Domain</label>
+            <input
+              className="input"
+              placeholder="mg.your-domain.com"
+              value={settings.mailgunDomain || ''}
+              onChange={e => setSettings(s => ({ ...s, mailgunDomain: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Your verified Mailgun sending domain.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Mailgun API Key</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasMailgunApiKey ? 'Key configured (enter to update)' : 'Enter your Mailgun API key'}
+              value={mailgunApiKey}
+              onChange={e => setMailgunApiKey(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>From Email Address</label>
+            <input
+              className="input"
+              placeholder="noreply@mg.your-domain.com"
+              value={settings.mailgunFromEmail || ''}
+              onChange={e => setSettings(s => ({ ...s, mailgunFromEmail: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Sender address for outgoing emails (team invitations). Defaults to <code>noreply@{'{'}domain{'}'}</code>
             </span>
           </div>
         </div>

@@ -22,6 +22,7 @@ import { TeamManagePage } from './components/TeamAdmin/TeamManagePage';
 import { ConventionPage } from './components/Convention/ConventionPage';
 import { QueueDetailPage } from './components/Convention/QueueDetailPage';
 import { NewsPage } from './components/News/NewsPage';
+import { InvitePage } from './components/Auth/InvitePage';
 import './styles/global.css';
 
 // Register service worker for PWA / Web Share Target
@@ -56,6 +57,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <RegisterPage />} />
+      <Route path="/invite" element={user ? <Navigate to="/" /> : <InvitePage />} />
       <Route path="/" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/log" element={<ProtectedRoute><Layout><LogPage /></Layout></ProtectedRoute>} />
       <Route path="/suffixes" element={<ProtectedRoute><Layout><SuffixesPage /></Layout></ProtectedRoute>} />

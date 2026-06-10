@@ -94,6 +94,13 @@ func (m *MongoDB) ensureIndexes() {
 		Keys: bson.D{{Key: "name", Value: 1}},
 	})
 
+	m.TeamInvites().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "tokenHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+		{Keys: bson.D{{Key: "email", Value: 1}}},
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -147,6 +154,10 @@ func (m *MongoDB) PublisherHandles() *mongo.Collection {
 
 func (m *MongoDB) MastodonOAuthStates() *mongo.Collection {
 	return m.Database.Collection("mastodon_oauth_states")
+}
+
+func (m *MongoDB) TeamInvites() *mongo.Collection {
+	return m.Database.Collection("team_invites")
 }
 
 func (m *MongoDB) Close() {

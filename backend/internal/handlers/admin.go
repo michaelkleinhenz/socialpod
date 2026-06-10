@@ -484,6 +484,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		HasBGGAPIToken           bool `json:"hasBggApiToken"`
 		HasLinkedInClientSecret  bool `json:"hasLinkedInClientSecret"`
 		HasYouTubeClientSecret   bool `json:"hasYouTubeClientSecret"`
+		HasMailgunAPIKey         bool `json:"hasMailgunApiKey"`
 	}
 	c.JSON(http.StatusOK, settingsResponse{
 		AppSettings:              settings,
@@ -491,6 +492,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		HasBGGAPIToken:           settings.BGGAPIToken != "",
 		HasLinkedInClientSecret:  settings.LinkedInClientSecret != "",
 		HasYouTubeClientSecret:   settings.YouTubeClientSecret != "",
+		HasMailgunAPIKey:         settings.MailgunAPIKey != "",
 	})
 }
 
@@ -512,6 +514,9 @@ type UpdateSettingsInput struct {
 	LinkedInClientSecret  *string `json:"linkedInClientSecret,omitempty"`
 	YouTubeClientID       *string `json:"youtubeClientId,omitempty"`
 	YouTubeClientSecret   *string `json:"youtubeClientSecret,omitempty"`
+	MailgunAPIKey         *string `json:"mailgunApiKey,omitempty"`
+	MailgunDomain         *string `json:"mailgunDomain,omitempty"`
+	MailgunFromEmail      *string `json:"mailgunFromEmail,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -575,6 +580,15 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.YouTubeClientSecret != nil {
 		update["youtubeClientSecret"] = *input.YouTubeClientSecret
+	}
+	if input.MailgunAPIKey != nil {
+		update["mailgunApiKey"] = *input.MailgunAPIKey
+	}
+	if input.MailgunDomain != nil {
+		update["mailgunDomain"] = *input.MailgunDomain
+	}
+	if input.MailgunFromEmail != nil {
+		update["mailgunFromEmail"] = *input.MailgunFromEmail
 	}
 
 	upsert := true
