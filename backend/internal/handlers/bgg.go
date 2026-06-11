@@ -857,6 +857,18 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.EpisodeCreatorWatermarkID != nil {
 		ecWmID = team.EpisodeCreatorWatermarkID.Hex()
 	}
+	eoNewsID := ""
+	if team.EpisodeOverlayNewsID != nil {
+		eoNewsID = team.EpisodeOverlayNewsID.Hex()
+	}
+	eoReviewID := ""
+	if team.EpisodeOverlayReviewID != nil {
+		eoReviewID = team.EpisodeOverlayReviewID.Hex()
+	}
+	eoSpecialID := ""
+	if team.EpisodeOverlaySpecialID != nil {
+		eoSpecialID = team.EpisodeOverlaySpecialID.Hex()
+	}
 	handleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		handleLookup = *team.BGGHandleLookupEnabled
@@ -877,6 +889,9 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"episodeCreatorUrl":             team.EpisodeCreatorURL,
 		"hasEpisodeCreatorBearerToken":  team.EpisodeCreatorBearerToken != "",
 		"episodeCreatorWatermarkId":     ecWmID,
+		"episodeOverlayNewsId":          eoNewsID,
+		"episodeOverlayReviewId":        eoReviewID,
+		"episodeOverlaySpecialId":       eoSpecialID,
 		"bggHandleLookupEnabled":        handleLookup,
 		"enabledPlugins":                enabledPlugins,
 	})
@@ -907,6 +922,9 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		EpisodeCreatorURL           *string `json:"episodeCreatorUrl"`
 		EpisodeCreatorBearerToken   *string `json:"episodeCreatorBearerToken"`
 		EpisodeCreatorWatermarkID   *string `json:"episodeCreatorWatermarkId"`
+		EpisodeOverlayNewsID        *string `json:"episodeOverlayNewsId"`
+		EpisodeOverlayReviewID      *string `json:"episodeOverlayReviewId"`
+		EpisodeOverlaySpecialID     *string `json:"episodeOverlaySpecialId"`
 		BGGHandleLookupEnabled      *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -1002,6 +1020,27 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 				return
 			}
 			setFields["episodeCreatorWatermarkId"] = ecWmID
+		}
+	}
+	for _, pair := range []struct {
+		input *string
+		field string
+	}{
+		{input.EpisodeOverlayNewsID, "episodeOverlayNewsId"},
+		{input.EpisodeOverlayReviewID, "episodeOverlayReviewId"},
+		{input.EpisodeOverlaySpecialID, "episodeOverlaySpecialId"},
+	} {
+		if pair.input != nil {
+			if *pair.input == "" {
+				unsetFields[pair.field] = ""
+			} else {
+				oid, err := primitive.ObjectIDFromHex(*pair.input)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid overlay watermark ID"})
+					return
+				}
+				setFields[pair.field] = oid
+			}
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {
@@ -1052,6 +1091,18 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 	if team.EpisodeCreatorWatermarkID != nil {
 		adminEcWmID = team.EpisodeCreatorWatermarkID.Hex()
 	}
+	adminEoNewsID := ""
+	if team.EpisodeOverlayNewsID != nil {
+		adminEoNewsID = team.EpisodeOverlayNewsID.Hex()
+	}
+	adminEoReviewID := ""
+	if team.EpisodeOverlayReviewID != nil {
+		adminEoReviewID = team.EpisodeOverlayReviewID.Hex()
+	}
+	adminEoSpecialID := ""
+	if team.EpisodeOverlaySpecialID != nil {
+		adminEoSpecialID = team.EpisodeOverlaySpecialID.Hex()
+	}
 	adminHandleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		adminHandleLookup = *team.BGGHandleLookupEnabled
@@ -1072,6 +1123,9 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"episodeCreatorUrl":             team.EpisodeCreatorURL,
 		"hasEpisodeCreatorBearerToken":  team.EpisodeCreatorBearerToken != "",
 		"episodeCreatorWatermarkId":     adminEcWmID,
+		"episodeOverlayNewsId":          adminEoNewsID,
+		"episodeOverlayReviewId":        adminEoReviewID,
+		"episodeOverlaySpecialId":       adminEoSpecialID,
 		"bggHandleLookupEnabled":        adminHandleLookup,
 		"enabledPlugins":                adminEnabledPlugins,
 	})
@@ -1097,6 +1151,9 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		EpisodeCreatorURL           *string `json:"episodeCreatorUrl"`
 		EpisodeCreatorBearerToken   *string `json:"episodeCreatorBearerToken"`
 		EpisodeCreatorWatermarkID   *string `json:"episodeCreatorWatermarkId"`
+		EpisodeOverlayNewsID        *string `json:"episodeOverlayNewsId"`
+		EpisodeOverlayReviewID      *string `json:"episodeOverlayReviewId"`
+		EpisodeOverlaySpecialID     *string `json:"episodeOverlaySpecialId"`
 		BGGHandleLookupEnabled      *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -1192,6 +1249,27 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 				return
 			}
 			setFields["episodeCreatorWatermarkId"] = ecWmID
+		}
+	}
+	for _, pair := range []struct {
+		input *string
+		field string
+	}{
+		{input.EpisodeOverlayNewsID, "episodeOverlayNewsId"},
+		{input.EpisodeOverlayReviewID, "episodeOverlayReviewId"},
+		{input.EpisodeOverlaySpecialID, "episodeOverlaySpecialId"},
+	} {
+		if pair.input != nil {
+			if *pair.input == "" {
+				unsetFields[pair.field] = ""
+			} else {
+				oid, err := primitive.ObjectIDFromHex(*pair.input)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid overlay watermark ID"})
+					return
+				}
+				setFields[pair.field] = oid
+			}
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {

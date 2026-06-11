@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark } from '../../types';
-import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5 } from 'lucide-react';
+import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings } from '../../types';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
@@ -83,6 +83,10 @@ export function NewsPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // AI generation
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
   useEffect(() => {
@@ -101,8 +105,9 @@ export function NewsPage() {
         }
       })
       .catch(() => setPluginReady(false));
-    api.getPublicSettings().then(s => {
+    api.getPublicSettings().then((s: PublicSettings) => {
       if (s.hasBggApiToken) setBggEnabled(true);
+      if (s.openRouterEnabled) setAiEnabled(true);
     }).catch(() => {});
   }, []);
 
@@ -520,6 +525,30 @@ export function NewsPage() {
     setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"));
     setStatus('scheduled');
     setSuffixIds({});
+  };
+
+  const generateAIContent = async () => {
+    const parts: string[] = [];
+    parts.push(`News Episode ${episodeNumber}: "${newsTagline}"`);
+    if (articleUrl) parts.push(`Article: ${articleUrl}`);
+    if (shownotes) parts.push(`Details: ${shownotes}`);
+    const prompt = `Write a social media announcement for this news episode:\n${parts.join('\n')}`;
+    setGenerating(true);
+    try {
+      const { text } = await api.generateText(prompt, platforms);
+      if (customizePerPlatform && platforms.length > 1) {
+        const newOverrides: Record<string, string> = {};
+        for (const p of platforms) newOverrides[p] = text;
+        setContentOverrides(newOverrides);
+      } else {
+        setContent(text);
+      }
+      toast.success('AI text generated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate text');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -945,7 +974,7 @@ export function NewsPage() {
 
           {/* Social Posting Fields */}
           {addSocialPost && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '16px', background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
               {/* Platform selector */}
               <div className="form-group">
                 <label>Platforms</label>
@@ -1073,6 +1102,18 @@ export function NewsPage() {
                       {charCount} / {charLimit}
                     </div>
                   </>
+                )}
+
+                {aiEnabled && platforms.length > 0 && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                    onClick={generateAIContent}
+                    disabled={generating || !newsTagline.trim()}
+                    title={!newsTagline.trim() ? 'Enter a news tagline first' : 'Generate social media text from news details'}
+                  >
+                    {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                  </button>
                 )}
               </div>
 

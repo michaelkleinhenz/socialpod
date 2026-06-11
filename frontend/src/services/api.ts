@@ -573,7 +573,7 @@ class ApiClient {
     return this.request<any>('/episode/submit', { method: 'POST', body: form });
   }
 
-  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string }) {
+  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayReviewId?: string; episodeOverlaySpecialId?: string }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -585,7 +585,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);
   }
 
-  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string }) {
+  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayReviewId?: string; episodeOverlaySpecialId?: string }) {
     return this.request<{ message: string }>(`/admin/teams/${teamId}/settings`, {
       method: 'PUT',
       body: JSON.stringify(data),

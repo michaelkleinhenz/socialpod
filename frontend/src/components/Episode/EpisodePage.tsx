@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark } from '../../types';
-import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X } from 'lucide-react';
+import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings } from '../../types';
+import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
@@ -70,6 +70,14 @@ export function EpisodePage() {
   const [watermark, setWatermark] = useState<Watermark | null>(null);
   const [watermarkImg, setWatermarkImg] = useState<HTMLImageElement | null>(null);
 
+  // Per-type overlay mapping
+  const [overlayMap, setOverlayMap] = useState<Record<string, string>>({});
+  const [defaultOverlayId, setDefaultOverlayId] = useState<string>('');
+
+  // AI generation
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
   // Drag & drop zone
   const [dragOver, setDragOver] = useState(false);
 
@@ -101,10 +109,17 @@ export function EpisodePage() {
       .then((s: TeamSettings) => {
         if (s.enabledPlugins?.includes('episode_creator') && s.episodeCreatorUrl && s.hasEpisodeCreatorBearerToken) {
           setPluginReady(true);
+          const map: Record<string, string> = {};
+          if (s.episodeOverlayNewsId) map['news'] = s.episodeOverlayNewsId;
+          if (s.episodeOverlayReviewId) map['review'] = s.episodeOverlayReviewId;
+          if (s.episodeOverlaySpecialId) map['special'] = s.episodeOverlaySpecialId;
+          setOverlayMap(map);
+          if (s.episodeCreatorWatermarkId) setDefaultOverlayId(s.episodeCreatorWatermarkId);
           api.getWatermarks().then((wms: Watermark[]) => {
             setWatermarks(wms);
-            if (s.episodeCreatorWatermarkId) {
-              const wm = wms.find(w => w.id === s.episodeCreatorWatermarkId);
+            const typeOverlay = map['news'] || s.episodeCreatorWatermarkId;
+            if (typeOverlay) {
+              const wm = wms.find(w => w.id === typeOverlay);
               if (wm) {
                 setWatermark(wm);
                 setSelectedWatermarkId(wm.id);
@@ -116,7 +131,20 @@ export function EpisodePage() {
         }
       })
       .catch(() => setPluginReady(false));
+    api.getPublicSettings().then((s: PublicSettings) => {
+      if (s.openRouterEnabled) setAiEnabled(true);
+    }).catch(() => {});
   }, []);
+
+  // Auto-select overlay when episode type changes
+  useEffect(() => {
+    const typeId = overlayMap[episodeType] || defaultOverlayId;
+    if (typeId && watermarks.length > 0) {
+      setSelectedWatermarkId(typeId);
+    } else if (!typeId) {
+      setSelectedWatermarkId('');
+    }
+  }, [episodeType, overlayMap, defaultOverlayId, watermarks]);
 
   // Update watermark when selection changes
   useEffect(() => {
@@ -493,6 +521,36 @@ export function EpisodePage() {
     setSuffixIds({});
   };
 
+  const generateAIContent = async () => {
+    const parts: string[] = [];
+    parts.push(`Episode ${episodeNumber}: "${episodeTitle}"`);
+    parts.push(`Type: ${episodeType}`);
+    if (summary) parts.push(`Summary: ${summary}`);
+    if (episodeType === 'review') {
+      if (gameNamePublisher) parts.push(`Game: ${gameNamePublisher}`);
+      if (introText) parts.push(`Intro: ${introText}`);
+      if (rules) parts.push(`Rules: ${rules}`);
+      if (scene) parts.push(`Scene: ${scene}`);
+    }
+    const prompt = `Write a social media announcement for this podcast episode:\n${parts.join('\n')}`;
+    setGenerating(true);
+    try {
+      const { text } = await api.generateText(prompt, platforms);
+      if (customizePerPlatform && platforms.length > 1) {
+        const newOverrides: Record<string, string> = {};
+        for (const p of platforms) newOverrides[p] = text;
+        setContentOverrides(newOverrides);
+      } else {
+        setContent(text);
+      }
+      toast.success('AI text generated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate text');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!episodeNumber.trim()) { toast.error('Episode number is required'); return; }
     if (!episodeTitle.trim()) { toast.error('Episode title is required'); return; }
@@ -672,10 +730,10 @@ export function EpisodePage() {
       </div>
 
       <div>
-        <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Episode Number, Title & Type */}
           <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 160px', gap: 16 }}>
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Episode Number <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
                 type="text"
@@ -685,7 +743,7 @@ export function EpisodePage() {
                 placeholder="e.g. 42"
               />
             </div>
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Episode Title <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
                 type="text"
@@ -695,7 +753,7 @@ export function EpisodePage() {
                 placeholder="Title of the episode"
               />
             </div>
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Episode Type <span style={{ color: 'var(--danger)' }}>*</span></label>
               <select
                 className="select"
@@ -709,36 +767,35 @@ export function EpisodePage() {
             </div>
           </div>
 
-          {/* Summary */}
-          <div className="form-group">
-            <label>Summary <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
-            <textarea
-              className="textarea"
-              value={summary}
-              onChange={e => setSummary(e.target.value)}
-              placeholder="Episode summary..."
-              rows={3}
-            />
-          </div>
-
-          {/* Episode Date */}
-          <div className="form-group">
-            <label>Episode Date <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <input
-              type="date"
-              className="input"
-              value={episodeDate}
-              onChange={e => setEpisodeDate(e.target.value)}
-              style={{ maxWidth: 220 }}
-            />
+          {/* Summary & Date row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', gap: 16 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Summary <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+              <textarea
+                className="textarea"
+                value={summary}
+                onChange={e => setSummary(e.target.value)}
+                placeholder="Episode summary..."
+                rows={3}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Episode Date <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <input
+                type="date"
+                className="input"
+                value={episodeDate}
+                onChange={e => setEpisodeDate(e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Review-specific fields */}
           {episodeType === 'review' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '16px', background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
               <h3 style={{ margin: 0, fontSize: 15 }}>Review Details</h3>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>Game Name and Publisher</label>
                 <input
                   type="text"
@@ -750,7 +807,7 @@ export function EpisodePage() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>Link Publisher</label>
                   <input
                     type="url"
@@ -760,7 +817,7 @@ export function EpisodePage() {
                     placeholder="https://publisher.example.com"
                   />
                 </div>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>Link BGG</label>
                   <input
                     type="url"
@@ -772,7 +829,7 @@ export function EpisodePage() {
                 </div>
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>Rules</label>
                 <textarea
                   className="textarea"
@@ -783,7 +840,7 @@ export function EpisodePage() {
                 />
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>Scene</label>
                 <textarea
                   className="textarea"
@@ -794,7 +851,7 @@ export function EpisodePage() {
                 />
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 0 }}>
                 <label>Intro Text</label>
                 <textarea
                   className="textarea"
@@ -994,7 +1051,7 @@ export function EpisodePage() {
 
           {/* Social Posting Fields */}
           {addSocialPost && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '16px', background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
               {/* Platform selector */}
               <div className="form-group">
                 <label>Platforms</label>
@@ -1122,6 +1179,18 @@ export function EpisodePage() {
                       {charCount} / {charLimit}
                     </div>
                   </>
+                )}
+
+                {aiEnabled && platforms.length > 0 && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                    onClick={generateAIContent}
+                    disabled={generating || !episodeTitle.trim()}
+                    title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
+                  >
+                    {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                  </button>
                 )}
               </div>
 
