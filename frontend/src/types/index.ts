@@ -44,6 +44,7 @@ export interface TeamSettings {
   episodeOverlaySpecialId?: string;
   episodeOverlaySpecialOffsetX?: number;
   episodeOverlaySpecialOffsetY?: number;
+  scenePromptTemplate?: string;
 }
 
 export interface Plugin {
@@ -211,7 +212,6 @@ export interface AppSettings {
   cookieBannerText: string;
   openRouterModel: string;
   aiLanguage: string;
-  scenePromptTemplate: string;
   linkedInClientId?: string;
   hasLinkedInClientSecret?: boolean;
   youtubeClientId?: string;
@@ -244,7 +244,6 @@ export interface PublicSettings {
   openRouterEnabled: boolean;
   hasBggApiToken: boolean;
   youtubeConfigured: boolean;
-  scenePromptTemplate: string;
 }
 
 export interface AuthResponse {

@@ -231,6 +231,7 @@ export function TeamsPage() {
       if (episodeCreatorBearerToken) {
         data.episodeCreatorBearerToken = episodeCreatorBearerToken;
       }
+      data.scenePromptTemplate = bggSettings.scenePromptTemplate || '';
       await api.updateAdminTeamBggSettings(bggTeam.id, data);
       toast.success('Team settings saved');
       setBggTeam(null);
@@ -645,6 +646,20 @@ export function TeamsPage() {
                   A bearer token is already configured. Enter a new value to replace it.
                 </span>
               )}
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Scene Prompt Template</label>
+              <textarea
+                className="input"
+                style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
+                placeholder="e.g. Write a vivid scene description for a board game review podcast episode about the following game:"
+                value={bggSettings.scenePromptTemplate || ''}
+                onChange={e => setBggSettings(s => ({ ...s, scenePromptTemplate: e.target.value }))}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                Prompt template prepended to the Scene field text when using "Generate with AI" on the episode creator.
+              </span>
             </div>
 
             <div className="modal-actions">

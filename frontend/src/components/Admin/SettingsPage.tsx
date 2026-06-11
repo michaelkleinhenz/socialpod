@@ -17,7 +17,6 @@ export function SettingsPage() {
     cookieBannerText: '',
     openRouterModel: '',
     aiLanguage: '',
-    scenePromptTemplate: '',
   });
   const [igSecret, setIgSecret] = useState('');
   const [linkedInClientSecret, setLinkedInClientSecret] = useState('');
@@ -57,7 +56,6 @@ export function SettingsPage() {
       data.mailgunFromEmail = settings.mailgunFromEmail || '';
       data.openRouterModel = settings.openRouterModel;
       data.aiLanguage = settings.aiLanguage;
-      data.scenePromptTemplate = settings.scenePromptTemplate;
       const updated = await api.updateSettings(data);
       setSettings(updated);
       toast.success('Settings saved');
@@ -308,19 +306,6 @@ export function SettingsPage() {
             </span>
           </div>
 
-          <div className="form-group">
-            <label>Scene Prompt Template</label>
-            <textarea
-              className="input"
-              style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
-              placeholder="e.g. Write a vivid scene description for a board game review podcast episode about the following game:"
-              value={settings.scenePromptTemplate}
-              onChange={e => setSettings(s => ({ ...s, scenePromptTemplate: e.target.value }))}
-            />
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Prompt template prepended to the Scene field text when using "Generate with AI" on the episode creator. The scene text is appended after this template.
-            </span>
-          </div>
         </div>
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />

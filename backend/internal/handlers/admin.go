@@ -462,7 +462,6 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 		"openRouterEnabled":     settings.OpenRouterAPIKey != "",
 		"hasBggApiToken":        settings.BGGAPIToken != "",
 		"youtubeConfigured":     settings.YouTubeClientID != "" && settings.YouTubeClientSecret != "",
-		"scenePromptTemplate":   settings.ScenePromptTemplate,
 	})
 }
 
@@ -510,7 +509,6 @@ type UpdateSettingsInput struct {
 	OpenRouterAPIKey      *string `json:"openRouterApiKey,omitempty"`
 	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
 	AILanguage            *string `json:"aiLanguage,omitempty"`
-	ScenePromptTemplate   *string `json:"scenePromptTemplate,omitempty"`
 	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
 	LinkedInClientID      *string `json:"linkedInClientId,omitempty"`
 	LinkedInClientSecret  *string `json:"linkedInClientSecret,omitempty"`
@@ -568,9 +566,6 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.AILanguage != nil {
 		update["aiLanguage"] = *input.AILanguage
-	}
-	if input.ScenePromptTemplate != nil {
-		update["scenePromptTemplate"] = *input.ScenePromptTemplate
 	}
 	if input.BGGAPIToken != nil {
 		update["bggApiToken"] = *input.BGGAPIToken

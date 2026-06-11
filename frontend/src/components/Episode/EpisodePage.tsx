@@ -133,6 +133,7 @@ export function EpisodePage() {
               }
             }
           }).catch(() => {});
+          if (s.scenePromptTemplate) setScenePromptTemplate(s.scenePromptTemplate);
         } else {
           setPluginReady(false);
         }
@@ -141,7 +142,6 @@ export function EpisodePage() {
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.openRouterEnabled) setAiEnabled(true);
       if (s.hasBggApiToken) setBggEnabled(true);
-      if (s.scenePromptTemplate) setScenePromptTemplate(s.scenePromptTemplate);
     }).catch(() => {});
   }, []);
 

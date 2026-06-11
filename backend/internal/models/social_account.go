@@ -67,7 +67,6 @@ type AppSettings struct {
 	OpenRouterAPIKey      string             `bson:"openRouterApiKey" json:"-"`
 	OpenRouterModel       string             `bson:"openRouterModel" json:"openRouterModel"`
 	AILanguage            string             `bson:"aiLanguage" json:"aiLanguage"`
-	ScenePromptTemplate   string             `bson:"scenePromptTemplate" json:"scenePromptTemplate"`
 	BGGAPIToken           string             `bson:"bggApiToken" json:"-"`
 	LinkedInClientID      string             `bson:"linkedInClientId" json:"linkedInClientId"`
 	LinkedInClientSecret  string             `bson:"linkedInClientSecret" json:"-"`
