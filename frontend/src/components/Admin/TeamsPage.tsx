@@ -26,8 +26,14 @@ export function TeamsPage() {
   const [episodeCreatorUrl, setEpisodeCreatorUrl] = useState('');
   const [episodeCreatorWatermarkId, setEpisodeCreatorWatermarkId] = useState('');
   const [episodeOverlayNewsId, setEpisodeOverlayNewsId] = useState('');
+  const [episodeOverlayNewsOffsetX, setEpisodeOverlayNewsOffsetX] = useState(0);
+  const [episodeOverlayNewsOffsetY, setEpisodeOverlayNewsOffsetY] = useState(0);
   const [episodeOverlayReviewId, setEpisodeOverlayReviewId] = useState('');
+  const [episodeOverlayReviewOffsetX, setEpisodeOverlayReviewOffsetX] = useState(0);
+  const [episodeOverlayReviewOffsetY, setEpisodeOverlayReviewOffsetY] = useState(0);
   const [episodeOverlaySpecialId, setEpisodeOverlaySpecialId] = useState('');
+  const [episodeOverlaySpecialOffsetX, setEpisodeOverlaySpecialOffsetX] = useState(0);
+  const [episodeOverlaySpecialOffsetY, setEpisodeOverlaySpecialOffsetY] = useState(0);
   const [episodeCreatorBearerToken, setEpisodeCreatorBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
@@ -166,8 +172,14 @@ export function TeamsPage() {
       setEpisodeCreatorUrl(s.episodeCreatorUrl || '');
       setEpisodeCreatorWatermarkId(s.episodeCreatorWatermarkId || '');
       setEpisodeOverlayNewsId(s.episodeOverlayNewsId || '');
+      setEpisodeOverlayNewsOffsetX(s.episodeOverlayNewsOffsetX ?? 0);
+      setEpisodeOverlayNewsOffsetY(s.episodeOverlayNewsOffsetY ?? 0);
       setEpisodeOverlayReviewId(s.episodeOverlayReviewId || '');
+      setEpisodeOverlayReviewOffsetX(s.episodeOverlayReviewOffsetX ?? 0);
+      setEpisodeOverlayReviewOffsetY(s.episodeOverlayReviewOffsetY ?? 0);
       setEpisodeOverlaySpecialId(s.episodeOverlaySpecialId || '');
+      setEpisodeOverlaySpecialOffsetX(s.episodeOverlaySpecialOffsetX ?? 0);
+      setEpisodeOverlaySpecialOffsetY(s.episodeOverlaySpecialOffsetY ?? 0);
     } catch {
       setBggSettings({});
       setNewsCreatorUrl('');
@@ -175,8 +187,14 @@ export function TeamsPage() {
       setEpisodeCreatorUrl('');
       setEpisodeCreatorWatermarkId('');
       setEpisodeOverlayNewsId('');
+      setEpisodeOverlayNewsOffsetX(0);
+      setEpisodeOverlayNewsOffsetY(0);
       setEpisodeOverlayReviewId('');
+      setEpisodeOverlayReviewOffsetX(0);
+      setEpisodeOverlayReviewOffsetY(0);
       setEpisodeOverlaySpecialId('');
+      setEpisodeOverlaySpecialOffsetX(0);
+      setEpisodeOverlaySpecialOffsetY(0);
     }
   };
 
@@ -202,8 +220,14 @@ export function TeamsPage() {
       data.episodeCreatorUrl = episodeCreatorUrl || '';
       data.episodeCreatorWatermarkId = episodeCreatorWatermarkId || null;
       data.episodeOverlayNewsId = episodeOverlayNewsId || '';
+      data.episodeOverlayNewsOffsetX = episodeOverlayNewsOffsetX;
+      data.episodeOverlayNewsOffsetY = episodeOverlayNewsOffsetY;
       data.episodeOverlayReviewId = episodeOverlayReviewId || '';
+      data.episodeOverlayReviewOffsetX = episodeOverlayReviewOffsetX;
+      data.episodeOverlayReviewOffsetY = episodeOverlayReviewOffsetY;
       data.episodeOverlaySpecialId = episodeOverlaySpecialId || '';
+      data.episodeOverlaySpecialOffsetX = episodeOverlaySpecialOffsetX;
+      data.episodeOverlaySpecialOffsetY = episodeOverlaySpecialOffsetY;
       if (episodeCreatorBearerToken) {
         data.episodeCreatorBearerToken = episodeCreatorBearerToken;
       }
@@ -562,22 +586,48 @@ export function TeamsPage() {
                 Optionally set a different overlay image for each episode type. Falls back to the default above if not set.
               </span>
               {[
-                { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId },
-                { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId },
-                { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId },
+                { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId, offsetX: episodeOverlayNewsOffsetX, setOffsetX: setEpisodeOverlayNewsOffsetX, offsetY: episodeOverlayNewsOffsetY, setOffsetY: setEpisodeOverlayNewsOffsetY },
+                { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId, offsetX: episodeOverlayReviewOffsetX, setOffsetX: setEpisodeOverlayReviewOffsetX, offsetY: episodeOverlayReviewOffsetY, setOffsetY: setEpisodeOverlayReviewOffsetY },
+                { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId, offsetX: episodeOverlaySpecialOffsetX, setOffsetX: setEpisodeOverlaySpecialOffsetX, offsetY: episodeOverlaySpecialOffsetY, setOffsetY: setEpisodeOverlaySpecialOffsetY },
               ].map(item => (
-                <div className="form-group" key={item.label} style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 13 }}>{item.label}</label>
-                  <select
-                    className="select"
-                    value={item.value}
-                    onChange={e => item.setter(e.target.value)}
-                  >
-                    <option value="">Use default</option>
-                    {watermarks.map(wm => (
-                      <option key={wm.id} value={wm.id}>{wm.name}</option>
-                    ))}
-                  </select>
+                <div key={item.label} style={{ marginBottom: 0 }}>
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 13 }}>{item.label}</label>
+                    <select
+                      className="select"
+                      value={item.value}
+                      onChange={e => item.setter(e.target.value)}
+                    >
+                      <option value="">Use default</option>
+                      {watermarks.map(wm => (
+                        <option key={wm.id} value={wm.id}>{wm.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {item.value && (
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 4 }}>
+                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                        <label style={{ fontSize: 12 }}>Offset X (px)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={item.offsetX}
+                          onChange={e => item.setOffsetX(parseInt(e.target.value, 10) || 0)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                        <label style={{ fontSize: 12 }}>Offset Y (px)</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={item.offsetY}
+                          onChange={e => item.setOffsetY(parseInt(e.target.value, 10) || 0)}
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -382,10 +382,22 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 	switch episodeType {
 	case "news":
 		overlayID = team.EpisodeOverlayNewsID
+		if overlayID != nil {
+			cfg.offsetX = team.EpisodeOverlayNewsOffsetX
+			cfg.offsetY = team.EpisodeOverlayNewsOffsetY
+		}
 	case "review":
 		overlayID = team.EpisodeOverlayReviewID
+		if overlayID != nil {
+			cfg.offsetX = team.EpisodeOverlayReviewOffsetX
+			cfg.offsetY = team.EpisodeOverlayReviewOffsetY
+		}
 	case "special":
 		overlayID = team.EpisodeOverlaySpecialID
+		if overlayID != nil {
+			cfg.offsetX = team.EpisodeOverlaySpecialOffsetX
+			cfg.offsetY = team.EpisodeOverlaySpecialOffsetY
+		}
 	}
 	if overlayID == nil {
 		overlayID = team.BGGWatermarkID
@@ -905,8 +917,14 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"hasEpisodeCreatorBearerToken":  team.EpisodeCreatorBearerToken != "",
 		"episodeCreatorWatermarkId":     ecWmID,
 		"episodeOverlayNewsId":          eoNewsID,
+		"episodeOverlayNewsOffsetX":     team.EpisodeOverlayNewsOffsetX,
+		"episodeOverlayNewsOffsetY":     team.EpisodeOverlayNewsOffsetY,
 		"episodeOverlayReviewId":        eoReviewID,
+		"episodeOverlayReviewOffsetX":   team.EpisodeOverlayReviewOffsetX,
+		"episodeOverlayReviewOffsetY":   team.EpisodeOverlayReviewOffsetY,
 		"episodeOverlaySpecialId":       eoSpecialID,
+		"episodeOverlaySpecialOffsetX":  team.EpisodeOverlaySpecialOffsetX,
+		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
 		"bggHandleLookupEnabled":        handleLookup,
 		"enabledPlugins":                enabledPlugins,
 	})
@@ -926,21 +944,27 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID              *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX             *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY             *int    `json:"bggCoverOffsetY"`
-		EpisodeNewsURL              *string `json:"episodeNewsUrl"`
-		EpisodeNewsBearerToken      *string `json:"episodeNewsBearerToken"`
-		NewsCreatorURL              *string `json:"newsCreatorUrl"`
-		NewsCreatorBearerToken      *string `json:"newsCreatorBearerToken"`
-		NewsCreatorWatermarkID      *string `json:"newsCreatorWatermarkId"`
-		EpisodeCreatorURL           *string `json:"episodeCreatorUrl"`
-		EpisodeCreatorBearerToken   *string `json:"episodeCreatorBearerToken"`
-		EpisodeCreatorWatermarkID   *string `json:"episodeCreatorWatermarkId"`
-		EpisodeOverlayNewsID        *string `json:"episodeOverlayNewsId"`
-		EpisodeOverlayReviewID      *string `json:"episodeOverlayReviewId"`
-		EpisodeOverlaySpecialID     *string `json:"episodeOverlaySpecialId"`
-		BGGHandleLookupEnabled      *bool   `json:"bggHandleLookupEnabled"`
+		BGGWatermarkID                *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX               *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY               *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL                *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken        *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL                *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken        *string `json:"newsCreatorBearerToken"`
+		NewsCreatorWatermarkID        *string `json:"newsCreatorWatermarkId"`
+		EpisodeCreatorURL             *string `json:"episodeCreatorUrl"`
+		EpisodeCreatorBearerToken     *string `json:"episodeCreatorBearerToken"`
+		EpisodeCreatorWatermarkID     *string `json:"episodeCreatorWatermarkId"`
+		EpisodeOverlayNewsID          *string `json:"episodeOverlayNewsId"`
+		EpisodeOverlayNewsOffsetX     *int    `json:"episodeOverlayNewsOffsetX"`
+		EpisodeOverlayNewsOffsetY     *int    `json:"episodeOverlayNewsOffsetY"`
+		EpisodeOverlayReviewID        *string `json:"episodeOverlayReviewId"`
+		EpisodeOverlayReviewOffsetX   *int    `json:"episodeOverlayReviewOffsetX"`
+		EpisodeOverlayReviewOffsetY   *int    `json:"episodeOverlayReviewOffsetY"`
+		EpisodeOverlaySpecialID       *string `json:"episodeOverlaySpecialId"`
+		EpisodeOverlaySpecialOffsetX  *int    `json:"episodeOverlaySpecialOffsetX"`
+		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
+		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1056,6 +1080,21 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 				}
 				setFields[pair.field] = oid
 			}
+		}
+	}
+	for _, pair := range []struct {
+		input *int
+		field string
+	}{
+		{input.EpisodeOverlayNewsOffsetX, "episodeOverlayNewsOffsetX"},
+		{input.EpisodeOverlayNewsOffsetY, "episodeOverlayNewsOffsetY"},
+		{input.EpisodeOverlayReviewOffsetX, "episodeOverlayReviewOffsetX"},
+		{input.EpisodeOverlayReviewOffsetY, "episodeOverlayReviewOffsetY"},
+		{input.EpisodeOverlaySpecialOffsetX, "episodeOverlaySpecialOffsetX"},
+		{input.EpisodeOverlaySpecialOffsetY, "episodeOverlaySpecialOffsetY"},
+	} {
+		if pair.input != nil {
+			setFields[pair.field] = *pair.input
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {
@@ -1139,8 +1178,14 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"hasEpisodeCreatorBearerToken":  team.EpisodeCreatorBearerToken != "",
 		"episodeCreatorWatermarkId":     adminEcWmID,
 		"episodeOverlayNewsId":          adminEoNewsID,
+		"episodeOverlayNewsOffsetX":     team.EpisodeOverlayNewsOffsetX,
+		"episodeOverlayNewsOffsetY":     team.EpisodeOverlayNewsOffsetY,
 		"episodeOverlayReviewId":        adminEoReviewID,
+		"episodeOverlayReviewOffsetX":   team.EpisodeOverlayReviewOffsetX,
+		"episodeOverlayReviewOffsetY":   team.EpisodeOverlayReviewOffsetY,
 		"episodeOverlaySpecialId":       adminEoSpecialID,
+		"episodeOverlaySpecialOffsetX":  team.EpisodeOverlaySpecialOffsetX,
+		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
 		"bggHandleLookupEnabled":        adminHandleLookup,
 		"enabledPlugins":                adminEnabledPlugins,
 	})
@@ -1155,21 +1200,27 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID              *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX             *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY             *int    `json:"bggCoverOffsetY"`
-		EpisodeNewsURL              *string `json:"episodeNewsUrl"`
-		EpisodeNewsBearerToken      *string `json:"episodeNewsBearerToken"`
-		NewsCreatorURL              *string `json:"newsCreatorUrl"`
-		NewsCreatorBearerToken      *string `json:"newsCreatorBearerToken"`
-		NewsCreatorWatermarkID      *string `json:"newsCreatorWatermarkId"`
-		EpisodeCreatorURL           *string `json:"episodeCreatorUrl"`
-		EpisodeCreatorBearerToken   *string `json:"episodeCreatorBearerToken"`
-		EpisodeCreatorWatermarkID   *string `json:"episodeCreatorWatermarkId"`
-		EpisodeOverlayNewsID        *string `json:"episodeOverlayNewsId"`
-		EpisodeOverlayReviewID      *string `json:"episodeOverlayReviewId"`
-		EpisodeOverlaySpecialID     *string `json:"episodeOverlaySpecialId"`
-		BGGHandleLookupEnabled      *bool   `json:"bggHandleLookupEnabled"`
+		BGGWatermarkID                *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX               *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY               *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL                *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken        *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL                *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken        *string `json:"newsCreatorBearerToken"`
+		NewsCreatorWatermarkID        *string `json:"newsCreatorWatermarkId"`
+		EpisodeCreatorURL             *string `json:"episodeCreatorUrl"`
+		EpisodeCreatorBearerToken     *string `json:"episodeCreatorBearerToken"`
+		EpisodeCreatorWatermarkID     *string `json:"episodeCreatorWatermarkId"`
+		EpisodeOverlayNewsID          *string `json:"episodeOverlayNewsId"`
+		EpisodeOverlayNewsOffsetX     *int    `json:"episodeOverlayNewsOffsetX"`
+		EpisodeOverlayNewsOffsetY     *int    `json:"episodeOverlayNewsOffsetY"`
+		EpisodeOverlayReviewID        *string `json:"episodeOverlayReviewId"`
+		EpisodeOverlayReviewOffsetX   *int    `json:"episodeOverlayReviewOffsetX"`
+		EpisodeOverlayReviewOffsetY   *int    `json:"episodeOverlayReviewOffsetY"`
+		EpisodeOverlaySpecialID       *string `json:"episodeOverlaySpecialId"`
+		EpisodeOverlaySpecialOffsetX  *int    `json:"episodeOverlaySpecialOffsetX"`
+		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
+		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1285,6 +1336,21 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 				}
 				setFields[pair.field] = oid
 			}
+		}
+	}
+	for _, pair := range []struct {
+		input *int
+		field string
+	}{
+		{input.EpisodeOverlayNewsOffsetX, "episodeOverlayNewsOffsetX"},
+		{input.EpisodeOverlayNewsOffsetY, "episodeOverlayNewsOffsetY"},
+		{input.EpisodeOverlayReviewOffsetX, "episodeOverlayReviewOffsetX"},
+		{input.EpisodeOverlayReviewOffsetY, "episodeOverlayReviewOffsetY"},
+		{input.EpisodeOverlaySpecialOffsetX, "episodeOverlaySpecialOffsetX"},
+		{input.EpisodeOverlaySpecialOffsetY, "episodeOverlaySpecialOffsetY"},
+	} {
+		if pair.input != nil {
+			setFields[pair.field] = *pair.input
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {
