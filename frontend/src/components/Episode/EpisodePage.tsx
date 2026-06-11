@@ -1228,7 +1228,7 @@ export function EpisodePage() {
                     {aiEnabled && platforms.length > 0 && (
                       <button
                         className="btn btn-ghost btn-sm"
-                        style={{ alignSelf: 'flex-start' }}
+                        style={{ alignSelf: 'flex-start', marginTop: -8 }}
                         onClick={generateAIContent}
                         disabled={generating || !episodeTitle.trim()}
                         title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
