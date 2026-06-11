@@ -731,10 +731,10 @@ export function EpisodePage() {
 
       <div>
         <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Episode Number, Title & Type */}
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 160px', gap: 16 }}>
+          {/* Number, Type & Date */}
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 160px 200px', gap: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>Episode Number <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <label>Number <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
                 type="text"
                 className="input"
@@ -744,17 +744,7 @@ export function EpisodePage() {
               />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>Episode Title <span style={{ color: 'var(--danger)' }}>*</span></label>
-              <input
-                type="text"
-                className="input"
-                value={episodeTitle}
-                onChange={e => setEpisodeTitle(e.target.value)}
-                placeholder="Title of the episode"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>Episode Type <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <label>Type <span style={{ color: 'var(--danger)' }}>*</span></label>
               <select
                 className="select"
                 value={episodeType}
@@ -765,22 +755,8 @@ export function EpisodePage() {
                 ))}
               </select>
             </div>
-          </div>
-
-          {/* Summary & Date row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', gap: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>Summary <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
-              <textarea
-                className="textarea"
-                value={summary}
-                onChange={e => setSummary(e.target.value)}
-                placeholder="Episode summary..."
-                rows={3}
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>Episode Date <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <label>Date <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
                 type="date"
                 className="input"
@@ -788,6 +764,30 @@ export function EpisodePage() {
                 onChange={e => setEpisodeDate(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Title */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>Episode Title <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <input
+              type="text"
+              className="input"
+              value={episodeTitle}
+              onChange={e => setEpisodeTitle(e.target.value)}
+              placeholder="Title of the episode"
+            />
+          </div>
+
+          {/* Summary */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>Summary <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+            <textarea
+              className="textarea"
+              value={summary}
+              onChange={e => setSummary(e.target.value)}
+              placeholder="Episode summary..."
+              rows={3}
+            />
           </div>
 
           {/* Review-specific fields */}
