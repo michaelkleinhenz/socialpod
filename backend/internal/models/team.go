@@ -11,6 +11,7 @@ import (
 var AvailablePlugins = []string{
 	"episode_news",
 	"news_creator",
+	"episode_creator",
 }
 
 type Team struct {
@@ -24,8 +25,11 @@ type Team struct {
 	EpisodeNewsBearerToken  string              `bson:"episodeNewsBearerToken,omitempty" json:"-"`
 	NewsCreatorURL          string              `bson:"newsCreatorUrl,omitempty" json:"newsCreatorUrl,omitempty"`
 	NewsCreatorBearerToken  string              `bson:"newsCreatorBearerToken,omitempty" json:"-"`
-	NewsCreatorWatermarkID  *primitive.ObjectID `bson:"newsCreatorWatermarkId,omitempty" json:"newsCreatorWatermarkId,omitempty"`
-	BGGHandleLookupEnabled  *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
+	NewsCreatorWatermarkID     *primitive.ObjectID `bson:"newsCreatorWatermarkId,omitempty" json:"newsCreatorWatermarkId,omitempty"`
+	EpisodeCreatorURL          string              `bson:"episodeCreatorUrl,omitempty" json:"episodeCreatorUrl,omitempty"`
+	EpisodeCreatorBearerToken  string              `bson:"episodeCreatorBearerToken,omitempty" json:"-"`
+	EpisodeCreatorWatermarkID  *primitive.ObjectID `bson:"episodeCreatorWatermarkId,omitempty" json:"episodeCreatorWatermarkId,omitempty"`
+	BGGHandleLookupEnabled     *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
 	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt               time.Time           `bson:"updatedAt" json:"updatedAt"`

@@ -78,6 +78,7 @@ func main() {
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 	publisherHandleHandler := &handlers.PublisherHandleHandler{DB: db}
 	newsHandler := &handlers.NewsHandler{DB: db, UploadDir: cfg.UploadDir}
+	episodeHandler := &handlers.EpisodeHandler{DB: db, UploadDir: cfg.UploadDir}
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 
@@ -130,6 +131,7 @@ func main() {
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)
 		auth.POST("/news/submit", newsHandler.Submit)
+		auth.POST("/episode/submit", episodeHandler.Submit)
 
 		// BGG integration
 		auth.GET("/bgg/fetch", bggHandler.FetchGame)

@@ -23,6 +23,7 @@ import { ShareTargetPage } from './components/ShareTarget/ShareTargetPage';
 import { ConventionPage } from './components/Convention/ConventionPage';
 import { QueueDetailPage } from './components/Convention/QueueDetailPage';
 import { NewsPage } from './components/News/NewsPage';
+import { EpisodePage } from './components/Episode/EpisodePage';
 import { InvitePage } from './components/Auth/InvitePage';
 import './styles/global.css';
 
@@ -79,6 +80,8 @@ function AppRoutes() {
       <Route path="/convention/:id" element={<ProtectedRoute><Layout><QueueDetailPage /></Layout></ProtectedRoute>} />
       {/* News Creator */}
       <Route path="/news" element={<ProtectedRoute><Layout><NewsPage /></Layout></ProtectedRoute>} />
+      {/* Episode Creator */}
+      <Route path="/episodes" element={<ProtectedRoute><Layout><EpisodePage /></Layout></ProtectedRoute>} />
       {/* PWA Web Share Target — standalone mobile UI, no sidebar */}
       <Route path="/share-target" element={<ShareTargetPage />} />
       <Route path="*" element={<Navigate to="/" />} />
