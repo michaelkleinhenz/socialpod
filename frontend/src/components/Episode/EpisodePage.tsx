@@ -77,6 +77,8 @@ export function EpisodePage() {
   // AI generation
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingScene, setGeneratingScene] = useState(false);
+  const [scenePromptTemplate, setScenePromptTemplate] = useState('');
 
   // Drag & drop zone
   const [dragOver, setDragOver] = useState(false);
@@ -139,6 +141,7 @@ export function EpisodePage() {
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.openRouterEnabled) setAiEnabled(true);
       if (s.hasBggApiToken) setBggEnabled(true);
+      if (s.scenePromptTemplate) setScenePromptTemplate(s.scenePromptTemplate);
     }).catch(() => {});
   }, []);
 
@@ -552,6 +555,22 @@ export function EpisodePage() {
     }
   };
 
+  const generateSceneContent = async () => {
+    const prompt = scenePromptTemplate
+      ? `${scenePromptTemplate}\n\n${scene}`
+      : scene;
+    setGeneratingScene(true);
+    try {
+      const { text } = await api.generateText(prompt, []);
+      setScene(text);
+      toast.success('Scene text generated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate scene text');
+    } finally {
+      setGeneratingScene(false);
+    }
+  };
+
   const fetchBGGData = async () => {
     if (!linkBGG.trim()) return;
     setFetchingBgg(true);
@@ -911,6 +930,17 @@ export function EpisodePage() {
                   placeholder="Scene description..."
                   rows={3}
                 />
+                {aiEnabled && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ alignSelf: 'flex-start', marginTop: -2 }}
+                    onClick={generateSceneContent}
+                    disabled={generatingScene || !scene.trim()}
+                    title={!scene.trim() ? 'Enter scene text first' : 'Generate scene description from your text'}
+                  >
+                    {generatingScene ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                  </button>
+                )}
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
