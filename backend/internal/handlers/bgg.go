@@ -299,9 +299,10 @@ func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, er
 }
 
 type bggTeamConfig struct {
-	watermark image.Image
-	offsetX   int
-	offsetY   int
+	watermark   image.Image
+	offsetX     int
+	offsetY     int
+	isEpisode   bool
 }
 
 func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, imgURL string, episodeType string) ([]byte, error) {
@@ -335,6 +336,14 @@ func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, img
 	}
 
 	cfg := h.loadTeamBGGConfig(ctx, c, episodeType)
+
+	// For episode overlays, auto-shift the game cover away from the overlay's
+	// opaque region so the title artwork doesn't collide with the branding.
+	if cfg.isEpisode && cfg.watermark != nil {
+		autoX, autoY := overlayAutoOffset(cfg.watermark, 1080)
+		cfg.offsetX += autoX
+		cfg.offsetY += autoY
+	}
 
 	// Letterbox: blurred fill background + scaled-to-fit cover with offset
 	const size = 1080
@@ -385,18 +394,21 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 		if overlayID != nil {
 			cfg.offsetX = team.EpisodeOverlayNewsOffsetX
 			cfg.offsetY = team.EpisodeOverlayNewsOffsetY
+			cfg.isEpisode = true
 		}
 	case "review":
 		overlayID = team.EpisodeOverlayReviewID
 		if overlayID != nil {
 			cfg.offsetX = team.EpisodeOverlayReviewOffsetX
 			cfg.offsetY = team.EpisodeOverlayReviewOffsetY
+			cfg.isEpisode = true
 		}
 	case "special":
 		overlayID = team.EpisodeOverlaySpecialID
 		if overlayID != nil {
 			cfg.offsetX = team.EpisodeOverlaySpecialOffsetX
 			cfg.offsetY = team.EpisodeOverlaySpecialOffsetY
+			cfg.isEpisode = true
 		}
 	}
 	if overlayID == nil {
@@ -1501,6 +1513,49 @@ func nilSlice(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// overlayAutoOffset analyzes the overlay's alpha channel to find the center of
+// mass of its opaque pixels, then returns (dx, dy) that push the game cover
+// toward the opposite side of the canvas. Only used for episode overlays.
+func overlayAutoOffset(overlay image.Image, canvasSize int) (int, int) {
+	b := overlay.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w == 0 || h == 0 {
+		return 0, 0
+	}
+
+	var sumX, sumY, totalAlpha float64
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			_, _, _, a := overlay.At(x, y).RGBA()
+			if a > 0 {
+				af := float64(a)
+				sumX += float64(x-b.Min.X) * af
+				sumY += float64(y-b.Min.Y) * af
+				totalAlpha += af
+			}
+		}
+	}
+	if totalAlpha == 0 {
+		return 0, 0
+	}
+
+	// Center of mass as fraction 0..1 within the overlay image
+	cx := sumX / totalAlpha / float64(w)
+	cy := sumY / totalAlpha / float64(h)
+
+	// How far the center of mass deviates from the image center (range -0.5..+0.5)
+	dx := cx - 0.5
+	dy := cy - 0.5
+
+	// Push the game cover in the opposite direction. The 17.5% scale-down in
+	// compositeLetterbox creates ~94px of slack per side at 1080px. We use up
+	// to 85% of that slack so the cover stays fully visible.
+	maxShift := float64(canvasSize) * 0.175 * 0.85
+	offsetX := -int(dx * 2 * maxShift)
+	offsetY := -int(dy * 2 * maxShift)
+	return offsetX, offsetY
 }
 
 // compositeLetterbox scales src to fit within size×size (preserving aspect ratio),
