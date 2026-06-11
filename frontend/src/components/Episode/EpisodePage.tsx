@@ -96,7 +96,7 @@ export function EpisodePage() {
   const [firstComment, setFirstComment] = useState('');
   const [platforms, setPlatforms] = useState<Platform[]>(['bluesky', 'instagram']);
   const [scheduledAt, setScheduledAt] = useState(
-    format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm")
+    format(new Date(Date.now() + 3600000), "yyyy-MM-dd")
   );
   const [status, setStatus] = useState<'scheduled' | 'draft'>('scheduled');
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
@@ -517,7 +517,7 @@ export function EpisodePage() {
     setCustomizePerPlatform(false);
     setFirstComment('');
     setPlatforms([]);
-    setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"));
+    setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd"));
     setStatus('scheduled');
     setSuffixIds({});
   };
@@ -648,7 +648,8 @@ export function EpisodePage() {
       data.content = content || '';
       data.firstComment = firstComment.trim() || undefined;
       data.platforms = platforms;
-      data.scheduledAt = new Date(scheduledAt).toISOString();
+      const scheduleDate = new Date(`${scheduledAt}T06:00:00`);
+      data.scheduledAt = scheduleDate.toISOString();
       data.status = status;
       data.suffixIds = suffixIds;
       data.contentOverrides = customizePerPlatform ? contentOverrides : {};
@@ -1310,7 +1311,7 @@ export function EpisodePage() {
               <div className="form-group">
                 <label><Clock size={14} /> Schedule</label>
                 <input
-                  type="datetime-local"
+                  type="date"
                   className="input"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
