@@ -550,8 +550,10 @@ class ApiClient {
   }
 
   // BGG integration
-  fetchBGGGame(url: string) {
-    return this.request<import('../types').BGGGameData>(`/bgg/fetch?url=${encodeURIComponent(url)}`);
+  fetchBGGGame(url: string, episodeType?: string) {
+    let endpoint = `/bgg/fetch?url=${encodeURIComponent(url)}`;
+    if (episodeType) endpoint += `&episodeType=${encodeURIComponent(episodeType)}`;
+    return this.request<import('../types').BGGGameData>(endpoint);
   }
 
   // Team settings (BGG watermark)

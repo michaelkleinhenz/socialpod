@@ -563,9 +563,10 @@ export function EpisodePage() {
     setFetchingBgg(true);
     setBggError('');
     try {
-      const data = await api.fetchBGGGame(linkBGG.trim());
+      const data = await api.fetchBGGGame(linkBGG.trim(), episodeType);
 
       const titleParts: string[] = [];
+      if (episodeType === 'review') titleParts.push('Review:');
       if (data.title) titleParts.push(data.title);
       if (data.publishers?.length) titleParts.push(`(${data.publishers[0]})`);
       if (titleParts.length) setEpisodeTitle(titleParts.join(' '));
