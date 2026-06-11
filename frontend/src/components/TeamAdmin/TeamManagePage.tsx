@@ -381,6 +381,7 @@ export function TeamManagePage() {
       payload.episodeOverlaySpecialId = episodeOverlaySpecialId || '';
       payload.episodeOverlaySpecialOffsetX = episodeOverlaySpecialOffsetX;
       payload.episodeOverlaySpecialOffsetY = episodeOverlaySpecialOffsetY;
+      payload.scenePromptTemplate = teamSettings.scenePromptTemplate || '';
       await api.updateTeamSettings(payload);
       if (newsCreatorBearerToken) {
         setNewsCreatorBearerToken('');
@@ -1085,6 +1086,20 @@ export function TeamManagePage() {
                       A bearer token is already configured. Leave blank to keep the current token.
                     </span>
                   )}
+                </div>
+
+                <div className="form-group">
+                  <label>Scene Prompt Template</label>
+                  <textarea
+                    className="textarea"
+                    style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
+                    placeholder="e.g. Write a vivid scene description for a board game review podcast episode about the following game:"
+                    value={teamSettings.scenePromptTemplate || ''}
+                    onChange={e => setTeamSettings(s => ({ ...s, scenePromptTemplate: e.target.value }))}
+                  />
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Prompt template prepended to the Scene field text when using "Generate with AI" on the episode creator.
+                  </span>
                 </div>
               </>
             )}

@@ -926,6 +926,7 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"episodeOverlaySpecialOffsetX":  team.EpisodeOverlaySpecialOffsetX,
 		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
 		"bggHandleLookupEnabled":        handleLookup,
+		"scenePromptTemplate":           team.ScenePromptTemplate,
 		"enabledPlugins":                enabledPlugins,
 	})
 }
@@ -965,6 +966,7 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		EpisodeOverlaySpecialOffsetX  *int    `json:"episodeOverlaySpecialOffsetX"`
 		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
 		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
+		ScenePromptTemplate           *string `json:"scenePromptTemplate"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -993,6 +995,14 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 	if input.BGGCoverOffsetY != nil {
 		setFields["bggCoverOffsetY"] = *input.BGGCoverOffsetY
+	}
+
+	if input.ScenePromptTemplate != nil {
+		if *input.ScenePromptTemplate == "" {
+			unsetFields["scenePromptTemplate"] = ""
+		} else {
+			setFields["scenePromptTemplate"] = *input.ScenePromptTemplate
+		}
 	}
 
 	if input.EpisodeNewsURL != nil {
@@ -1187,6 +1197,7 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"episodeOverlaySpecialOffsetX":  team.EpisodeOverlaySpecialOffsetX,
 		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
 		"bggHandleLookupEnabled":        adminHandleLookup,
+		"scenePromptTemplate":           team.ScenePromptTemplate,
 		"enabledPlugins":                adminEnabledPlugins,
 	})
 }
@@ -1221,6 +1232,7 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		EpisodeOverlaySpecialOffsetX  *int    `json:"episodeOverlaySpecialOffsetX"`
 		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
 		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
+		ScenePromptTemplate           *string `json:"scenePromptTemplate"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1249,6 +1261,14 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 	}
 	if input.BGGCoverOffsetY != nil {
 		setFields["bggCoverOffsetY"] = *input.BGGCoverOffsetY
+	}
+
+	if input.ScenePromptTemplate != nil {
+		if *input.ScenePromptTemplate == "" {
+			unsetFields["scenePromptTemplate"] = ""
+		} else {
+			setFields["scenePromptTemplate"] = *input.ScenePromptTemplate
+		}
 	}
 
 	if input.EpisodeNewsURL != nil {

@@ -39,6 +39,7 @@ type Team struct {
 	EpisodeOverlaySpecialOffsetX int                 `bson:"episodeOverlaySpecialOffsetX,omitempty" json:"episodeOverlaySpecialOffsetX,omitempty"`
 	EpisodeOverlaySpecialOffsetY int                 `bson:"episodeOverlaySpecialOffsetY,omitempty" json:"episodeOverlaySpecialOffsetY,omitempty"`
 	BGGHandleLookupEnabled     *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
+	ScenePromptTemplate        string              `bson:"scenePromptTemplate,omitempty" json:"scenePromptTemplate,omitempty"`
 	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt               time.Time           `bson:"updatedAt" json:"updatedAt"`
