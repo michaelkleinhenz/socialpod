@@ -565,11 +565,15 @@ export function EpisodePage() {
     try {
       const data = await api.fetchBGGGame(linkBGG.trim(), episodeType);
 
-      const titleParts: string[] = [];
-      if (episodeType === 'review') titleParts.push('Review:');
-      if (data.title) titleParts.push(data.title);
-      if (data.publishers?.length) titleParts.push(`(${data.publishers[0]})`);
-      if (titleParts.length) setEpisodeTitle(titleParts.join(' '));
+      const nameParts: string[] = [];
+      if (data.title) nameParts.push(data.title);
+      if (data.publishers?.length) nameParts.push(`(${data.publishers[0]})`);
+      const gameNamePublisherStr = nameParts.join(' ');
+
+      if (gameNamePublisherStr) {
+        setEpisodeTitle(episodeType === 'review' ? `Review: ${gameNamePublisherStr}` : gameNamePublisherStr);
+        if (episodeType === 'review') setGameNamePublisher(gameNamePublisherStr);
+      }
 
       if (data.imageBase64) {
         const byteStr = atob(data.imageBase64);
