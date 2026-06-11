@@ -371,10 +371,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [content, setContent] = useState(post?.content || '');
   const [contentOverrides, setContentOverrides] = useState<Record<string, string>>(post?.contentOverrides || {});
   const [customizePerPlatform, setCustomizePerPlatform] = useState(
-    post?.contentOverrides != null && Object.keys(post.contentOverrides).length > 0
+    post ? (post.contentOverrides != null && Object.keys(post.contentOverrides).length > 0) : true
   );
   const [firstComment, setFirstComment] = useState(post?.firstComment || '');
-  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory || isReel ? ['instagram'] : ['bluesky']));
+  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory || isReel ? ['instagram'] : ['bluesky', 'instagram']));
   const [scheduledAt, setScheduledAt] = useState(
     post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
   );
