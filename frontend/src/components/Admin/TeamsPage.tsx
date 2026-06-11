@@ -25,6 +25,9 @@ export function TeamsPage() {
   const [newsCreatorBearerToken, setNewsCreatorBearerToken] = useState('');
   const [episodeCreatorUrl, setEpisodeCreatorUrl] = useState('');
   const [episodeCreatorWatermarkId, setEpisodeCreatorWatermarkId] = useState('');
+  const [episodeOverlayNewsId, setEpisodeOverlayNewsId] = useState('');
+  const [episodeOverlayReviewId, setEpisodeOverlayReviewId] = useState('');
+  const [episodeOverlaySpecialId, setEpisodeOverlaySpecialId] = useState('');
   const [episodeCreatorBearerToken, setEpisodeCreatorBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
@@ -162,12 +165,18 @@ export function TeamsPage() {
       setNewsCreatorWatermarkId(s.newsCreatorWatermarkId || '');
       setEpisodeCreatorUrl(s.episodeCreatorUrl || '');
       setEpisodeCreatorWatermarkId(s.episodeCreatorWatermarkId || '');
+      setEpisodeOverlayNewsId(s.episodeOverlayNewsId || '');
+      setEpisodeOverlayReviewId(s.episodeOverlayReviewId || '');
+      setEpisodeOverlaySpecialId(s.episodeOverlaySpecialId || '');
     } catch {
       setBggSettings({});
       setNewsCreatorUrl('');
       setNewsCreatorWatermarkId('');
       setEpisodeCreatorUrl('');
       setEpisodeCreatorWatermarkId('');
+      setEpisodeOverlayNewsId('');
+      setEpisodeOverlayReviewId('');
+      setEpisodeOverlaySpecialId('');
     }
   };
 
@@ -192,6 +201,9 @@ export function TeamsPage() {
       }
       data.episodeCreatorUrl = episodeCreatorUrl || '';
       data.episodeCreatorWatermarkId = episodeCreatorWatermarkId || null;
+      data.episodeOverlayNewsId = episodeOverlayNewsId || '';
+      data.episodeOverlayReviewId = episodeOverlayReviewId || '';
+      data.episodeOverlaySpecialId = episodeOverlaySpecialId || '';
       if (episodeCreatorBearerToken) {
         data.episodeCreatorBearerToken = episodeCreatorBearerToken;
       }
@@ -528,7 +540,7 @@ export function TeamsPage() {
               />
             </div>
             <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>Episode Watermark</label>
+              <label>Default Episode Watermark</label>
               <select
                 className="select"
                 value={episodeCreatorWatermarkId}
@@ -540,8 +552,34 @@ export function TeamsPage() {
                 ))}
               </select>
               <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                Default watermark to overlay on cropped episode images.
+                Fallback watermark when no type-specific overlay is configured.
               </span>
+            </div>
+
+            <div style={{ padding: 12, background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>Per-Type Overlays</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -8 }}>
+                Optionally set a different overlay image for each episode type. Falls back to the default above if not set.
+              </span>
+              {[
+                { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId },
+                { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId },
+                { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId },
+              ].map(item => (
+                <div className="form-group" key={item.label} style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 13 }}>{item.label}</label>
+                  <select
+                    className="select"
+                    value={item.value}
+                    onChange={e => item.setter(e.target.value)}
+                  >
+                    <option value="">Use default</option>
+                    {watermarks.map(wm => (
+                      <option key={wm.id} value={wm.id}>{wm.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
             </div>
             <div className="form-group" style={{ marginBottom: 20 }}>
               <label>Bearer Token</label>
