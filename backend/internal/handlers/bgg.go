@@ -853,6 +853,10 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.NewsCreatorWatermarkID != nil {
 		ncWmID = team.NewsCreatorWatermarkID.Hex()
 	}
+	ecWmID := ""
+	if team.EpisodeCreatorWatermarkID != nil {
+		ecWmID = team.EpisodeCreatorWatermarkID.Hex()
+	}
 	handleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		handleLookup = *team.BGGHandleLookupEnabled
@@ -862,16 +866,19 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		enabledPlugins = []string{}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"bggWatermarkId":            wmID,
-		"bggCoverOffsetX":           team.BGGCoverOffsetX,
-		"bggCoverOffsetY":           team.BGGCoverOffsetY,
-		"episodeNewsUrl":            team.EpisodeNewsURL,
-		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
-		"newsCreatorUrl":            team.NewsCreatorURL,
-		"hasNewsCreatorBearerToken": team.NewsCreatorBearerToken != "",
-		"newsCreatorWatermarkId":    ncWmID,
-		"bggHandleLookupEnabled":    handleLookup,
-		"enabledPlugins":            enabledPlugins,
+		"bggWatermarkId":                wmID,
+		"bggCoverOffsetX":               team.BGGCoverOffsetX,
+		"bggCoverOffsetY":               team.BGGCoverOffsetY,
+		"episodeNewsUrl":                team.EpisodeNewsURL,
+		"hasEpisodeNewsBearerToken":     team.EpisodeNewsBearerToken != "",
+		"newsCreatorUrl":                team.NewsCreatorURL,
+		"hasNewsCreatorBearerToken":     team.NewsCreatorBearerToken != "",
+		"newsCreatorWatermarkId":        ncWmID,
+		"episodeCreatorUrl":             team.EpisodeCreatorURL,
+		"hasEpisodeCreatorBearerToken":  team.EpisodeCreatorBearerToken != "",
+		"episodeCreatorWatermarkId":     ecWmID,
+		"bggHandleLookupEnabled":        handleLookup,
+		"enabledPlugins":                enabledPlugins,
 	})
 }
 
@@ -889,15 +896,18 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID           *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX          *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY          *int    `json:"bggCoverOffsetY"`
-		EpisodeNewsURL           *string `json:"episodeNewsUrl"`
-		EpisodeNewsBearerToken   *string `json:"episodeNewsBearerToken"`
-		NewsCreatorURL           *string `json:"newsCreatorUrl"`
-		NewsCreatorBearerToken   *string `json:"newsCreatorBearerToken"`
-		NewsCreatorWatermarkID   *string `json:"newsCreatorWatermarkId"`
-		BGGHandleLookupEnabled   *bool   `json:"bggHandleLookupEnabled"`
+		BGGWatermarkID              *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX             *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY             *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL              *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken      *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL              *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken      *string `json:"newsCreatorBearerToken"`
+		NewsCreatorWatermarkID      *string `json:"newsCreatorWatermarkId"`
+		EpisodeCreatorURL           *string `json:"episodeCreatorUrl"`
+		EpisodeCreatorBearerToken   *string `json:"episodeCreatorBearerToken"`
+		EpisodeCreatorWatermarkID   *string `json:"episodeCreatorWatermarkId"`
+		BGGHandleLookupEnabled      *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -966,6 +976,32 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 				return
 			}
 			setFields["newsCreatorWatermarkId"] = ncWmID
+		}
+	}
+	if input.EpisodeCreatorURL != nil {
+		if *input.EpisodeCreatorURL == "" {
+			unsetFields["episodeCreatorUrl"] = ""
+		} else {
+			setFields["episodeCreatorUrl"] = *input.EpisodeCreatorURL
+		}
+	}
+	if input.EpisodeCreatorBearerToken != nil {
+		if *input.EpisodeCreatorBearerToken == "" {
+			unsetFields["episodeCreatorBearerToken"] = ""
+		} else {
+			setFields["episodeCreatorBearerToken"] = *input.EpisodeCreatorBearerToken
+		}
+	}
+	if input.EpisodeCreatorWatermarkID != nil {
+		if *input.EpisodeCreatorWatermarkID == "" {
+			unsetFields["episodeCreatorWatermarkId"] = ""
+		} else {
+			ecWmID, err := primitive.ObjectIDFromHex(*input.EpisodeCreatorWatermarkID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+				return
+			}
+			setFields["episodeCreatorWatermarkId"] = ecWmID
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {
@@ -1012,6 +1048,10 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 	if team.NewsCreatorWatermarkID != nil {
 		adminNcWmID = team.NewsCreatorWatermarkID.Hex()
 	}
+	adminEcWmID := ""
+	if team.EpisodeCreatorWatermarkID != nil {
+		adminEcWmID = team.EpisodeCreatorWatermarkID.Hex()
+	}
 	adminHandleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		adminHandleLookup = *team.BGGHandleLookupEnabled
@@ -1021,16 +1061,19 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		adminEnabledPlugins = []string{}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"bggWatermarkId":            wmID,
-		"bggCoverOffsetX":           team.BGGCoverOffsetX,
-		"bggCoverOffsetY":           team.BGGCoverOffsetY,
-		"episodeNewsUrl":            team.EpisodeNewsURL,
-		"hasEpisodeNewsBearerToken": team.EpisodeNewsBearerToken != "",
-		"newsCreatorUrl":            team.NewsCreatorURL,
-		"hasNewsCreatorBearerToken": team.NewsCreatorBearerToken != "",
-		"newsCreatorWatermarkId":    adminNcWmID,
-		"bggHandleLookupEnabled":    adminHandleLookup,
-		"enabledPlugins":            adminEnabledPlugins,
+		"bggWatermarkId":                wmID,
+		"bggCoverOffsetX":               team.BGGCoverOffsetX,
+		"bggCoverOffsetY":               team.BGGCoverOffsetY,
+		"episodeNewsUrl":                team.EpisodeNewsURL,
+		"hasEpisodeNewsBearerToken":     team.EpisodeNewsBearerToken != "",
+		"newsCreatorUrl":                team.NewsCreatorURL,
+		"hasNewsCreatorBearerToken":     team.NewsCreatorBearerToken != "",
+		"newsCreatorWatermarkId":        adminNcWmID,
+		"episodeCreatorUrl":             team.EpisodeCreatorURL,
+		"hasEpisodeCreatorBearerToken":  team.EpisodeCreatorBearerToken != "",
+		"episodeCreatorWatermarkId":     adminEcWmID,
+		"bggHandleLookupEnabled":        adminHandleLookup,
+		"enabledPlugins":                adminEnabledPlugins,
 	})
 }
 
@@ -1043,15 +1086,18 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 	}
 
 	var input struct {
-		BGGWatermarkID           *string `json:"bggWatermarkId"`
-		BGGCoverOffsetX          *int    `json:"bggCoverOffsetX"`
-		BGGCoverOffsetY          *int    `json:"bggCoverOffsetY"`
-		EpisodeNewsURL           *string `json:"episodeNewsUrl"`
-		EpisodeNewsBearerToken   *string `json:"episodeNewsBearerToken"`
-		NewsCreatorURL           *string `json:"newsCreatorUrl"`
-		NewsCreatorBearerToken   *string `json:"newsCreatorBearerToken"`
-		NewsCreatorWatermarkID   *string `json:"newsCreatorWatermarkId"`
-		BGGHandleLookupEnabled   *bool   `json:"bggHandleLookupEnabled"`
+		BGGWatermarkID              *string `json:"bggWatermarkId"`
+		BGGCoverOffsetX             *int    `json:"bggCoverOffsetX"`
+		BGGCoverOffsetY             *int    `json:"bggCoverOffsetY"`
+		EpisodeNewsURL              *string `json:"episodeNewsUrl"`
+		EpisodeNewsBearerToken      *string `json:"episodeNewsBearerToken"`
+		NewsCreatorURL              *string `json:"newsCreatorUrl"`
+		NewsCreatorBearerToken      *string `json:"newsCreatorBearerToken"`
+		NewsCreatorWatermarkID      *string `json:"newsCreatorWatermarkId"`
+		EpisodeCreatorURL           *string `json:"episodeCreatorUrl"`
+		EpisodeCreatorBearerToken   *string `json:"episodeCreatorBearerToken"`
+		EpisodeCreatorWatermarkID   *string `json:"episodeCreatorWatermarkId"`
+		BGGHandleLookupEnabled      *bool   `json:"bggHandleLookupEnabled"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1120,6 +1166,32 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 				return
 			}
 			setFields["newsCreatorWatermarkId"] = ncWmID
+		}
+	}
+	if input.EpisodeCreatorURL != nil {
+		if *input.EpisodeCreatorURL == "" {
+			unsetFields["episodeCreatorUrl"] = ""
+		} else {
+			setFields["episodeCreatorUrl"] = *input.EpisodeCreatorURL
+		}
+	}
+	if input.EpisodeCreatorBearerToken != nil {
+		if *input.EpisodeCreatorBearerToken == "" {
+			unsetFields["episodeCreatorBearerToken"] = ""
+		} else {
+			setFields["episodeCreatorBearerToken"] = *input.EpisodeCreatorBearerToken
+		}
+	}
+	if input.EpisodeCreatorWatermarkID != nil {
+		if *input.EpisodeCreatorWatermarkID == "" {
+			unsetFields["episodeCreatorWatermarkId"] = ""
+		} else {
+			ecWmID, err := primitive.ObjectIDFromHex(*input.EpisodeCreatorWatermarkID)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+				return
+			}
+			setFields["episodeCreatorWatermarkId"] = ecWmID
 		}
 	}
 	if input.BGGHandleLookupEnabled != nil {

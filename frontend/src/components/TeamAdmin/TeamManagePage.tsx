@@ -65,6 +65,11 @@ export function TeamManagePage() {
   const [newsCreatorWatermarkId, setNewsCreatorWatermarkId] = useState('');
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
 
+  // Episode Creator settings state
+  const [episodeCreatorUrl, setEpisodeCreatorUrl] = useState('');
+  const [episodeCreatorBearerToken, setEpisodeCreatorBearerToken] = useState('');
+  const [episodeCreatorWatermarkId, setEpisodeCreatorWatermarkId] = useState('');
+
   // Team self-creation state (when team admin has no team yet)
   const [newTeamName, setNewTeamName] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -79,6 +84,8 @@ export function TeamManagePage() {
       setTeamSettings(s);
       if (s.newsCreatorUrl) setNewsCreatorUrl(s.newsCreatorUrl);
       if (s.newsCreatorWatermarkId) setNewsCreatorWatermarkId(s.newsCreatorWatermarkId);
+      if (s.episodeCreatorUrl) setEpisodeCreatorUrl(s.episodeCreatorUrl);
+      if (s.episodeCreatorWatermarkId) setEpisodeCreatorWatermarkId(s.episodeCreatorWatermarkId);
     }).catch(() => {});
     api.getWatermarks().then(setWatermarks).catch(() => {});
     if (searchParams.get('instagram') === 'connected') {
@@ -344,10 +351,17 @@ export function TeamManagePage() {
       if (newsCreatorUrl !== undefined) payload.newsCreatorUrl = newsCreatorUrl;
       if (newsCreatorBearerToken) payload.newsCreatorBearerToken = newsCreatorBearerToken;
       payload.newsCreatorWatermarkId = newsCreatorWatermarkId || '';
+      if (episodeCreatorUrl !== undefined) payload.episodeCreatorUrl = episodeCreatorUrl;
+      if (episodeCreatorBearerToken) payload.episodeCreatorBearerToken = episodeCreatorBearerToken;
+      payload.episodeCreatorWatermarkId = episodeCreatorWatermarkId || '';
       await api.updateTeamSettings(payload);
       if (newsCreatorBearerToken) {
         setNewsCreatorBearerToken('');
         setTeamSettings(s => ({ ...s, hasNewsCreatorBearerToken: true }));
+      }
+      if (episodeCreatorBearerToken) {
+        setEpisodeCreatorBearerToken('');
+        setTeamSettings(s => ({ ...s, hasEpisodeCreatorBearerToken: true }));
       }
       toast.success('Settings saved');
     } catch (err: any) {
@@ -934,6 +948,60 @@ export function TeamManagePage() {
                     onChange={e => setNewsCreatorBearerToken(e.target.value)}
                   />
                   {teamSettings.hasNewsCreatorBearerToken && !newsCreatorBearerToken && (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      A bearer token is already configured. Leave blank to keep the current token.
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+
+            {teamSettings.enabledPlugins?.includes('episode_creator') && (
+              <>
+                <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+                <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>Episode Creator</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 16px' }}>
+                  Configure the webhook URL and bearer token for the Episode Creator plugin.
+                </p>
+
+                <div className="form-group">
+                  <label>Webhook URL</label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="https://n8n.example.com/webhook/..."
+                    value={episodeCreatorUrl}
+                    onChange={e => setEpisodeCreatorUrl(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Episode Watermark</label>
+                  <select
+                    className="select"
+                    value={episodeCreatorWatermarkId}
+                    onChange={e => setEpisodeCreatorWatermarkId(e.target.value)}
+                  >
+                    <option value="">None</option>
+                    {watermarks.map(w => (
+                      <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Default watermark to overlay on cropped episode images.
+                  </span>
+                </div>
+
+                <div className="form-group">
+                  <label>Bearer Token</label>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder={teamSettings.hasEpisodeCreatorBearerToken ? '(token is set — enter new value to replace)' : 'Enter bearer token'}
+                    value={episodeCreatorBearerToken}
+                    onChange={e => setEpisodeCreatorBearerToken(e.target.value)}
+                  />
+                  {teamSettings.hasEpisodeCreatorBearerToken && !episodeCreatorBearerToken && (
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       A bearer token is already configured. Leave blank to keep the current token.
                     </span>

@@ -32,6 +32,9 @@ export interface TeamSettings {
   newsCreatorUrl?: string;
   hasNewsCreatorBearerToken?: boolean;
   newsCreatorWatermarkId?: string;
+  episodeCreatorUrl?: string;
+  hasEpisodeCreatorBearerToken?: boolean;
+  episodeCreatorWatermarkId?: string;
 }
 
 export interface Plugin {
@@ -50,6 +53,11 @@ export const AVAILABLE_PLUGINS: Plugin[] = [
     id: 'news_creator',
     label: 'News Creator',
     description: 'Adds a "News" page for creating news episodes and optionally scheduling social media posts.',
+  },
+  {
+    id: 'episode_creator',
+    label: 'Episode Creator',
+    description: 'Adds an "Episodes" page for creating podcast episodes and optionally scheduling social media posts.',
   },
 ];
 

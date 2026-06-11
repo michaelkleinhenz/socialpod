@@ -6,7 +6,7 @@ import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
   ScrollText, UsersRound, Signature, Image, LayoutGrid,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
-  Newspaper,
+  Newspaper, Mic,
 } from 'lucide-react';
 import './Layout.css';
 
@@ -19,12 +19,16 @@ export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [newsPluginEnabled, setNewsPluginEnabled] = useState(false);
+  const [episodePluginEnabled, setEpisodePluginEnabled] = useState(false);
 
   useEffect(() => {
     if (user?.teamId) {
       api.getTeamSettings().then(s => {
         if (s.enabledPlugins?.includes('news_creator') && s.newsCreatorUrl && s.hasNewsCreatorBearerToken) {
           setNewsPluginEnabled(true);
+        }
+        if (s.enabledPlugins?.includes('episode_creator') && s.episodeCreatorUrl && s.hasEpisodeCreatorBearerToken) {
+          setEpisodePluginEnabled(true);
         }
       }).catch(() => {});
     }
@@ -45,6 +49,7 @@ export function Layout({ children }: { children: ReactNode }) {
         { kind: 'leaf' as const, path: '/log', icon: ScrollText, label: 'Post Log' },
         { kind: 'leaf' as const, path: '/convention', icon: Tent, label: 'Convention' },
         ...(newsPluginEnabled ? [{ kind: 'leaf' as const, path: '/news', icon: Newspaper, label: 'News' }] : []),
+        ...(episodePluginEnabled ? [{ kind: 'leaf' as const, path: '/episodes', icon: Mic, label: 'Episodes' }] : []),
       ],
     },
     {
@@ -75,7 +80,7 @@ export function Layout({ children }: { children: ReactNode }) {
         ]),
       ],
     }] : []),
-  ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled]);
+  ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled, episodePluginEnabled]);
 
   const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
   const groupButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
