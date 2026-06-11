@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings } from '../../types';
-import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles } from 'lucide-react';
+import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Dice5 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
@@ -81,8 +81,13 @@ export function EpisodePage() {
   // Drag & drop zone
   const [dragOver, setDragOver] = useState(false);
 
+  // BGG import
+  const [bggEnabled, setBggEnabled] = useState(false);
+  const [fetchingBgg, setFetchingBgg] = useState(false);
+  const [bggError, setBggError] = useState('');
+
   // Social posting toggle
-  const [addSocialPost, setAddSocialPost] = useState(false);
+  const [addSocialPost, setAddSocialPost] = useState(true);
 
   // Social posting fields
   const [content, setContent] = useState('');
@@ -133,6 +138,7 @@ export function EpisodePage() {
       .catch(() => setPluginReady(false));
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.openRouterEnabled) setAiEnabled(true);
+      if (s.hasBggApiToken) setBggEnabled(true);
     }).catch(() => {});
   }, []);
 
@@ -510,7 +516,8 @@ export function EpisodePage() {
     setScene('');
     setIntroText('');
     removeImage();
-    setAddSocialPost(false);
+    setBggError('');
+    setAddSocialPost(true);
     setContent('');
     setContentOverrides({});
     setCustomizePerPlatform(false);
@@ -548,6 +555,43 @@ export function EpisodePage() {
       toast.error(err.message || 'Failed to generate text');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const fetchBGGData = async () => {
+    if (!linkBGG.trim()) return;
+    setFetchingBgg(true);
+    setBggError('');
+    try {
+      const data = await api.fetchBGGGame(linkBGG.trim());
+
+      const titleParts: string[] = [];
+      if (data.title) titleParts.push(data.title);
+      if (data.publishers?.length) titleParts.push(`(${data.publishers[0]})`);
+      if (titleParts.length) setEpisodeTitle(titleParts.join(' '));
+
+      if (data.imageBase64) {
+        const byteStr = atob(data.imageBase64);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'image/jpeg' });
+        const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
+        if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+        if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+        setImageFile(file);
+        setImagePreviewUrl(URL.createObjectURL(file));
+        setCroppedBlob(null);
+        setCroppedPreviewUrl(null);
+        setCroppedSize(null);
+        setCropRect(null);
+        setShowCropper(false);
+      }
+
+      toast.success('BGG data imported');
+    } catch (e: any) {
+      setBggError(e.message || 'Failed to fetch BGG data');
+    } finally {
+      setFetchingBgg(false);
     }
   };
 
@@ -714,7 +758,6 @@ export function EpisodePage() {
             style={{
               position: 'absolute', left: x, top: y,
               width: size, height: size,
-              opacity: 0.4,
               pointerEvents: 'none',
             }}
           />
@@ -819,13 +862,32 @@ export function EpisodePage() {
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>Link BGG</label>
-                  <input
-                    type="url"
-                    className="input"
-                    value={linkBGG}
-                    onChange={e => setLinkBGG(e.target.value)}
-                    placeholder="https://boardgamegeek.com/boardgame/..."
-                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="url"
+                      className="input"
+                      value={linkBGG}
+                      onChange={e => { setLinkBGG(e.target.value); setBggError(''); }}
+                      onKeyDown={e => e.key === 'Enter' && bggEnabled && linkBGG.trim() && fetchBGGData()}
+                      placeholder="https://boardgamegeek.com/boardgame/..."
+                      style={{ flex: 1 }}
+                      disabled={fetchingBgg}
+                    />
+                    {bggEnabled && (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={fetchBGGData}
+                        disabled={fetchingBgg || !linkBGG.trim()}
+                        style={{ whiteSpace: 'nowrap' }}
+                        title="Import game data from BoardGameGeek"
+                      >
+                        {fetchingBgg ? <><Loader size={14} className="post-editor-spin" /> Importing…</> : <><Dice5 size={14} /> Import from BGG</>}
+                      </button>
+                    )}
+                  </div>
+                  {bggError && (
+                    <span style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--danger)', display: 'block' }}>{bggError}</span>
+                  )}
                 </div>
               </div>
 
@@ -1164,6 +1226,17 @@ export function EpisodePage() {
                         </div>
                       );
                     })}
+                    {aiEnabled && platforms.length > 0 && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ alignSelf: 'flex-start' }}
+                        onClick={generateAIContent}
+                        disabled={generating || !episodeTitle.trim()}
+                        title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
+                      >
+                        {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -1175,22 +1248,22 @@ export function EpisodePage() {
                       placeholder="What's on your mind? Use #hashtags for tags..."
                       rows={5}
                     />
-                    <div className={`char-counter ${charClass}`} style={{ textAlign: 'right' }}>
-                      {charCount} / {charLimit}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      {aiEnabled && platforms.length > 0 ? (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={generateAIContent}
+                          disabled={generating || !episodeTitle.trim()}
+                          title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
+                        >
+                          {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                        </button>
+                      ) : <span />}
+                      <div className={`char-counter ${charClass}`}>
+                        {charCount} / {charLimit}
+                      </div>
                     </div>
                   </>
-                )}
-
-                {aiEnabled && platforms.length > 0 && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                    onClick={generateAIContent}
-                    disabled={generating || !episodeTitle.trim()}
-                    title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
-                  >
-                    {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
-                  </button>
                 )}
               </div>
 
