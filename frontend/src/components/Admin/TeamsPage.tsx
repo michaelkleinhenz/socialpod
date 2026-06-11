@@ -23,6 +23,9 @@ export function TeamsPage() {
   const [newsCreatorUrl, setNewsCreatorUrl] = useState('');
   const [newsCreatorWatermarkId, setNewsCreatorWatermarkId] = useState('');
   const [newsCreatorBearerToken, setNewsCreatorBearerToken] = useState('');
+  const [episodeCreatorUrl, setEpisodeCreatorUrl] = useState('');
+  const [episodeCreatorWatermarkId, setEpisodeCreatorWatermarkId] = useState('');
+  const [episodeCreatorBearerToken, setEpisodeCreatorBearerToken] = useState('');
   const [savingBgg, setSavingBgg] = useState(false);
 
   const [pluginsTeam, setPluginsTeam] = useState<Team | null>(null);
@@ -151,15 +154,20 @@ export function TeamsPage() {
     setBggTeam(team);
     setEpisodeNewsBearerToken('');
     setNewsCreatorBearerToken('');
+    setEpisodeCreatorBearerToken('');
     try {
       const s = await api.getAdminTeamBggSettings(team.id);
       setBggSettings(s);
       setNewsCreatorUrl(s.newsCreatorUrl || '');
       setNewsCreatorWatermarkId(s.newsCreatorWatermarkId || '');
+      setEpisodeCreatorUrl(s.episodeCreatorUrl || '');
+      setEpisodeCreatorWatermarkId(s.episodeCreatorWatermarkId || '');
     } catch {
       setBggSettings({});
       setNewsCreatorUrl('');
       setNewsCreatorWatermarkId('');
+      setEpisodeCreatorUrl('');
+      setEpisodeCreatorWatermarkId('');
     }
   };
 
@@ -181,6 +189,11 @@ export function TeamsPage() {
       data.newsCreatorWatermarkId = newsCreatorWatermarkId || null;
       if (newsCreatorBearerToken) {
         data.newsCreatorBearerToken = newsCreatorBearerToken;
+      }
+      data.episodeCreatorUrl = episodeCreatorUrl || '';
+      data.episodeCreatorWatermarkId = episodeCreatorWatermarkId || null;
+      if (episodeCreatorBearerToken) {
+        data.episodeCreatorBearerToken = episodeCreatorBearerToken;
       }
       await api.updateAdminTeamBggSettings(bggTeam.id, data);
       toast.success('Team settings saved');
@@ -491,6 +504,55 @@ export function TeamsPage() {
                 placeholder={bggSettings.hasNewsCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
               />
               {bggSettings.hasNewsCreatorBearerToken && !newsCreatorBearerToken && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                  A bearer token is already configured. Enter a new value to replace it.
+                </span>
+              )}
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Episode Creator Integration</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+              Configure the webhook URL and bearer token for the Episode Creator plugin.
+            </p>
+
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Episode Creator URL</label>
+              <input
+                type="url"
+                className="input"
+                value={episodeCreatorUrl}
+                onChange={e => setEpisodeCreatorUrl(e.target.value)}
+                placeholder="https://n8n.example.com/webhook/..."
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Episode Watermark</label>
+              <select
+                className="select"
+                value={episodeCreatorWatermarkId}
+                onChange={e => setEpisodeCreatorWatermarkId(e.target.value)}
+              >
+                <option value="">None (no overlay)</option>
+                {watermarks.map(wm => (
+                  <option key={wm.id} value={wm.id}>{wm.name}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                Default watermark to overlay on cropped episode images.
+              </span>
+            </div>
+            <div className="form-group" style={{ marginBottom: 20 }}>
+              <label>Bearer Token</label>
+              <input
+                type="password"
+                className="input"
+                value={episodeCreatorBearerToken}
+                onChange={e => setEpisodeCreatorBearerToken(e.target.value)}
+                placeholder={bggSettings.hasEpisodeCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+              />
+              {bggSettings.hasEpisodeCreatorBearerToken && !episodeCreatorBearerToken && (
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
                   A bearer token is already configured. Enter a new value to replace it.
                 </span>
