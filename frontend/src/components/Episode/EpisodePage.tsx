@@ -92,9 +92,9 @@ export function EpisodePage() {
   // Social posting fields
   const [content, setContent] = useState('');
   const [contentOverrides, setContentOverrides] = useState<Record<string, string>>({});
-  const [customizePerPlatform, setCustomizePerPlatform] = useState(false);
+  const [customizePerPlatform, setCustomizePerPlatform] = useState(true);
   const [firstComment, setFirstComment] = useState('');
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [platforms, setPlatforms] = useState<Platform[]>(['bluesky', 'instagram']);
   const [scheduledAt, setScheduledAt] = useState(
     format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm")
   );
@@ -189,13 +189,7 @@ export function EpisodePage() {
 
   useEffect(() => {
     if (!accountsLoaded) return;
-    setPlatforms(prev => {
-      if (prev.length === 0) {
-        const first = accounts[0];
-        return first ? [first.platform] : [];
-      }
-      return prev.filter(p => accounts.some(a => a.platform === p));
-    });
+    setPlatforms(prev => prev.filter(p => accounts.some(a => a.platform === p)));
   }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
