@@ -107,13 +107,14 @@ var (
 	multiNLRe   = regexp.MustCompile(`\n{3,}`)
 )
 
-// FetchGame handles GET /api/bgg/fetch?url=...
+// FetchGame handles GET /api/bgg/fetch?url=...&episodeType=review
 func (h *BGGHandler) FetchGame(c *gin.Context) {
 	rawURL := c.Query("url")
 	if rawURL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url parameter is required"})
 		return
 	}
+	episodeType := c.Query("episodeType")
 
 	m := bggGameIDRe.FindStringSubmatch(rawURL)
 	if m == nil {
@@ -182,7 +183,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		if strings.HasPrefix(imgURL, "//") {
 			imgURL = "https:" + imgURL
 		}
-		if data, err := h.downloadAndProcess(ctx, c, imgURL); err == nil {
+		if data, err := h.downloadAndProcess(ctx, c, imgURL, episodeType); err == nil {
 			imageBase64 = base64.StdEncoding.EncodeToString(data)
 			imageFilename = fmt.Sprintf("bgg-%s.jpg", gameID)
 		}
@@ -303,7 +304,7 @@ type bggTeamConfig struct {
 	offsetY   int
 }
 
-func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, imgURL string) ([]byte, error) {
+func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, imgURL string, episodeType string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
 	if err != nil {
 		return nil, err
@@ -333,13 +334,13 @@ func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, img
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	cfg := h.loadTeamBGGConfig(ctx, c)
+	cfg := h.loadTeamBGGConfig(ctx, c, episodeType)
 
 	// Letterbox: blurred fill background + scaled-to-fit cover with offset
 	const size = 1080
 	composed := compositeLetterbox(src, size, cfg.offsetX, cfg.offsetY)
 
-	// Overlay team BGG watermark if configured
+	// Overlay episode-type-specific or BGG watermark if configured
 	if cfg.watermark != nil {
 		bounds := composed.Bounds()
 		wmScaled := resizeImage(cfg.watermark, bounds.Dx(), bounds.Dy())
@@ -356,7 +357,7 @@ func (h *BGGHandler) downloadAndProcess(ctx context.Context, c *gin.Context, img
 	return buf.Bytes(), nil
 }
 
-func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context) bggTeamConfig {
+func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, episodeType string) bggTeamConfig {
 	teamIDStr, ok := c.Get("teamId")
 	if !ok || teamIDStr.(string) == "" {
 		return bggTeamConfig{}
@@ -376,9 +377,23 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context) bggT
 		offsetY: team.BGGCoverOffsetY,
 	}
 
-	if team.BGGWatermarkID != nil {
+	// Use episode-type-specific overlay when available, fall back to BGG watermark
+	var overlayID *primitive.ObjectID
+	switch episodeType {
+	case "news":
+		overlayID = team.EpisodeOverlayNewsID
+	case "review":
+		overlayID = team.EpisodeOverlayReviewID
+	case "special":
+		overlayID = team.EpisodeOverlaySpecialID
+	}
+	if overlayID == nil {
+		overlayID = team.BGGWatermarkID
+	}
+
+	if overlayID != nil {
 		var wm models.Watermark
-		if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *team.BGGWatermarkID}).Decode(&wm); err == nil {
+		if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *overlayID}).Decode(&wm); err == nil {
 			filename := filepath.Base(wm.URL)
 			if data, err := os.ReadFile(filepath.Join(h.UploadDir, filename)); err == nil {
 				if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {

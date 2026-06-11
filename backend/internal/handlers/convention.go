@@ -1044,7 +1044,7 @@ func (h *ConventionHandler) AddBGGItems(c *gin.Context) {
 			continue
 		}
 
-		imageData, err := bggH.downloadAndProcess(ctx, c, imgURL)
+		imageData, err := bggH.downloadAndProcess(ctx, c, imgURL, "")
 		if err != nil {
 			errs = append(errs, itemError{URL: rawURL, Error: "image processing failed: " + err.Error()})
 			continue
