@@ -37,7 +37,7 @@ export function EpisodePage() {
   const [episodeTitle, setEpisodeTitle] = useState('');
   const [episodeType, setEpisodeType] = useState('news');
   const [summary, setSummary] = useState('');
-  const [episodeDate, setEpisodeDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [episodeDate, setEpisodeDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   // Review-specific fields
   const [gameNamePublisher, setGameNamePublisher] = useState('');
@@ -98,7 +98,7 @@ export function EpisodePage() {
   const [firstComment, setFirstComment] = useState('');
   const [platforms, setPlatforms] = useState<Platform[]>(['bluesky', 'instagram']);
   const [scheduledAt, setScheduledAt] = useState(
-    format(new Date(Date.now() + 3600000), "yyyy-MM-dd")
+    format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm")
   );
   const [status, setStatus] = useState<'scheduled' | 'draft'>('scheduled');
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
@@ -181,6 +181,15 @@ export function EpisodePage() {
       if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
     };
   }, []);
+
+  // Auto-set social posting date to episode date + 2 hours
+  useEffect(() => {
+    if (!episodeDate) return;
+    const d = new Date(episodeDate);
+    if (isNaN(d.getTime())) return;
+    d.setHours(d.getHours() + 2);
+    setScheduledAt(format(d, "yyyy-MM-dd'T'HH:mm"));
+  }, [episodeDate]);
 
   // Load social posting data when toggle is enabled
   useEffect(() => {
@@ -505,7 +514,7 @@ export function EpisodePage() {
     setEpisodeTitle('');
     setEpisodeType('news');
     setSummary('');
-    setEpisodeDate(format(new Date(), 'yyyy-MM-dd'));
+    setEpisodeDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
     setGameNamePublisher('');
     setLinkPublisher('');
     setLinkBGG('');
@@ -520,7 +529,7 @@ export function EpisodePage() {
     setCustomizePerPlatform(false);
     setFirstComment('');
     setPlatforms([]);
-    setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd"));
+    setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"));
     setStatus('scheduled');
     setSuffixIds({});
   };
@@ -667,7 +676,7 @@ export function EpisodePage() {
       data.content = content || '';
       data.firstComment = firstComment.trim() || undefined;
       data.platforms = platforms;
-      const scheduleDate = new Date(`${scheduledAt}T06:00:00`);
+      const scheduleDate = new Date(scheduledAt);
       data.scheduledAt = scheduleDate.toISOString();
       data.status = status;
       data.suffixIds = suffixIds;
@@ -794,7 +803,7 @@ export function EpisodePage() {
       <div>
         <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Number, Type & Date */}
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 160px 200px', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 160px 1fr', gap: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Number <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
@@ -820,7 +829,7 @@ export function EpisodePage() {
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label>Date <span style={{ color: 'var(--danger)' }}>*</span></label>
               <input
-                type="date"
+                type="datetime-local"
                 className="input"
                 value={episodeDate}
                 onChange={e => setEpisodeDate(e.target.value)}
@@ -1341,7 +1350,7 @@ export function EpisodePage() {
               <div className="form-group">
                 <label><Clock size={14} /> Schedule</label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   className="input"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
