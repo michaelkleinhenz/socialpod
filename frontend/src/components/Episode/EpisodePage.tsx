@@ -714,7 +714,6 @@ export function EpisodePage() {
             style={{
               position: 'absolute', left: x, top: y,
               width: size, height: size,
-              opacity: 0.4,
               pointerEvents: 'none',
             }}
           />
