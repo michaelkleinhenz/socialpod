@@ -77,6 +77,8 @@ export function EpisodePage() {
   // AI generation
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingScene, setGeneratingScene] = useState(false);
+  const [scenePromptTemplate, setScenePromptTemplate] = useState('');
 
   // Drag & drop zone
   const [dragOver, setDragOver] = useState(false);
@@ -96,7 +98,7 @@ export function EpisodePage() {
   const [firstComment, setFirstComment] = useState('');
   const [platforms, setPlatforms] = useState<Platform[]>(['bluesky', 'instagram']);
   const [scheduledAt, setScheduledAt] = useState(
-    format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm")
+    format(new Date(Date.now() + 3600000), "yyyy-MM-dd")
   );
   const [status, setStatus] = useState<'scheduled' | 'draft'>('scheduled');
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
@@ -139,6 +141,7 @@ export function EpisodePage() {
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.openRouterEnabled) setAiEnabled(true);
       if (s.hasBggApiToken) setBggEnabled(true);
+      if (s.scenePromptTemplate) setScenePromptTemplate(s.scenePromptTemplate);
     }).catch(() => {});
   }, []);
 
@@ -517,7 +520,7 @@ export function EpisodePage() {
     setCustomizePerPlatform(false);
     setFirstComment('');
     setPlatforms([]);
-    setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"));
+    setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd"));
     setStatus('scheduled');
     setSuffixIds({});
   };
@@ -549,6 +552,22 @@ export function EpisodePage() {
       toast.error(err.message || 'Failed to generate text');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const generateSceneContent = async () => {
+    const prompt = scenePromptTemplate
+      ? `${scenePromptTemplate}\n\n${scene}`
+      : scene;
+    setGeneratingScene(true);
+    try {
+      const { text } = await api.generateText(prompt, []);
+      setScene(text);
+      toast.success('Scene text generated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate scene text');
+    } finally {
+      setGeneratingScene(false);
     }
   };
 
@@ -648,7 +667,8 @@ export function EpisodePage() {
       data.content = content || '';
       data.firstComment = firstComment.trim() || undefined;
       data.platforms = platforms;
-      data.scheduledAt = new Date(scheduledAt).toISOString();
+      const scheduleDate = new Date(`${scheduledAt}T06:00:00`);
+      data.scheduledAt = scheduleDate.toISOString();
       data.status = status;
       data.suffixIds = suffixIds;
       data.contentOverrides = customizePerPlatform ? contentOverrides : {};
@@ -910,6 +930,17 @@ export function EpisodePage() {
                   placeholder="Scene description..."
                   rows={3}
                 />
+                {aiEnabled && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ alignSelf: 'flex-start', marginTop: -2 }}
+                    onClick={generateSceneContent}
+                    disabled={generatingScene || !scene.trim()}
+                    title={!scene.trim() ? 'Enter scene text first' : 'Generate scene description from your text'}
+                  >
+                    {generatingScene ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                  </button>
+                )}
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1228,7 +1259,7 @@ export function EpisodePage() {
                     {aiEnabled && platforms.length > 0 && (
                       <button
                         className="btn btn-ghost btn-sm"
-                        style={{ alignSelf: 'flex-start' }}
+                        style={{ alignSelf: 'flex-start', marginTop: -8 }}
                         onClick={generateAIContent}
                         disabled={generating || !episodeTitle.trim()}
                         title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
@@ -1310,7 +1341,7 @@ export function EpisodePage() {
               <div className="form-group">
                 <label><Clock size={14} /> Schedule</label>
                 <input
-                  type="datetime-local"
+                  type="date"
                   className="input"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
