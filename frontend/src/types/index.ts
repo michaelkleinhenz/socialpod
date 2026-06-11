@@ -35,6 +35,9 @@ export interface TeamSettings {
   episodeCreatorUrl?: string;
   hasEpisodeCreatorBearerToken?: boolean;
   episodeCreatorWatermarkId?: string;
+  episodeOverlayNewsId?: string;
+  episodeOverlayReviewId?: string;
+  episodeOverlaySpecialId?: string;
 }
 
 export interface Plugin {

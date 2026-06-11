@@ -69,6 +69,9 @@ export function TeamManagePage() {
   const [episodeCreatorUrl, setEpisodeCreatorUrl] = useState('');
   const [episodeCreatorBearerToken, setEpisodeCreatorBearerToken] = useState('');
   const [episodeCreatorWatermarkId, setEpisodeCreatorWatermarkId] = useState('');
+  const [episodeOverlayNewsId, setEpisodeOverlayNewsId] = useState('');
+  const [episodeOverlayReviewId, setEpisodeOverlayReviewId] = useState('');
+  const [episodeOverlaySpecialId, setEpisodeOverlaySpecialId] = useState('');
 
   // Team self-creation state (when team admin has no team yet)
   const [newTeamName, setNewTeamName] = useState('');
@@ -86,6 +89,9 @@ export function TeamManagePage() {
       if (s.newsCreatorWatermarkId) setNewsCreatorWatermarkId(s.newsCreatorWatermarkId);
       if (s.episodeCreatorUrl) setEpisodeCreatorUrl(s.episodeCreatorUrl);
       if (s.episodeCreatorWatermarkId) setEpisodeCreatorWatermarkId(s.episodeCreatorWatermarkId);
+      if (s.episodeOverlayNewsId) setEpisodeOverlayNewsId(s.episodeOverlayNewsId);
+      if (s.episodeOverlayReviewId) setEpisodeOverlayReviewId(s.episodeOverlayReviewId);
+      if (s.episodeOverlaySpecialId) setEpisodeOverlaySpecialId(s.episodeOverlaySpecialId);
     }).catch(() => {});
     api.getWatermarks().then(setWatermarks).catch(() => {});
     if (searchParams.get('instagram') === 'connected') {
@@ -354,6 +360,9 @@ export function TeamManagePage() {
       if (episodeCreatorUrl !== undefined) payload.episodeCreatorUrl = episodeCreatorUrl;
       if (episodeCreatorBearerToken) payload.episodeCreatorBearerToken = episodeCreatorBearerToken;
       payload.episodeCreatorWatermarkId = episodeCreatorWatermarkId || '';
+      payload.episodeOverlayNewsId = episodeOverlayNewsId || '';
+      payload.episodeOverlayReviewId = episodeOverlayReviewId || '';
+      payload.episodeOverlaySpecialId = episodeOverlaySpecialId || '';
       await api.updateTeamSettings(payload);
       if (newsCreatorBearerToken) {
         setNewsCreatorBearerToken('');
@@ -976,7 +985,7 @@ export function TeamManagePage() {
                 </div>
 
                 <div className="form-group">
-                  <label>Episode Watermark</label>
+                  <label>Default Episode Watermark</label>
                   <select
                     className="select"
                     value={episodeCreatorWatermarkId}
@@ -988,8 +997,34 @@ export function TeamManagePage() {
                     ))}
                   </select>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Default watermark to overlay on cropped episode images.
+                    Fallback watermark when no type-specific overlay is configured.
                   </span>
+                </div>
+
+                <div style={{ padding: '12px', background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>Per-Type Overlays</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -8 }}>
+                    Optionally set a different overlay image for each episode type. Falls back to the default above if not set.
+                  </span>
+                  {[
+                    { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId },
+                    { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId },
+                    { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId },
+                  ].map(item => (
+                    <div className="form-group" key={item.label} style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 13 }}>{item.label}</label>
+                      <select
+                        className="select"
+                        value={item.value}
+                        onChange={e => item.setter(e.target.value)}
+                      >
+                        <option value="">Use default</option>
+                        {watermarks.map(w => (
+                          <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="form-group">
