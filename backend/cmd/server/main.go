@@ -133,6 +133,9 @@ func main() {
 		auth.POST("/news/submit", newsHandler.Submit)
 		auth.POST("/episode/submit", episodeHandler.Submit)
 
+		// Team settings (read-only for all team members — sidebar plugin visibility)
+		auth.GET("/team/settings", bggHandler.GetTeamSettings)
+
 		// BGG integration
 		auth.GET("/bgg/fetch", bggHandler.FetchGame)
 		auth.POST("/dashboard/ai-insights", adminHandler.DashboardInsights)
@@ -250,8 +253,7 @@ func main() {
 		teamAdmin.POST("/invites", inviteHandler.TeamCreateInvite)
 		teamAdmin.DELETE("/invites/:inviteId", inviteHandler.TeamDeleteInvite)
 
-		// Team-scoped BGG settings
-		teamAdmin.GET("/settings", bggHandler.GetTeamSettings)
+		// Team-scoped BGG settings (GET moved to auth group for sidebar visibility)
 		teamAdmin.PUT("/settings", bggHandler.UpdateTeamSettings)
 	}
 
