@@ -496,6 +496,31 @@
   border-color: #334155 !important;
 }
 
+/* Fix white border on spinner/number inputs (font size, resize, etc.) */
+.image-editor-overlay input[type="number"]:hover,
+.image-editor-overlay input[type="number"]:focus {
+  border-color: #64748b !important;
+  outline: none !important;
+}
+
+.image-editor-overlay [class*="Spinner"] input,
+.image-editor-overlay [class*="spinner"] input,
+.image-editor-overlay [class*="TextField"] input {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.image-editor-overlay [class*="Spinner"] input:hover,
+.image-editor-overlay [class*="spinner"] input:hover,
+.image-editor-overlay [class*="TextField"] input:hover,
+.image-editor-overlay [class*="Spinner"] input:focus,
+.image-editor-overlay [class*="spinner"] input:focus,
+.image-editor-overlay [class*="TextField"] input:focus {
+  border-color: #64748b !important;
+  outline: none !important;
+}
+
 /* Fix selected/active tool icons contrast */
 .image-editor-overlay [class*="SfxButton"][class*="active"],
 .image-editor-overlay [class*="SfxButton"][aria-selected="true"],

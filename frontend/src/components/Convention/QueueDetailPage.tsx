@@ -456,6 +456,7 @@ export function QueueDetailPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [filterPending, setFilterPending] = useState(false);
   const [editingImageItem, setEditingImageItem] = useState<ConventionQueueItem | null>(null);
+  const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -477,6 +478,13 @@ export function QueueDetailPage() {
 
   useEffect(() => {
     api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getWatermarks().then((wms: any[]) => {
+      const base = import.meta.env.VITE_API_URL || '';
+      setWatermarkGallery(wms.map(w => {
+        const src = w.url.startsWith('/') ? base + w.url : w.url;
+        return { url: src, previewUrl: src };
+      }));
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -969,6 +977,9 @@ export function QueueDetailPage() {
               typography: {
                 fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
               },
+            }}
+            Watermark={{
+              gallery: watermarkGallery,
             }}
             Crop={{
               presetsItems: [
