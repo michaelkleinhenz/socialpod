@@ -13,10 +13,15 @@
   text-align: center;
 }
 
+.calendar-page .page-header {
+  flex-wrap: wrap;
+}
+
 .calendar-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .filter-group {
@@ -247,6 +252,7 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 
 .view-toggle-btn:hover {
