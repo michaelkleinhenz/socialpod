@@ -83,5 +83,7 @@ Posts and suffixes are scoped: if the user has a `teamId`, queries filter by tea
 ### n8n integration (`n8n-nodes-socialpod/`)
 A pre-built n8n community node with a `dist/` directory already compiled. Install with `npm install --omit=dev` on the target machine — full `npm install` fails on Node < 22 due to the `isolated-vm` transitive dev dependency.
 
+Supported resources: Post (create/get/list/update/delete/reschedule/retry), Suffix (CRUD), Account (list), Mention (CRUD + export/import), Watermark (list/delete), AI Text (generate). All seven platforms are supported: Bluesky, Instagram, Twitter/X, Mastodon, Threads, LinkedIn, YouTube.
+
 ## Environment
 Copy `.env.example` to `.env` and set at minimum `JWT_SECRET` (strong random string) and `MONGO_PASSWORD` before exposing the service. `APP_URL` must be publicly reachable for Instagram OAuth and webhooks to work.

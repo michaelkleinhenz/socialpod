@@ -8,8 +8,21 @@ import {
 } from 'n8n-workflow';
 import FormData from 'form-data';
 
-// Sends a multipart/form-data request with post data in the `data` JSON field,
-// optionally attaching binary image buffers as `images` fields.
+const ALL_PLATFORMS = [
+  { name: 'Bluesky',   value: 'bluesky' },
+  { name: 'Instagram', value: 'instagram' },
+  { name: 'LinkedIn',  value: 'linkedin' },
+  { name: 'Mastodon',  value: 'mastodon' },
+  { name: 'Threads',   value: 'threads' },
+  { name: 'Twitter/X', value: 'twitter' },
+  { name: 'YouTube',   value: 'youtube' },
+] as const;
+
+const ALL_PLATFORMS_FILTER = [
+  { name: 'Any',       value: '' },
+  ...ALL_PLATFORMS,
+] as const;
+
 async function multipartRequest(
   ctx: IExecuteFunctions,
   method: 'POST' | 'PUT',
@@ -32,9 +45,44 @@ async function multipartRequest(
   }) as Promise<IDataObject>;
 }
 
-// Parses a comma-separated string into a trimmed, non-empty string array.
 function parseList(value: string): string[] {
   return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function collectPlatformMap(
+  fields: IDataObject,
+  fieldSuffix: string,
+  platforms: string[],
+): IDataObject {
+  const map: IDataObject = {};
+  for (const p of platforms) {
+    const key = `${p}${fieldSuffix}`;
+    if (fields[key]) map[p] = fields[key];
+  }
+  return map;
+}
+
+const PLATFORM_KEYS = ['bluesky', 'instagram', 'linkedin', 'mastodon', 'threads', 'twitter', 'youtube'];
+
+function platformSuffixFields(displayPrefix: string, fieldSuffix: string, descSuffix: string) {
+  return PLATFORM_KEYS.map((p) => ({
+    displayName: `${displayPrefix} ${p.charAt(0).toUpperCase() + p.slice(1)}`,
+    name: `${p}${fieldSuffix}`,
+    type: 'string' as const,
+    default: '',
+    description: `${descSuffix} for ${p.charAt(0).toUpperCase() + p.slice(1)}`,
+  }));
+}
+
+function platformContentOverrideFields() {
+  return PLATFORM_KEYS.map((p) => ({
+    displayName: `${p.charAt(0).toUpperCase() + p.slice(1)} Content Override`,
+    name: `${p}ContentOverride`,
+    type: 'string' as const,
+    typeOptions: { rows: 4 },
+    default: '',
+    description: `Custom caption for ${p.charAt(0).toUpperCase() + p.slice(1)} only — overrides the shared Content field`,
+  }));
 }
 
 export class SocialPod implements INodeType {
@@ -59,10 +107,158 @@ export class SocialPod implements INodeType {
         type: 'options',
         noDataExpression: true,
         options: [
-          { name: 'Post', value: 'post' },
-          { name: 'Suffix', value: 'suffix' },
+          { name: 'Account',   value: 'account' },
+          { name: 'AI Text',   value: 'aiText' },
+          { name: 'Mention',   value: 'mention' },
+          { name: 'Post',      value: 'post' },
+          { name: 'Suffix',    value: 'suffix' },
+          { name: 'Watermark', value: 'watermark' },
         ],
         default: 'post',
+      },
+
+      // ── Account: operation ────────────────────────────────────────────
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['account'] } },
+        options: [
+          { name: 'List', value: 'list', action: 'List connected social accounts' },
+        ],
+        default: 'list',
+      },
+
+      // ── AI Text: operation ────────────────────────────────────────────
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['aiText'] } },
+        options: [
+          { name: 'Generate', value: 'generate', action: 'Generate text with AI' },
+        ],
+        default: 'generate',
+      },
+
+      // ── AI Text: Generate — fields ────────────────────────────────────
+      {
+        displayName: 'Prompt',
+        name: 'prompt',
+        type: 'string',
+        typeOptions: { rows: 4 },
+        required: true,
+        displayOptions: { show: { resource: ['aiText'], operation: ['generate'] } },
+        default: '',
+        description: 'Instructions for the AI text generator',
+      },
+      {
+        displayName: 'Platforms',
+        name: 'platforms',
+        type: 'multiOptions',
+        displayOptions: { show: { resource: ['aiText'], operation: ['generate'] } },
+        options: [...ALL_PLATFORMS],
+        default: [],
+        description: 'Optional platforms to tailor the generated text for',
+      },
+
+      // ── Mention: operation ────────────────────────────────────────────
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['mention'] } },
+        options: [
+          { name: 'Create', value: 'create', action: 'Create a mention' },
+          { name: 'Delete', value: 'delete', action: 'Delete a mention' },
+          { name: 'Export', value: 'export', action: 'Export all mentions as JSON' },
+          { name: 'Import', value: 'import', action: 'Import mentions from JSON' },
+          { name: 'List',   value: 'list',   action: 'List mentions' },
+          { name: 'Update', value: 'update', action: 'Update a mention' },
+        ],
+        default: 'list',
+      },
+
+      // ── Mention: ID ──────────────────────────────────────────────────
+      {
+        displayName: 'Mention ID',
+        name: 'mentionId',
+        type: 'string',
+        required: true,
+        displayOptions: {
+          show: { resource: ['mention'], operation: ['update', 'delete'] },
+        },
+        default: '',
+        description: 'ID of the mention to act on',
+      },
+
+      // ── Mention: Create ──────────────────────────────────────────────
+      {
+        displayName: 'Name',
+        name: 'name',
+        type: 'string',
+        required: true,
+        displayOptions: { show: { resource: ['mention'], operation: ['create'] } },
+        default: '',
+        description: 'Display name for this mention entry (e.g. publisher or person name)',
+      },
+      {
+        displayName: 'Additional Fields',
+        name: 'additionalFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: { show: { resource: ['mention'], operation: ['create'] } },
+        default: {},
+        options: [
+          {
+            displayName: 'Country',
+            name: 'country',
+            type: 'string',
+            default: '',
+            description: 'Country of the mention entry',
+          },
+          ...platformSuffixFields('Handle', 'Handle', 'Platform handle/username'),
+        ],
+      },
+
+      // ── Mention: Update ──────────────────────────────────────────────
+      {
+        displayName: 'Update Fields',
+        name: 'updateFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        displayOptions: { show: { resource: ['mention'], operation: ['update'] } },
+        default: {},
+        options: [
+          {
+            displayName: 'Name',
+            name: 'name',
+            type: 'string',
+            default: '',
+          },
+          {
+            displayName: 'Country',
+            name: 'country',
+            type: 'string',
+            default: '',
+          },
+          ...platformSuffixFields('Handle', 'Handle', 'Platform handle/username'),
+        ],
+      },
+
+      // ── Mention: Import ──────────────────────────────────────────────
+      {
+        displayName: 'JSON Data',
+        name: 'jsonData',
+        type: 'string',
+        typeOptions: { rows: 6 },
+        required: true,
+        displayOptions: { show: { resource: ['mention'], operation: ['import'] } },
+        default: '',
+        description: 'JSON array of mention entries to import (same format as the export)',
       },
 
       // ── Post: operation ───────────────────────────────────────────────
@@ -78,6 +274,7 @@ export class SocialPod implements INodeType {
           { name: 'Get',        value: 'get',        action: 'Get a post by ID' },
           { name: 'List',       value: 'list',       action: 'List posts' },
           { name: 'Reschedule', value: 'reschedule', action: 'Reschedule a post' },
+          { name: 'Retry',      value: 'retry',      action: 'Retry a failed post' },
           { name: 'Update',     value: 'update',     action: 'Update a post' },
         ],
         default: 'create',
@@ -99,6 +296,33 @@ export class SocialPod implements INodeType {
         default: 'list',
       },
 
+      // ── Watermark: operation ──────────────────────────────────────────
+      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['watermark'] } },
+        options: [
+          { name: 'Delete', value: 'delete', action: 'Delete a watermark' },
+          { name: 'List',   value: 'list',   action: 'List watermarks' },
+        ],
+        default: 'list',
+      },
+
+      // ── Watermark: ID ────────────────────────────────────────────────
+      {
+        displayName: 'Watermark ID',
+        name: 'watermarkId',
+        type: 'string',
+        required: true,
+        displayOptions: {
+          show: { resource: ['watermark'], operation: ['delete'] },
+        },
+        default: '',
+        description: 'ID of the watermark to delete',
+      },
+
       // ── Shared: Post ID ───────────────────────────────────────────────
       {
         displayName: 'Post ID',
@@ -106,7 +330,7 @@ export class SocialPod implements INodeType {
         type: 'string',
         required: true,
         displayOptions: {
-          show: { resource: ['post'], operation: ['get', 'update', 'delete', 'reschedule'] },
+          show: { resource: ['post'], operation: ['get', 'update', 'delete', 'reschedule', 'retry'] },
         },
         default: '',
         description: 'ID of the post to act on',
@@ -142,10 +366,7 @@ export class SocialPod implements INodeType {
         type: 'multiOptions',
         required: true,
         displayOptions: { show: { resource: ['post'], operation: ['create'] } },
-        options: [
-          { name: 'Bluesky',   value: 'bluesky' },
-          { name: 'Instagram', value: 'instagram' },
-        ],
+        options: [...ALL_PLATFORMS],
         default: ['bluesky'],
         description: 'Platforms to publish this post on',
       },
@@ -209,20 +430,7 @@ export class SocialPod implements INodeType {
             placeholder: '/api/uploads/abc.jpg, /api/uploads/def.png',
             description: 'Comma-separated list of image URLs already uploaded to SocialPod',
           },
-          {
-            displayName: 'Bluesky Suffix ID',
-            name: 'bluskySuffixId',
-            type: 'string',
-            default: '',
-            description: 'ID of the suffix to append when publishing to Bluesky',
-          },
-          {
-            displayName: 'Instagram Suffix ID',
-            name: 'instagramSuffixId',
-            type: 'string',
-            default: '',
-            description: 'ID of the suffix to append when publishing to Instagram',
-          },
+          ...platformSuffixFields('Suffix ID', 'SuffixId', 'ID of the suffix to append when publishing'),
           {
             displayName: 'First Comment',
             name: 'firstComment',
@@ -231,36 +439,8 @@ export class SocialPod implements INodeType {
             default: '',
             description: 'Text to post as the first comment immediately after publishing',
           },
-          {
-            displayName: 'Bluesky Account ID',
-            name: 'blueskyAccountId',
-            type: 'string',
-            default: '',
-            description: 'ID of the Bluesky account to post from (leave empty to use the default account)',
-          },
-          {
-            displayName: 'Instagram Account ID',
-            name: 'instagramAccountId',
-            type: 'string',
-            default: '',
-            description: 'ID of the Instagram account to post from (leave empty to use the default account)',
-          },
-          {
-            displayName: 'Bluesky Content Override',
-            name: 'blueskyContentOverride',
-            type: 'string',
-            typeOptions: { rows: 4 },
-            default: '',
-            description: 'Custom caption for Bluesky only — overrides the shared Content field',
-          },
-          {
-            displayName: 'Instagram Content Override',
-            name: 'instagramContentOverride',
-            type: 'string',
-            typeOptions: { rows: 4 },
-            default: '',
-            description: 'Custom caption for Instagram only — overrides the shared Content field',
-          },
+          ...platformSuffixFields('Account ID', 'AccountId', 'ID of the account to post from (leave empty for default)'),
+          ...platformContentOverrideFields(),
           {
             displayName: 'Tags',
             name: 'tags',
@@ -304,10 +484,7 @@ export class SocialPod implements INodeType {
             displayName: 'Platforms',
             name: 'platforms',
             type: 'multiOptions',
-            options: [
-              { name: 'Bluesky',   value: 'bluesky' },
-              { name: 'Instagram', value: 'instagram' },
-            ],
+            options: [...ALL_PLATFORMS],
             default: [],
           },
           {
@@ -341,20 +518,7 @@ export class SocialPod implements INodeType {
             default: '',
             description: 'Comma-separated list of image URLs (replaces existing images)',
           },
-          {
-            displayName: 'Bluesky Suffix ID',
-            name: 'bluskySuffixId',
-            type: 'string',
-            default: '',
-            description: 'Set to the suffix ID to apply, or leave empty to remove',
-          },
-          {
-            displayName: 'Instagram Suffix ID',
-            name: 'instagramSuffixId',
-            type: 'string',
-            default: '',
-            description: 'Set to the suffix ID to apply, or leave empty to remove',
-          },
+          ...platformSuffixFields('Suffix ID', 'SuffixId', 'Set to the suffix ID to apply, or leave empty to remove'),
           {
             displayName: 'First Comment',
             name: 'firstComment',
@@ -363,36 +527,8 @@ export class SocialPod implements INodeType {
             default: '',
             description: 'Text to post as the first comment immediately after publishing',
           },
-          {
-            displayName: 'Bluesky Account ID',
-            name: 'blueskyAccountId',
-            type: 'string',
-            default: '',
-            description: 'ID of the Bluesky account to post from (leave empty to use the default account)',
-          },
-          {
-            displayName: 'Instagram Account ID',
-            name: 'instagramAccountId',
-            type: 'string',
-            default: '',
-            description: 'ID of the Instagram account to post from (leave empty to use the default account)',
-          },
-          {
-            displayName: 'Bluesky Content Override',
-            name: 'blueskyContentOverride',
-            type: 'string',
-            typeOptions: { rows: 4 },
-            default: '',
-            description: 'Custom caption for Bluesky only — overrides the shared Content field',
-          },
-          {
-            displayName: 'Instagram Content Override',
-            name: 'instagramContentOverride',
-            type: 'string',
-            typeOptions: { rows: 4 },
-            default: '',
-            description: 'Custom caption for Instagram only — overrides the shared Content field',
-          },
+          ...platformSuffixFields('Account ID', 'AccountId', 'ID of the account to post from (leave empty for default)'),
+          ...platformContentOverrideFields(),
           {
             displayName: 'Tags',
             name: 'tags',
@@ -458,11 +594,7 @@ export class SocialPod implements INodeType {
             displayName: 'Platform',
             name: 'platform',
             type: 'options',
-            options: [
-              { name: 'Any',       value: '' },
-              { name: 'Bluesky',   value: 'bluesky' },
-              { name: 'Instagram', value: 'instagram' },
-            ],
+            options: [...ALL_PLATFORMS_FILTER],
             default: '',
           },
         ],
@@ -529,8 +661,102 @@ export class SocialPod implements INodeType {
         const operation = this.getNodeParameter('operation', i) as string;
         let responseData: IDataObject | IDataObject[];
 
+        // ── Account ─────────────────────────────────────────────────────
+        if (resource === 'account') {
+
+          if (operation === 'list') {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'GET',
+              url: `${baseUrl}/api/accounts`,
+            }) as IDataObject[];
+          } else {
+            throw new NodeOperationError(this.getNode(), `Unknown account operation: ${operation}`);
+          }
+
+        // ── AI Text ─────────────────────────────────────────────────────
+        } else if (resource === 'aiText') {
+
+          if (operation === 'generate') {
+            const prompt = this.getNodeParameter('prompt', i) as string;
+            const platforms = this.getNodeParameter('platforms', i, []) as string[];
+            const body: IDataObject = { prompt };
+            if (platforms.length) body.platforms = platforms;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'POST',
+              url: `${baseUrl}/api/generate-text`,
+              body,
+              headers: { 'Content-Type': 'application/json' },
+            }) as IDataObject;
+          } else {
+            throw new NodeOperationError(this.getNode(), `Unknown aiText operation: ${operation}`);
+          }
+
+        // ── Mention ─────────────────────────────────────────────────────
+        } else if (resource === 'mention') {
+
+          if (operation === 'list') {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'GET',
+              url: `${baseUrl}/api/mentions`,
+            }) as IDataObject[];
+
+          } else if (operation === 'create') {
+            const name = this.getNodeParameter('name', i) as string;
+            const extra = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
+            const body: IDataObject = { name };
+            if (extra.country) body.country = extra.country;
+            const handles = collectPlatformMap(extra, 'Handle', PLATFORM_KEYS);
+            if (Object.keys(handles).length) body.handles = handles;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'POST',
+              url: `${baseUrl}/api/mentions`,
+              body,
+              headers: { 'Content-Type': 'application/json' },
+            }) as IDataObject;
+
+          } else if (operation === 'update') {
+            const mentionId = this.getNodeParameter('mentionId', i) as string;
+            const fields = this.getNodeParameter('updateFields', i, {}) as IDataObject;
+            const body: IDataObject = {};
+            if (fields.name !== undefined && fields.name !== '') body.name = fields.name;
+            if (fields.country !== undefined && fields.country !== '') body.country = fields.country;
+            const handles = collectPlatformMap(fields, 'Handle', PLATFORM_KEYS);
+            if (Object.keys(handles).length) body.handles = handles;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'PUT',
+              url: `${baseUrl}/api/mentions/${mentionId}`,
+              body,
+              headers: { 'Content-Type': 'application/json' },
+            }) as IDataObject;
+
+          } else if (operation === 'delete') {
+            const mentionId = this.getNodeParameter('mentionId', i) as string;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'DELETE',
+              url: `${baseUrl}/api/mentions/${mentionId}`,
+            }) as IDataObject;
+
+          } else if (operation === 'export') {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'GET',
+              url: `${baseUrl}/api/mentions/export`,
+            }) as IDataObject[];
+
+          } else if (operation === 'import') {
+            const jsonData = this.getNodeParameter('jsonData', i) as string;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'POST',
+              url: `${baseUrl}/api/mentions/import`,
+              body: JSON.parse(jsonData),
+              headers: { 'Content-Type': 'application/json' },
+            }) as IDataObject;
+
+          } else {
+            throw new NodeOperationError(this.getNode(), `Unknown mention operation: ${operation}`);
+          }
+
         // ── Post ────────────────────────────────────────────────────────
-        if (resource === 'post') {
+        } else if (resource === 'post') {
 
           if (operation === 'create') {
             const content     = this.getNodeParameter('content',     i) as string;
@@ -543,25 +769,18 @@ export class SocialPod implements INodeType {
             const body: IDataObject = { content, platforms, scheduledAt, postType, status };
             if (extra.imageUrls) body.imageUrls = parseList(extra.imageUrls as string);
 
-            const suffixIds: IDataObject = {};
-            if (extra.bluskySuffixId)    suffixIds.bluesky   = extra.bluskySuffixId;
-            if (extra.instagramSuffixId) suffixIds.instagram = extra.instagramSuffixId;
+            const suffixIds = collectPlatformMap(extra, 'SuffixId', PLATFORM_KEYS);
             if (Object.keys(suffixIds).length) body.suffixIds = suffixIds;
 
             if (extra.firstComment) body.firstComment = extra.firstComment;
             if (extra.tags) body.tags = parseList(extra.tags as string);
 
-            const accountIds: IDataObject = {};
-            if (extra.blueskyAccountId)   accountIds.bluesky   = extra.blueskyAccountId;
-            if (extra.instagramAccountId) accountIds.instagram = extra.instagramAccountId;
+            const accountIds = collectPlatformMap(extra, 'AccountId', PLATFORM_KEYS);
             if (Object.keys(accountIds).length) body.accountIds = accountIds;
 
-            const contentOverrides: IDataObject = {};
-            if (extra.blueskyContentOverride)   contentOverrides.bluesky   = extra.blueskyContentOverride;
-            if (extra.instagramContentOverride) contentOverrides.instagram = extra.instagramContentOverride;
+            const contentOverrides = collectPlatformMap(extra, 'ContentOverride', PLATFORM_KEYS);
             if (Object.keys(contentOverrides).length) body.contentOverrides = contentOverrides;
 
-            // Attach binary image from a previous workflow step
             const images: { buffer: Buffer; fileName: string; mimeType: string }[] = [];
             if (extra.binaryProperty) {
               const binaryProp = extra.binaryProperty as string;
@@ -611,25 +830,16 @@ export class SocialPod implements INodeType {
             if (fields.imageUrls   !== undefined && fields.imageUrls   !== '') body.imageUrls   = parseList(fields.imageUrls as string);
             if ((fields.platforms  as string[] | undefined)?.length)           body.platforms   = fields.platforms;
 
-            const suffixIds: IDataObject = {};
-            if (fields.bluskySuffixId)    suffixIds.bluesky   = fields.bluskySuffixId;
-            if (fields.instagramSuffixId) suffixIds.instagram = fields.instagramSuffixId;
-            body.suffixIds = suffixIds; // always send — empty map clears suffixes
+            body.suffixIds = collectPlatformMap(fields, 'SuffixId', PLATFORM_KEYS);
 
             if (fields.firstComment !== undefined && fields.firstComment !== '') body.firstComment = fields.firstComment;
             if (fields.tags) body.tags = parseList(fields.tags as string);
 
-            const accountIds: IDataObject = {};
-            if (fields.blueskyAccountId)   accountIds.bluesky   = fields.blueskyAccountId;
-            if (fields.instagramAccountId) accountIds.instagram = fields.instagramAccountId;
+            const accountIds = collectPlatformMap(fields, 'AccountId', PLATFORM_KEYS);
             if (Object.keys(accountIds).length) body.accountIds = accountIds;
 
-            const contentOverrides: IDataObject = {};
-            if (fields.blueskyContentOverride)   contentOverrides.bluesky   = fields.blueskyContentOverride;
-            if (fields.instagramContentOverride) contentOverrides.instagram = fields.instagramContentOverride;
-            body.contentOverrides = contentOverrides; // always send — empty map clears overrides
+            body.contentOverrides = collectPlatformMap(fields, 'ContentOverride', PLATFORM_KEYS);
 
-            // Attach binary image from a previous workflow step
             const images: { buffer: Buffer; fileName: string; mimeType: string }[] = [];
             if (fields.binaryProperty) {
               const binaryProp = fields.binaryProperty as string;
@@ -661,6 +871,13 @@ export class SocialPod implements INodeType {
               url: `${baseUrl}/api/posts/${postId}/reschedule`,
               body: { scheduledAt },
               headers: { 'Content-Type': 'application/json' },
+            }) as IDataObject;
+
+          } else if (operation === 'retry') {
+            const postId = this.getNodeParameter('postId', i) as string;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'POST',
+              url: `${baseUrl}/api/posts/${postId}/retry`,
             }) as IDataObject;
 
           } else {
@@ -708,6 +925,26 @@ export class SocialPod implements INodeType {
 
           } else {
             throw new NodeOperationError(this.getNode(), `Unknown suffix operation: ${operation}`);
+          }
+
+        // ── Watermark ───────────────────────────────────────────────────
+        } else if (resource === 'watermark') {
+
+          if (operation === 'list') {
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'GET',
+              url: `${baseUrl}/api/watermarks`,
+            }) as IDataObject[];
+
+          } else if (operation === 'delete') {
+            const watermarkId = this.getNodeParameter('watermarkId', i) as string;
+            responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+              method: 'DELETE',
+              url: `${baseUrl}/api/watermarks/${watermarkId}`,
+            }) as IDataObject;
+
+          } else {
+            throw new NodeOperationError(this.getNode(), `Unknown watermark operation: ${operation}`);
           }
 
         } else {
