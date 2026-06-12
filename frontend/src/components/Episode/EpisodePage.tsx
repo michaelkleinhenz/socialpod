@@ -37,7 +37,12 @@ export function EpisodePage() {
   const [episodeTitle, setEpisodeTitle] = useState('');
   const [episodeType, setEpisodeType] = useState('news');
   const [summary, setSummary] = useState('');
-  const [episodeDate, setEpisodeDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+  const [episodeDate, setEpisodeDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(6, 0, 0, 0);
+    return format(tomorrow, "yyyy-MM-dd'T'HH:mm");
+  });
 
   // Review-specific fields
   const [gameNamePublisher, setGameNamePublisher] = useState('');
@@ -514,7 +519,10 @@ export function EpisodePage() {
     setEpisodeTitle('');
     setEpisodeType('news');
     setSummary('');
-    setEpisodeDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(6, 0, 0, 0);
+    setEpisodeDate(format(tomorrow, "yyyy-MM-dd'T'HH:mm"));
     setGameNamePublisher('');
     setLinkPublisher('');
     setLinkBGG('');
