@@ -1,13 +1,18 @@
 {
   "name": "n8n-nodes-socialpod",
-  "version": "1.0.0",
-  "description": "n8n community node for SocialPod — schedule and manage Bluesky and Instagram posts",
+  "version": "1.1.0",
+  "description": "n8n community node for SocialPod — schedule and manage social media posts across Bluesky, Instagram, Twitter/X, Mastodon, Threads, LinkedIn, and YouTube",
   "keywords": [
     "n8n-community-node-package",
     "socialpod",
     "social-media",
     "bluesky",
-    "instagram"
+    "instagram",
+    "twitter",
+    "mastodon",
+    "threads",
+    "linkedin",
+    "youtube"
   ],
   "license": "MIT",
   "homepage": "https://github.com/michaelkleinhenz/socialpod",

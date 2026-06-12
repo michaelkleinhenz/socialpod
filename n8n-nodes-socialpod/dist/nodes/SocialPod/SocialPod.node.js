@@ -6,8 +6,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SocialPod = void 0;
 const n8n_workflow_1 = require("n8n-workflow");
 const form_data_1 = __importDefault(require("form-data"));
-// Sends a multipart/form-data request with post data in the `data` JSON field,
-// optionally attaching binary image buffers as `images` fields.
+const ALL_PLATFORMS = [
+    { name: 'Bluesky', value: 'bluesky' },
+    { name: 'Instagram', value: 'instagram' },
+    { name: 'LinkedIn', value: 'linkedin' },
+    { name: 'Mastodon', value: 'mastodon' },
+    { name: 'Threads', value: 'threads' },
+    { name: 'Twitter/X', value: 'twitter' },
+    { name: 'YouTube', value: 'youtube' },
+];
+const ALL_PLATFORMS_FILTER = [
+    { name: 'Any', value: '' },
+    ...ALL_PLATFORMS,
+];
 async function multipartRequest(ctx, method, url, data, images) {
     const form = new form_data_1.default();
     form.append('data', JSON.stringify(data));
@@ -23,9 +34,37 @@ async function multipartRequest(ctx, method, url, data, images) {
         headers: form.getHeaders(),
     });
 }
-// Parses a comma-separated string into a trimmed, non-empty string array.
 function parseList(value) {
     return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+function collectPlatformMap(fields, fieldSuffix, platforms) {
+    const map = {};
+    for (const p of platforms) {
+        const key = `${p}${fieldSuffix}`;
+        if (fields[key])
+            map[p] = fields[key];
+    }
+    return map;
+}
+const PLATFORM_KEYS = ['bluesky', 'instagram', 'linkedin', 'mastodon', 'threads', 'twitter', 'youtube'];
+function platformSuffixFields(displayPrefix, fieldSuffix, descSuffix) {
+    return PLATFORM_KEYS.map((p) => ({
+        displayName: `${displayPrefix} ${p.charAt(0).toUpperCase() + p.slice(1)}`,
+        name: `${p}${fieldSuffix}`,
+        type: 'string',
+        default: '',
+        description: `${descSuffix} for ${p.charAt(0).toUpperCase() + p.slice(1)}`,
+    }));
+}
+function platformContentOverrideFields() {
+    return PLATFORM_KEYS.map((p) => ({
+        displayName: `${p.charAt(0).toUpperCase() + p.slice(1)} Content Override`,
+        name: `${p}ContentOverride`,
+        type: 'string',
+        typeOptions: { rows: 4 },
+        default: '',
+        description: `Custom caption for ${p.charAt(0).toUpperCase() + p.slice(1)} only — overrides the shared Content field`,
+    }));
 }
 class SocialPod {
     constructor() {
@@ -49,10 +88,150 @@ class SocialPod {
                     type: 'options',
                     noDataExpression: true,
                     options: [
+                        { name: 'Account', value: 'account' },
+                        { name: 'AI Text', value: 'aiText' },
+                        { name: 'Mention', value: 'mention' },
                         { name: 'Post', value: 'post' },
                         { name: 'Suffix', value: 'suffix' },
+                        { name: 'Watermark', value: 'watermark' },
                     ],
                     default: 'post',
+                },
+                // ── Account: operation ────────────────────────────────────────────
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: { show: { resource: ['account'] } },
+                    options: [
+                        { name: 'List', value: 'list', action: 'List connected social accounts' },
+                    ],
+                    default: 'list',
+                },
+                // ── AI Text: operation ────────────────────────────────────────────
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: { show: { resource: ['aiText'] } },
+                    options: [
+                        { name: 'Generate', value: 'generate', action: 'Generate text with AI' },
+                    ],
+                    default: 'generate',
+                },
+                // ── AI Text: Generate — fields ────────────────────────────────────
+                {
+                    displayName: 'Prompt',
+                    name: 'prompt',
+                    type: 'string',
+                    typeOptions: { rows: 4 },
+                    required: true,
+                    displayOptions: { show: { resource: ['aiText'], operation: ['generate'] } },
+                    default: '',
+                    description: 'Instructions for the AI text generator',
+                },
+                {
+                    displayName: 'Platforms',
+                    name: 'platforms',
+                    type: 'multiOptions',
+                    displayOptions: { show: { resource: ['aiText'], operation: ['generate'] } },
+                    options: [...ALL_PLATFORMS],
+                    default: [],
+                    description: 'Optional platforms to tailor the generated text for',
+                },
+                // ── Mention: operation ────────────────────────────────────────────
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: { show: { resource: ['mention'] } },
+                    options: [
+                        { name: 'Create', value: 'create', action: 'Create a mention' },
+                        { name: 'Delete', value: 'delete', action: 'Delete a mention' },
+                        { name: 'Export', value: 'export', action: 'Export all mentions as JSON' },
+                        { name: 'Import', value: 'import', action: 'Import mentions from JSON' },
+                        { name: 'List', value: 'list', action: 'List mentions' },
+                        { name: 'Update', value: 'update', action: 'Update a mention' },
+                    ],
+                    default: 'list',
+                },
+                // ── Mention: ID ──────────────────────────────────────────────────
+                {
+                    displayName: 'Mention ID',
+                    name: 'mentionId',
+                    type: 'string',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['mention'], operation: ['update', 'delete'] },
+                    },
+                    default: '',
+                    description: 'ID of the mention to act on',
+                },
+                // ── Mention: Create ──────────────────────────────────────────────
+                {
+                    displayName: 'Name',
+                    name: 'name',
+                    type: 'string',
+                    required: true,
+                    displayOptions: { show: { resource: ['mention'], operation: ['create'] } },
+                    default: '',
+                    description: 'Display name for this mention entry (e.g. publisher or person name)',
+                },
+                {
+                    displayName: 'Additional Fields',
+                    name: 'additionalFields',
+                    type: 'collection',
+                    placeholder: 'Add Field',
+                    displayOptions: { show: { resource: ['mention'], operation: ['create'] } },
+                    default: {},
+                    options: [
+                        {
+                            displayName: 'Country',
+                            name: 'country',
+                            type: 'string',
+                            default: '',
+                            description: 'Country of the mention entry',
+                        },
+                        ...platformSuffixFields('Handle', 'Handle', 'Platform handle/username'),
+                    ],
+                },
+                // ── Mention: Update ──────────────────────────────────────────────
+                {
+                    displayName: 'Update Fields',
+                    name: 'updateFields',
+                    type: 'collection',
+                    placeholder: 'Add Field',
+                    displayOptions: { show: { resource: ['mention'], operation: ['update'] } },
+                    default: {},
+                    options: [
+                        {
+                            displayName: 'Name',
+                            name: 'name',
+                            type: 'string',
+                            default: '',
+                        },
+                        {
+                            displayName: 'Country',
+                            name: 'country',
+                            type: 'string',
+                            default: '',
+                        },
+                        ...platformSuffixFields('Handle', 'Handle', 'Platform handle/username'),
+                    ],
+                },
+                // ── Mention: Import ──────────────────────────────────────────────
+                {
+                    displayName: 'JSON Data',
+                    name: 'jsonData',
+                    type: 'string',
+                    typeOptions: { rows: 6 },
+                    required: true,
+                    displayOptions: { show: { resource: ['mention'], operation: ['import'] } },
+                    default: '',
+                    description: 'JSON array of mention entries to import (same format as the export)',
                 },
                 // ── Post: operation ───────────────────────────────────────────────
                 {
@@ -67,6 +246,7 @@ class SocialPod {
                         { name: 'Get', value: 'get', action: 'Get a post by ID' },
                         { name: 'List', value: 'list', action: 'List posts' },
                         { name: 'Reschedule', value: 'reschedule', action: 'Reschedule a post' },
+                        { name: 'Retry', value: 'retry', action: 'Retry a failed post' },
                         { name: 'Update', value: 'update', action: 'Update a post' },
                     ],
                     default: 'create',
@@ -86,6 +266,31 @@ class SocialPod {
                     ],
                     default: 'list',
                 },
+                // ── Watermark: operation ──────────────────────────────────────────
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: { show: { resource: ['watermark'] } },
+                    options: [
+                        { name: 'Delete', value: 'delete', action: 'Delete a watermark' },
+                        { name: 'List', value: 'list', action: 'List watermarks' },
+                    ],
+                    default: 'list',
+                },
+                // ── Watermark: ID ────────────────────────────────────────────────
+                {
+                    displayName: 'Watermark ID',
+                    name: 'watermarkId',
+                    type: 'string',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['watermark'], operation: ['delete'] },
+                    },
+                    default: '',
+                    description: 'ID of the watermark to delete',
+                },
                 // ── Shared: Post ID ───────────────────────────────────────────────
                 {
                     displayName: 'Post ID',
@@ -93,7 +298,7 @@ class SocialPod {
                     type: 'string',
                     required: true,
                     displayOptions: {
-                        show: { resource: ['post'], operation: ['get', 'update', 'delete', 'reschedule'] },
+                        show: { resource: ['post'], operation: ['get', 'update', 'delete', 'reschedule', 'retry'] },
                     },
                     default: '',
                     description: 'ID of the post to act on',
@@ -127,10 +332,7 @@ class SocialPod {
                     type: 'multiOptions',
                     required: true,
                     displayOptions: { show: { resource: ['post'], operation: ['create'] } },
-                    options: [
-                        { name: 'Bluesky', value: 'bluesky' },
-                        { name: 'Instagram', value: 'instagram' },
-                    ],
+                    options: [...ALL_PLATFORMS],
                     default: ['bluesky'],
                     description: 'Platforms to publish this post on',
                 },
@@ -193,20 +395,7 @@ class SocialPod {
                             placeholder: '/api/uploads/abc.jpg, /api/uploads/def.png',
                             description: 'Comma-separated list of image URLs already uploaded to SocialPod',
                         },
-                        {
-                            displayName: 'Bluesky Suffix ID',
-                            name: 'bluskySuffixId',
-                            type: 'string',
-                            default: '',
-                            description: 'ID of the suffix to append when publishing to Bluesky',
-                        },
-                        {
-                            displayName: 'Instagram Suffix ID',
-                            name: 'instagramSuffixId',
-                            type: 'string',
-                            default: '',
-                            description: 'ID of the suffix to append when publishing to Instagram',
-                        },
+                        ...platformSuffixFields('Suffix ID', 'SuffixId', 'ID of the suffix to append when publishing'),
                         {
                             displayName: 'First Comment',
                             name: 'firstComment',
@@ -215,36 +404,8 @@ class SocialPod {
                             default: '',
                             description: 'Text to post as the first comment immediately after publishing',
                         },
-                        {
-                            displayName: 'Bluesky Account ID',
-                            name: 'blueskyAccountId',
-                            type: 'string',
-                            default: '',
-                            description: 'ID of the Bluesky account to post from (leave empty to use the default account)',
-                        },
-                        {
-                            displayName: 'Instagram Account ID',
-                            name: 'instagramAccountId',
-                            type: 'string',
-                            default: '',
-                            description: 'ID of the Instagram account to post from (leave empty to use the default account)',
-                        },
-                        {
-                            displayName: 'Bluesky Content Override',
-                            name: 'blueskyContentOverride',
-                            type: 'string',
-                            typeOptions: { rows: 4 },
-                            default: '',
-                            description: 'Custom caption for Bluesky only — overrides the shared Content field',
-                        },
-                        {
-                            displayName: 'Instagram Content Override',
-                            name: 'instagramContentOverride',
-                            type: 'string',
-                            typeOptions: { rows: 4 },
-                            default: '',
-                            description: 'Custom caption for Instagram only — overrides the shared Content field',
-                        },
+                        ...platformSuffixFields('Account ID', 'AccountId', 'ID of the account to post from (leave empty for default)'),
+                        ...platformContentOverrideFields(),
                         {
                             displayName: 'Tags',
                             name: 'tags',
@@ -287,10 +448,7 @@ class SocialPod {
                             displayName: 'Platforms',
                             name: 'platforms',
                             type: 'multiOptions',
-                            options: [
-                                { name: 'Bluesky', value: 'bluesky' },
-                                { name: 'Instagram', value: 'instagram' },
-                            ],
+                            options: [...ALL_PLATFORMS],
                             default: [],
                         },
                         {
@@ -324,20 +482,7 @@ class SocialPod {
                             default: '',
                             description: 'Comma-separated list of image URLs (replaces existing images)',
                         },
-                        {
-                            displayName: 'Bluesky Suffix ID',
-                            name: 'bluskySuffixId',
-                            type: 'string',
-                            default: '',
-                            description: 'Set to the suffix ID to apply, or leave empty to remove',
-                        },
-                        {
-                            displayName: 'Instagram Suffix ID',
-                            name: 'instagramSuffixId',
-                            type: 'string',
-                            default: '',
-                            description: 'Set to the suffix ID to apply, or leave empty to remove',
-                        },
+                        ...platformSuffixFields('Suffix ID', 'SuffixId', 'Set to the suffix ID to apply, or leave empty to remove'),
                         {
                             displayName: 'First Comment',
                             name: 'firstComment',
@@ -346,36 +491,8 @@ class SocialPod {
                             default: '',
                             description: 'Text to post as the first comment immediately after publishing',
                         },
-                        {
-                            displayName: 'Bluesky Account ID',
-                            name: 'blueskyAccountId',
-                            type: 'string',
-                            default: '',
-                            description: 'ID of the Bluesky account to post from (leave empty to use the default account)',
-                        },
-                        {
-                            displayName: 'Instagram Account ID',
-                            name: 'instagramAccountId',
-                            type: 'string',
-                            default: '',
-                            description: 'ID of the Instagram account to post from (leave empty to use the default account)',
-                        },
-                        {
-                            displayName: 'Bluesky Content Override',
-                            name: 'blueskyContentOverride',
-                            type: 'string',
-                            typeOptions: { rows: 4 },
-                            default: '',
-                            description: 'Custom caption for Bluesky only — overrides the shared Content field',
-                        },
-                        {
-                            displayName: 'Instagram Content Override',
-                            name: 'instagramContentOverride',
-                            type: 'string',
-                            typeOptions: { rows: 4 },
-                            default: '',
-                            description: 'Custom caption for Instagram only — overrides the shared Content field',
-                        },
+                        ...platformSuffixFields('Account ID', 'AccountId', 'ID of the account to post from (leave empty for default)'),
+                        ...platformContentOverrideFields(),
                         {
                             displayName: 'Tags',
                             name: 'tags',
@@ -439,11 +556,7 @@ class SocialPod {
                             displayName: 'Platform',
                             name: 'platform',
                             type: 'options',
-                            options: [
-                                { name: 'Any', value: '' },
-                                { name: 'Bluesky', value: 'bluesky' },
-                                { name: 'Instagram', value: 'instagram' },
-                            ],
+                            options: [...ALL_PLATFORMS_FILTER],
                             default: '',
                         },
                     ],
@@ -506,8 +619,107 @@ class SocialPod {
                 const resource = this.getNodeParameter('resource', i);
                 const operation = this.getNodeParameter('operation', i);
                 let responseData;
-                // ── Post ────────────────────────────────────────────────────────
-                if (resource === 'post') {
+                // ── Account ─────────────────────────────────────────────────────
+                if (resource === 'account') {
+                    if (operation === 'list') {
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'GET',
+                            url: `${baseUrl}/api/accounts`,
+                        });
+                    }
+                    else {
+                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown account operation: ${operation}`);
+                    }
+                    // ── AI Text ─────────────────────────────────────────────────────
+                }
+                else if (resource === 'aiText') {
+                    if (operation === 'generate') {
+                        const prompt = this.getNodeParameter('prompt', i);
+                        const platforms = this.getNodeParameter('platforms', i, []);
+                        const body = { prompt };
+                        if (platforms.length)
+                            body.platforms = platforms;
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'POST',
+                            url: `${baseUrl}/api/generate-text`,
+                            body,
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    else {
+                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown aiText operation: ${operation}`);
+                    }
+                    // ── Mention ─────────────────────────────────────────────────────
+                }
+                else if (resource === 'mention') {
+                    if (operation === 'list') {
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'GET',
+                            url: `${baseUrl}/api/mentions`,
+                        });
+                    }
+                    else if (operation === 'create') {
+                        const name = this.getNodeParameter('name', i);
+                        const extra = this.getNodeParameter('additionalFields', i, {});
+                        const body = { name };
+                        if (extra.country)
+                            body.country = extra.country;
+                        const handles = collectPlatformMap(extra, 'Handle', PLATFORM_KEYS);
+                        if (Object.keys(handles).length)
+                            body.handles = handles;
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'POST',
+                            url: `${baseUrl}/api/mentions`,
+                            body,
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    else if (operation === 'update') {
+                        const mentionId = this.getNodeParameter('mentionId', i);
+                        const fields = this.getNodeParameter('updateFields', i, {});
+                        const body = {};
+                        if (fields.name !== undefined && fields.name !== '')
+                            body.name = fields.name;
+                        if (fields.country !== undefined && fields.country !== '')
+                            body.country = fields.country;
+                        const handles = collectPlatformMap(fields, 'Handle', PLATFORM_KEYS);
+                        if (Object.keys(handles).length)
+                            body.handles = handles;
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'PUT',
+                            url: `${baseUrl}/api/mentions/${mentionId}`,
+                            body,
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    else if (operation === 'delete') {
+                        const mentionId = this.getNodeParameter('mentionId', i);
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'DELETE',
+                            url: `${baseUrl}/api/mentions/${mentionId}`,
+                        });
+                    }
+                    else if (operation === 'export') {
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'GET',
+                            url: `${baseUrl}/api/mentions/export`,
+                        });
+                    }
+                    else if (operation === 'import') {
+                        const jsonData = this.getNodeParameter('jsonData', i);
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'POST',
+                            url: `${baseUrl}/api/mentions/import`,
+                            body: JSON.parse(jsonData),
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    else {
+                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown mention operation: ${operation}`);
+                    }
+                    // ── Post ────────────────────────────────────────────────────────
+                }
+                else if (resource === 'post') {
                     if (operation === 'create') {
                         const content = this.getNodeParameter('content', i);
                         const platforms = this.getNodeParameter('platforms', i);
@@ -518,32 +730,19 @@ class SocialPod {
                         const body = { content, platforms, scheduledAt, postType, status };
                         if (extra.imageUrls)
                             body.imageUrls = parseList(extra.imageUrls);
-                        const suffixIds = {};
-                        if (extra.bluskySuffixId)
-                            suffixIds.bluesky = extra.bluskySuffixId;
-                        if (extra.instagramSuffixId)
-                            suffixIds.instagram = extra.instagramSuffixId;
+                        const suffixIds = collectPlatformMap(extra, 'SuffixId', PLATFORM_KEYS);
                         if (Object.keys(suffixIds).length)
                             body.suffixIds = suffixIds;
                         if (extra.firstComment)
                             body.firstComment = extra.firstComment;
                         if (extra.tags)
                             body.tags = parseList(extra.tags);
-                        const accountIds = {};
-                        if (extra.blueskyAccountId)
-                            accountIds.bluesky = extra.blueskyAccountId;
-                        if (extra.instagramAccountId)
-                            accountIds.instagram = extra.instagramAccountId;
+                        const accountIds = collectPlatformMap(extra, 'AccountId', PLATFORM_KEYS);
                         if (Object.keys(accountIds).length)
                             body.accountIds = accountIds;
-                        const contentOverrides = {};
-                        if (extra.blueskyContentOverride)
-                            contentOverrides.bluesky = extra.blueskyContentOverride;
-                        if (extra.instagramContentOverride)
-                            contentOverrides.instagram = extra.instagramContentOverride;
+                        const contentOverrides = collectPlatformMap(extra, 'ContentOverride', PLATFORM_KEYS);
                         if (Object.keys(contentOverrides).length)
                             body.contentOverrides = contentOverrides;
-                        // Attach binary image from a previous workflow step
                         const images = [];
                         if (extra.binaryProperty) {
                             const binaryProp = extra.binaryProperty;
@@ -599,30 +798,15 @@ class SocialPod {
                             body.imageUrls = parseList(fields.imageUrls);
                         if ((_b = fields.platforms) === null || _b === void 0 ? void 0 : _b.length)
                             body.platforms = fields.platforms;
-                        const suffixIds = {};
-                        if (fields.bluskySuffixId)
-                            suffixIds.bluesky = fields.bluskySuffixId;
-                        if (fields.instagramSuffixId)
-                            suffixIds.instagram = fields.instagramSuffixId;
-                        body.suffixIds = suffixIds; // always send — empty map clears suffixes
+                        body.suffixIds = collectPlatformMap(fields, 'SuffixId', PLATFORM_KEYS);
                         if (fields.firstComment !== undefined && fields.firstComment !== '')
                             body.firstComment = fields.firstComment;
                         if (fields.tags)
                             body.tags = parseList(fields.tags);
-                        const accountIds = {};
-                        if (fields.blueskyAccountId)
-                            accountIds.bluesky = fields.blueskyAccountId;
-                        if (fields.instagramAccountId)
-                            accountIds.instagram = fields.instagramAccountId;
+                        const accountIds = collectPlatformMap(fields, 'AccountId', PLATFORM_KEYS);
                         if (Object.keys(accountIds).length)
                             body.accountIds = accountIds;
-                        const contentOverrides = {};
-                        if (fields.blueskyContentOverride)
-                            contentOverrides.bluesky = fields.blueskyContentOverride;
-                        if (fields.instagramContentOverride)
-                            contentOverrides.instagram = fields.instagramContentOverride;
-                        body.contentOverrides = contentOverrides; // always send — empty map clears overrides
-                        // Attach binary image from a previous workflow step
+                        body.contentOverrides = collectPlatformMap(fields, 'ContentOverride', PLATFORM_KEYS);
                         const images = [];
                         if (fields.binaryProperty) {
                             const binaryProp = fields.binaryProperty;
@@ -653,6 +837,13 @@ class SocialPod {
                             url: `${baseUrl}/api/posts/${postId}/reschedule`,
                             body: { scheduledAt },
                             headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    else if (operation === 'retry') {
+                        const postId = this.getNodeParameter('postId', i);
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'POST',
+                            url: `${baseUrl}/api/posts/${postId}/retry`,
                         });
                     }
                     else {
@@ -701,6 +892,25 @@ class SocialPod {
                     }
                     else {
                         throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown suffix operation: ${operation}`);
+                    }
+                    // ── Watermark ───────────────────────────────────────────────────
+                }
+                else if (resource === 'watermark') {
+                    if (operation === 'list') {
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'GET',
+                            url: `${baseUrl}/api/watermarks`,
+                        });
+                    }
+                    else if (operation === 'delete') {
+                        const watermarkId = this.getNodeParameter('watermarkId', i);
+                        responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
+                            method: 'DELETE',
+                            url: `${baseUrl}/api/watermarks/${watermarkId}`,
+                        });
+                    }
+                    else {
+                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown watermark operation: ${operation}`);
                     }
                 }
                 else {
