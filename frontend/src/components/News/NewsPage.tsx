@@ -549,6 +549,7 @@ export function NewsPage() {
     if (!episodeNumber.trim()) { toast.error('Episode number is required'); return; }
     if (!newsTagline.trim()) { toast.error('News tagline is required'); return; }
     if (!articleUrl.trim()) { toast.error('Article URL is required'); return; }
+    if (!imageFile) { toast.error('Image is required'); return; }
 
     if (addSocialPost) {
       if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
@@ -800,7 +801,7 @@ export function NewsPage() {
 
           {/* Image upload area */}
           <div className="form-group">
-            <label><Image size={14} /> Image</label>
+            <label><Image size={14} /> Image <span style={{ color: 'var(--danger)' }}>*</span></label>
 
             {!imageFile ? (
               <div
@@ -1177,7 +1178,7 @@ export function NewsPage() {
             <button
               className="btn btn-primary"
               onClick={handleSubmit}
-              disabled={submitting || overLimit || !episodeNumber.trim() || !newsTagline.trim() || !articleUrl.trim()}
+              disabled={submitting || overLimit || !episodeNumber.trim() || !newsTagline.trim() || !articleUrl.trim() || !imageFile}
             >
               <Send size={16} /> {submitting ? 'Submitting...' : 'Submit News'}
             </button>
