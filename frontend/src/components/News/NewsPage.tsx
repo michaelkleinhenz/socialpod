@@ -660,10 +660,10 @@ export function NewsPage() {
         onTouchStart={onCropTouchStart}
       >
         {/* Dimmed overlay outside crop */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: y, background: '#000' }} />
-        <div style={{ position: 'absolute', top: y, left: 0, width: x, height: size, background: '#000' }} />
-        <div style={{ position: 'absolute', top: y, left: x + size, right: 0, height: size, background: '#000' }} />
-        <div style={{ position: 'absolute', top: y + size, left: 0, right: 0, bottom: 0, background: '#000' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: y, background: 'rgba(0,0,0,0.5)' }} />
+        <div style={{ position: 'absolute', top: y, left: 0, width: x, height: size, background: 'rgba(0,0,0,0.5)' }} />
+        <div style={{ position: 'absolute', top: y, left: x + size, right: 0, height: size, background: 'rgba(0,0,0,0.5)' }} />
+        <div style={{ position: 'absolute', top: y + size, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)' }} />
 
         {/* Crop border */}
         <div style={{
