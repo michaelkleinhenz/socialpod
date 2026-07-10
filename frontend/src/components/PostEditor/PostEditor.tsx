@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader } from 'lucide-react';
+import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
@@ -405,6 +405,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const [accountsError, setAccountsError] = useState(false);
   const [adobeClientId, setAdobeClientId] = useState('');
   const [adobeLoading, setAdobeLoading] = useState(false);
   const [adobeActive, setAdobeActive] = useState(false);
@@ -415,6 +416,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const loadAccounts = useCallback(() => {
+    setAccountsError(false);
+    return api.getActiveAccounts()
+      .then(accs => { setAccounts(accs); setAccountsLoaded(true); })
+      .catch(() => { setAccountsLoaded(true); setAccountsError(true); });
+  }, []);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -430,7 +438,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
-    api.getActiveAccounts().then(accs => { setAccounts(accs); setAccountsLoaded(true); }).catch(() => { setAccountsLoaded(true); });
+    loadAccounts();
     api.getWatermarks().then((wms: any[]) => {
       const base = import.meta.env.VITE_API_URL || '';
       setWatermarkGallery(wms.map(w => {
@@ -443,7 +451,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       document.getElementById('adobe-zindex-fix')?.remove();
       objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
     };
-  }, []);
+  }, [loadAccounts]);
 
   useEffect(() => {
     if (!accountsLoaded) return;
@@ -729,6 +737,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const youtubeAccount = accounts.find(a => a.platform === 'youtube') ?? null;
 
   const handleSubmit = async () => {
+    if (accountsError) {
+      toast.error('Connected accounts failed to load. Retry before scheduling.');
+      return;
+    }
     if (isStory) {
       if (images.length === 0) { toast.error('A story requires an image or video'); return; }
     } else if (isReel) {
@@ -893,6 +905,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
         <div className="editor-layout">
           <div className="editor-body">
+            {accountsError && (
+              <div className="accounts-error-banner">
+                <AlertTriangle size={14} />
+                <span>Couldn't load your connected accounts. Scheduling is disabled until this is resolved.</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => loadAccounts()}>Retry</button>
+              </div>
+            )}
+
             {!isStory && !isReel && (
               <>
                 {/* Platform selector */}
@@ -903,6 +923,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     title={!blueskyAccount ? 'No Bluesky account configured' : `Will post as @${blueskyAccount.accountName}`}
                   >
                     <PlatformIcon platform="bluesky" size={18} />
+                    {platforms.includes('bluesky') && blueskyAccount && (
+                      <span className="platform-account-hint">@{blueskyAccount.accountName}</span>
+                    )}
                   </div>
                   <div
                     className={`platform-option instagram ${platforms.includes('instagram') ? 'selected' : ''} ${!instagramAccount ? 'disabled' : ''}`}
@@ -910,6 +933,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     title={!instagramAccount ? 'No Instagram account configured' : `Will post as @${instagramAccount.accountName}`}
                   >
                     <PlatformIcon platform="instagram" size={18} />
+                    {platforms.includes('instagram') && instagramAccount && (
+                      <span className="platform-account-hint">@{instagramAccount.accountName}</span>
+                    )}
                   </div>
                   <div
                     className={`platform-option twitter ${platforms.includes('twitter') ? 'selected' : ''} ${!twitterAccount ? 'disabled' : ''}`}
@@ -917,6 +943,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     title={!twitterAccount ? 'No X/Twitter account configured' : `Will post as @${twitterAccount.accountName}`}
                   >
                     <PlatformIcon platform="twitter" size={18} />
+                    {platforms.includes('twitter') && twitterAccount && (
+                      <span className="platform-account-hint">@{twitterAccount.accountName}</span>
+                    )}
                   </div>
                   <div
                     className={`platform-option mastodon ${platforms.includes('mastodon') ? 'selected' : ''} ${!mastodonAccount ? 'disabled' : ''}`}
@@ -924,6 +953,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     title={!mastodonAccount ? 'No Mastodon account configured' : `Will post as @${mastodonAccount.accountName}`}
                   >
                     <PlatformIcon platform="mastodon" size={18} />
+                    {platforms.includes('mastodon') && mastodonAccount && (
+                      <span className="platform-account-hint">@{mastodonAccount.accountName}</span>
+                    )}
                   </div>
                   <div
                     className={`platform-option threads ${platforms.includes('threads') ? 'selected' : ''} ${!threadsAccount ? 'disabled' : ''}`}
@@ -931,6 +963,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     title={!threadsAccount ? 'No Threads account configured' : `Will post as @${threadsAccount.accountName}`}
                   >
                     <PlatformIcon platform="threads" size={18} />
+                    {platforms.includes('threads') && threadsAccount && (
+                      <span className="platform-account-hint">@{threadsAccount.accountName}</span>
+                    )}
                   </div>
                   <div
                     className={`platform-option linkedin ${platforms.includes('linkedin') ? 'selected' : ''} ${!linkedinAccount ? 'disabled' : ''}`}
@@ -938,6 +973,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     title={!linkedinAccount ? 'No LinkedIn account configured' : `Will post as ${linkedinAccount.displayName || linkedinAccount.accountName}`}
                   >
                     <PlatformIcon platform="linkedin" size={18} />
+                    {platforms.includes('linkedin') && linkedinAccount && (
+                      <span className="platform-account-hint">{linkedinAccount.displayName || linkedinAccount.accountName}</span>
+                    )}
                   </div>
                   {youtubeAccount && isReel && (
                     <div
@@ -1222,10 +1260,18 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             )}
 
             {isStory && (
-              <div className="story-hint">
-                <Film size={16} />
-                <span>Upload an image or video for your Instagram Story (9:16 recommended)</span>
-              </div>
+              <>
+                <div className="story-hint">
+                  <Film size={16} />
+                  <span>Upload an image or video for your Instagram Story (9:16 recommended)</span>
+                </div>
+                {instagramAccount && (
+                  <div className="editor-account-hint">
+                    <PlatformIcon platform="instagram" size={12} />
+                    <span>Posting as @{instagramAccount.accountName}</span>
+                  </div>
+                )}
+              </>
             )}
 
             {isReel && (
@@ -1234,6 +1280,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   <Film size={16} />
                   <span>Upload a video for your Instagram Reel (9:16 recommended, MP4)</span>
                 </div>
+                {instagramAccount && (
+                  <div className="editor-account-hint">
+                    <PlatformIcon platform="instagram" size={12} />
+                    <span>Posting as @{instagramAccount.accountName}</span>
+                  </div>
+                )}
                 <div className="form-group">
                   <MentionTextarea
                     textareaRef={textareaRef}
@@ -1371,7 +1423,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           </div>
           <div className="footer-right">
             <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || overLimit || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={saving || overLimit || accountsError || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}
+              title={accountsError ? 'Connected accounts failed to load' : undefined}
+            >
               <Send size={16} /> {saving ? 'Saving...' : post ? 'Update' : 'Schedule'}
             </button>
           </div>
