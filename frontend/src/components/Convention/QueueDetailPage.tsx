@@ -20,8 +20,6 @@ import {
   XCircle,
   X,
   Loader,
-  ChevronUp,
-  ChevronDown,
   Trash2,
   RefreshCw,
   Edit3,
@@ -53,7 +51,6 @@ function ItemStatusIcon({ status, aiError }: { status: ConventionQueueItemStatus
 function QueueItemCard({
   item,
   index,
-  total,
   queueId,
   accounts,
   suffixes,
@@ -63,13 +60,10 @@ function QueueItemCard({
   onUpdate,
   onDelete,
   onAnalyze,
-  onMoveUp,
-  onMoveDown,
   onEditImage,
 }: {
   item: ConventionQueueItem;
   index: number;
-  total: number;
   queueId: string;
   accounts: SocialAccount[];
   suffixes: Suffix[];
@@ -79,8 +73,6 @@ function QueueItemCard({
   onUpdate: (item: ConventionQueueItem) => void;
   onDelete: () => void;
   onAnalyze: () => Promise<void>;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onEditImage: () => void;
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
@@ -358,15 +350,6 @@ function QueueItemCard({
           </div>
         )}
       </div>
-
-      <div className="conv-item-reorder">
-        <button className="icon-btn" onClick={onMoveUp} disabled={index === 0} title="Move up">
-          <ChevronUp size={16} />
-        </button>
-        <button className="icon-btn" onClick={onMoveDown} disabled={index === total - 1} title="Move down">
-          <ChevronDown size={16} />
-        </button>
-      </div>
     </div>
   );
 }
@@ -632,15 +615,6 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     }
   };
 
-  const handleMoveItem = async (index: number, direction: 'up' | 'down') => {
-    if (!id) return;
-    const newItems = [...items];
-    const swapIdx = direction === 'up' ? index - 1 : index + 1;
-    [newItems[index], newItems[swapIdx]] = [newItems[swapIdx], newItems[index]];
-    setItems(newItems);
-    await api.reorderConventionItems(id, newItems.map(i => i.id));
-  };
-
   const handlePreview = async () => {
     if (!id) return;
     setLoadingPreview(true);
@@ -879,7 +853,6 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
               key={item.id}
               item={item}
               index={items.indexOf(item)}
-              total={items.length}
               queueId={queue.id}
               accounts={accounts}
               suffixes={suffixes}
@@ -889,8 +862,6 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
               onUpdate={handleUpdateItem}
               onDelete={() => handleDeleteItem(item)}
               onAnalyze={() => handleAnalyzeItem(item)}
-              onMoveUp={() => handleMoveItem(items.indexOf(item), 'up')}
-              onMoveDown={() => handleMoveItem(items.indexOf(item), 'down')}
               onEditImage={() => setEditingImageItem(item)}
             />
           ))}

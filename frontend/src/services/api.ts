@@ -537,10 +537,6 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/analyze-all`, { method: 'POST' });
   }
 
-  reorderConventionItems(queueId: string, itemIds: string[]) {
-    return this.request<any>(`/convention/queues/${queueId}/reorder`, { method: 'POST', body: JSON.stringify({ itemIds }) });
-  }
-
   previewConventionSchedule(queueId: string) {
     return this.request<any>(`/convention/queues/${queueId}/preview`);
   }

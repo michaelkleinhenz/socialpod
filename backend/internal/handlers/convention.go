@@ -705,38 +705,6 @@ func (h *ConventionHandler) AnalyzeAll(c *gin.Context) {
 	})
 }
 
-func (h *ConventionHandler) ReorderItems(c *gin.Context) {
-	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue ID"})
-		return
-	}
-
-	var input struct {
-		ItemIDs []string `json:"itemIds" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	for i, idStr := range input.ItemIDs {
-		itemID, err := primitive.ObjectIDFromHex(idStr)
-		if err != nil {
-			continue
-		}
-		h.DB.ConventionQueueItems().UpdateOne(ctx,
-			bson.M{"_id": itemID, "queueId": queueID},
-			bson.M{"$set": bson.M{"sortOrder": i, "updatedAt": time.Now()}},
-		)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Reordered"})
-}
-
 type scheduleSlot struct {
 	ScheduledAt time.Time `json:"scheduledAt"`
 }

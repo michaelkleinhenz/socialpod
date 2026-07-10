@@ -615,15 +615,6 @@
   color: var(--accent-hover);
 }
 
-.conv-item-reorder {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px 10px;
-}
-
 /* Sticky schedule bar */
 .conv-schedule-bar {
   position: fixed;
