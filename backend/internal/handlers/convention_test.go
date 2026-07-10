@@ -110,6 +110,29 @@ func TestApplyWatermarkOverlay_InvalidBaseReturnsOriginal(t *testing.T) {
 	}
 }
 
+func TestNextPostDelay_RespectsMinimumAndSpread(t *testing.T) {
+	// With no minimum delay, 4 posts/day spreads to ~6h ± up to 60min jitter,
+	// so every draw stays inside [5h, 7h].
+	for i := 0; i < 200; i++ {
+		d := nextPostDelay(4, 0)
+		if d < 5*time.Hour || d > 7*time.Hour {
+			t.Fatalf("no-delay gap out of expected range: %v", d)
+		}
+	}
+
+	// A 10h minimum delay caps 5 posts/day at 2/day. The base gap becomes 12h,
+	// and the minimum floor guarantees nothing shorter than 10h.
+	for i := 0; i < 200; i++ {
+		d := nextPostDelay(5, 10)
+		if d < 10*time.Hour {
+			t.Fatalf("delayed gap %v fell below the 10h minimum", d)
+		}
+		if d > 13*time.Hour {
+			t.Fatalf("delayed gap %v exceeded base 12h plus jitter", d)
+		}
+	}
+}
+
 func TestGenerateSlots_NoDelaySpreadsAcrossDay(t *testing.T) {
 	h := &ConventionHandler{}
 	start := time.Now().Add(24 * time.Hour)

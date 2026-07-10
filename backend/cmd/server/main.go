@@ -75,6 +75,8 @@ func main() {
 	adminHandler := &handlers.AdminHandler{DB: db, Bluesky: bskyService, Instagram: igService, Twitter: twService, Mastodon: mastodonService, Threads: threadsService, LinkedIn: linkedInService, YouTube: youtubeService, UploadDir: cfg.UploadDir}
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
+	conventionHandler.StartAutoPoster()
+	defer conventionHandler.StopAutoPoster()
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 	publisherHandleHandler := &handlers.PublisherHandleHandler{DB: db}
 	newsHandler := &handlers.NewsHandler{DB: db, UploadDir: cfg.UploadDir}

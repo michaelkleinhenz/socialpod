@@ -138,7 +138,7 @@ Convention Mode is designed for events (trade shows, gaming conventions, fan exp
    - **Name** — e.g. "Essen SPIEL 2026"
    - **Convention URL** (optional) — website or hashtag URL
    - **Hashtags** — prepended/appended to every post
-   - **Start / End date** — the drip window
+   - **Start / End date** — the posting window
    - **Posts per day** — target number of posts to publish each day
    - **Min. hours between posts** — the minimum delay between two consecutive
      posts. This takes precedence over posts-per-day: it caps the effective
@@ -146,8 +146,11 @@ Convention Mode is designed for events (trade shows, gaming conventions, fan exp
      minimum yields at most 2 posts/day).
    - **Platforms** — target social networks
 
-   Posts are scattered randomly across each day rather than pinned to fixed
-   times, spaced by the minimum delay ±60 minutes of random jitter.
+   Approved photos form a *set*. While the queue is active and inside its
+   window, the app automatically picks one approved photo **at random** and
+   posts it on the cadence above — spaced by the minimum delay (or an even
+   spread across the day) ±60 minutes of random jitter. Nothing is
+   pre-scheduled, so you can keep topping the queue up and it keeps posting.
 3. Click **Create Queue**.
 
 ### Adding and Managing Photos
@@ -161,7 +164,7 @@ Per-item actions:
 | Action | Description |
 |---|---|
 | **Edit caption** | Type or paste a caption; auto-saved |
-| **Approve / Unapprove** | Only approved items are scheduled |
+| **Approve / Unapprove** | Only approved items are eligible to be posted |
 | **AI regenerate** | Re-run AI vision analysis for a fresh caption |
 | **Reorder** | Use up/down buttons to adjust publish order |
 | **Override platforms** | Override the queue's platform selection for one item |
@@ -171,13 +174,19 @@ Per-item actions:
 
 Click **Analyze all** to send all pending items to the OpenRouter vision model (up to 3 concurrent requests). The page polls every 3 seconds and updates captions as they arrive.
 
-### Scheduling
+### Posting
 
-1. Click **Preview & schedule** in the sticky footer.
-2. Review each approved item with its assigned publish time.
-3. Click **Schedule** to convert all approved items into scheduled posts.
+Approved photos are posted automatically — there is no bulk "schedule everything"
+step. On each queue's cadence the app picks one approved photo at random,
+publishes it, and removes it from the approved set so it is never repeated.
 
-Scheduled posts appear on the calendar and can be edited individually.
+- Click **View schedule** in the sticky footer to see the approved count and the
+  projected upcoming post times (approximate — each gap carries random jitter).
+- Click **Post one now** in that dialog to push a random approved photo out
+  immediately instead of waiting for the next slot.
+
+Each published post also appears on the calendar and can be edited individually.
+When the approved set empties, posting pauses until you approve more photos.
 
 ---
 

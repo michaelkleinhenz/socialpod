@@ -370,26 +370,21 @@ function QueueItemCard({
 
 function SchedulePreviewModal({
   preview,
-  items,
-  overlayUrl,
-  onConfirm,
+  onPostNow,
   onClose,
 }: {
   preview: SchedulePreview;
-  items: ConventionQueueItem[];
-  overlayUrl?: string;
-  onConfirm: () => Promise<void>;
+  onPostNow: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
-  const itemMap = Object.fromEntries(items.map(i => [i.id, i]));
+  const [posting, setPosting] = useState(false);
 
-  const handleConfirm = async () => {
-    setConfirming(true);
+  const handlePostNow = async () => {
+    setPosting(true);
     try {
-      await onConfirm();
+      await onPostNow();
     } finally {
-      setConfirming(false);
+      setPosting(false);
     }
   };
 
@@ -397,57 +392,51 @@ function SchedulePreviewModal({
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal conv-preview-modal">
         <div className="modal-header">
-          <h2>Schedule preview</h2>
+          <h2>Upcoming schedule</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
 
         <div className="conv-preview-body">
-          {preview.overflow > 0 && (
+          <p className="conv-preview-summary">
+            {preview.approvedCount} approved photo{preview.approvedCount !== 1 ? 's' : ''} in the queue.
+            About {preview.postsPerDay} post{preview.postsPerDay !== 1 ? 's' : ''}/day go out until{' '}
+            {format(parseISO(preview.windowEnd), 'EEE, MMM d, yyyy')}. At each time below a
+            <strong> random approved photo</strong> is picked and posted — keep the queue topped up and
+            it keeps posting.
+          </p>
+
+          {preview.approvedCount === 0 && (
             <div className="conv-preview-warning">
               <AlertTriangle size={14} />
-              {preview.overflow} photo{preview.overflow > 1 ? 's' : ''} won't fit in the current window.
-              Extend the date range or increase posts per day to schedule all.
+              No approved photos yet — approve some photos so the queue has something to post.
             </div>
           )}
 
-          <p className="conv-preview-summary">
-            Scheduling {preview.slots.length} of {preview.approvedCount} approved photos
-            across {preview.availableSlots} available slots.
-          </p>
-
           <div className="conv-preview-list">
-            {preview.slots.map(slot => {
-              const item = itemMap[slot.itemId];
-              return (
-                <div key={slot.itemId} className="conv-preview-row">
-                  {item && (
-                    <div className="conv-preview-thumb-wrap">
-                      <img src={item.imageUrl} alt="" className="conv-preview-thumb" />
-                      {overlayUrl && (
-                        <img src={overlayUrl} alt="" className="conv-preview-overlay" aria-hidden="true" />
-                      )}
-                    </div>
-                  )}
-                  <div className="conv-preview-info">
-                    <div className="conv-preview-time">
-                      {format(parseISO(slot.scheduledAt), 'EEE, MMM d, yyyy — HH:mm')} UTC
-                    </div>
-                    {item?.caption && (
-                      <div className="conv-preview-caption">
-                        {item.caption.length > 80 ? item.caption.slice(0, 80) + '…' : item.caption}
-                      </div>
-                    )}
+            {preview.slots.map((slot, i) => (
+              <div key={i} className="conv-preview-row">
+                <div className="conv-preview-info">
+                  <div className="conv-preview-time">
+                    {format(parseISO(slot.scheduledAt), 'EEE, MMM d, yyyy — HH:mm')} UTC
+                    {i === 0 && <span className="conv-override-badge"> next</span>}
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
+          <p className="conv-upload-hint">
+            Times are approximate — each gap carries a small random jitter.
+          </p>
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleConfirm} disabled={confirming}>
-            {confirming ? 'Scheduling…' : `Schedule ${preview.slots.length} posts`}
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+          <button
+            className="btn btn-primary"
+            onClick={handlePostNow}
+            disabled={posting || preview.approvedCount === 0}
+          >
+            {posting ? 'Posting…' : 'Post one now'}
           </button>
         </div>
       </div>
@@ -666,18 +655,18 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     }
   };
 
-  const handleSchedule = async () => {
+  const handlePostNow = async () => {
     if (!id) return;
     try {
       const res = await api.scheduleConventionItems(id);
-      toast.success(`Scheduled ${res.scheduled} post${res.scheduled !== 1 ? 's' : ''}`);
-      if (res.overflow > 0) {
-        toast(`${res.overflow} photo${res.overflow > 1 ? 's' : ''} didn't fit — extend the date range`, { icon: '⚠️' });
+      toast.success('Posted a random approved photo');
+      if (res.remaining === 0) {
+        toast('Queue is empty — approve more photos to keep it going', { icon: '📭' });
       }
       setPreview(null);
       loadQueue();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to schedule');
+      toast.error(err.message || 'Failed to post');
     }
   };
 
@@ -919,7 +908,8 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         <div className="conv-schedule-bar">
           <span className="conv-schedule-info">
             <CheckCircle size={16} color="var(--warning)" />
-            {approvedCount} photo{approvedCount !== 1 ? 's' : ''} approved and ready to schedule
+            {approvedCount} approved photo{approvedCount !== 1 ? 's' : ''} in the queue — posting
+            automatically at random on the schedule
           </span>
           <button
             className="btn btn-primary"
@@ -927,7 +917,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
             disabled={loadingPreview}
           >
             {loadingPreview ? <Loader size={15} className="spin" /> : <Calendar size={15} />}
-            Preview &amp; schedule
+            View schedule
           </button>
         </div>
       )}
@@ -944,9 +934,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
       {preview && (
         <SchedulePreviewModal
           preview={preview}
-          items={items}
-          overlayUrl={overlayUrl}
-          onConfirm={handleSchedule}
+          onPostNow={handlePostNow}
           onClose={() => setPreview(null)}
         />
       )}

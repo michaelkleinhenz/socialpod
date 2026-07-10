@@ -270,9 +270,11 @@ export interface ConventionQueue {
   platforms: Platform[];
   accountIds?: Record<string, string>;
   suffixIds?: Record<string, string>;
-  /** Optional overlay watermark applied to every image at schedule time. */
+  /** Optional overlay watermark applied to every image at post time. */
   watermarkId?: string;
   status: string;
+  /** Time the next random post from this queue is due (set by the auto-poster). */
+  nextPostAt?: string;
   itemCount?: number;
   approvedCount?: number;
   scheduledCount?: number;
@@ -298,13 +300,17 @@ export interface ConventionQueueItem {
 }
 
 export interface SchedulePreviewSlot {
-  itemId: string;
   scheduledAt: string;
 }
 
 export interface SchedulePreview {
+  /** Projected upcoming post times; a random approved photo goes out at each. */
   slots: SchedulePreviewSlot[];
   approvedCount: number;
-  availableSlots: number;
-  overflow: number;
+  /** Effective posts per day after the minimum-delay cap. */
+  postsPerDay: number;
+  /** Last instant the queue may post (end of the end date's day). */
+  windowEnd: string;
+  /** Time the next automatic post is due, or null before the first post. */
+  nextPostAt: string | null;
 }
