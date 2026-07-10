@@ -900,7 +900,9 @@
 
   .conv-detail-page { padding-bottom: 120px; }
 
-  .conv-bgg-import-row { flex-direction: column; }
+  .conv-bgg-import-row { flex-direction: column; align-items: stretch; }
+
+  .conv-bgg-import-input { width: 100%; }
 
   .conv-bgg-import-btn { align-self: stretch; justify-content: center; }
 }
