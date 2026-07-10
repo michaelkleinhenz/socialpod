@@ -59,6 +59,8 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 
 The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts where `status == "scheduled"` and `scheduledAt <= now`, and publishes them. Suffixes are fetched from the DB and appended at publish time (not stored on the post itself).
 
+Convention queues have their own 30-second background loop (`ConventionHandler.StartAutoPoster` in `handlers/convention.go`). Approved queue items are a *set*, not pre-scheduled: whenever a queue is active and inside its date window and its `nextPostAt` is due, the loop picks one approved item at random, creates a `scheduled` post for it (which the shared scheduler then publishes), marks the item consumed, and rolls `nextPostAt` forward by the schedule gap. `POST /convention/queues/:id/schedule` is a manual "post one random item now" trigger.
+
 ### Frontend (`frontend/`)
 React 19 + TypeScript + Vite. No state management library — auth state lives in `AuthContext`, everything else is local component state fetched via the `ApiClient`.
 

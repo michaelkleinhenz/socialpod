@@ -38,11 +38,17 @@ type ConventionQueue struct {
 	AccountIDs map[string]string `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
 	SuffixIDs  map[string]string `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
 	// WatermarkID, when set, is an overlay watermark that is composited onto
-	// every image in the queue at schedule time.
+	// each image at post time.
 	WatermarkID *primitive.ObjectID `bson:"watermarkId,omitempty" json:"watermarkId,omitempty"`
 	Status      string              `bson:"status" json:"status"`
-	CreatedAt   time.Time           `bson:"createdAt" json:"createdAt"`
-	UpdatedAt   time.Time           `bson:"updatedAt" json:"updatedAt"`
+	// NextPostAt is the time the next random post from this queue is due. The
+	// auto-poster picks one approved item at random whenever this time passes,
+	// publishes it, and rolls NextPostAt forward by the schedule gap. A nil
+	// value means the queue has not posted yet and is due as soon as it enters
+	// its date window with at least one approved item.
+	NextPostAt *time.Time `bson:"nextPostAt,omitempty" json:"nextPostAt,omitempty"`
+	CreatedAt  time.Time  `bson:"createdAt" json:"createdAt"`
+	UpdatedAt  time.Time  `bson:"updatedAt" json:"updatedAt"`
 }
 
 type ConventionQueueItem struct {

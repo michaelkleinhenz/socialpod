@@ -205,11 +205,12 @@ curl -X POST http://localhost:8080/api/convention/queues \
 
 # `postsPerDay` sets the target number of posts per day; `minHoursBetweenPosts`
 # is the minimum delay between two consecutive posts and takes precedence — it
-# caps the effective posts/day at floor(24 / minHoursBetweenPosts). Posts are
-# scattered randomly across each day, spaced by that minimum delay ±60 minutes.
-# (The legacy `timeSlots` field is accepted but no longer used for scheduling.)
-# Optional `watermarkId` selects an overlay watermark that is composited onto
-# every image in the queue when the posts are scheduled.
+# caps the effective posts/day at floor(24 / minHoursBetweenPosts). While the
+# queue is active and inside its window, the server automatically picks one
+# approved item at random and publishes it on this cadence (gaps carry ±60
+# minutes of jitter); nothing is pre-scheduled. (The legacy `timeSlots` field is
+# accepted but no longer used.) Optional `watermarkId` selects an overlay
+# watermark that is composited onto each image at post time.
 
 # Get a queue (includes items)
 curl http://localhost:8080/api/convention/queues/{id} \
@@ -240,11 +241,12 @@ curl -X POST http://localhost:8080/api/convention/queues/{id}/items/{iid}/analyz
 curl -X POST http://localhost:8080/api/convention/queues/{id}/analyze-all \
   -H "Authorization: Bearer sm_..."
 
-# Preview the drip schedule (dry run)
+# Preview the upcoming schedule (projected post times + approved count)
 curl http://localhost:8080/api/convention/queues/{id}/preview \
   -H "Authorization: Bearer sm_..."
 
-# Schedule all approved items
+# Post one random approved item immediately (manual trigger; automatic posting
+# otherwise happens on the queue's cadence in the background)
 curl -X POST http://localhost:8080/api/convention/queues/{id}/schedule \
   -H "Authorization: Bearer sm_..."
 

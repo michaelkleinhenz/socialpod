@@ -10,6 +10,7 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"io"
+	"log"
 	"math"
 	"math/rand"
 	"net/http"
@@ -30,8 +31,106 @@ import (
 )
 
 type ConventionHandler struct {
-	DB        *database.MongoDB
-	UploadDir string
+	DB           *database.MongoDB
+	UploadDir    string
+	autoPostStop chan struct{}
+}
+
+// StartAutoPoster launches the background loop that publishes approved photos
+// from active queues at random on each queue's schedule. It ticks every 30s —
+// the same cadence as the publish scheduler — so it is a no-op to call twice.
+func (h *ConventionHandler) StartAutoPoster() {
+	if h.autoPostStop != nil {
+		return
+	}
+	h.autoPostStop = make(chan struct{})
+	log.Println("Convention auto-poster started")
+	ticker := time.NewTicker(30 * time.Second)
+	go func() {
+		h.runAutoPost()
+		for {
+			select {
+			case <-ticker.C:
+				h.runAutoPost()
+			case <-h.autoPostStop:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+}
+
+// StopAutoPoster stops the background loop started by StartAutoPoster.
+func (h *ConventionHandler) StopAutoPoster() {
+	if h.autoPostStop != nil {
+		close(h.autoPostStop)
+		h.autoPostStop = nil
+	}
+}
+
+// startOfDay returns midnight at the start of t's calendar day.
+func startOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+// runAutoPost is one pass of the auto-poster: it retires queues whose window has
+// passed, then for every active, in-window queue that is due it publishes one
+// random approved photo and rolls the queue's NextPostAt forward.
+func (h *ConventionHandler) runAutoPost() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	now := time.Now()
+
+	// Retire queues whose end date is on an earlier calendar day than today.
+	h.DB.ConventionQueues().UpdateMany(ctx,
+		bson.M{
+			"status":  models.ConventionQueueStatusActive,
+			"endDate": bson.M{"$lt": startOfDay(now)},
+		},
+		bson.M{"$set": bson.M{
+			"status":    models.ConventionQueueStatusCompleted,
+			"updatedAt": now,
+		}},
+	)
+
+	cursor, err := h.DB.ConventionQueues().Find(ctx, bson.M{
+		"status":    models.ConventionQueueStatusActive,
+		"startDate": bson.M{"$lte": now},
+	})
+	if err != nil {
+		log.Printf("Convention auto-poster: failed to list queues: %v", err)
+		return
+	}
+	var queues []models.ConventionQueue
+	if err := cursor.All(ctx, &queues); err != nil {
+		cursor.Close(ctx)
+		return
+	}
+	cursor.Close(ctx)
+
+	for _, queue := range queues {
+		// Defensive: skip anything already past its window.
+		if now.After(windowEnd(queue.EndDate)) {
+			continue
+		}
+		// Not due yet.
+		if queue.NextPostAt != nil && now.Before(*queue.NextPostAt) {
+			continue
+		}
+
+		if _, err := h.postRandomApprovedItem(ctx, queue, now); err != nil {
+			log.Printf("Convention auto-poster: queue %s: %v", queue.ID.Hex(), err)
+		}
+
+		// Roll the schedule forward whether or not a photo was available, so an
+		// empty queue is retried at the normal cadence rather than every tick.
+		next := now.Add(nextPostDelay(queue.PostsPerDay, queue.MinHoursBetweenPosts))
+		h.DB.ConventionQueues().UpdateOne(ctx,
+			bson.M{"_id": queue.ID},
+			bson.M{"$set": bson.M{"nextPostAt": next, "updatedAt": time.Now()}},
+		)
+	}
 }
 
 func conventionQueueFilter(c *gin.Context) bson.M {
@@ -626,7 +725,6 @@ func (h *ConventionHandler) ReorderItems(c *gin.Context) {
 }
 
 type scheduleSlot struct {
-	ItemID      string    `json:"itemId"`
 	ScheduledAt time.Time `json:"scheduledAt"`
 }
 
@@ -716,6 +814,38 @@ func (h *ConventionHandler) generateSlots(startDate, endDate time.Time, postsPer
 	return slots
 }
 
+// nextPostDelay returns the gap until the next random post. The gap is the even
+// spread across a day (24h / effectivePostsPerDay), never shorter than the
+// configured minimum delay, plus a random jitter of up to ±60 minutes so the
+// cadence does not look mechanical. This is the rolling-queue analogue of the
+// per-day spacing that generateSlots produced for the old pre-scheduled flow.
+func nextPostDelay(postsPerDay int, minHoursBetween float64) time.Duration {
+	perDay := effectivePostsPerDay(postsPerDay, minHoursBetween)
+
+	baseGapMin := float64(24*60) / float64(perDay)
+	if minGap := minHoursBetween * 60; minGap > baseGapMin {
+		baseGapMin = minGap
+	}
+
+	jitter := (rand.Float64()*2 - 1) * 60 // ±60 minutes
+	gapMin := baseGapMin + jitter
+	if floor := minHoursBetween * 60; gapMin < floor {
+		gapMin = floor
+	}
+	if gapMin < 1 {
+		gapMin = 1
+	}
+	return time.Duration(gapMin * float64(time.Minute))
+}
+
+// windowEnd returns the last instant a queue may post: the end of the endDate's
+// calendar day, matching how the old pre-scheduled flow treated the final day
+// as fully available.
+func windowEnd(endDate time.Time) time.Time {
+	loc := endDate.Location()
+	return time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, loc)
+}
+
 func (h *ConventionHandler) PreviewSchedule(c *gin.Context) {
 	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
@@ -734,40 +864,40 @@ func (h *ConventionHandler) PreviewSchedule(c *gin.Context) {
 		return
 	}
 
-	itemOpts := options.Find().SetSort(bson.D{{Key: "sortOrder", Value: 1}, {Key: "createdAt", Value: 1}})
-	cursor, err := h.DB.ConventionQueueItems().Find(ctx,
-		bson.M{"queueId": queueID, "status": models.ConventionQueueItemStatusApproved},
-		itemOpts,
-	)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch items"})
-		return
+	approvedCount, _ := h.DB.ConventionQueueItems().CountDocuments(ctx,
+		bson.M{"queueId": queueID, "status": models.ConventionQueueItemStatusApproved})
+
+	// Project the next post times forward from where the queue currently stands.
+	// A random approved photo goes out at each of these times; the times here are
+	// illustrative because the real gaps carry per-post jitter.
+	const maxPreview = 30
+	end := windowEnd(queue.EndDate)
+	cursor := time.Now()
+	if queue.StartDate.After(cursor) {
+		cursor = queue.StartDate
 	}
-	var items []models.ConventionQueueItem
-	cursor.All(ctx, &items)
-	cursor.Close(ctx)
+	if queue.NextPostAt != nil && queue.NextPostAt.After(cursor) {
+		cursor = *queue.NextPostAt
+	}
 
-	slots := h.generateSlots(queue.StartDate, queue.EndDate, queue.PostsPerDay, queue.MinHoursBetweenPosts)
-
-	preview := make([]scheduleSlot, 0, len(items))
-	for i, item := range items {
-		if i >= len(slots) {
-			break
-		}
-		preview = append(preview, scheduleSlot{
-			ItemID:      item.ID.Hex(),
-			ScheduledAt: slots[i],
-		})
+	slots := make([]scheduleSlot, 0, maxPreview)
+	for len(slots) < maxPreview && !cursor.After(end) {
+		slots = append(slots, scheduleSlot{ScheduledAt: cursor})
+		cursor = cursor.Add(nextPostDelay(queue.PostsPerDay, queue.MinHoursBetweenPosts))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"slots":          preview,
-		"approvedCount":  len(items),
-		"availableSlots": len(slots),
-		"overflow":       max(0, len(items)-len(slots)),
+		"slots":         slots,
+		"approvedCount": int(approvedCount),
+		"postsPerDay":   effectivePostsPerDay(queue.PostsPerDay, queue.MinHoursBetweenPosts),
+		"windowEnd":     end,
+		"nextPostAt":    queue.NextPostAt,
 	})
 }
 
+// ScheduleItems is a manual "post one now" trigger. Automatic posting happens in
+// the background (see runAutoPost), but this lets the user push a random
+// approved photo out immediately without waiting for the next slot.
 func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
@@ -775,8 +905,8 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 		return
 	}
 
-	// A generous timeout: when an overlay watermark is set we composite it onto
-	// every approved image before scheduling, which is CPU-bound.
+	// A generous timeout: compositing an overlay watermark onto the image is
+	// CPU-bound.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -788,112 +918,120 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 		return
 	}
 
-	itemOpts := options.Find().SetSort(bson.D{{Key: "sortOrder", Value: 1}, {Key: "createdAt", Value: 1}})
-	cursor, err := h.DB.ConventionQueueItems().Find(ctx,
-		bson.M{"queueId": queueID, "status": models.ConventionQueueItemStatusApproved},
-		itemOpts,
-	)
+	posted, err := h.postRandomApprovedItem(ctx, queue, time.Now())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch items"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	var items []models.ConventionQueueItem
-	cursor.All(ctx, &items)
-	cursor.Close(ctx)
-
-	if len(items) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No approved items to schedule"})
+	if !posted {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No approved photos in the queue to post"})
 		return
 	}
 
-	slots := h.generateSlots(queue.StartDate, queue.EndDate, queue.PostsPerDay, queue.MinHoursBetweenPosts)
-	if len(slots) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No available time slots in the specified window — extend the date range or increase posts per day"})
-		return
+	// Roll the automatic schedule forward so the manual post and the next
+	// automatic one are still spaced apart.
+	next := time.Now().Add(nextPostDelay(queue.PostsPerDay, queue.MinHoursBetweenPosts))
+	h.DB.ConventionQueues().UpdateOne(ctx,
+		bson.M{"_id": queue.ID},
+		bson.M{"$set": bson.M{"nextPostAt": next, "updatedAt": time.Now()}},
+	)
+
+	remaining, _ := h.DB.ConventionQueueItems().CountDocuments(ctx,
+		bson.M{"queueId": queueID, "status": models.ConventionQueueItemStatusApproved})
+
+	c.JSON(http.StatusOK, gin.H{
+		"posted":    true,
+		"remaining": int(remaining),
+	})
+}
+
+// postRandomApprovedItem picks one approved item from the queue at random,
+// composites the queue watermark if configured, creates a Post scheduled for
+// scheduledAt (the shared scheduler then publishes it), and marks the item as
+// consumed so it is never picked again. It returns false (and no error) when the
+// queue has no approved items left.
+func (h *ConventionHandler) postRandomApprovedItem(ctx context.Context, queue models.ConventionQueue, scheduledAt time.Time) (bool, error) {
+	// $sample draws a random document, so posting order is randomised.
+	cursor, err := h.DB.ConventionQueueItems().Aggregate(ctx, bson.A{
+		bson.M{"$match": bson.M{"queueId": queue.ID, "status": models.ConventionQueueItemStatusApproved}},
+		bson.M{"$sample": bson.M{"size": 1}},
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to pick an approved item: %w", err)
 	}
-
-	userID, _ := c.Get("userId")
-	uid, _ := primitive.ObjectIDFromHex(userID.(string))
-
-	var teamID *primitive.ObjectID
-	if tid, ok := c.Get("teamId"); ok && tid.(string) != "" {
-		t, _ := primitive.ObjectIDFromHex(tid.(string))
-		teamID = &t
+	var picked []models.ConventionQueueItem
+	if err := cursor.All(ctx, &picked); err != nil {
+		return false, fmt.Errorf("failed to read approved item: %w", err)
 	}
+	if len(picked) == 0 {
+		return false, nil
+	}
+	item := picked[0]
 
-	// When the queue has an overlay watermark configured, load it once and
-	// composite it onto every scheduled image so the published post carries
-	// the overlay baked in.
 	overlay := h.loadQueueWatermark(ctx, queue.WatermarkID)
 	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
 
-	scheduled := 0
-	for i, item := range items {
-		if i >= len(slots) {
-			break
-		}
-
-		platforms := item.Platforms
-		if len(platforms) == 0 {
-			platforms = queue.Platforms
-		}
-		accountIDs := item.AccountIDs
-		if len(accountIDs) == 0 {
-			accountIDs = queue.AccountIDs
-		}
-
-		imageURL := item.ImageURL
-		if overlay != nil {
-			if data, _, err := h.readImageData(ctx, item.ImageURL); err == nil {
-				watermarked, ct := applyWatermarkOverlay(data, overlay)
-				filename := fmt.Sprintf("conv-wm-%s-%d.jpg", item.ID.Hex(), time.Now().UnixNano())
-				if storedURL, err := ph.storeFile(filename, ct, watermarked); err == nil {
-					imageURL = storedURL
-				}
-			}
-		}
-
-		post := models.Post{
-			UserID:      uid,
-			TeamID:      teamID,
-			PostType:    models.PostTypePost,
-			Content:     item.Caption,
-			ImageURLs:   []string{imageURL},
-			Platforms:   platforms,
-			ScheduledAt: slots[i],
-			Status:      models.PostStatusScheduled,
-			AccountIDs:  accountIDs,
-			SuffixIDs: func() map[string]string {
-				if len(item.SuffixIDs) > 0 {
-					return item.SuffixIDs
-				}
-				return queue.SuffixIDs
-			}(),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-
-		res, err := h.DB.Posts().InsertOne(ctx, post)
-		if err != nil {
-			continue
-		}
-
-		postID := res.InsertedID.(primitive.ObjectID)
-		h.DB.ConventionQueueItems().UpdateOne(ctx,
-			bson.M{"_id": item.ID},
-			bson.M{"$set": bson.M{
-				"status":    models.ConventionQueueItemStatusScheduled,
-				"postId":    postID,
-				"updatedAt": time.Now(),
-			}},
-		)
-		scheduled++
+	platforms := item.Platforms
+	if len(platforms) == 0 {
+		platforms = queue.Platforms
+	}
+	accountIDs := item.AccountIDs
+	if len(accountIDs) == 0 {
+		accountIDs = queue.AccountIDs
+	}
+	suffixIDs := item.SuffixIDs
+	if len(suffixIDs) == 0 {
+		suffixIDs = queue.SuffixIDs
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"scheduled": scheduled,
-		"overflow":  max(0, len(items)-len(slots)),
-	})
+	imageURL := item.ImageURL
+	if overlay != nil {
+		if data, _, err := h.readImageData(ctx, item.ImageURL); err == nil {
+			watermarked, ct := applyWatermarkOverlay(data, overlay)
+			filename := fmt.Sprintf("conv-wm-%s-%d.jpg", item.ID.Hex(), time.Now().UnixNano())
+			if storedURL, err := ph.storeFile(filename, ct, watermarked); err == nil {
+				imageURL = storedURL
+			}
+		}
+	}
+
+	post := models.Post{
+		UserID:      queue.UserID,
+		TeamID:      queue.TeamID,
+		PostType:    models.PostTypePost,
+		Content:     item.Caption,
+		ImageURLs:   []string{imageURL},
+		Platforms:   platforms,
+		ScheduledAt: scheduledAt,
+		Status:      models.PostStatusScheduled,
+		AccountIDs:  accountIDs,
+		SuffixIDs:   suffixIDs,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	res, err := h.DB.Posts().InsertOne(ctx, post)
+	if err != nil {
+		return false, fmt.Errorf("failed to create post: %w", err)
+	}
+
+	// Consume the item so it leaves the approved set. Guard on status so a
+	// concurrent trigger can't double-post the same photo.
+	postID := res.InsertedID.(primitive.ObjectID)
+	upd, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
+		bson.M{"_id": item.ID, "status": models.ConventionQueueItemStatusApproved},
+		bson.M{"$set": bson.M{
+			"status":    models.ConventionQueueItemStatusScheduled,
+			"postId":    postID,
+			"updatedAt": time.Now(),
+		}},
+	)
+	if err == nil && upd.MatchedCount == 0 {
+		// Lost the race: another trigger consumed this item. Roll back the post.
+		h.DB.Posts().DeleteOne(ctx, bson.M{"_id": postID})
+		return false, nil
+	}
+	return true, nil
 }
 
 type bggGameInfo struct {
