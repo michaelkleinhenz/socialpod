@@ -201,7 +201,13 @@ curl http://localhost:8080/api/convention/queues \
 curl -X POST http://localhost:8080/api/convention/queues \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
-  -d '{"name":"Essen SPIEL 2026","startDate":"2026-10-27T00:00:00Z","endDate":"2026-11-10T00:00:00Z","postsPerDay":3,"timeSlots":["09:00","13:00","18:00"],"platforms":["bluesky","instagram"],"hashtags":["#EssenSPIEL"]}'
+  -d '{"name":"Essen SPIEL 2026","startDate":"2026-10-27T00:00:00Z","endDate":"2026-11-10T00:00:00Z","postsPerDay":3,"minHoursBetweenPosts":6,"platforms":["bluesky","instagram"],"hashtags":["#EssenSPIEL"]}'
+
+# `postsPerDay` sets the target number of posts per day; `minHoursBetweenPosts`
+# is the minimum delay between two consecutive posts and takes precedence — it
+# caps the effective posts/day at floor(24 / minHoursBetweenPosts). Posts are
+# scattered randomly across each day, spaced by that minimum delay ±60 minutes.
+# (The legacy `timeSlots` field is accepted but no longer used for scheduling.)
 
 # Get a queue (includes items)
 curl http://localhost:8080/api/convention/queues/{id} \

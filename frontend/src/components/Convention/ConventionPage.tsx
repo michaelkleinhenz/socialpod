@@ -9,7 +9,6 @@ import { PlatformIcon } from '../Common/PlatformIcon';
 import './Convention.css';
 
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
-const DEFAULT_TIME_SLOTS = ['09:00', '14:00', '19:00'];
 
 function QueueFormModal({
   initial,
@@ -33,7 +32,7 @@ function QueueFormModal({
     initial ? format(parseISO(initial.endDate), "yyyy-MM-dd'T'HH:mm") : ''
   );
   const [postsPerDay, setPostsPerDay] = useState(initial?.postsPerDay ?? 2);
-  const [timeSlots, setTimeSlots] = useState<string[]>(initial?.timeSlots ?? DEFAULT_TIME_SLOTS.slice(0, 2));
+  const [minHoursBetween, setMinHoursBetween] = useState(initial?.minHoursBetweenPosts ?? 0);
   const [platforms, setPlatforms] = useState<Platform[]>(initial?.platforms ?? []);
   const [accountIds, setAccountIds] = useState<Record<string, string>>(initial?.accountIds ?? {});
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(initial?.suffixIds ?? {});
@@ -65,18 +64,11 @@ function QueueFormModal({
     );
   };
 
-  const updateTimeSlot = (idx: number, val: string) => {
-    setTimeSlots(prev => prev.map((s, i) => (i === idx ? val : s)));
-  };
-
-  const syncSlotCount = (count: number) => {
-    setPostsPerDay(count);
-    setTimeSlots(prev => {
-      const next = [...prev];
-      while (next.length < count) next.push(DEFAULT_TIME_SLOTS[next.length] ?? '12:00');
-      return next.slice(0, count);
-    });
-  };
+  // The minimum delay takes precedence over posts-per-day: at most
+  // floor(24 / minHours) posts can go out on any given day.
+  const effectivePerDay = minHoursBetween > 0
+    ? Math.min(postsPerDay, Math.max(1, Math.floor(24 / minHoursBetween)))
+    : postsPerDay;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,7 +85,7 @@ function QueueFormModal({
         startDate: new Date(startDate).toISOString(),
         endDate: new Date(endDate).toISOString(),
         postsPerDay,
-        timeSlots: timeSlots.slice(0, postsPerDay),
+        minHoursBetweenPosts: minHoursBetween,
         platforms,
         accountIds,
         suffixIds,
@@ -182,36 +174,39 @@ function QueueFormModal({
             </div>
           </div>
 
-          <div className="form-group">
-            <label>Posts per day</label>
-            <div className="posts-per-day-btns">
-              {[1, 2, 3].map(n => (
-                <button
-                  key={n}
-                  type="button"
-                  className={`ppd-btn ${postsPerDay === n ? 'active' : ''}`}
-                  onClick={() => syncSlotCount(n)}
-                >
-                  {n}
-                </button>
-              ))}
+          <div className="form-row">
+            <div className="form-group">
+              <label>Posts per day</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                step={1}
+                value={postsPerDay}
+                onChange={e => setPostsPerDay(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              />
+            </div>
+            <div className="form-group">
+              <label>Min. hours between posts</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                step={0.5}
+                value={minHoursBetween}
+                onChange={e => setMinHoursBetween(Math.max(0, parseFloat(e.target.value) || 0))}
+                placeholder="0 = no minimum"
+              />
             </div>
           </div>
-
-          <div className="form-group">
-            <label>Posting times (UTC)</label>
-            <div className="time-slots">
-              {Array.from({ length: postsPerDay }).map((_, i) => (
-                <input
-                  key={i}
-                  className="input time-slot-input"
-                  type="time"
-                  value={timeSlots[i] ?? '12:00'}
-                  onChange={e => updateTimeSlot(i, e.target.value)}
-                />
-              ))}
-            </div>
-          </div>
+          <p className="conv-schedule-hint">
+            Posts are scattered randomly across each day, with a random gap of the
+            minimum delay ±60 minutes between them. The minimum delay takes
+            precedence: {' '}
+            {minHoursBetween > 0
+              ? <>at most <strong>{effectivePerDay}</strong> post{effectivePerDay !== 1 ? 's' : ''}/day will go out ({minHoursBetween}h apart caps it at {Math.max(1, Math.floor(24 / minHoursBetween))}/day).</>
+              : <>with no minimum set, all <strong>{postsPerDay}</strong> post{postsPerDay !== 1 ? 's' : ''}/day are spread evenly across the day.</>}
+          </p>
 
           <div className="form-group">
             <label>Platforms *</label>
@@ -418,7 +413,9 @@ export function ConventionPage() {
 
               <div className="conv-queue-footer">
                 <span className={`badge badge-${q.status}`}>{q.status}</span>
-                <span className="conv-ppd">{q.postsPerDay}×/day</span>
+                <span className="conv-ppd">
+                  {q.postsPerDay}×/day{q.minHoursBetweenPosts ? ` · ≥${q.minHoursBetweenPosts}h apart` : ''}
+                </span>
               </div>
             </div>
           ))}

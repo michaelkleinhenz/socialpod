@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,16 +42,17 @@ func conventionQueueFilter(c *gin.Context) bson.M {
 }
 
 type ConventionQueueInput struct {
-	Name          string            `json:"name" binding:"required"`
-	ConventionURL string            `json:"conventionUrl,omitempty"`
-	Hashtags      []string          `json:"hashtags,omitempty"`
-	StartDate     string            `json:"startDate" binding:"required"`
-	EndDate       string            `json:"endDate" binding:"required"`
-	PostsPerDay   int               `json:"postsPerDay" binding:"required,min=1,max=5"`
-	TimeSlots     []string          `json:"timeSlots" binding:"required"`
-	Platforms     []models.Platform `json:"platforms" binding:"required"`
-	AccountIDs    map[string]string `json:"accountIds,omitempty"`
-	SuffixIDs     map[string]string `json:"suffixIds,omitempty"`
+	Name                 string            `json:"name" binding:"required"`
+	ConventionURL        string            `json:"conventionUrl,omitempty"`
+	Hashtags             []string          `json:"hashtags,omitempty"`
+	StartDate            string            `json:"startDate" binding:"required"`
+	EndDate              string            `json:"endDate" binding:"required"`
+	PostsPerDay          int               `json:"postsPerDay" binding:"required,min=1"`
+	MinHoursBetweenPosts float64           `json:"minHoursBetweenPosts,omitempty" binding:"omitempty,min=0"`
+	TimeSlots            []string          `json:"timeSlots,omitempty"`
+	Platforms            []models.Platform `json:"platforms" binding:"required"`
+	AccountIDs           map[string]string `json:"accountIds,omitempty"`
+	SuffixIDs            map[string]string `json:"suffixIds,omitempty"`
 }
 
 func (h *ConventionHandler) CreateQueue(c *gin.Context) {
@@ -78,20 +81,21 @@ func (h *ConventionHandler) CreateQueue(c *gin.Context) {
 	uid, _ := primitive.ObjectIDFromHex(userID.(string))
 
 	queue := models.ConventionQueue{
-		UserID:        uid,
-		Name:          input.Name,
-		ConventionURL: input.ConventionURL,
-		Hashtags:      input.Hashtags,
-		StartDate:     startDate,
-		EndDate:       endDate,
-		PostsPerDay:   input.PostsPerDay,
-		TimeSlots:     input.TimeSlots,
-		Platforms:     input.Platforms,
-		AccountIDs:    input.AccountIDs,
-		SuffixIDs:     input.SuffixIDs,
-		Status:        models.ConventionQueueStatusActive,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		UserID:               uid,
+		Name:                 input.Name,
+		ConventionURL:        input.ConventionURL,
+		Hashtags:             input.Hashtags,
+		StartDate:            startDate,
+		EndDate:              endDate,
+		PostsPerDay:          input.PostsPerDay,
+		MinHoursBetweenPosts: input.MinHoursBetweenPosts,
+		TimeSlots:            input.TimeSlots,
+		Platforms:            input.Platforms,
+		AccountIDs:           input.AccountIDs,
+		SuffixIDs:            input.SuffixIDs,
+		Status:               models.ConventionQueueStatusActive,
+		CreatedAt:            time.Now(),
+		UpdatedAt:            time.Now(),
 	}
 
 	if teamID, ok := c.Get("teamId"); ok && teamID.(string) != "" {
@@ -218,17 +222,18 @@ func (h *ConventionHandler) UpdateQueue(c *gin.Context) {
 	defer cancel()
 
 	result, err := h.DB.ConventionQueues().UpdateOne(ctx, filter, bson.M{"$set": bson.M{
-		"name":          input.Name,
-		"conventionUrl": input.ConventionURL,
-		"hashtags":      input.Hashtags,
-		"startDate":     startDate,
-		"endDate":       endDate,
-		"postsPerDay":   input.PostsPerDay,
-		"timeSlots":     input.TimeSlots,
-		"platforms":     input.Platforms,
-		"accountIds":    input.AccountIDs,
-		"suffixIds":     input.SuffixIDs,
-		"updatedAt":     time.Now(),
+		"name":                 input.Name,
+		"conventionUrl":        input.ConventionURL,
+		"hashtags":             input.Hashtags,
+		"startDate":            startDate,
+		"endDate":              endDate,
+		"postsPerDay":          input.PostsPerDay,
+		"minHoursBetweenPosts": input.MinHoursBetweenPosts,
+		"timeSlots":            input.TimeSlots,
+		"platforms":            input.Platforms,
+		"accountIds":           input.AccountIDs,
+		"suffixIds":            input.SuffixIDs,
+		"updatedAt":            time.Now(),
 	}})
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Queue not found"})
@@ -606,26 +611,87 @@ type scheduleSlot struct {
 	ScheduledAt time.Time `json:"scheduledAt"`
 }
 
-func (h *ConventionHandler) generateSlots(startDate, endDate time.Time, postsPerDay int, timeSlots []string) []time.Time {
-	var slots []time.Time
+// maxConventionPostsPerDay is a safety ceiling so an accidental huge
+// posts-per-day value can't generate an unbounded number of slots.
+const maxConventionPostsPerDay = 96
+
+// effectivePostsPerDay resolves how many posts actually go out on a single day.
+// The minimum delay takes precedence: it caps the count at floor(24/minHours),
+// so e.g. 5 posts/day with a 10h minimum delay yields at most 2 posts per day.
+func effectivePostsPerDay(postsPerDay int, minHoursBetween float64) int {
+	perDay := postsPerDay
+	if perDay < 1 {
+		perDay = 1
+	}
+	if minHoursBetween > 0 {
+		maxPerDay := int(math.Floor(24.0 / minHoursBetween))
+		if maxPerDay < 1 {
+			maxPerDay = 1
+		}
+		if perDay > maxPerDay {
+			perDay = maxPerDay
+		}
+	}
+	if perDay > maxConventionPostsPerDay {
+		perDay = maxConventionPostsPerDay
+	}
+	return perDay
+}
+
+// generateSlots scatters posts randomly across every day in the window. Each
+// day gets up to effectivePostsPerDay posts. Consecutive posts are separated by
+// the configured minimum delay plus a random jitter of up to ±60 minutes; when
+// no minimum delay is set, posts are spread evenly across the day (still with
+// the ±60 minute jitter). Slots are returned in chronological order.
+func (h *ConventionHandler) generateSlots(startDate, endDate time.Time, postsPerDay int, minHoursBetween float64) []time.Time {
 	now := time.Now()
 	loc := startDate.Location()
-	current := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
-	end := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, loc)
 
-	for !current.After(end) {
-		for i := 0; i < postsPerDay && i < len(timeSlots); i++ {
-			parts := strings.SplitN(timeSlots[i], ":", 2)
-			if len(parts) != 2 {
-				continue
+	perDay := effectivePostsPerDay(postsPerDay, minHoursBetween)
+
+	const dayMinutes = 24 * 60
+	minGap := minHoursBetween * 60 // minutes between consecutive posts
+	if minGap <= 0 {
+		// No explicit delay: spread evenly across the day as the base gap.
+		minGap = float64(dayMinutes) / float64(perDay)
+	}
+
+	var slots []time.Time
+	current := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
+	lastDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, loc)
+
+	for !current.After(lastDay) {
+		// A random starting offset that still leaves room to fit every post of
+		// the day at the base gap, so the posts drift around within the day.
+		slack := float64(dayMinutes) - float64(perDay-1)*minGap
+		if slack < 0 {
+			slack = 0
+		}
+		offset := rand.Float64() * slack
+
+		daySlots := make([]time.Time, 0, perDay)
+		for i := 0; i < perDay; i++ {
+			if i > 0 {
+				// Random delay: the base gap plus/minus up to 60 minutes.
+				jitter := (rand.Float64()*2 - 1) * 60
+				offset += minGap + jitter
 			}
-			hh, _ := strconv.Atoi(parts[0])
-			mm, _ := strconv.Atoi(parts[1])
-			slot := time.Date(current.Year(), current.Month(), current.Day(), hh, mm, 0, 0, loc)
+			minute := offset
+			if minute < 0 {
+				minute = 0
+			}
+			if minute > dayMinutes-1 {
+				minute = dayMinutes - 1
+			}
+			slot := current.Add(time.Duration(minute * float64(time.Minute)))
 			if slot.After(now) {
-				slots = append(slots, slot)
+				daySlots = append(daySlots, slot)
 			}
 		}
+		// Jitter can reorder posts within a short-gap day; keep them sorted.
+		sort.Slice(daySlots, func(a, b int) bool { return daySlots[a].Before(daySlots[b]) })
+		slots = append(slots, daySlots...)
+
 		current = current.AddDate(0, 0, 1)
 	}
 	return slots
@@ -662,7 +728,7 @@ func (h *ConventionHandler) PreviewSchedule(c *gin.Context) {
 	cursor.All(ctx, &items)
 	cursor.Close(ctx)
 
-	slots := h.generateSlots(queue.StartDate, queue.EndDate, queue.PostsPerDay, queue.TimeSlots)
+	slots := h.generateSlots(queue.StartDate, queue.EndDate, queue.PostsPerDay, queue.MinHoursBetweenPosts)
 
 	preview := make([]scheduleSlot, 0, len(items))
 	for i, item := range items {
@@ -719,7 +785,7 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 		return
 	}
 
-	slots := h.generateSlots(queue.StartDate, queue.EndDate, queue.PostsPerDay, queue.TimeSlots)
+	slots := h.generateSlots(queue.StartDate, queue.EndDate, queue.PostsPerDay, queue.MinHoursBetweenPosts)
 	if len(slots) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No available time slots in the specified window — extend the date range or increase posts per day"})
 		return
@@ -759,14 +825,14 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 			ScheduledAt: slots[i],
 			Status:      models.PostStatusScheduled,
 			AccountIDs:  accountIDs,
-			SuffixIDs:   func() map[string]string {
+			SuffixIDs: func() map[string]string {
 				if len(item.SuffixIDs) > 0 {
 					return item.SuffixIDs
 				}
 				return queue.SuffixIDs
 			}(),
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 
 		res, err := h.DB.Posts().InsertOne(ctx, post)

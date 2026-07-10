@@ -700,6 +700,12 @@ export function QueueDetailPage() {
             <span>{format(parseISO(queue.startDate), 'MMM d')} – {format(parseISO(queue.endDate), 'MMM d, yyyy')}</span>
             <span>·</span>
             <span>{queue.postsPerDay}×/day</span>
+            {queue.minHoursBetweenPosts ? (
+              <>
+                <span>·</span>
+                <span>≥{queue.minHoursBetweenPosts}h apart</span>
+              </>
+            ) : null}
             {queue.hashtags && queue.hashtags.length > 0 && (
               <>
                 <span>·</span>
