@@ -30,6 +30,9 @@ import {
   Pencil,
   Filter,
   Link,
+  Smartphone,
+  Copy,
+  Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
@@ -452,9 +455,22 @@ function SchedulePreviewModal({
   );
 }
 
-export function QueueDetailPage() {
+export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const mobileUrl = id ? `${window.location.origin}/m/convention/${id}` : '';
+
+  const copyMobileLink = async () => {
+    try {
+      await navigator.clipboard.writeText(mobileUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
 
   const [queue, setQueue] = useState<ConventionQueue | null>(null);
   const [items, setItems] = useState<ConventionQueueItem[]>([]);
@@ -702,8 +718,10 @@ export function QueueDetailPage() {
       });
   };
 
-  if (loading) return <div className="page"><div className="loading-screen"><div className="spinner" /></div></div>;
-  if (!queue) return <div className="page"><p>Queue not found.</p></div>;
+  const rootClass = mobile ? 'conv-mobile-page' : 'page conv-detail-page';
+
+  if (loading) return <div className={rootClass}><div className="loading-screen"><div className="spinner" /></div></div>;
+  if (!queue) return <div className={rootClass}><p style={{ padding: 20 }}>Queue not found.</p></div>;
 
   const approvedCount = items.filter(i => i.status === 'approved').length;
   const scheduledCount = items.filter(i => i.status === 'scheduled' || i.status === 'published').length;
@@ -715,12 +733,29 @@ export function QueueDetailPage() {
     : items;
 
   return (
-    <div className="page conv-detail-page">
+    <div className={rootClass}>
+      {/* Bookmarkable mobile-view link (desktop only) */}
+      {!mobile && (
+        <div className="conv-mobile-link-bar">
+          <Smartphone size={16} className="conv-mobile-link-icon" />
+          <div className="conv-mobile-link-text">
+            <span className="conv-mobile-link-label">Phone view for this convention — bookmark it to post on the go:</span>
+            <a href={mobileUrl} className="conv-mobile-link" target="_blank" rel="noopener noreferrer">{mobileUrl}</a>
+          </div>
+          <button className="btn btn-sm btn-secondary conv-mobile-link-copy" onClick={copyMobileLink}>
+            {linkCopied ? <Check size={14} /> : <Copy size={14} />}
+            {linkCopied ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="conv-detail-header">
-        <button className="icon-btn" onClick={() => navigate('/convention')} title="Back">
-          <ArrowLeft size={18} />
-        </button>
+        {!mobile && (
+          <button className="icon-btn" onClick={() => navigate('/convention')} title="Back">
+            <ArrowLeft size={18} />
+          </button>
+        )}
         <div className="conv-detail-title">
           <h1>{queue.name}</h1>
           <div className="conv-detail-meta">
