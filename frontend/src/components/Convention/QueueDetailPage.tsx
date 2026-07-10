@@ -187,6 +187,9 @@ function QueueItemCard({
 
   const effectivePlatforms = itemPlatforms.length > 0 ? itemPlatforms : queuePlatforms;
   const isLocked = item.status === 'scheduled' || item.status === 'published';
+  // Scheduled items can still be pulled back (cancels the pending post); once
+  // published there's nothing left to cancel, so only that state stays locked.
+  const isDeletable = item.status !== 'published';
 
   const suffixPlatformLabels: Record<string, string> = {
     bluesky: 'Bluesky',
@@ -310,8 +313,8 @@ function QueueItemCard({
           <button
             className="icon-btn danger"
             onClick={onDelete}
-            disabled={isLocked}
-            title="Remove from queue"
+            disabled={!isDeletable}
+            title={item.status === 'scheduled' ? 'Remove from queue and cancel the pending post' : 'Remove from queue'}
           >
             <Trash2 size={14} />
           </button>

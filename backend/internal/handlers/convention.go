@@ -563,6 +563,19 @@ func (h *ConventionHandler) DeleteItem(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	var item models.ConventionQueueItem
+	if err := h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID, "queueId": queueID}).Decode(&item); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	// A scheduled item has a real Post waiting to be published by the shared
+	// scheduler. Deleting the item from the queue should cancel that post too,
+	// otherwise it would still go out even though it's gone from the queue.
+	if item.Status == models.ConventionQueueItemStatusScheduled && item.PostID != nil {
+		h.DB.Posts().DeleteOne(ctx, bson.M{"_id": *item.PostID, "status": models.PostStatusScheduled})
+	}
+
 	result, err := h.DB.ConventionQueueItems().DeleteOne(ctx, bson.M{"_id": itemID, "queueId": queueID})
 	if err != nil || result.DeletedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
