@@ -26,13 +26,20 @@ type ConventionQueue struct {
 	StartDate     time.Time           `bson:"startDate" json:"startDate"`
 	EndDate       time.Time           `bson:"endDate" json:"endDate"`
 	PostsPerDay   int                 `bson:"postsPerDay" json:"postsPerDay"`
-	TimeSlots     []string            `bson:"timeSlots" json:"timeSlots"`
-	Platforms     []Platform          `bson:"platforms" json:"platforms"`
-	AccountIDs    map[string]string   `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
-	SuffixIDs     map[string]string   `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
-	Status        string              `bson:"status" json:"status"`
-	CreatedAt     time.Time           `bson:"createdAt" json:"createdAt"`
-	UpdatedAt     time.Time           `bson:"updatedAt" json:"updatedAt"`
+	// MinHoursBetweenPosts is the minimum delay between two consecutive posts.
+	// It takes precedence over PostsPerDay: it caps how many posts can go out
+	// per day (floor(24 / MinHoursBetweenPosts)).
+	MinHoursBetweenPosts float64 `bson:"minHoursBetweenPosts,omitempty" json:"minHoursBetweenPosts,omitempty"`
+	// TimeSlots is retained for backward compatibility with existing queues.
+	// Posts are now scattered randomly across each day rather than pinned to
+	// fixed time slots, so this field is no longer used for scheduling.
+	TimeSlots  []string          `bson:"timeSlots,omitempty" json:"timeSlots,omitempty"`
+	Platforms  []Platform        `bson:"platforms" json:"platforms"`
+	AccountIDs map[string]string `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
+	SuffixIDs  map[string]string `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
+	Status     string            `bson:"status" json:"status"`
+	CreatedAt  time.Time         `bson:"createdAt" json:"createdAt"`
+	UpdatedAt  time.Time         `bson:"updatedAt" json:"updatedAt"`
 }
 
 type ConventionQueueItem struct {

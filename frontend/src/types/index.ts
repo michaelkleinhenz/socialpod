@@ -263,7 +263,10 @@ export interface ConventionQueue {
   startDate: string;
   endDate: string;
   postsPerDay: number;
-  timeSlots: string[];
+  /** Minimum delay between two consecutive posts, in hours. Caps posts/day. */
+  minHoursBetweenPosts?: number;
+  /** Deprecated: posts are now scattered randomly instead of pinned to slots. */
+  timeSlots?: string[];
   platforms: Platform[];
   accountIds?: Record<string, string>;
   suffixIds?: Record<string, string>;

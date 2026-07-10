@@ -158,29 +158,14 @@
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-.posts-per-day-btns { display: flex; gap: 8px; }
-
-.ppd-btn {
-  width: 44px;
-  height: 36px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  transition: all 0.15s;
+.conv-schedule-hint {
+  margin: -4px 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
-.ppd-btn.active {
-  border-color: var(--accent);
-  background: var(--accent-muted);
-  color: var(--accent-hover);
-}
-
-.time-slots { display: flex; gap: 8px; flex-wrap: wrap; }
-.time-slot-input { width: 110px !important; }
+.conv-schedule-hint strong { color: var(--text-primary); }
 
 .platform-toggles { display: flex; flex-wrap: wrap; gap: 8px; }
 

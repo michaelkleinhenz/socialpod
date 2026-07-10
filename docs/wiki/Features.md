@@ -139,9 +139,15 @@ Convention Mode is designed for events (trade shows, gaming conventions, fan exp
    - **Convention URL** (optional) — website or hashtag URL
    - **Hashtags** — prepended/appended to every post
    - **Start / End date** — the drip window
-   - **Posts per day** — how many posts to publish each day
-   - **Time slots** — e.g. `09:00`, `13:00`, `18:00`
+   - **Posts per day** — target number of posts to publish each day
+   - **Min. hours between posts** — the minimum delay between two consecutive
+     posts. This takes precedence over posts-per-day: it caps the effective
+     count at `floor(24 / minHours)` per day (e.g. 5 posts/day with a 10h
+     minimum yields at most 2 posts/day).
    - **Platforms** — target social networks
+
+   Posts are scattered randomly across each day rather than pinned to fixed
+   times, spaced by the minimum delay ±60 minutes of random jitter.
 3. Click **Create Queue**.
 
 ### Adding and Managing Photos
