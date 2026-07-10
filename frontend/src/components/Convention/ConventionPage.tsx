@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { ConventionQueue, Platform, SocialAccount, Suffix } from '../../types';
+import type { ConventionQueue, Platform, SocialAccount, Suffix, Watermark } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -37,10 +37,13 @@ function QueueFormModal({
   const [accountIds, setAccountIds] = useState<Record<string, string>>(initial?.accountIds ?? {});
   const [suffixIds, setSuffixIds] = useState<Record<string, string>>(initial?.suffixIds ?? {});
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
+  const [watermarkId, setWatermarkId] = useState(initial?.watermarkId ?? '');
+  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getWatermarks().then(setWatermarks).catch(() => {});
   }, []);
 
   const addHashtag = () => {
@@ -89,6 +92,7 @@ function QueueFormModal({
         platforms,
         accountIds,
         suffixIds,
+        watermarkId: watermarkId || null,
       });
     } finally {
       setSaving(false);
@@ -150,6 +154,34 @@ function QueueFormModal({
               </div>
             )}
           </div>
+
+          {watermarks.length > 0 && (
+            <div className="form-group">
+              <label>Overlay watermark</label>
+              <div className="conv-watermark-select">
+                <select
+                  className="select"
+                  value={watermarkId}
+                  onChange={e => setWatermarkId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {watermarks.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+                {watermarkId && (() => {
+                  const wm = watermarks.find(w => w.id === watermarkId);
+                  if (!wm) return null;
+                  const base = import.meta.env.VITE_API_URL || '';
+                  const src = wm.url.startsWith('/') ? base + wm.url : wm.url;
+                  return <img src={src} alt={wm.name} className="conv-watermark-preview" />;
+                })()}
+              </div>
+              <p className="conv-upload-hint">
+                Applied automatically to every image in this convention when scheduled.
+              </p>
+            </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">

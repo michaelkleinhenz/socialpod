@@ -37,9 +37,12 @@ type ConventionQueue struct {
 	Platforms  []Platform        `bson:"platforms" json:"platforms"`
 	AccountIDs map[string]string `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
 	SuffixIDs  map[string]string `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
-	Status     string            `bson:"status" json:"status"`
-	CreatedAt  time.Time         `bson:"createdAt" json:"createdAt"`
-	UpdatedAt  time.Time         `bson:"updatedAt" json:"updatedAt"`
+	// WatermarkID, when set, is an overlay watermark that is composited onto
+	// every image in the queue at schedule time.
+	WatermarkID *primitive.ObjectID `bson:"watermarkId,omitempty" json:"watermarkId,omitempty"`
+	Status      string              `bson:"status" json:"status"`
+	CreatedAt   time.Time           `bson:"createdAt" json:"createdAt"`
+	UpdatedAt   time.Time           `bson:"updatedAt" json:"updatedAt"`
 }
 
 type ConventionQueueItem struct {

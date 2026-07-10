@@ -9,6 +9,7 @@ import type {
   SocialAccount,
   Platform,
   Suffix,
+  Watermark,
 } from '../../types';
 import { format, parseISO } from 'date-fns';
 import {
@@ -55,6 +56,7 @@ function QueueItemCard({
   suffixes,
   queuePlatforms,
   queueSuffixIds,
+  overlayUrl,
   onUpdate,
   onDelete,
   onAnalyze,
@@ -70,6 +72,7 @@ function QueueItemCard({
   suffixes: Suffix[];
   queuePlatforms: Platform[];
   queueSuffixIds: Record<string, string>;
+  overlayUrl?: string;
   onUpdate: (item: ConventionQueueItem) => void;
   onDelete: () => void;
   onAnalyze: () => Promise<void>;
@@ -195,6 +198,9 @@ function QueueItemCard({
     <div className={`conv-item-card ${item.status}`}>
       <div className="conv-item-thumb-wrap">
         <img src={item.imageUrl} alt="" className="conv-item-thumb" loading="lazy" />
+        {overlayUrl && (
+          <img src={overlayUrl} alt="" className="conv-item-overlay" aria-hidden="true" />
+        )}
         <span className={`conv-item-status-badge status-${item.status}`}>
           <ItemStatusIcon status={item.status} aiError={item.aiError} />
           {item.status}
@@ -362,11 +368,13 @@ function QueueItemCard({
 function SchedulePreviewModal({
   preview,
   items,
+  overlayUrl,
   onConfirm,
   onClose,
 }: {
   preview: SchedulePreview;
   items: ConventionQueueItem[];
+  overlayUrl?: string;
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -409,7 +417,14 @@ function SchedulePreviewModal({
               const item = itemMap[slot.itemId];
               return (
                 <div key={slot.itemId} className="conv-preview-row">
-                  {item && <img src={item.imageUrl} alt="" className="conv-preview-thumb" />}
+                  {item && (
+                    <div className="conv-preview-thumb-wrap">
+                      <img src={item.imageUrl} alt="" className="conv-preview-thumb" />
+                      {overlayUrl && (
+                        <img src={overlayUrl} alt="" className="conv-preview-overlay" aria-hidden="true" />
+                      )}
+                    </div>
+                  )}
                   <div className="conv-preview-info">
                     <div className="conv-preview-time">
                       {format(parseISO(slot.scheduledAt), 'EEE, MMM d, yyyy — HH:mm')} UTC
@@ -456,7 +471,7 @@ export function QueueDetailPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [filterPending, setFilterPending] = useState(false);
   const [editingImageItem, setEditingImageItem] = useState<ConventionQueueItem | null>(null);
-  const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
+  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -478,14 +493,26 @@ export function QueueDetailPage() {
 
   useEffect(() => {
     api.getSuffixes().then(setSuffixes).catch(() => {});
-    api.getWatermarks().then((wms: any[]) => {
-      const base = import.meta.env.VITE_API_URL || '';
-      setWatermarkGallery(wms.map(w => {
-        const src = w.url.startsWith('/') ? base + w.url : w.url;
-        return { url: src, previewUrl: src };
-      }));
-    }).catch(() => {});
+    api.getWatermarks().then(setWatermarks).catch(() => {});
   }, []);
+
+  const resolveWatermarkUrl = (url: string) => {
+    const base = import.meta.env.VITE_API_URL || '';
+    return url.startsWith('/') ? base + url : url;
+  };
+
+  const watermarkGallery = watermarks.map(w => {
+    const src = resolveWatermarkUrl(w.url);
+    return { url: src, previewUrl: src };
+  });
+
+  // The overlay URL for the queue's selected watermark, rendered on top of each
+  // preview image so the user sees the overlay before scheduling.
+  const overlayUrl = (() => {
+    if (!queue?.watermarkId) return undefined;
+    const wm = watermarks.find(w => w.id === queue.watermarkId);
+    return wm ? resolveWatermarkUrl(wm.url) : undefined;
+  })();
 
   useEffect(() => {
     const hasPending = items.some(i => i.status === 'pending' && !i.aiError && !i.caption);
@@ -831,6 +858,7 @@ export function QueueDetailPage() {
               suffixes={suffixes}
               queuePlatforms={queue.platforms}
               queueSuffixIds={queue.suffixIds ?? {}}
+              overlayUrl={overlayUrl}
               onUpdate={handleUpdateItem}
               onDelete={() => handleDeleteItem(item)}
               onAnalyze={() => handleAnalyzeItem(item)}
@@ -882,6 +910,7 @@ export function QueueDetailPage() {
         <SchedulePreviewModal
           preview={preview}
           items={items}
+          overlayUrl={overlayUrl}
           onConfirm={handleSchedule}
           onClose={() => setPreview(null)}
         />

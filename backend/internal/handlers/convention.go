@@ -6,6 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/jpeg"
 	"io"
 	"math"
 	"math/rand"
@@ -53,6 +56,20 @@ type ConventionQueueInput struct {
 	Platforms            []models.Platform `json:"platforms" binding:"required"`
 	AccountIDs           map[string]string `json:"accountIds,omitempty"`
 	SuffixIDs            map[string]string `json:"suffixIds,omitempty"`
+	WatermarkID          *string           `json:"watermarkId,omitempty"`
+}
+
+// parseWatermarkID converts an optional hex string into an ObjectID pointer.
+// A nil, empty, or invalid value yields nil (no watermark).
+func parseWatermarkID(s *string) *primitive.ObjectID {
+	if s == nil || *s == "" {
+		return nil
+	}
+	id, err := primitive.ObjectIDFromHex(*s)
+	if err != nil {
+		return nil
+	}
+	return &id
 }
 
 func (h *ConventionHandler) CreateQueue(c *gin.Context) {
@@ -93,6 +110,7 @@ func (h *ConventionHandler) CreateQueue(c *gin.Context) {
 		Platforms:            input.Platforms,
 		AccountIDs:           input.AccountIDs,
 		SuffixIDs:            input.SuffixIDs,
+		WatermarkID:          parseWatermarkID(input.WatermarkID),
 		Status:               models.ConventionQueueStatusActive,
 		CreatedAt:            time.Now(),
 		UpdatedAt:            time.Now(),
@@ -233,6 +251,7 @@ func (h *ConventionHandler) UpdateQueue(c *gin.Context) {
 		"platforms":            input.Platforms,
 		"accountIds":           input.AccountIDs,
 		"suffixIds":            input.SuffixIDs,
+		"watermarkId":          parseWatermarkID(input.WatermarkID),
 		"updatedAt":            time.Now(),
 	}})
 	if err != nil || result.MatchedCount == 0 {
@@ -756,7 +775,9 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// A generous timeout: when an overlay watermark is set we composite it onto
+	// every approved image before scheduling, which is CPU-bound.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	queueFilter := conventionQueueFilter(c)
@@ -800,6 +821,12 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 		teamID = &t
 	}
 
+	// When the queue has an overlay watermark configured, load it once and
+	// composite it onto every scheduled image so the published post carries
+	// the overlay baked in.
+	overlay := h.loadQueueWatermark(ctx, queue.WatermarkID)
+	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
+
 	scheduled := 0
 	for i, item := range items {
 		if i >= len(slots) {
@@ -815,12 +842,23 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 			accountIDs = queue.AccountIDs
 		}
 
+		imageURL := item.ImageURL
+		if overlay != nil {
+			if data, _, err := h.readImageData(ctx, item.ImageURL); err == nil {
+				watermarked, ct := applyWatermarkOverlay(data, overlay)
+				filename := fmt.Sprintf("conv-wm-%s-%d.jpg", item.ID.Hex(), time.Now().UnixNano())
+				if storedURL, err := ph.storeFile(filename, ct, watermarked); err == nil {
+					imageURL = storedURL
+				}
+			}
+		}
+
 		post := models.Post{
 			UserID:      uid,
 			TeamID:      teamID,
 			PostType:    models.PostTypePost,
 			Content:     item.Caption,
-			ImageURLs:   []string{item.ImageURL},
+			ImageURLs:   []string{imageURL},
 			Platforms:   platforms,
 			ScheduledAt: slots[i],
 			Status:      models.PostStatusScheduled,
@@ -1155,6 +1193,49 @@ func (h *ConventionHandler) AddBGGItems(c *gin.Context) {
 		"items":  created,
 		"errors": errs,
 	})
+}
+
+// loadQueueWatermark loads the overlay image referenced by a queue's
+// WatermarkID. It returns nil when no watermark is configured or the image
+// cannot be read/decoded.
+func (h *ConventionHandler) loadQueueWatermark(ctx context.Context, wmID *primitive.ObjectID) image.Image {
+	if wmID == nil {
+		return nil
+	}
+	var wm models.Watermark
+	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *wmID}).Decode(&wm); err != nil {
+		return nil
+	}
+	data, _, err := h.readImageData(ctx, wm.URL)
+	if err != nil {
+		return nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+	return img
+}
+
+// applyWatermarkOverlay composites the overlay on top of the base image data,
+// stretching the overlay to cover the whole image. On any failure it returns
+// the original data and detected content type unchanged.
+func applyWatermarkOverlay(baseData []byte, overlay image.Image) ([]byte, string) {
+	base, _, err := image.Decode(bytes.NewReader(baseData))
+	if err != nil {
+		return baseData, http.DetectContentType(baseData)
+	}
+	bounds := base.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	draw.Draw(dst, dst.Bounds(), base, bounds.Min, draw.Src)
+	wmScaled := resizeImage(overlay, bounds.Dx(), bounds.Dy())
+	draw.Draw(dst, dst.Bounds(), wmScaled, image.Point{}, draw.Over)
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 90}); err != nil {
+		return baseData, http.DetectContentType(baseData)
+	}
+	return buf.Bytes(), "image/jpeg"
 }
 
 func (h *ConventionHandler) readImageData(ctx context.Context, imageURL string) ([]byte, string, error) {
