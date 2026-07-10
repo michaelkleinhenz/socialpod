@@ -178,7 +178,6 @@ func main() {
 		auth.DELETE("/convention/queues/:id/items/:iid", conventionHandler.DeleteItem)
 		auth.POST("/convention/queues/:id/items/:iid/analyze", conventionHandler.AnalyzeItem)
 		auth.POST("/convention/queues/:id/analyze-all", conventionHandler.AnalyzeAll)
-		auth.POST("/convention/queues/:id/reorder", conventionHandler.ReorderItems)
 		auth.GET("/convention/queues/:id/preview", conventionHandler.PreviewSchedule)
 		auth.POST("/convention/queues/:id/schedule", conventionHandler.ScheduleItems)
 	}

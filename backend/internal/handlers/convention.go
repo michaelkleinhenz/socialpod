@@ -563,6 +563,19 @@ func (h *ConventionHandler) DeleteItem(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	var item models.ConventionQueueItem
+	if err := h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID, "queueId": queueID}).Decode(&item); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	// A scheduled item has a real Post waiting to be published by the shared
+	// scheduler. Deleting the item from the queue should cancel that post too,
+	// otherwise it would still go out even though it's gone from the queue.
+	if item.Status == models.ConventionQueueItemStatusScheduled && item.PostID != nil {
+		h.DB.Posts().DeleteOne(ctx, bson.M{"_id": *item.PostID, "status": models.PostStatusScheduled})
+	}
+
 	result, err := h.DB.ConventionQueueItems().DeleteOne(ctx, bson.M{"_id": itemID, "queueId": queueID})
 	if err != nil || result.DeletedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
@@ -690,38 +703,6 @@ func (h *ConventionHandler) AnalyzeAll(c *gin.Context) {
 		"message": fmt.Sprintf("Analyzing %d items in the background", len(items)),
 		"count":   len(items),
 	})
-}
-
-func (h *ConventionHandler) ReorderItems(c *gin.Context) {
-	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue ID"})
-		return
-	}
-
-	var input struct {
-		ItemIDs []string `json:"itemIds" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	for i, idStr := range input.ItemIDs {
-		itemID, err := primitive.ObjectIDFromHex(idStr)
-		if err != nil {
-			continue
-		}
-		h.DB.ConventionQueueItems().UpdateOne(ctx,
-			bson.M{"_id": itemID, "queueId": queueID},
-			bson.M{"$set": bson.M{"sortOrder": i, "updatedAt": time.Now()}},
-		)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Reordered"})
 }
 
 type scheduleSlot struct {
