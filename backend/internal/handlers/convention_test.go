@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"testing"
 	"time"
 )
@@ -53,6 +57,56 @@ func TestGenerateSlots_DelayPrecedenceCountsPerDay(t *testing.T) {
 				t.Fatalf("same-day gap %v below minimum delay minus jitter", gap)
 			}
 		}
+	}
+}
+
+func TestApplyWatermarkOverlay(t *testing.T) {
+	// Base: a 4x4 solid red JPEG.
+	base := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			base.Set(x, y, color.RGBA{R: 255, A: 255})
+		}
+	}
+	var baseBuf bytes.Buffer
+	if err := jpeg.Encode(&baseBuf, base, nil); err != nil {
+		t.Fatalf("encode base: %v", err)
+	}
+
+	// Overlay: a 2x2 opaque blue PNG that gets stretched to cover the base.
+	overlay := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			overlay.Set(x, y, color.RGBA{B: 255, A: 255})
+		}
+	}
+
+	out, ct := applyWatermarkOverlay(baseBuf.Bytes(), overlay)
+	if ct != "image/jpeg" {
+		t.Fatalf("expected image/jpeg, got %s", ct)
+	}
+
+	result, _, err := image.Decode(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	b := result.Bounds()
+	if b.Dx() != 4 || b.Dy() != 4 {
+		t.Fatalf("expected 4x4 result, got %dx%d", b.Dx(), b.Dy())
+	}
+	// The opaque overlay should have fully replaced the red base with blue.
+	r, g, bl, _ := result.At(2, 2).RGBA()
+	if bl>>8 < 200 || r>>8 > 60 || g>>8 > 60 {
+		t.Fatalf("expected blue-dominant pixel after overlay, got r=%d g=%d b=%d", r>>8, g>>8, bl>>8)
+	}
+}
+
+func TestApplyWatermarkOverlay_InvalidBaseReturnsOriginal(t *testing.T) {
+	overlay := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	junk := []byte("not an image")
+	out, _ := applyWatermarkOverlay(junk, overlay)
+	if !bytes.Equal(out, junk) {
+		t.Fatalf("expected original bytes returned for undecodable base")
 	}
 }
 

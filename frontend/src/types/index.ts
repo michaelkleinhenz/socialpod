@@ -270,6 +270,8 @@ export interface ConventionQueue {
   platforms: Platform[];
   accountIds?: Record<string, string>;
   suffixIds?: Record<string, string>;
+  /** Optional overlay watermark applied to every image at schedule time. */
+  watermarkId?: string;
   status: string;
   itemCount?: number;
   approvedCount?: number;

@@ -208,6 +208,8 @@ curl -X POST http://localhost:8080/api/convention/queues \
 # caps the effective posts/day at floor(24 / minHoursBetweenPosts). Posts are
 # scattered randomly across each day, spaced by that minimum delay ±60 minutes.
 # (The legacy `timeSlots` field is accepted but no longer used for scheduling.)
+# Optional `watermarkId` selects an overlay watermark that is composited onto
+# every image in the queue when the posts are scheduled.
 
 # Get a queue (includes items)
 curl http://localhost:8080/api/convention/queues/{id} \
