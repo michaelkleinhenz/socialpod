@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePageManifest } from '../../hooks/usePageManifest';
 import { QueueDetailPage } from './QueueDetailPage';
 import './Convention.css';
 
@@ -14,6 +15,8 @@ export function ConventionMobilePage() {
   const { user, loading } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  usePageManifest(id ? `/m/convention/${id}` : undefined);
 
   useEffect(() => {
     if (!loading && !user) {
