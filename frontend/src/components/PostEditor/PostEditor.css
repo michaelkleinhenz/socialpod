@@ -372,6 +372,40 @@
   color: var(--text-secondary);
 }
 
+/* Subtle "posting as" line used where there's no platform selector (story/reel) */
+.editor-account-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Accounts-failed-to-load banner */
+.accounts-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--warning);
+}
+
+.accounts-error-banner span {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.accounts-error-banner button {
+  flex-shrink: 0;
+}
+
 /* Story preview */
 .preview-story {
   display: flex;
