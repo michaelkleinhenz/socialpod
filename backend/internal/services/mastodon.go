@@ -26,17 +26,20 @@ type MastodonService struct {
 }
 
 func (s *MastodonService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
-	filter := bson.M{"platform": models.PlatformMastodon, "isActive": true}
-	if accountID != "" {
-		id, err := primitive.ObjectIDFromHex(accountID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid mastodon account ID: %s", accountID)
-		}
-		filter["_id"] = id
+	if accountID == "" {
+		return nil, fmt.Errorf("mastodon account ID is required")
+	}
+	id, err := primitive.ObjectIDFromHex(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid mastodon account ID: %s", accountID)
 	}
 
 	var account models.SocialAccount
-	err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account)
+	err = s.DB.SocialAccounts().FindOne(ctx, bson.M{
+		"platform": models.PlatformMastodon,
+		"isActive": true,
+		"_id":      id,
+	}).Decode(&account)
 	return &account, err
 }
 

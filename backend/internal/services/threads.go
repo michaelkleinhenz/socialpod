@@ -178,15 +178,18 @@ func (s *ThreadsService) FetchProfile(account *models.SocialAccount) (displayNam
 }
 
 func (s *ThreadsService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
-	filter := bson.M{"platform": models.PlatformThreads, "isActive": true}
-	if accountID != "" {
-		id, err := primitive.ObjectIDFromHex(accountID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid threads account ID: %s", accountID)
-		}
-		filter["_id"] = id
+	if accountID == "" {
+		return nil, fmt.Errorf("threads account ID is required")
+	}
+	id, err := primitive.ObjectIDFromHex(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid threads account ID: %s", accountID)
 	}
 	var account models.SocialAccount
-	err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account)
+	err = s.DB.SocialAccounts().FindOne(ctx, bson.M{
+		"platform": models.PlatformThreads,
+		"isActive": true,
+		"_id":      id,
+	}).Decode(&account)
 	return &account, err
 }

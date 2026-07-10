@@ -145,17 +145,20 @@ func (s *BlueskyService) createRecord(ctx context.Context, session *bskySession,
 }
 
 func (s *BlueskyService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
-	filter := bson.M{"platform": models.PlatformBluesky, "isActive": true}
-	if accountID != "" {
-		id, err := primitive.ObjectIDFromHex(accountID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid bluesky account ID: %s", accountID)
-		}
-		filter["_id"] = id
+	if accountID == "" {
+		return nil, fmt.Errorf("bluesky account ID is required")
+	}
+	id, err := primitive.ObjectIDFromHex(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid bluesky account ID: %s", accountID)
 	}
 
 	var account models.SocialAccount
-	err := s.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account)
+	err = s.DB.SocialAccounts().FindOne(ctx, bson.M{
+		"platform": models.PlatformBluesky,
+		"isActive": true,
+		"_id":      id,
+	}).Decode(&account)
 	return &account, err
 }
 

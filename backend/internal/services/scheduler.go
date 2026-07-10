@@ -184,10 +184,17 @@ func (s *Scheduler) resolveAccountID(ctx context.Context, platform models.Platfo
 }
 
 // accountBelongsToTeam checks that an account ID is owned by the given team.
-// Returns true when accountID is empty (no specific account requested).
+// Returns true when teamID is nil (no team scoping applies). An empty
+// accountID is never treated as authorized once a team is set: letting it
+// through here would mean the platform service falls back to picking an
+// arbitrary active account for that platform, which can belong to a
+// different team entirely.
 func (s *Scheduler) accountBelongsToTeam(ctx context.Context, accountID string, teamID *primitive.ObjectID) bool {
-	if accountID == "" || teamID == nil {
+	if teamID == nil {
 		return true
+	}
+	if accountID == "" {
+		return false
 	}
 	id, err := primitive.ObjectIDFromHex(accountID)
 	if err != nil {
@@ -244,6 +251,9 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["bluesky"]
 			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformBluesky, post.TeamID)
+			}
 			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
 				log.Printf("Bluesky account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
 				result.Success = false
@@ -274,6 +284,9 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			accountID := ""
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["twitter"]
+			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformTwitter, post.TeamID)
 			}
 			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
 				log.Printf("Twitter account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
@@ -373,6 +386,9 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["mastodon"]
 			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformMastodon, post.TeamID)
+			}
 			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
 				log.Printf("Mastodon account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
 				result.Success = false
@@ -398,6 +414,9 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["threads"]
 			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformThreads, post.TeamID)
+			}
 			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
 				log.Printf("Threads account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
 				result.Success = false
@@ -422,6 +441,9 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			accountID := ""
 			if post.AccountIDs != nil {
 				accountID = post.AccountIDs["linkedin"]
+			}
+			if accountID == "" {
+				accountID = s.resolveAccountID(ctx, models.PlatformLinkedIn, post.TeamID)
 			}
 			if !s.accountBelongsToTeam(ctx, accountID, post.TeamID) {
 				log.Printf("LinkedIn account %s does not belong to post team, skipping post %s", accountID, post.ID.Hex())
