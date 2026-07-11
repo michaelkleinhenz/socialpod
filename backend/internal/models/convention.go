@@ -10,7 +10,6 @@ const (
 	ConventionQueueItemStatusPending   = "pending"
 	ConventionQueueItemStatusApproved  = "approved"
 	ConventionQueueItemStatusScheduled = "scheduled"
-	ConventionQueueItemStatusPublished = "published"
 
 	ConventionQueueStatusActive    = "active"
 	ConventionQueueStatusCompleted = "completed"

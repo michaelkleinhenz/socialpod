@@ -262,7 +262,7 @@ func (h *ConventionHandler) ListQueues(c *gin.Context) {
 	for _, q := range queues {
 		total, _ := h.DB.ConventionQueueItems().CountDocuments(ctx, bson.M{"queueId": q.ID})
 		approved, _ := h.DB.ConventionQueueItems().CountDocuments(ctx, bson.M{"queueId": q.ID, "status": models.ConventionQueueItemStatusApproved})
-		done, _ := h.DB.ConventionQueueItems().CountDocuments(ctx, bson.M{"queueId": q.ID, "status": bson.M{"$in": []string{models.ConventionQueueItemStatusScheduled, models.ConventionQueueItemStatusPublished}}})
+		done, _ := h.DB.ConventionQueueItems().CountDocuments(ctx, bson.M{"queueId": q.ID, "status": models.ConventionQueueItemStatusScheduled})
 		results = append(results, conventionQueueWithCounts{
 			ConventionQueue: q,
 			ItemCount:       int(total),
