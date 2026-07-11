@@ -3,6 +3,7 @@ node_modules/
 dist/
 !n8n-nodes-socialpod/dist/
 backend/cmd/server/dist/
+backend/server
 uploads/
 *.exe
 *.dll
