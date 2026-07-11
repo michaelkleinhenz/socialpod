@@ -222,7 +222,7 @@
 
 /* ── Detail page ──────────────────────────────────────────── */
 
-.conv-detail-page { padding-bottom: 90px; }
+.conv-detail-page { padding-bottom: 130px; }
 
 .conv-detail-header {
   display: flex;
@@ -524,6 +524,29 @@
 
 .conv-caption-input:focus { outline: none; border-color: var(--accent); }
 .conv-caption-input:disabled { opacity: 0.6; }
+
+/* Row under the caption: subtle "saved" indicator + character counter */
+.conv-caption-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: -2px;
+  min-height: 14px;
+}
+
+.conv-caption-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.conv-caption-saved.visible { opacity: 0.7; }
 
 .conv-item-platforms {
   display: flex;
@@ -839,7 +862,7 @@
   width: 100%;
   max-width: 620px;
   margin: 0 auto;
-  padding: 16px 16px 120px;
+  padding: 16px 16px 160px;
   background: var(--bg-primary);
 }
 
@@ -897,7 +920,7 @@
 
   .conv-modal { max-height: 100svh; border-radius: 0; }
 
-  .conv-detail-page { padding-bottom: 120px; }
+  .conv-detail-page { padding-bottom: 160px; }
 
   .conv-bgg-import-row { flex-direction: column; align-items: stretch; }
 

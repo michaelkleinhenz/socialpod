@@ -40,6 +40,22 @@ import './Convention.css';
 
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
 
+// Per-platform character limits — mirror the PostEditor logic so captions are
+// validated the same way here.
+const BLUESKY_LIMIT = 300;
+const INSTAGRAM_LIMIT = 2200;
+const TWITTER_LIMIT = 280;
+const MASTODON_LIMIT = 500;
+const LINKEDIN_LIMIT = 3000;
+
+function platformLimit(platform: Platform) {
+  if (platform === 'bluesky') return BLUESKY_LIMIT;
+  if (platform === 'twitter') return TWITTER_LIMIT;
+  if (platform === 'mastodon') return MASTODON_LIMIT;
+  if (platform === 'linkedin') return LINKEDIN_LIMIT;
+  return INSTAGRAM_LIMIT;
+}
+
 function ItemStatusIcon({ status, aiError }: { status: ConventionQueueItemStatus; aiError?: string }) {
   if (status === 'scheduled') return <Calendar size={14} color="var(--accent)" />;
   if (status === 'approved') return <CheckCircle size={14} color="var(--warning)" />;
@@ -82,7 +98,9 @@ function QueueItemCard({
   const [itemSuffixIds, setItemSuffixIds] = useState<Record<string, string>>(item.suffixIds ?? {});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [captionSaved, setCaptionSaved] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const savedFlashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const bggSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const suffixSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -109,16 +127,30 @@ function QueueItemCard({
 
   const debouncedSaveCaption = (value: string) => {
     setCaption(value);
+    // Hide the "saved" hint while the user is still typing.
+    setCaptionSaved(false);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         const updated = await api.updateConventionItem(queueId, item.id, { caption: value });
         onUpdate(updated);
+        // Briefly surface a subtle confirmation that the caption was saved.
+        setCaptionSaved(true);
+        clearTimeout(savedFlashTimer.current);
+        savedFlashTimer.current = setTimeout(() => setCaptionSaved(false), 2000);
       } catch {
         // silently fail
       }
     }, 800);
   };
+
+  // Clear pending timers on unmount so no state updates fire afterwards.
+  useEffect(() => () => {
+    clearTimeout(saveTimer.current);
+    clearTimeout(savedFlashTimer.current);
+    clearTimeout(bggSaveTimer.current);
+    clearTimeout(suffixSaveTimer.current);
+  }, []);
 
   const saveSuffixIds = (newSuffixIds: Record<string, string>) => {
     clearTimeout(suffixSaveTimer.current);
@@ -142,6 +174,12 @@ function QueueItemCard({
 
   const toggleApprove = async () => {
     if (item.status === 'scheduled') return;
+    // Block approving a caption that exceeds the character limit, matching the
+    // PostEditor which refuses to schedule over-limit content.
+    if (item.status !== 'approved' && overLimit) {
+      toast.error(`Caption exceeds the ${charLimit} character limit`);
+      return;
+    }
     const newStatus = item.status === 'approved' ? 'pending' : 'approved';
     setSaving(true);
     try {
@@ -177,6 +215,24 @@ function QueueItemCard({
   };
 
   const effectivePlatforms = itemPlatforms.length > 0 ? itemPlatforms : queuePlatforms;
+
+  // Character limit: strictest of the effective platforms, minus the length of
+  // the selected suffix for each (an item override falls back to the queue
+  // default). Mirrors the PostEditor so captions are validated identically.
+  const suffixLen = (platform: Platform) => {
+    const id = itemSuffixIds[platform] ?? queueSuffixIds[platform];
+    if (!id) return 0;
+    const s = suffixes.find(x => x.id === id);
+    return s ? s.content.length + 1 : 0; // +1 for the newline separator
+  };
+  const effectiveLimit = (platform: Platform) => platformLimit(platform) - suffixLen(platform);
+  const charLimit = effectivePlatforms.length === 0
+    ? effectiveLimit('instagram')
+    : Math.min(...effectivePlatforms.map(effectiveLimit));
+  const charCount = caption.length;
+  const overLimit = charCount > charLimit;
+  const charClass = overLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
+
   // Scheduled items are locked from editing/approval, but can still be pulled
   // back from the queue (which cancels the pending post). Once a post is
   // published its item is removed from the queue entirely.
@@ -241,6 +297,13 @@ function QueueItemCard({
           rows={4}
           disabled={isLocked}
         />
+
+        <div className="conv-caption-meta">
+          <span className={`conv-caption-saved ${captionSaved ? 'visible' : ''}`} aria-live="polite">
+            <Check size={11} /> Saved
+          </span>
+          <span className={`char-counter ${charClass}`}>{charCount} / {charLimit}</span>
+        </div>
 
         <div className="conv-item-platforms">
           {effectivePlatforms.map(p => <PlatformIcon key={p} platform={p} />)}
