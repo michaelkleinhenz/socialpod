@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -1133,6 +1134,35 @@ func (h *ConventionHandler) fetchBGGGameInfo(ctx context.Context, bggURL string)
 	}
 }
 
+// hashtagPattern matches a "#" hashtag: a hash immediately followed by one or
+// more letters, digits or underscores.
+var hashtagPattern = regexp.MustCompile(`#[\p{L}\p{N}_]+`)
+
+// horizontalSpaceRun matches runs of two or more spaces/tabs.
+var horizontalSpaceRun = regexp.MustCompile(`[ \t]{2,}`)
+
+// blankLineRun matches three or more consecutive newlines.
+var blankLineRun = regexp.MustCompile(`\n{3,}`)
+
+// stripHashtags removes any hashtags from AI-generated caption text and tidies
+// up the whitespace they leave behind. The model is instructed not to produce
+// hashtags, but that instruction is not always honoured; queue-configured
+// hashtags are appended deterministically afterwards, so the model's output
+// must never contribute its own.
+func stripHashtags(s string) string {
+	s = hashtagPattern.ReplaceAllString(s, "")
+	lines := strings.Split(s, "\n")
+	for i := range lines {
+		// Collapse runs of spaces/tabs left where hashtags were removed and
+		// drop any trailing whitespace on the line.
+		lines[i] = strings.TrimRight(horizontalSpaceRun.ReplaceAllString(lines[i], " "), " \t")
+	}
+	s = strings.Join(lines, "\n")
+	// Collapse three-or-more consecutive newlines down to a blank-line gap.
+	s = blankLineRun.ReplaceAllString(s, "\n\n")
+	return strings.TrimSpace(s)
+}
+
 func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string, queue models.ConventionQueue, bggInfo *bggGameInfo) (string, error) {
 	var settings models.AppSettings
 	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil || settings.OpenRouterAPIKey == "" {
@@ -1237,9 +1267,12 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 		return "", fmt.Errorf("invalid response from OpenRouter")
 	}
 
-	caption := strings.TrimSpace(result.Choices[0].Message.Content)
-	// The model returns descriptive text only; append the queue's configured
-	// hashtags here so they always appear exactly as set.
+	// The model is asked for descriptive text only, but it sometimes emits
+	// hashtags anyway — scrub them so only the queue's configured hashtags
+	// (appended below) can appear.
+	caption := stripHashtags(strings.TrimSpace(result.Choices[0].Message.Content))
+	// Append the queue's configured hashtags here so they always appear
+	// exactly as set.
 	if hashtagSuffix != "" {
 		if caption != "" {
 			caption += "\n\n"

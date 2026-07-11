@@ -209,3 +209,49 @@ func buildJPEGWithExifOrientation(orientation int) []byte {
 	result.Write(jpegData[2:])
 	return result.Bytes()
 }
+
+func TestStripHashtags(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "trailing hashtags removed",
+			in:   "A great booth at the convention. #boardgames #Essen2026",
+			want: "A great booth at the convention.",
+		},
+		{
+			name: "hashtags on their own line removed",
+			in:   "Crowds gathered around the prototypes.\n\n#gaming #tabletop",
+			want: "Crowds gathered around the prototypes.",
+		},
+		{
+			name: "inline hashtag removed and spacing tidied",
+			in:   "The new #dungeon crawler looks amazing.",
+			want: "The new crawler looks amazing.",
+		},
+		{
+			name: "unicode hashtag removed",
+			in:   "Tolle Spiele hier. #Würfelspiel",
+			want: "Tolle Spiele hier.",
+		},
+		{
+			name: "no hashtags unchanged",
+			in:   "Just a plain descriptive caption.",
+			want: "Just a plain descriptive caption.",
+		},
+		{
+			name: "lone hash preserved",
+			in:   "Aisle # 7 was packed.",
+			want: "Aisle # 7 was packed.",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := stripHashtags(tc.in); got != tc.want {
+				t.Fatalf("stripHashtags(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
