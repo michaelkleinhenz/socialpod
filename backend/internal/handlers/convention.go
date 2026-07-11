@@ -23,6 +23,7 @@ import (
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/services"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -1344,6 +1345,11 @@ func applyWatermarkOverlay(baseData []byte, overlay image.Image) ([]byte, string
 	if err != nil {
 		return baseData, http.DetectContentType(baseData)
 	}
+	// image.Decode ignores EXIF orientation, so a phone photo stored as
+	// landscape pixels + an orientation flag decodes sideways here. Normalize
+	// it before compositing — the JPEG re-encode below strips the EXIF tag, so
+	// the orientation fix in ResizeImageIfNeeded can no longer rescue it later.
+	base = services.ApplyOrientation(base, services.ReadExifOrientation(baseData))
 	bounds := base.Bounds()
 	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	draw.Draw(dst, dst.Bounds(), base, bounds.Min, draw.Src)
