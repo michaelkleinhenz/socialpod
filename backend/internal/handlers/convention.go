@@ -1099,14 +1099,22 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 			contextLines = append(contextLines, fmt.Sprintf("Game description: %s", desc))
 		}
 	}
-	if len(queue.Hashtags) > 0 {
-		contextLines = append(contextLines, fmt.Sprintf("Hashtags to include: %s", strings.Join(queue.Hashtags, " ")))
-	}
+	// Hashtags configured on the queue are appended deterministically after
+	// generation — the model itself must produce descriptive text only.
+	hashtagSuffix := strings.TrimSpace(strings.Join(queue.Hashtags, " "))
 	if len(queue.Platforms) > 0 {
 		limit := contentLimit(queue.Platforms)
-		contextLines = append(contextLines, fmt.Sprintf("Character limit: %d characters maximum (including hashtags).", limit))
+		if hashtagSuffix != "" {
+			// Reserve room for the hashtags (plus the separating blank line)
+			// that get appended after the model replies.
+			limit -= len(hashtagSuffix) + 2
+			if limit < 0 {
+				limit = 0
+			}
+		}
+		contextLines = append(contextLines, fmt.Sprintf("Character limit: %d characters maximum.", limit))
 	}
-	contextLines = append(contextLines, "\nWrite an engaging social media caption for this convention photo. Reply with ONLY the caption text including the hashtags.")
+	contextLines = append(contextLines, "\nWrite an engaging, descriptive social media caption for this convention photo. Reply with ONLY the descriptive caption text. Do NOT include any hashtags, @mentions, URLs, website addresses, or handles — plain descriptive text only.")
 
 	imgB64 := base64.StdEncoding.EncodeToString(imageData)
 	userContent := []map[string]any{
@@ -1119,7 +1127,7 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 		{"type": "text", "text": strings.Join(contextLines, "\n")},
 	}
 
-	systemPrompt := "You are a board game convention social media expert. Look at photos from game conventions (Essen, Gen Con, SPIEL, etc.) and write engaging ready-to-post social media captions. Describe what you see — publisher booths, games on tables, prototypes, crowds — with enthusiasm. Reply with ONLY the caption text, no quotes, no commentary."
+	systemPrompt := "You are a board game convention social media expert. Look at photos from game conventions (Essen, Gen Con, SPIEL, etc.) and write engaging descriptive captions. Describe what you see — publisher booths, games on tables, prototypes, crowds — with enthusiasm. Write descriptive prose ONLY: never include hashtags, @mentions, URLs, website addresses, or social handles. Reply with ONLY the caption text, no quotes, no commentary."
 	if settings.AILanguage != "" {
 		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
 	}
@@ -1161,7 +1169,16 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 		return "", fmt.Errorf("invalid response from OpenRouter")
 	}
 
-	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+	caption := strings.TrimSpace(result.Choices[0].Message.Content)
+	// The model returns descriptive text only; append the queue's configured
+	// hashtags here so they always appear exactly as set.
+	if hashtagSuffix != "" {
+		if caption != "" {
+			caption += "\n\n"
+		}
+		caption += hashtagSuffix
+	}
+	return caption, nil
 }
 
 func (h *ConventionHandler) AddBGGItems(c *gin.Context) {

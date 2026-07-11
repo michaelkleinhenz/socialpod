@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +16,35 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
+
+// dynamicManifest serves a web app manifest whose start_url is supplied via the
+// ?start_url= query param, so an individual page can make "Add to Home Screen"
+// create a shortcut that reopens that page. The param is constrained to a
+// same-origin absolute path (must start with a single "/") to avoid pointing
+// the shortcut at another origin; anything else falls back to the app root.
+func dynamicManifest(c *gin.Context) {
+	startURL := c.Query("start_url")
+	if !strings.HasPrefix(startURL, "/") || strings.HasPrefix(startURL, "//") {
+		startURL = "/"
+	}
+
+	manifest := map[string]any{
+		"name":             "SocialPod",
+		"short_name":       "SocialPod",
+		"description":      "Schedule and manage your social media posts",
+		"start_url":        startURL,
+		"scope":            "/",
+		"display":          "standalone",
+		"background_color": "#0f172a",
+		"theme_color":      "#6366f1",
+		"icons": []map[string]any{
+			{"src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any"},
+		},
+	}
+
+	body, _ := json.Marshal(manifest)
+	c.Data(http.StatusOK, "application/manifest+json", body)
+}
 
 func main() {
 	cfg := config.Load()
@@ -89,6 +119,14 @@ func main() {
 	}
 	r.GET("/robots.txt", robotsTxt)
 	r.HEAD("/robots.txt", robotsTxt)
+
+	// Dynamic web app manifest. iOS Safari's "Add to Home Screen" reads the
+	// manifest's start_url but — unlike Android Chrome — refuses blob:/data:
+	// URLs for <link rel="manifest">, so a client-generated manifest is
+	// ignored and the shortcut falls back to the static start_url "/". This
+	// endpoint serves a real, fetchable manifest whose start_url is taken from
+	// the ?start_url= query param, letting a page point the manifest at itself.
+	r.GET("/manifest.webmanifest", dynamicManifest)
 
 	// Public routes
 	api := r.Group("/api")
