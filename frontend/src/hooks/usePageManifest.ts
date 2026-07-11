@@ -1,21 +1,16 @@
 import { useEffect } from 'react';
 
-const BASE_MANIFEST = {
-  name: 'SocialPod',
-  short_name: 'SocialPod',
-  display: 'standalone',
-  background_color: '#0f172a',
-  theme_color: '#6366f1',
-  icons: [
-    { src: '/favicon.svg', type: 'image/svg+xml', sizes: 'any', purpose: 'any' },
-  ],
-};
-
 /**
- * Swaps the page's <link rel="manifest"> for a Blob-backed one whose
- * start_url/scope point at `path`, so "Add to Home Screen" on this page
- * creates a shortcut that reopens this page instead of the app root
- * (the static manifest.json always has start_url "/").
+ * Points the page's <link rel="manifest"> at the backend's dynamic manifest
+ * endpoint with start_url set to `path`, so "Add to Home Screen" on this page
+ * creates a shortcut that reopens this page instead of the app root (the
+ * static manifest.json always has start_url "/").
+ *
+ * A real, fetchable URL is used rather than a Blob/data URL on purpose: iOS
+ * Safari's "Add to Home Screen" ignores blob:/data: manifest hrefs and falls
+ * back to the static manifest's start_url ("/", the calendar). Android Chrome
+ * accepts blob URLs, which is why the previous approach worked there but not
+ * on iOS.
  */
 export function usePageManifest(path: string | undefined) {
   useEffect(() => {
@@ -25,14 +20,10 @@ export function usePageManifest(path: string | undefined) {
     if (!link) return;
     const originalHref = link.getAttribute('href');
 
-    const manifest = { ...BASE_MANIFEST, start_url: path, scope: path };
-    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-    const blobUrl = URL.createObjectURL(blob);
-    link.setAttribute('href', blobUrl);
+    link.setAttribute('href', `/manifest.webmanifest?start_url=${encodeURIComponent(path)}`);
 
     return () => {
       if (originalHref !== null) link.setAttribute('href', originalHref);
-      URL.revokeObjectURL(blobUrl);
     };
   }, [path]);
 }
