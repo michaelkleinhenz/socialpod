@@ -520,5 +520,15 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 			"updatedAt": time.Now(),
 		},
 	})
+
+	// A convention queue item that spawned this post is only truly consumed once
+	// the post has actually gone out. On a clean publish, remove the item from
+	// the queue so it disappears from the convention UI. A failed post keeps its
+	// item so the user can still see and retry it.
+	if status == models.PostStatusPublished {
+		if _, err := s.DB.ConventionQueueItems().DeleteOne(ctx, bson.M{"postId": post.ID}); err != nil {
+			log.Printf("Failed to remove convention queue item for published post %s: %v", post.ID.Hex(), err)
+		}
+	}
 }
 

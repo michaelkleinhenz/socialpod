@@ -41,7 +41,6 @@ import './Convention.css';
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
 
 function ItemStatusIcon({ status, aiError }: { status: ConventionQueueItemStatus; aiError?: string }) {
-  if (status === 'published') return <CheckCircle size={14} color="var(--success)" />;
   if (status === 'scheduled') return <Calendar size={14} color="var(--accent)" />;
   if (status === 'approved') return <CheckCircle size={14} color="var(--warning)" />;
   if (aiError) return <AlertTriangle size={14} color="var(--danger)" />;
@@ -142,7 +141,7 @@ function QueueItemCard({
   };
 
   const toggleApprove = async () => {
-    if (item.status === 'scheduled' || item.status === 'published') return;
+    if (item.status === 'scheduled') return;
     const newStatus = item.status === 'approved' ? 'pending' : 'approved';
     setSaving(true);
     try {
@@ -178,10 +177,10 @@ function QueueItemCard({
   };
 
   const effectivePlatforms = itemPlatforms.length > 0 ? itemPlatforms : queuePlatforms;
-  const isLocked = item.status === 'scheduled' || item.status === 'published';
-  // Scheduled items can still be pulled back (cancels the pending post); once
-  // published there's nothing left to cancel, so only that state stays locked.
-  const isDeletable = item.status !== 'published';
+  // Scheduled items are locked from editing/approval, but can still be pulled
+  // back from the queue (which cancels the pending post). Once a post is
+  // published its item is removed from the queue entirely.
+  const isLocked = item.status === 'scheduled';
 
   const suffixPlatformLabels: Record<string, string> = {
     bluesky: 'Bluesky',
@@ -305,7 +304,6 @@ function QueueItemCard({
           <button
             className="icon-btn danger"
             onClick={onDelete}
-            disabled={!isDeletable}
             title={item.status === 'scheduled' ? 'Remove from queue and cancel the pending post' : 'Remove from queue'}
           >
             <Trash2 size={14} />
@@ -690,7 +688,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   if (!queue) return <div className={rootClass}><p style={{ padding: 20 }}>Queue not found.</p></div>;
 
   const approvedCount = items.filter(i => i.status === 'approved').length;
-  const scheduledCount = items.filter(i => i.status === 'scheduled' || i.status === 'published').length;
+  const scheduledCount = items.filter(i => i.status === 'scheduled').length;
   const pendingCount = items.filter(i => i.status === 'pending').length;
   const analyzingCount = items.filter(i => i.status === 'pending' && !i.caption && !i.aiError).length;
 
@@ -752,7 +750,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         <div className="conv-stat-pill">{items.length} photos</div>
         <div className="conv-stat-pill pending">{pendingCount} pending</div>
         <div className="conv-stat-pill approved">{approvedCount} approved</div>
-        <div className="conv-stat-pill scheduled">{scheduledCount} scheduled/published</div>
+        <div className="conv-stat-pill scheduled">{scheduledCount} scheduled</div>
         {analyzingCount > 0 && (
           <div className="conv-stat-pill analyzing">
             <Loader size={11} className="spin" /> {analyzingCount} analyzing…

@@ -251,7 +251,7 @@ export interface AuthResponse {
   user: User;
 }
 
-export type ConventionQueueItemStatus = 'pending' | 'approved' | 'scheduled' | 'published';
+export type ConventionQueueItemStatus = 'pending' | 'approved' | 'scheduled';
 
 export interface ConventionQueue {
   id: string;
