@@ -31,6 +31,7 @@ import {
   Smartphone,
   Copy,
   Check,
+  Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
@@ -76,6 +77,7 @@ function QueueItemCard({
   onDelete,
   onAnalyze,
   onEditImage,
+  onPostNow,
 }: {
   item: ConventionQueueItem;
   index: number;
@@ -89,6 +91,7 @@ function QueueItemCard({
   onDelete: () => void;
   onAnalyze: () => Promise<void>;
   onEditImage: () => void;
+  onPostNow: () => Promise<void>;
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
   const [bggUrl, setBggUrl] = useState(item.bggUrl ?? '');
@@ -98,6 +101,7 @@ function QueueItemCard({
   const [itemSuffixIds, setItemSuffixIds] = useState<Record<string, string>>(item.suffixIds ?? {});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [posting, setPosting] = useState(false);
   const [captionSaved, setCaptionSaved] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -198,6 +202,20 @@ function QueueItemCard({
       await onAnalyze();
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handlePostNow = async () => {
+    if (overLimit) {
+      toast.error(`Caption exceeds the ${charLimit} character limit`);
+      return;
+    }
+    if (!confirm('Post this photo now? It will go out on the next scheduler run.')) return;
+    setPosting(true);
+    try {
+      await onPostNow();
+    } finally {
+      setPosting(false);
     }
   };
 
@@ -362,6 +380,16 @@ function QueueItemCard({
           >
             <Edit3 size={13} />
             Overrides
+          </button>
+
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={handlePostNow}
+            disabled={posting || isLocked}
+            title="Post this photo immediately"
+          >
+            {posting ? <Loader size={13} className="spin" /> : <Send size={13} />}
+            {posting ? 'Posting…' : 'Post now'}
           </button>
 
           <button
@@ -666,6 +694,17 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     setItems(prev => prev.map(i => (i.id === updated.id ? updated : i)));
   };
 
+  const handlePostItemNow = async (item: ConventionQueueItem) => {
+    if (!id) return;
+    try {
+      await api.postConventionItemNow(id, item.id);
+      toast.success('Photo queued to post now');
+      loadQueue();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to post');
+    }
+  };
+
   const handleDeleteItem = async (item: ConventionQueueItem) => {
     if (!id) return;
     try {
@@ -924,6 +963,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
               onDelete={() => handleDeleteItem(item)}
               onAnalyze={() => handleAnalyzeItem(item)}
               onEditImage={() => setEditingImageItem(item)}
+              onPostNow={() => handlePostItemNow(item)}
             />
           ))}
         </div>
