@@ -927,6 +927,67 @@ func (h *ConventionHandler) ScheduleItems(c *gin.Context) {
 	})
 }
 
+// PostItemNow forces one specific item to be posted immediately, bypassing the
+// random selection and approval requirement. It creates a post scheduled for now
+// (the shared scheduler publishes it on its next tick) and rolls the queue's
+// automatic schedule forward so the forced post and the next automatic one stay
+// spaced apart.
+func (h *ConventionHandler) PostItemNow(c *gin.Context) {
+	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue ID"})
+		return
+	}
+	itemID, err := primitive.ObjectIDFromHex(c.Param("iid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid item ID"})
+		return
+	}
+
+	// A generous timeout: compositing an overlay watermark onto the image is
+	// CPU-bound.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	queueFilter := conventionQueueFilter(c)
+	queueFilter["_id"] = queueID
+	var queue models.ConventionQueue
+	if err := h.DB.ConventionQueues().FindOne(ctx, queueFilter).Decode(&queue); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Queue not found"})
+		return
+	}
+
+	var item models.ConventionQueueItem
+	if err := h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID, "queueId": queueID}).Decode(&item); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+	if item.Status == models.ConventionQueueItemStatusScheduled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This photo is already scheduled to post"})
+		return
+	}
+
+	posted, err := h.postItem(ctx, queue, item, time.Now(), item.Status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !posted {
+		c.JSON(http.StatusConflict, gin.H{"error": "Photo could not be posted — it may have just been scheduled"})
+		return
+	}
+
+	// Roll the automatic schedule forward so the forced post and the next
+	// automatic one are still spaced apart.
+	next := time.Now().Add(nextPostDelay(queue.PostsPerDay, queue.MinHoursBetweenPosts))
+	h.DB.ConventionQueues().UpdateOne(ctx,
+		bson.M{"_id": queue.ID},
+		bson.M{"$set": bson.M{"nextPostAt": next, "updatedAt": time.Now()}},
+	)
+
+	c.JSON(http.StatusOK, gin.H{"posted": true})
+}
+
 // postRandomApprovedItem picks one approved item from the queue at random,
 // composites the queue watermark if configured, creates a Post scheduled for
 // scheduledAt (the shared scheduler then publishes it), and marks the item as
@@ -948,8 +1009,15 @@ func (h *ConventionHandler) postRandomApprovedItem(ctx context.Context, queue mo
 	if len(picked) == 0 {
 		return false, nil
 	}
-	item := picked[0]
+	return h.postItem(ctx, queue, picked[0], scheduledAt, models.ConventionQueueItemStatusApproved)
+}
 
+// postItem composites the queue watermark if configured, creates a Post
+// scheduled for scheduledAt (the shared scheduler then publishes it), and marks
+// the item as consumed so it is never picked again. The consume is guarded on
+// expectedStatus so a concurrent trigger can't double-post the same photo; on a
+// lost race it rolls back the post and returns false.
+func (h *ConventionHandler) postItem(ctx context.Context, queue models.ConventionQueue, item models.ConventionQueueItem, scheduledAt time.Time, expectedStatus string) (bool, error) {
 	overlay := h.loadQueueWatermark(ctx, queue.WatermarkID)
 	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
 
@@ -1001,7 +1069,7 @@ func (h *ConventionHandler) postRandomApprovedItem(ctx context.Context, queue mo
 	// concurrent trigger can't double-post the same photo.
 	postID := res.InsertedID.(primitive.ObjectID)
 	upd, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
-		bson.M{"_id": item.ID, "status": models.ConventionQueueItemStatusApproved},
+		bson.M{"_id": item.ID, "status": expectedStatus},
 		bson.M{"$set": bson.M{
 			"status":    models.ConventionQueueItemStatusScheduled,
 			"postId":    postID,

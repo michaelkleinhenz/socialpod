@@ -545,6 +545,10 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/schedule`, { method: 'POST' });
   }
 
+  postConventionItemNow(queueId: string, itemId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/items/${itemId}/post-now`, { method: 'POST' });
+  }
+
   // BGG integration
   fetchBGGGame(url: string, episodeType?: string) {
     let endpoint = `/bgg/fetch?url=${encodeURIComponent(url)}`;
