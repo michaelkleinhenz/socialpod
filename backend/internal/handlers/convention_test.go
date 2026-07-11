@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -101,6 +102,33 @@ func TestApplyWatermarkOverlay(t *testing.T) {
 	}
 }
 
+func TestApplyWatermarkOverlay_AppliesExifOrientation(t *testing.T) {
+	// Base is a 4x2 (landscape) JPEG carrying EXIF orientation 6 (rotate 90 CW),
+	// i.e. a portrait photo the camera stored sideways. After compositing, the
+	// pixels must be upright (2x4) so the published image isn't sideways.
+	base := buildJPEGWithExifOrientation(6)
+
+	overlay := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			overlay.Set(x, y, color.RGBA{B: 255, A: 128})
+		}
+	}
+
+	out, ct := applyWatermarkOverlay(base, overlay)
+	if ct != "image/jpeg" {
+		t.Fatalf("expected image/jpeg, got %s", ct)
+	}
+	result, _, err := image.Decode(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	b := result.Bounds()
+	if b.Dx() != 2 || b.Dy() != 4 {
+		t.Fatalf("expected 2x4 upright result after orientation fix, got %dx%d", b.Dx(), b.Dy())
+	}
+}
+
 func TestApplyWatermarkOverlay_InvalidBaseReturnsOriginal(t *testing.T) {
 	overlay := image.NewRGBA(image.Rect(0, 0, 2, 2))
 	junk := []byte("not an image")
@@ -147,4 +175,37 @@ func TestGenerateSlots_NoDelaySpreadsAcrossDay(t *testing.T) {
 			t.Fatalf("slot %v fell outside the target day", s)
 		}
 	}
+}
+
+// buildJPEGWithExifOrientation creates a minimal 4x2 JPEG with an EXIF APP1
+// segment carrying the given orientation value.
+func buildJPEGWithExifOrientation(orientation int) []byte {
+	var exif bytes.Buffer
+	exif.WriteString("Exif")
+	exif.Write([]byte{0, 0})
+	exif.WriteString("II")                               // little-endian TIFF
+	binary.Write(&exif, binary.LittleEndian, uint16(42)) // magic
+	binary.Write(&exif, binary.LittleEndian, uint32(8))  // offset to IFD0
+	binary.Write(&exif, binary.LittleEndian, uint16(1))  // one entry
+	binary.Write(&exif, binary.LittleEndian, uint16(0x0112))
+	binary.Write(&exif, binary.LittleEndian, uint16(3)) // SHORT
+	binary.Write(&exif, binary.LittleEndian, uint32(1)) // count
+	binary.Write(&exif, binary.LittleEndian, uint16(orientation))
+	binary.Write(&exif, binary.LittleEndian, uint16(0)) // padding
+	binary.Write(&exif, binary.LittleEndian, uint32(0)) // next IFD
+	exifData := exif.Bytes()
+
+	img := image.NewRGBA(image.Rect(0, 0, 4, 2))
+	img.Set(0, 0, color.RGBA{255, 0, 0, 255})
+	var jpegBuf bytes.Buffer
+	jpeg.Encode(&jpegBuf, img, &jpeg.Options{Quality: 95})
+	jpegData := jpegBuf.Bytes()
+
+	var result bytes.Buffer
+	result.Write(jpegData[:2]) // SOI
+	result.Write([]byte{0xFF, 0xE1})
+	binary.Write(&result, binary.BigEndian, uint16(len(exifData)+2))
+	result.Write(exifData)
+	result.Write(jpegData[2:])
+	return result.Bytes()
 }

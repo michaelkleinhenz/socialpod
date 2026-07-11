@@ -96,6 +96,19 @@ func ResizeImageIfNeeded(data []byte, filename string) ([]byte, string) {
 	return data, contentType
 }
 
+// ReadExifOrientation returns the EXIF orientation tag (1-8) for JPEG data,
+// defaulting to 1 when it cannot be determined. Exported for callers outside
+// this package that composite images before publishing (e.g. watermark
+// overlays), which must normalize orientation themselves because re-encoding
+// strips the EXIF tag that ResizeImageIfNeeded would otherwise honor.
+func ReadExifOrientation(data []byte) int { return readExifOrientation(data) }
+
+// ApplyOrientation returns img transformed so its pixels are upright according
+// to the given EXIF orientation value (as returned by ReadExifOrientation).
+func ApplyOrientation(img image.Image, orientation int) image.Image {
+	return applyOrientation(img, orientation)
+}
+
 // readExifOrientation parses JPEG EXIF data to extract the orientation tag.
 // Returns 1 (normal) if orientation cannot be determined.
 func readExifOrientation(data []byte) int {
