@@ -75,6 +75,17 @@
   gap: 8px;
 }
 
+/* "Post Now" (mobile create) — visually distinct from the accent-coloured
+   Schedule button so an immediate publish reads as a deliberate choice. */
+.btn-post-now {
+  background: var(--success);
+  color: white;
+}
+.btn-post-now:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+
 .editor-images {
   margin-top: -8px;
 }

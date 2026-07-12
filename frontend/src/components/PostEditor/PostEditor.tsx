@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, PostStatus, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
-import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader, AlertTriangle } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
@@ -34,7 +34,7 @@ interface Props {
   post?: Post | null;
   postType?: PostType;
   defaultDate?: Date | null;
-  onSave: (data: any, files?: File[]) => void;
+  onSave: (data: any, files?: File[], opts?: { postNow?: boolean }) => void;
   onDelete?: () => void;
   onClose: () => void;
   /** Hide the title header and tighten edge padding — used by the mobile
@@ -795,7 +795,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const linkedinAccount = accounts.find(a => a.platform === 'linkedin') ?? null;
   const youtubeAccount = accounts.find(a => a.platform === 'youtube') ?? null;
 
-  const handleSubmit = async () => {
+  // `postNow` bypasses the schedule picker: the post is created as `scheduled`
+  // with scheduledAt = now, so the shared scheduler publishes it on its next
+  // (≤30s) tick. Used by the mobile create flow's "Post Now" button.
+  const handleSubmit = async (postNow = false) => {
     if (accountsError) {
       toast.error('Connected accounts failed to load. Retry before scheduling.');
       return;
@@ -836,10 +839,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         postType,
         firstComment: (isStory || isReel) ? undefined : (firstComment.trim() || undefined),
         platforms,
-        scheduledAt: new Date(scheduledAt).toISOString(),
+        scheduledAt: postNow ? new Date().toISOString() : new Date(scheduledAt).toISOString(),
         imageUrls,
         tags,
-        status,
+        status: postNow ? 'scheduled' : status,
         suffixIds: (isStory || isReel) ? {} : suffixIds,
         contentOverrides: (isStory || isReel || !customizePerPlatform) ? {} : contentOverrides,
         accountIds,
@@ -854,7 +857,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         };
       }
 
-      await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined);
+      await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
     } finally {
       setSaving(false);
     }
@@ -1484,9 +1487,19 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           </div>
           <div className="footer-right">
             <button className="btn btn-secondary" onClick={handleClose}>Cancel</button>
+            {chromeless && !post && (
+              <button
+                className="btn btn-post-now"
+                onClick={() => handleSubmit(true)}
+                disabled={saving || overLimit || accountsError || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}
+                title={accountsError ? 'Connected accounts failed to load' : 'Publish immediately'}
+              >
+                <Zap size={16} /> Post Now
+              </button>
+            )}
             <button
               className="btn btn-primary"
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={saving || overLimit || accountsError || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}
               title={accountsError ? 'Connected accounts failed to load' : undefined}
             >

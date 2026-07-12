@@ -72,10 +72,10 @@ export function MobileCreatePage() {
 
   const backToTypes = () => setPostType(null);
 
-  const handleSave = async (data: any, files?: File[]) => {
+  const handleSave = async (data: any, files?: File[], opts?: { postNow?: boolean }) => {
     try {
       await api.createPost(data, files);
-      toast.success('Post scheduled!');
+      toast.success(opts?.postNow ? 'Posting now…' : 'Post scheduled!');
       // Draft is now committed — discard it so the next quick post starts blank.
       if (postType) {
         try { localStorage.removeItem(draftKeyFor(postType)); } catch { /* ignore */ }
