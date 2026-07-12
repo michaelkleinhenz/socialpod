@@ -21,6 +21,9 @@ interface Props {
   onSave: (data: any, files?: File[]) => void;
   onDelete?: () => void;
   onClose: () => void;
+  /** Hide the title header and tighten edge padding — used by the mobile
+   *  create flow where vertical/horizontal space is at a premium. */
+  chromeless?: boolean;
 }
 
 function handleAvatarError(e: React.SyntheticEvent<HTMLImageElement>) {
@@ -360,7 +363,7 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
   );
 }
 
-export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose }: Props) {
+export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose, chromeless = false }: Props) {
   const defaultTime = defaultDate
     ? format(defaultDate, "yyyy-MM-dd'T'HH:mm")
     : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm");
@@ -895,13 +898,15 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
   return (
     <div className="modal-overlay" style={adobeActive ? { display: 'none' } : undefined}>
-      <div className="modal post-editor-modal" onClick={e => e.stopPropagation()}>
-        <div className="editor-header">
-          <h2>{post ? (isStory ? 'Edit Story' : isReel ? 'Edit Reel' : 'Edit Post') : (isStory ? 'New Story' : isReel ? 'New Reel' : 'New Post')}</h2>
-          <button className="btn btn-ghost btn-sm" onClick={handleClose}>
-            <X size={18} />
-          </button>
-        </div>
+      <div className={`modal post-editor-modal${chromeless ? ' post-editor-chromeless' : ''}`} onClick={e => e.stopPropagation()}>
+        {!chromeless && (
+          <div className="editor-header">
+            <h2>{post ? (isStory ? 'Edit Story' : isReel ? 'Edit Reel' : 'Edit Post') : (isStory ? 'New Story' : isReel ? 'New Reel' : 'New Post')}</h2>
+            <button className="btn btn-ghost btn-sm" onClick={handleClose}>
+              <X size={18} />
+            </button>
+          </div>
+        )}
 
         <div className="editor-layout">
           <div className="editor-body">

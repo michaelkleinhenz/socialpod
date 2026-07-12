@@ -72,6 +72,7 @@ export function MobileCreatePage() {
         postType={postType}
         onSave={handleSave}
         onClose={backToTypes}
+        chromeless
       />
     );
   }
