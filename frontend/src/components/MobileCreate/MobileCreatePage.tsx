@@ -17,6 +17,21 @@ const TYPE_META: Record<PostType, { label: string; blurb: string; icon: typeof I
   reel: { label: 'Reel', blurb: 'Short vertical video (Instagram)', icon: Clapperboard },
 };
 
+// localStorage keys for restoring the in-progress post after a mobile cold
+// reload (backgrounded browser tabs / standalone PWAs get discarded and
+// restart from index.html, wiping in-memory React state).
+const TYPE_KEY = 'mc-create-type';
+const draftKeyFor = (t: PostType) => `mc-create-draft:${t}`;
+
+function readStoredType(): PostType | null {
+  try {
+    const t = localStorage.getItem(TYPE_KEY);
+    return t === 'post' || t === 'story' || t === 'reel' ? t : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Standalone, phone-optimised page for quickly composing a new post.
  * Rendered outside the app Layout (no sidebar), mirroring the convention
@@ -34,7 +49,9 @@ export function MobileCreatePage() {
   usePageManifest('/m/create');
 
   // Step 1 = choose type, Step 2 = compose. `postType` null while choosing.
-  const [postType, setPostType] = useState<PostType | null>(null);
+  // Initialised from localStorage so a cold reload returns to the editor (with
+  // the draft restored) rather than dropping the user back on the chooser.
+  const [postType, setPostType] = useState<PostType | null>(readStoredType);
 
   // Redirect to login if not authenticated, preserving the destination.
   useEffect(() => {
@@ -43,12 +60,26 @@ export function MobileCreatePage() {
     }
   }, [authLoading, user, navigate]);
 
+  // Persist the chosen type so a reload reopens the same editor step.
+  useEffect(() => {
+    try {
+      if (postType) localStorage.setItem(TYPE_KEY, postType);
+      else localStorage.removeItem(TYPE_KEY);
+    } catch {
+      // best-effort only
+    }
+  }, [postType]);
+
   const backToTypes = () => setPostType(null);
 
   const handleSave = async (data: any, files?: File[]) => {
     try {
       await api.createPost(data, files);
       toast.success('Post scheduled!');
+      // Draft is now committed — discard it so the next quick post starts blank.
+      if (postType) {
+        try { localStorage.removeItem(draftKeyFor(postType)); } catch { /* ignore */ }
+      }
       // Back to the type chooser for the next quick post.
       setPostType(null);
     } catch (err: any) {
@@ -73,6 +104,7 @@ export function MobileCreatePage() {
         onSave={handleSave}
         onClose={backToTypes}
         chromeless
+        draftKey={draftKeyFor(postType)}
       />
     );
   }

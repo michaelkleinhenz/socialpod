@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
+import type { Post, Platform, PostType, PostStatus, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
 import { X, Image, Send, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
@@ -14,6 +14,22 @@ import './PostEditor.css';
 let _ccEditor: any = null;
 let _ccClientId = '';
 
+// Shape of the autosaved draft (text fields only; images can't be serialized).
+interface PostDraft {
+  content?: string;
+  contentOverrides?: Record<string, string>;
+  customizePerPlatform?: boolean;
+  firstComment?: string;
+  platforms?: Platform[];
+  scheduledAt?: string;
+  status?: PostStatus;
+  suffixIds?: Record<string, string>;
+  addNews?: boolean;
+  newsEpisodeNumber?: string;
+  newsTitle?: string;
+  newsAdditionalText?: string;
+}
+
 interface Props {
   post?: Post | null;
   postType?: PostType;
@@ -24,6 +40,11 @@ interface Props {
   /** Hide the title header and tighten edge padding — used by the mobile
    *  create flow where vertical/horizontal space is at a premium. */
   chromeless?: boolean;
+  /** When set, the (text) form fields are autosaved to localStorage under
+   *  this key and restored on mount. Used by the mobile create flow so a
+   *  cold reload (mobile browsers discard backgrounded tabs) doesn't lose
+   *  typed input. Image files can't be serialized, so they aren't restored. */
+  draftKey?: string;
 }
 
 function handleAvatarError(e: React.SyntheticEvent<HTMLImageElement>) {
@@ -363,7 +384,7 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
   );
 }
 
-export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose, chromeless = false }: Props) {
+export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose, chromeless = false, draftKey }: Props) {
   const defaultTime = defaultDate
     ? format(defaultDate, "yyyy-MM-dd'T'HH:mm")
     : format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm");
@@ -371,15 +392,29 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const isStory = (post?.postType || propPostType || 'post') === 'story';
   const isReel = (post?.postType || propPostType || 'post') === 'reel';
 
-  const [content, setContent] = useState(post?.content || '');
-  const [contentOverrides, setContentOverrides] = useState<Record<string, string>>(post?.contentOverrides || {});
+  // Restore an autosaved draft (mobile create flow only). Ignored when editing
+  // an existing post, or when there's nothing stored / the value is corrupt.
+  const draft = useMemo(() => {
+    if (!draftKey || post) return null;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      return raw ? (JSON.parse(raw) as PostDraft) : null;
+    } catch {
+      return null;
+    }
+  }, [draftKey, post]);
+
+  const [content, setContent] = useState(draft?.content ?? post?.content ?? '');
+  const [contentOverrides, setContentOverrides] = useState<Record<string, string>>(draft?.contentOverrides ?? post?.contentOverrides ?? {});
   const [customizePerPlatform, setCustomizePerPlatform] = useState(
-    post ? (post.contentOverrides != null && Object.keys(post.contentOverrides).length > 0) : true
+    draft ? !!draft.customizePerPlatform
+      : post ? (post.contentOverrides != null && Object.keys(post.contentOverrides).length > 0)
+      : true
   );
-  const [firstComment, setFirstComment] = useState(post?.firstComment || '');
-  const [platforms, setPlatforms] = useState<Platform[]>(post?.platforms || (isStory || isReel ? ['instagram'] : ['bluesky', 'instagram']));
+  const [firstComment, setFirstComment] = useState(draft?.firstComment ?? post?.firstComment ?? '');
+  const [platforms, setPlatforms] = useState<Platform[]>(draft?.platforms ?? post?.platforms ?? (isStory || isReel ? ['instagram'] : ['bluesky', 'instagram']));
   const [scheduledAt, setScheduledAt] = useState(
-    post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime
+    draft?.scheduledAt ?? (post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime)
   );
   // Unified image list: existing server URLs and local File objects not yet uploaded.
   type ImageItem = { kind: 'url'; url: string } | { kind: 'file'; file: File };
@@ -389,9 +424,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   // Cache for object URLs so we don't create a new one on every render.
   const objUrlCache = useRef<Map<File, string>>(new Map());
   const [tags] = useState<string[]>(post?.tags || []);
-  const [status, setStatus] = useState(post?.status || 'scheduled');
+  const [status, setStatus] = useState(draft?.status ?? post?.status ?? 'scheduled');
   const [suffixes, setSuffixes] = useState<Suffix[]>([]);
-  const [suffixIds, setSuffixIds] = useState<Record<string, string>>(post?.suffixIds || {});
+  const [suffixIds, setSuffixIds] = useState<Record<string, string>>(draft?.suffixIds ?? post?.suffixIds ?? {});
   const [mentions, setMentions] = useState<MentionEntry[]>([]);
   const [bggUrl, setBggUrl] = useState('');
   const [bggImportedUrl, setBggImportedUrl] = useState('');
@@ -401,10 +436,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [bggSuggestedByPlatform, setBggSuggestedByPlatform] = useState<Record<string, string>>({});
   const [bggHashtagSuffix, setBggHashtagSuffix] = useState('');
   const [newsEnabled, setNewsEnabled] = useState(false);
-  const [addNews, setAddNews] = useState(post?.episodeNews?.enabled || false);
-  const [newsEpisodeNumber, setNewsEpisodeNumber] = useState(post?.episodeNews?.episodeNumber || '');
-  const [newsTitle, setNewsTitle] = useState(post?.episodeNews?.title || '');
-  const [newsAdditionalText, setNewsAdditionalText] = useState(post?.episodeNews?.additionalText || '');
+  const [addNews, setAddNews] = useState(draft?.addNews ?? post?.episodeNews?.enabled ?? false);
+  const [newsEpisodeNumber, setNewsEpisodeNumber] = useState(draft?.newsEpisodeNumber ?? post?.episodeNews?.episodeNumber ?? '');
+  const [newsTitle, setNewsTitle] = useState(draft?.newsTitle ?? post?.episodeNews?.title ?? '');
+  const [newsAdditionalText, setNewsAdditionalText] = useState(draft?.newsAdditionalText ?? post?.episodeNews?.additionalText ?? '');
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -455,6 +490,27 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, [loadAccounts]);
+
+  // Autosave the text fields so a mobile cold reload (backgrounded tabs get
+  // discarded) doesn't lose typed input. Debounced; images are excluded since
+  // File objects aren't serializable. Cleared on successful save by the caller.
+  useEffect(() => {
+    if (!draftKey) return;
+    const id = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          content, contentOverrides, customizePerPlatform, firstComment,
+          platforms, scheduledAt, status, suffixIds,
+          addNews, newsEpisodeNumber, newsTitle, newsAdditionalText,
+        }));
+      } catch {
+        // quota exceeded / private mode — best-effort only
+      }
+    }, 400);
+    return () => clearTimeout(id);
+  }, [draftKey, content, contentOverrides, customizePerPlatform, firstComment,
+      platforms, scheduledAt, status, suffixIds,
+      addNews, newsEpisodeNumber, newsTitle, newsAdditionalText]);
 
   useEffect(() => {
     if (!accountsLoaded) return;
