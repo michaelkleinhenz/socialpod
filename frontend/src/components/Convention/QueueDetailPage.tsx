@@ -92,6 +92,8 @@ function QueueItemCard({
   const [bggUrl, setBggUrl] = useState(item.bggUrl ?? '');
   const [itemSuffixIds, setItemSuffixIds] = useState<Record<string, string>>(item.suffixIds ?? {});
   const [analyzing, setAnalyzing] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [posting, setPosting] = useState(false);
   const [captionSaved, setCaptionSaved] = useState(false);
@@ -244,10 +246,47 @@ function QueueItemCard({
     linkedin: 'LinkedIn',
   };
 
+  // Gallery items carry multiple images; fall back to the single primary image.
+  const galleryImages = item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : [item.imageUrl];
+  const isGallery = galleryImages.length > 1;
+
+  // Track the visible slide while the user swipes horizontally so the counter
+  // and dots reflect the current image.
+  const handleGalleryScroll = () => {
+    const el = galleryRef.current;
+    if (!el) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    setGalleryIndex(prev => (prev === idx ? prev : idx));
+  };
+
+  const scrollToImage = (idx: number) => {
+    const el = galleryRef.current;
+    if (!el) return;
+    el.scrollTo({ left: idx * el.clientWidth, behavior: 'smooth' });
+  };
+
   return (
     <div className={`conv-item-card ${item.status}`}>
       <div className="conv-item-thumb-wrap">
-        <img src={item.imageUrl} alt="" className="conv-item-thumb" loading="lazy" />
+        {isGallery ? (
+          <div
+            className="conv-item-gallery"
+            ref={galleryRef}
+            onScroll={handleGalleryScroll}
+          >
+            {galleryImages.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt=""
+                className="conv-item-thumb conv-item-gallery-slide"
+                loading="lazy"
+              />
+            ))}
+          </div>
+        ) : (
+          <img src={item.imageUrl} alt="" className="conv-item-thumb" loading="lazy" />
+        )}
         {overlayUrl && (
           <img src={overlayUrl} alt="" className="conv-item-overlay" aria-hidden="true" />
         )}
@@ -256,10 +295,23 @@ function QueueItemCard({
           {item.status}
         </span>
         <span className="conv-item-num">#{index + 1}</span>
-        {item.imageUrls && item.imageUrls.length > 1 && (
-          <span className="conv-item-gallery-badge" title={`${item.imageUrls.length} images`}>
-            <Images size={11} /> {item.imageUrls.length}
-          </span>
+        {isGallery && (
+          <>
+            <span className="conv-item-gallery-badge" title={`${galleryImages.length} images`}>
+              <Images size={11} /> {galleryIndex + 1} / {galleryImages.length}
+            </span>
+            <div className="conv-item-gallery-dots" aria-hidden="true">
+              {galleryImages.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={`conv-item-gallery-dot ${i === galleryIndex ? 'active' : ''}`}
+                  onClick={e => { e.stopPropagation(); scrollToImage(i); }}
+                  title={`Image ${i + 1}`}
+                />
+              ))}
+            </div>
+          </>
         )}
         {!isLocked && (
           <button

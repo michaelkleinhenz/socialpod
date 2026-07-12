@@ -449,6 +449,59 @@
   display: block;
 }
 
+/* Horizontally swipeable gallery for items with multiple images */
+.conv-item-gallery {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.conv-item-gallery::-webkit-scrollbar {
+  display: none;
+}
+
+.conv-item-gallery-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  scroll-snap-align: center;
+}
+
+.conv-item-gallery-dots {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: 99px;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 2;
+}
+
+.conv-item-gallery-dot {
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.conv-item-gallery-dot.active {
+  background: #fff;
+  transform: scale(1.25);
+}
+
 .conv-item-status-badge {
   position: absolute;
   bottom: 6px;
