@@ -34,6 +34,36 @@
 /* On the type-chooser screen the title is left-aligned (no back button). */
 .mc-header > .mc-title:first-child { text-align: left; }
 
+/* SocialPod branding shown on the type-chooser header */
+.mc-brand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mc-brand-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.mc-brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 .mc-close {
   flex-shrink: 0;
   width: 36px;

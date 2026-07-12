@@ -7,7 +7,7 @@ import type { Platform, PostType } from '../../types';
 import toast from 'react-hot-toast';
 import {
   Calendar, Tag, MessageSquare, Send, X, Plus, ArrowLeft,
-  Image as ImageIcon, Clapperboard, Circle, Video,
+  Image as ImageIcon, Clapperboard, Circle, Video, Zap,
 } from 'lucide-react';
 import './MobileCreate.css';
 
@@ -190,7 +190,10 @@ export function MobileCreatePage() {
     return (
       <div className="mc-page">
         <header className="mc-header">
-          <h1 className="mc-title">New Post</h1>
+          <div className="mc-brand">
+            <span className="mc-brand-icon"><Zap size={18} /></span>
+            <span className="mc-brand-name">SocialPod</span>
+          </div>
           <button className="mc-close" onClick={() => navigate('/')} aria-label="Close">
             <X size={20} />
           </button>
