@@ -23,6 +23,7 @@ import { ShareTargetPage } from './components/ShareTarget/ShareTargetPage';
 import { ConventionPage } from './components/Convention/ConventionPage';
 import { QueueDetailPage } from './components/Convention/QueueDetailPage';
 import { ConventionMobilePage } from './components/Convention/ConventionMobilePage';
+import { MobileCreatePage } from './components/MobileCreate/MobileCreatePage';
 import { NewsPage } from './components/News/NewsPage';
 import { EpisodePage } from './components/Episode/EpisodePage';
 import { InvitePage } from './components/Auth/InvitePage';
@@ -81,6 +82,8 @@ function AppRoutes() {
       <Route path="/convention/:id" element={<ProtectedRoute><Layout><QueueDetailPage /></Layout></ProtectedRoute>} />
       {/* Standalone phone view for a single convention — no sidebar, bookmarkable */}
       <Route path="/m/convention/:id" element={<ConventionMobilePage />} />
+      {/* Standalone phone view for quickly creating a post of a chosen type */}
+      <Route path="/m/create" element={<MobileCreatePage />} />
       {/* News Creator */}
       <Route path="/news" element={<ProtectedRoute><Layout><NewsPage /></Layout></ProtectedRoute>} />
       {/* Episode Creator */}

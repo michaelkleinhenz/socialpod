@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { AppSettings } from '../../types';
-import { Save } from 'lucide-react';
+import { Save, Copy, Check, Smartphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Admin.css';
 
@@ -25,6 +25,19 @@ export function SettingsPage() {
   const [bggApiToken, setBggApiToken] = useState('');
   const [mailgunApiKey, setMailgunApiKey] = useState('');
   const [saving, setSaving] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const mobileCreateUrl = `${(settings.appUrl || window.location.origin).replace(/\/+$/, '')}/m/create`;
+
+  const copyMobileCreateLink = async () => {
+    try {
+      await navigator.clipboard.writeText(mobileCreateUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
 
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => {});
@@ -100,6 +113,28 @@ export function SettingsPage() {
             </label>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               When disabled, only admins can create new user accounts
+            </span>
+          </div>
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>Mobile Quick Post</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Smartphone size={14} /> Phone create link
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input className="input" readOnly value={mobileCreateUrl} style={{ flex: 1, minWidth: 220 }} onFocus={e => e.currentTarget.select()} />
+              <button type="button" className="btn btn-secondary" onClick={copyMobileCreateLink}>
+                {linkCopied ? <Check size={14} /> : <Copy size={14} />}
+                {linkCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              A phone-friendly page (no sidebar) for quickly creating a post, story or reel. Open it on your phone and use "Add to Home Screen" to pin it as a shortcut. Uses the Application URL above when set, otherwise the current address.
             </span>
           </div>
         </div>
