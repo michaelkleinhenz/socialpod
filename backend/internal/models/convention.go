@@ -46,8 +46,12 @@ type ConventionQueue struct {
 	// value means the queue has not posted yet and is due as soon as it enters
 	// its date window with at least one approved item.
 	NextPostAt *time.Time `bson:"nextPostAt,omitempty" json:"nextPostAt,omitempty"`
-	CreatedAt  time.Time  `bson:"createdAt" json:"createdAt"`
-	UpdatedAt  time.Time  `bson:"updatedAt" json:"updatedAt"`
+	// PostedCount is the running total of items from this queue that have been
+	// successfully published. Items are removed from the queue once published, so
+	// this counter is the only record of how many have gone out.
+	PostedCount int       `bson:"postedCount,omitempty" json:"postedCount,omitempty"`
+	CreatedAt   time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt   time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
 type ConventionQueueItem struct {
@@ -55,6 +59,11 @@ type ConventionQueueItem struct {
 	QueueID    primitive.ObjectID  `bson:"queueId" json:"queueId"`
 	PostID     *primitive.ObjectID `bson:"postId,omitempty" json:"postId,omitempty"`
 	ImageURL   string              `bson:"imageUrl" json:"imageUrl"`
+	// ImageURLs holds every image for a gallery item (a single post with multiple
+	// images). When empty the item is a single-image post backed by ImageURL,
+	// which for a gallery item mirrors the first entry here for thumbnails and AI
+	// analysis.
+	ImageURLs  []string            `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`
 	BGGURL     string              `bson:"bggUrl,omitempty" json:"bggUrl,omitempty"`
 	Caption    string              `bson:"caption,omitempty" json:"caption,omitempty"`
 	Status     string              `bson:"status" json:"status"`

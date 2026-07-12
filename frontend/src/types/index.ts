@@ -278,6 +278,8 @@ export interface ConventionQueue {
   itemCount?: number;
   approvedCount?: number;
   scheduledCount?: number;
+  /** Running total of items from this queue that have been published. */
+  postedCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -287,6 +289,8 @@ export interface ConventionQueueItem {
   queueId: string;
   postId?: string;
   imageUrl: string;
+  /** All images for a gallery item (a single post with multiple images). */
+  imageUrls?: string[];
   bggUrl?: string;
   caption?: string;
   status: ConventionQueueItemStatus;

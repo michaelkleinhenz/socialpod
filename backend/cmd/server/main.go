@@ -210,6 +210,7 @@ func main() {
 		auth.PUT("/convention/queues/:id", conventionHandler.UpdateQueue)
 		auth.DELETE("/convention/queues/:id", conventionHandler.DeleteQueue)
 		auth.POST("/convention/queues/:id/items", conventionHandler.AddItem)
+		auth.POST("/convention/queues/:id/items/gallery", conventionHandler.AddGalleryItem)
 		auth.POST("/convention/queues/:id/items/bgg", conventionHandler.AddBGGItems)
 		auth.PUT("/convention/queues/:id/items/:iid", conventionHandler.UpdateItem)
 		auth.PUT("/convention/queues/:id/items/:iid/image", conventionHandler.ReplaceItemImage)
