@@ -163,6 +163,5 @@
     max-width: 480px;
     margin: 0 auto;
     min-height: 100vh;
-    box-shadow: var(--shadow-lg);
   }
 }
