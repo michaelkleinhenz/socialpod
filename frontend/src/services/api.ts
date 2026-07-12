@@ -508,6 +508,12 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/items`, { method: 'POST', body: form });
   }
 
+  addConventionGalleryItem(queueId: string, files: File[]) {
+    const form = new FormData();
+    files.forEach(f => form.append('images', f));
+    return this.request<any>(`/convention/queues/${queueId}/items/gallery`, { method: 'POST', body: form });
+  }
+
   addBGGItems(queueId: string, urls: string[]) {
     return this.request<{ items: any[]; errors: { url: string; error: string }[] }>(
       `/convention/queues/${queueId}/items/bgg`,

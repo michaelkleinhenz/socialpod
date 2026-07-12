@@ -526,6 +526,15 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	// the queue so it disappears from the convention UI. A failed post keeps its
 	// item so the user can still see and retry it.
 	if status == models.PostStatusPublished {
+		// Find the item first so we can credit its queue's posted total before the
+		// item is gone — the count is the only record of published items.
+		var convItem models.ConventionQueueItem
+		if err := s.DB.ConventionQueueItems().FindOne(ctx, bson.M{"postId": post.ID}).Decode(&convItem); err == nil {
+			s.DB.ConventionQueues().UpdateOne(ctx,
+				bson.M{"_id": convItem.QueueID},
+				bson.M{"$inc": bson.M{"postedCount": 1}, "$set": bson.M{"updatedAt": time.Now()}},
+			)
+		}
 		if _, err := s.DB.ConventionQueueItems().DeleteOne(ctx, bson.M{"postId": post.ID}); err != nil {
 			log.Printf("Failed to remove convention queue item for published post %s: %v", post.ID.Hex(), err)
 		}

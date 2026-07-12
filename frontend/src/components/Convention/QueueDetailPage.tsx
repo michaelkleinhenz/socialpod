@@ -15,14 +15,12 @@ import { format, parseISO } from 'date-fns';
 import {
   ArrowLeft,
   Upload,
-  Sparkles,
   CheckCircle,
   XCircle,
   X,
   Loader,
   Trash2,
   RefreshCw,
-  Edit3,
   Calendar,
   AlertTriangle,
   Pencil,
@@ -32,14 +30,13 @@ import {
   Copy,
   Check,
   Send,
+  Images,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { QueueFormModal } from './ConventionPage';
 import './Convention.css';
-
-const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
 
 // Per-platform character limits — mirror the PostEditor logic so captions are
 // validated the same way here.
@@ -68,7 +65,6 @@ function QueueItemCard({
   item,
   index,
   queueId,
-  accounts,
   suffixes,
   queuePlatforms,
   queueSuffixIds,
@@ -82,7 +78,6 @@ function QueueItemCard({
   item: ConventionQueueItem;
   index: number;
   queueId: string;
-  accounts: SocialAccount[];
   suffixes: Suffix[];
   queuePlatforms: Platform[];
   queueSuffixIds: Record<string, string>;
@@ -95,9 +90,6 @@ function QueueItemCard({
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
   const [bggUrl, setBggUrl] = useState(item.bggUrl ?? '');
-  const [showOverrides, setShowOverrides] = useState(false);
-  const [itemPlatforms, setItemPlatforms] = useState<Platform[]>(item.platforms ?? []);
-  const [itemAccountIds, setItemAccountIds] = useState<Record<string, string>>(item.accountIds ?? {});
   const [itemSuffixIds, setItemSuffixIds] = useState<Record<string, string>>(item.suffixIds ?? {});
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -219,20 +211,7 @@ function QueueItemCard({
     }
   };
 
-  const saveOverrides = async () => {
-    try {
-      const updated = await api.updateConventionItem(queueId, item.id, {
-        platforms: itemPlatforms.length > 0 ? itemPlatforms : null,
-        accountIds: Object.keys(itemAccountIds).length > 0 ? itemAccountIds : null,
-      });
-      onUpdate(updated);
-      toast.success('Overrides saved');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save overrides');
-    }
-  };
-
-  const effectivePlatforms = itemPlatforms.length > 0 ? itemPlatforms : queuePlatforms;
+  const effectivePlatforms = item.platforms && item.platforms.length > 0 ? item.platforms : queuePlatforms;
 
   // Character limit: strictest of the effective platforms, minus the length of
   // the selected suffix for each (an item override falls back to the queue
@@ -277,6 +256,11 @@ function QueueItemCard({
           {item.status}
         </span>
         <span className="conv-item-num">#{index + 1}</span>
+        {item.imageUrls && item.imageUrls.length > 1 && (
+          <span className="conv-item-gallery-badge" title={`${item.imageUrls.length} images`}>
+            <Images size={11} /> {item.imageUrls.length}
+          </span>
+        )}
         {!isLocked && (
           <button
             className="conv-item-edit-btn"
@@ -325,7 +309,6 @@ function QueueItemCard({
 
         <div className="conv-item-platforms">
           {effectivePlatforms.map(p => <PlatformIcon key={p} platform={p} />)}
-          {itemPlatforms.length > 0 && <span className="conv-override-badge">overridden</span>}
         </div>
 
         {suffixes.length > 0 && (
@@ -374,15 +357,6 @@ function QueueItemCard({
           </button>
 
           <button
-            className="btn btn-sm btn-secondary"
-            onClick={() => setShowOverrides(v => !v)}
-            title="Per-item platform overrides"
-          >
-            <Edit3 size={13} />
-            Overrides
-          </button>
-
-          <button
             className="btn btn-sm btn-primary"
             onClick={handlePostNow}
             disabled={posting || isLocked}
@@ -400,44 +374,6 @@ function QueueItemCard({
             <Trash2 size={14} />
           </button>
         </div>
-
-        {showOverrides && !isLocked && (
-          <div className="conv-overrides-panel">
-            <p className="conv-overrides-label">Platform overrides for this photo</p>
-            <div className="platform-toggles small">
-              {PLATFORM_OPTIONS.map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  className={`platform-toggle small ${itemPlatforms.includes(p) ? 'active' : ''}`}
-                  onClick={() =>
-                    setItemPlatforms(prev =>
-                      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-                    )
-                  }
-                >
-                  <PlatformIcon platform={p} />
-                </button>
-              ))}
-            </div>
-            {accounts.filter(a => (itemPlatforms.length > 0 ? itemPlatforms : queuePlatforms).includes(a.platform)).map(a => (
-              <div key={a.id} className="account-select-row small">
-                <PlatformIcon platform={a.platform} />
-                <select
-                  className="select"
-                  value={itemAccountIds[a.platform] ?? ''}
-                  onChange={e => setItemAccountIds(prev => ({ ...prev, [a.platform]: e.target.value }))}
-                >
-                  <option value="">— use queue default —</option>
-                  {accounts.filter(x => x.platform === a.platform).map(x => (
-                    <option key={x.id} value={x.id}>{x.displayName || x.accountName}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-            <button className="btn btn-sm btn-primary" onClick={saveOverrides}>Save overrides</button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -544,8 +480,9 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [uploading, setUploading] = useState(false);
   const [bggUrls, setBggUrls] = useState('');
   const [importingBgg, setImportingBgg] = useState(false);
-  const [analyzingAll, setAnalyzingAll] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [galleryDragOver, setGalleryDragOver] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -553,6 +490,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [editingImageItem, setEditingImageItem] = useState<ConventionQueueItem | null>(null);
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const loadQueue = useCallback(async () => {
@@ -632,6 +570,38 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     e.target.value = '';
   };
 
+  // Gallery upload: every selected image is combined into a single queue item,
+  // which is published as one post with multiple images.
+  const uploadGallery = async (files: File[]) => {
+    if (!id || files.length === 0) return;
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      toast.error('Only image files are supported');
+      return;
+    }
+    setUploadingGallery(true);
+    try {
+      const item = await api.addConventionGalleryItem(id, imageFiles);
+      setItems(prev => [...prev, item]);
+      toast.success(`Created a gallery post with ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create gallery post');
+    } finally {
+      setUploadingGallery(false);
+    }
+  };
+
+  const handleGalleryInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) uploadGallery(Array.from(e.target.files));
+    e.target.value = '';
+  };
+
+  const handleGalleryDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setGalleryDragOver(false);
+    if (e.dataTransfer.files) uploadGallery(Array.from(e.dataTransfer.files));
+  };
+
   const handleBGGImport = async () => {
     if (!id) return;
     const urls = bggUrls.trim().split(/\s+/).filter(Boolean);
@@ -661,23 +631,6 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     e.preventDefault();
     setDragOver(false);
     if (e.dataTransfer.files) uploadFiles(Array.from(e.dataTransfer.files));
-  };
-
-  const handleAnalyzeAll = async () => {
-    if (!id) return;
-    setAnalyzingAll(true);
-    try {
-      const res = await api.analyzeAllConventionItems(id);
-      if (res.count === 0) {
-        toast('No pending photos to analyze');
-      } else {
-        toast.success(`AI analyzing ${res.count} photos in the background…`);
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to start analysis');
-    } finally {
-      setAnalyzingAll(false);
-    }
   };
 
   const handleAnalyzeItem = async (item: ConventionQueueItem) => {
@@ -790,13 +743,15 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   if (!queue) return <div className={rootClass}><p style={{ padding: 20 }}>Queue not found.</p></div>;
 
   const approvedCount = items.filter(i => i.status === 'approved').length;
-  const scheduledCount = items.filter(i => i.status === 'scheduled').length;
   const pendingCount = items.filter(i => i.status === 'pending').length;
+  const postedCount = queue.postedCount ?? 0;
   const analyzingCount = items.filter(i => i.status === 'pending' && !i.caption && !i.aiError).length;
 
   const visibleItems = filterPending
     ? items.filter(i => i.status === 'pending')
     : items;
+  // Show the most recently added entries first.
+  const displayItems = [...visibleItems].reverse();
 
   return (
     <div className={rootClass}>
@@ -849,10 +804,9 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
 
       {/* Stats bar */}
       <div className="conv-stats-bar">
-        <div className="conv-stat-pill">{items.length} photos</div>
         <div className="conv-stat-pill pending">{pendingCount} pending</div>
         <div className="conv-stat-pill approved">{approvedCount} approved</div>
-        <div className="conv-stat-pill scheduled">{scheduledCount} scheduled</div>
+        <div className="conv-stat-pill posted">{postedCount} posted</div>
         {analyzingCount > 0 && (
           <div className="conv-stat-pill analyzing">
             <Loader size={11} className="spin" /> {analyzingCount} analyzing…
@@ -860,34 +814,65 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         )}
       </div>
 
-      {/* Upload zone */}
-      <div
-        className={`conv-upload-zone ${dragOver ? 'drag-over' : ''} ${uploading ? 'uploading' : ''}`}
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{ display: 'none' }}
-          onChange={handleFileInput}
-        />
-        {uploading ? (
-          <>
-            <Loader size={28} className="spin" color="var(--accent)" />
-            <p>Uploading…</p>
-          </>
-        ) : (
-          <>
-            <Upload size={28} color="var(--text-muted)" />
-            <p>Drop photos here or tap to select</p>
-            <p className="conv-upload-hint">Supports JPG, PNG, WebP · Multiple files OK</p>
-          </>
-        )}
+      {/* Upload zones: one post per photo, or one gallery post from many photos */}
+      <div className="conv-upload-zones">
+        <div
+          className={`conv-upload-zone ${dragOver ? 'drag-over' : ''} ${uploading ? 'uploading' : ''}`}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFileInput}
+          />
+          {uploading ? (
+            <>
+              <Loader size={28} className="spin" color="var(--accent)" />
+              <p>Uploading…</p>
+            </>
+          ) : (
+            <>
+              <Upload size={28} color="var(--text-muted)" />
+              <p>Drop photos here or tap to select</p>
+              <p className="conv-upload-hint">One post per photo · JPG, PNG, WebP</p>
+            </>
+          )}
+        </div>
+
+        <div
+          className={`conv-upload-zone ${galleryDragOver ? 'drag-over' : ''} ${uploadingGallery ? 'uploading' : ''}`}
+          onDragOver={e => { e.preventDefault(); setGalleryDragOver(true); }}
+          onDragLeave={() => setGalleryDragOver(false)}
+          onDrop={handleGalleryDrop}
+          onClick={() => galleryInputRef.current?.click()}
+        >
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleGalleryInput}
+          />
+          {uploadingGallery ? (
+            <>
+              <Loader size={28} className="spin" color="var(--accent)" />
+              <p>Uploading…</p>
+            </>
+          ) : (
+            <>
+              <Images size={28} color="var(--text-muted)" />
+              <p>Drop photos for one gallery post</p>
+              <p className="conv-upload-hint">All photos become a single post with multiple images</p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* BGG import */}
@@ -920,18 +905,6 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
       {/* Toolbar */}
       {items.length > 0 && (
         <div className="conv-toolbar">
-          <button
-            className="btn btn-secondary"
-            onClick={handleAnalyzeAll}
-            disabled={analyzingAll || pendingCount === 0}
-          >
-            {analyzingAll ? <Loader size={15} className="spin" /> : <Sparkles size={15} />}
-            {analyzingAll ? 'Starting…' : `AI captions for ${pendingCount} pending`}
-          </button>
-          <span className="conv-toolbar-hint">
-            {items.filter(i => i.status === 'pending' && i.caption).length} have captions,{' '}
-            {approvedCount} approved
-          </span>
           <div style={{ marginLeft: 'auto' }}>
             <button
               className={`conv-filter-btn ${filterPending ? 'active' : ''}`}
@@ -946,15 +919,14 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
       )}
 
       {/* Item grid */}
-      {visibleItems.length > 0 ? (
+      {displayItems.length > 0 ? (
         <div className="conv-item-grid">
-          {visibleItems.map((item) => (
+          {displayItems.map((item, idx) => (
             <QueueItemCard
               key={item.id}
               item={item}
-              index={items.indexOf(item)}
+              index={idx}
               queueId={queue.id}
-              accounts={accounts}
               suffixes={suffixes}
               queuePlatforms={queue.platforms}
               queueSuffixIds={queue.suffixIds ?? {}}

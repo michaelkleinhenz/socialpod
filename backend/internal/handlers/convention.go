@@ -440,6 +440,72 @@ func (h *ConventionHandler) AddItem(c *gin.Context) {
 	c.JSON(http.StatusCreated, item)
 }
 
+// AddGalleryItem creates a single queue item that carries multiple images, so it
+// is published as one gallery post rather than one post per image. All uploaded
+// files are attached to the same item; the first doubles as the thumbnail and AI
+// analysis source.
+func (h *ConventionHandler) AddGalleryItem(c *gin.Context) {
+	queueID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	queueFilter := conventionQueueFilter(c)
+	queueFilter["_id"] = queueID
+	var queue models.ConventionQueue
+	if err := h.DB.ConventionQueues().FindOne(ctx, queueFilter).Decode(&queue); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Queue not found"})
+		return
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid form data"})
+		return
+	}
+	files := form.File["images"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No image files provided"})
+		return
+	}
+
+	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
+	var imageURLs []string
+	for _, fh := range files {
+		url, err := ph.saveUpload(ctx, fh)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + err.Error()})
+			return
+		}
+		imageURLs = append(imageURLs, url)
+	}
+
+	count, _ := h.DB.ConventionQueueItems().CountDocuments(ctx, bson.M{"queueId": queueID})
+
+	item := models.ConventionQueueItem{
+		QueueID:   queueID,
+		ImageURL:  imageURLs[0],
+		ImageURLs: imageURLs,
+		Status:    models.ConventionQueueItemStatusPending,
+		SortOrder: int(count),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	res, err := h.DB.ConventionQueueItems().InsertOne(ctx, item)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create item"})
+		return
+	}
+
+	item.ID = res.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, item)
+}
+
 type UpdateItemInput struct {
 	Caption    *string           `json:"caption,omitempty"`
 	Status     *string           `json:"status,omitempty"`
@@ -1035,15 +1101,24 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 		suffixIDs = queue.SuffixIDs
 	}
 
-	imageURL := item.ImageURL
-	if overlay != nil {
-		if data, _, err := h.readImageData(ctx, item.ImageURL); err == nil {
-			watermarked, ct := applyWatermarkOverlay(data, overlay)
-			filename := fmt.Sprintf("conv-wm-%s-%d.jpg", item.ID.Hex(), time.Now().UnixNano())
-			if storedURL, err := ph.storeFile(filename, ct, watermarked); err == nil {
-				imageURL = storedURL
+	// A gallery item carries several images; a plain item has just ImageURL.
+	srcURLs := item.ImageURLs
+	if len(srcURLs) == 0 {
+		srcURLs = []string{item.ImageURL}
+	}
+	imageURLs := make([]string, 0, len(srcURLs))
+	for idx, src := range srcURLs {
+		imageURL := src
+		if overlay != nil {
+			if data, _, err := h.readImageData(ctx, src); err == nil {
+				watermarked, ct := applyWatermarkOverlay(data, overlay)
+				filename := fmt.Sprintf("conv-wm-%s-%d-%d.jpg", item.ID.Hex(), idx, time.Now().UnixNano())
+				if storedURL, err := ph.storeFile(filename, ct, watermarked); err == nil {
+					imageURL = storedURL
+				}
 			}
 		}
+		imageURLs = append(imageURLs, imageURL)
 	}
 
 	post := models.Post{
@@ -1051,7 +1126,7 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 		TeamID:      queue.TeamID,
 		PostType:    models.PostTypePost,
 		Content:     item.Caption,
-		ImageURLs:   []string{imageURL},
+		ImageURLs:   imageURLs,
 		Platforms:   platforms,
 		ScheduledAt: scheduledAt,
 		Status:      models.PostStatusScheduled,
