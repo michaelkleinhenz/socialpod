@@ -640,6 +640,18 @@
   .footer-left, .footer-right {
     flex-wrap: wrap;
   }
+
+  /* Chromeless (mobile quick-create): reclaim the generous edge spacing so
+     more of the narrow phone width goes to the editor itself. */
+  .post-editor-modal.post-editor-chromeless {
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .post-editor-chromeless .editor-body {
+    padding-right: 0;
+  }
 }
 
 /* Mention autocomplete dropdown */
