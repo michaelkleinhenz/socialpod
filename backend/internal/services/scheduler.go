@@ -114,6 +114,9 @@ func (s *Scheduler) refreshAccountAvatars() {
 		}
 		if displayName != "" {
 			update["displayName"] = displayName
+			if account.AccountName == "" {
+				update["accountName"] = displayName
+			}
 		}
 		s.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": account.ID}, bson.M{"$set": update})
 	}
