@@ -4,9 +4,13 @@ import type { SocialAccount, PublicSettings } from '../../types';
 import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 import './Admin.css';
 
 export function TeamAccountsPage() {
+  const { user, refreshUser } = useAuth();
+  const [newTeamName, setNewTeamName] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [showBlueskyForm, setShowBlueskyForm] = useState(false);
   const [handle, setHandle] = useState('');
@@ -31,7 +35,22 @@ export function TeamAccountsPage() {
   const [connectingYouTube, setConnectingYouTube] = useState(false);
   const [youtubeConfigured, setYoutubeConfigured] = useState(false);
 
+  const createTeam = async () => {
+    if (!newTeamName.trim()) { toast.error('Team name is required'); return; }
+    setCreatingTeam(true);
+    try {
+      await api.createOwnTeam({ name: newTeamName.trim() });
+      toast.success('Team created');
+      await refreshUser();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create team');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
   useEffect(() => {
+    if (!user?.teamId) return;
     loadAccounts();
     api.getPublicSettings().then((s: PublicSettings) => {
       setYoutubeConfigured(s.youtubeConfigured);
@@ -54,7 +73,43 @@ export function TeamAccountsPage() {
       toast.error('Connection failed: ' + params.get('error'));
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, []);
+  }, [user?.teamId]);
+
+  if (!user?.teamId) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <h1>Team Accounts</h1>
+        </div>
+        <div style={{ maxWidth: 480 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Create Your Team</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 20, fontSize: 14 }}>
+              You don't have a team yet. Create one to start managing social accounts.
+            </p>
+            <div className="form-group">
+              <label>Team Name</label>
+              <input
+                className="input"
+                placeholder="My Team"
+                value={newTeamName}
+                onChange={e => setNewTeamName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createTeam()}
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={createTeam}
+              disabled={creatingTeam}
+              style={{ marginTop: 16 }}
+            >
+              {creatingTeam ? 'Creating...' : 'Create Team'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const loadAccounts = async () => {
     try {

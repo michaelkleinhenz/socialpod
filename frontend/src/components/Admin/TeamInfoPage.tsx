@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import './Admin.css';
 
 export function TeamInfoPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [members, setMembers] = useState<User[]>([]);
   const [invites, setInvites] = useState<TeamInvite[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -17,13 +17,68 @@ export function TeamInfoPage() {
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
 
   const load = () => {
     api.getTeamMembers().then(setMembers).catch(() => toast.error('Failed to load members'));
     api.getMyTeamInvites().then(setInvites).catch(() => {});
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!user?.teamId) return;
+    load();
+  }, [user?.teamId]);
+
+  const createTeam = async () => {
+    if (!newTeamName.trim()) { toast.error('Team name is required'); return; }
+    setCreatingTeam(true);
+    try {
+      await api.createOwnTeam({ name: newTeamName.trim() });
+      toast.success('Team created');
+      await refreshUser();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create team');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  if (!user?.teamId) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <h1>My Team</h1>
+        </div>
+        <div style={{ maxWidth: 480 }}>
+          <div className="card" style={{ padding: 24 }}>
+            <h2 style={{ marginBottom: 8 }}>Create Your Team</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 20, fontSize: 14 }}>
+              You don't have a team yet. Create one to start managing members and social accounts.
+            </p>
+            <div className="form-group">
+              <label>Team Name</label>
+              <input
+                className="input"
+                placeholder="My Team"
+                value={newTeamName}
+                onChange={e => setNewTeamName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createTeam()}
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={createTeam}
+              disabled={creatingTeam}
+              style={{ marginTop: 16 }}
+            >
+              {creatingTeam ? 'Creating...' : 'Create Team'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const addMember = async () => {
     if (!newEmail.trim()) { toast.error('Email is required'); return; }
