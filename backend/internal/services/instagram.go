@@ -510,11 +510,14 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 	}
 	defer resp.Body.Close()
 
+	shortBody, _ := io.ReadAll(resp.Body)
+	log.Printf("IG short-lived token response: status=%d body=%s", resp.StatusCode, string(shortBody))
+
 	var shortToken struct {
 		AccessToken string `json:"access_token"`
 		UserID      int64  `json:"user_id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&shortToken)
+	json.Unmarshal(shortBody, &shortToken)
 
 	if shortToken.AccessToken == "" {
 		return nil, fmt.Errorf("failed to get access token")
@@ -526,6 +529,7 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		"client_secret": {clientSecret},
 		"access_token":  {shortToken.AccessToken},
 	}.Encode())
+	log.Printf("IG long-lived token URL: %s", strings.Replace(llURL, clientSecret, "***", 1))
 	llResp, err := http.Get(llURL)
 	if err != nil {
 		return nil, err
@@ -551,11 +555,12 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 
 	igUserID := fmt.Sprintf("%d", shortToken.UserID)
 
-	profileURL := fmt.Sprintf("%s/me?%s", igGraphAPIUnversioned, url.Values{
-		"fields":       {"id,username,profile_picture_url"},
-		"access_token": {token},
-	}.Encode())
-	profileResp, err := http.Get(profileURL)
+	// Try fetching profile with Authorization header (some IG API versions
+	// reject the access_token query parameter on read endpoints).
+	profileURL := fmt.Sprintf("%s/me?fields=id,username,profile_picture_url", igGraphAPIUnversioned)
+	profileReq, _ := http.NewRequest("GET", profileURL, nil)
+	profileReq.Header.Set("Authorization", "Bearer "+token)
+	profileResp, err := http.DefaultClient.Do(profileReq)
 	if err != nil {
 		return nil, err
 	}
