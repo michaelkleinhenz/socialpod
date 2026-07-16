@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, PostStatus, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Newspaper, Loader, AlertTriangle } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Newspaper, Loader, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
+import { ImageCropper } from '../Common/ImageCropper';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import { MentionTextarea } from './MentionTextarea';
@@ -451,6 +452,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [generating, setGenerating] = useState<boolean | Platform>(false);
   const [preparingPlatforms, setPreparingPlatforms] = useState(false);
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
+  const [croppingImageIdx, setCroppingImageIdx] = useState<number | null>(null);
   const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -749,10 +751,23 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     if (!files) return;
     const items = Array.from(files).map(file => ({ kind: 'file' as const, file }));
     if (isStory || isReel) {
-      // Stories and Reels only support a single media file — replace any existing.
       setImages(items.slice(0, 1));
     } else {
+      const startIdx = images.length;
       setImages(prev => [...prev, ...items]);
+      const firstImageItem = items.find(item => !item.file.type.startsWith('video/'));
+      if (firstImageItem) {
+        const idx = startIdx + items.indexOf(firstImageItem);
+        const img = new window.Image();
+        const checkUrl = URL.createObjectURL(firstImageItem.file);
+        img.onload = () => {
+          URL.revokeObjectURL(checkUrl);
+          if (img.naturalWidth !== img.naturalHeight) {
+            setCroppingImageIdx(idx);
+          }
+        };
+        img.src = checkUrl;
+      }
     }
   };
 
@@ -1388,9 +1403,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                           ? <video src={previewUrl(item)} muted className="image-preview-video" />
                           : <img src={previewUrl(item)} alt="" />}
                         {!isVid && (
-                          <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title="Edit image">
-                            <Pencil size={12} />
-                          </button>
+                          <>
+                            <button className="edit-btn" onClick={() => setCroppingImageIdx(i)} title="Crop image" style={{ left: 8, right: 'auto' }}>
+                              <Crop size={12} />
+                            </button>
+                            <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title="Edit image">
+                              <Pencil size={12} />
+                            </button>
+                          </>
                         )}
                         <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
                       </div>
@@ -1666,6 +1686,27 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             onClose={() => setEditingImageIdx(null)}
           />
         </div>
+      )}
+
+      {croppingImageIdx !== null && images[croppingImageIdx] && (
+        <ImageCropper
+          imageUrl={previewUrl(images[croppingImageIdx])}
+          onApply={(blob, _size) => {
+            const idx = croppingImageIdx;
+            const ext = 'jpg';
+            const file = new File([blob], `cropped.${ext}`, { type: 'image/jpeg' });
+            const oldItem = images[idx];
+            if (oldItem.kind === 'file') {
+              const cached = objUrlCache.current.get(oldItem.file);
+              if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
+            }
+            setImages(prev => prev.map((item, i) =>
+              i === idx ? { kind: 'file' as const, file } : item
+            ));
+            setCroppingImageIdx(null);
+          }}
+          onCancel={() => setCroppingImageIdx(null)}
+        />
       )}
     </div>
   );
