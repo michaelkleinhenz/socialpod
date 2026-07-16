@@ -36,6 +36,7 @@ func (e *igError) Error() string {
 }
 
 const igGraphAPI = "https://graph.instagram.com/v25.0"
+const igGraphAPIUnversioned = "https://graph.instagram.com"
 
 func (s *InstagramService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
 	account, err := s.getAccount(ctx, accountID)
@@ -175,10 +176,10 @@ func (s *InstagramService) waitForContainer(account *models.SocialAccount, conta
 	// Poll for up to 5 minutes with increasing intervals.
 	maxAttempts := 60
 	for i := 0; i < maxAttempts; i++ {
-		resp, err := http.PostForm(fmt.Sprintf("%s/%s", igGraphAPI, containerID), url.Values{
+		resp, err := http.Get(fmt.Sprintf("%s/%s?%s", igGraphAPIUnversioned, containerID, url.Values{
 			"fields":       {"status_code,status"},
 			"access_token": {account.AccessToken},
-		})
+		}.Encode()))
 		if err != nil {
 			return err
 		}
@@ -398,10 +399,10 @@ func (s *InstagramService) FetchFeed(ctx context.Context, accountID string) ([]I
 		return nil, fmt.Errorf("no active Instagram account: %w", err)
 	}
 
-	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), url.Values{
+	resp, err := http.Get(fmt.Sprintf("%s/%s/media?%s", igGraphAPIUnversioned, account.IGUserID, url.Values{
 		"fields":       {"id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count"},
 		"access_token": {account.AccessToken},
-	})
+	}.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -470,10 +471,10 @@ func (s *InstagramService) FetchProfile(account *models.SocialAccount) (displayN
 		return "", "", fmt.Errorf("account missing access token or user ID")
 	}
 
-	resp, err := http.PostForm(fmt.Sprintf("%s/%s", igGraphAPI, account.IGUserID), url.Values{
+	resp, err := http.Get(fmt.Sprintf("%s/%s?%s", igGraphAPIUnversioned, account.IGUserID, url.Values{
 		"fields":       {"username,profile_picture_url"},
 		"access_token": {account.AccessToken},
-	})
+	}.Encode()))
 	if err != nil {
 		return "", "", err
 	}
@@ -519,12 +520,13 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		return nil, fmt.Errorf("failed to get access token")
 	}
 
-	// Exchange for long-lived token (POST required by IG API v25.0+)
-	llResp, err := http.PostForm(fmt.Sprintf("%s/access_token", igGraphAPI), url.Values{
+	// Exchange for long-lived token (unversioned endpoint per IG API docs)
+	llURL := fmt.Sprintf("%s/access_token?%s", igGraphAPIUnversioned, url.Values{
 		"grant_type":    {"ig_exchange_token"},
 		"client_secret": {clientSecret},
 		"access_token":  {shortToken.AccessToken},
-	})
+	}.Encode())
+	llResp, err := http.Get(llURL)
 	if err != nil {
 		return nil, err
 	}
@@ -549,11 +551,11 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 
 	igUserID := fmt.Sprintf("%d", shortToken.UserID)
 
-	// Fetch profile (POST required by IG API v25.0+)
-	profileResp, err := http.PostForm(fmt.Sprintf("%s/%s", igGraphAPI, igUserID), url.Values{
+	profileURL := fmt.Sprintf("%s/me?%s", igGraphAPIUnversioned, url.Values{
 		"fields":       {"id,username,profile_picture_url"},
 		"access_token": {token},
-	})
+	}.Encode())
+	profileResp, err := http.Get(profileURL)
 	if err != nil {
 		return nil, err
 	}
