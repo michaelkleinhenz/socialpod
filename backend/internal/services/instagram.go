@@ -523,62 +523,77 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		return nil, fmt.Errorf("failed to get access token")
 	}
 
-	// Exchange for long-lived token (unversioned endpoint per IG API docs)
-	llURL := fmt.Sprintf("%s/access_token?%s", igGraphAPIUnversioned, url.Values{
+	// Exchange for long-lived token.
+	// Try graph.instagram.com first (documented host), then graph.facebook.com
+	// as fallback (Meta docs state both hosts serve all endpoints).
+	token := shortToken.AccessToken
+	llParams := url.Values{
 		"grant_type":    {"ig_exchange_token"},
 		"client_secret": {clientSecret},
 		"access_token":  {shortToken.AccessToken},
-	}.Encode())
-	log.Printf("IG long-lived token URL: %s", strings.Replace(llURL, clientSecret, "***", 1))
-	llResp, err := http.Get(llURL)
-	if err != nil {
-		return nil, err
 	}
-	defer llResp.Body.Close()
-
-	llBody, _ := io.ReadAll(llResp.Body)
-	log.Printf("IG long-lived token response: status=%d body=%s", llResp.StatusCode, string(llBody))
-
-	var longToken struct {
-		AccessToken string   `json:"access_token"`
-		TokenType   string   `json:"token_type"`
-		ExpiresIn   int64    `json:"expires_in"`
-		Error       *igError `json:"error"`
-	}
-	json.Unmarshal(llBody, &longToken)
-
-	token := longToken.AccessToken
-	if token == "" {
-		log.Printf("IG long-lived token empty, falling back to short-lived token")
-		token = shortToken.AccessToken
+	for _, host := range []string{igGraphAPIUnversioned, "https://graph.facebook.com"} {
+		llURL := fmt.Sprintf("%s/access_token?%s", host, llParams.Encode())
+		log.Printf("IG long-lived token trying: %s", strings.Replace(llURL, clientSecret, "***", 1))
+		llResp, llErr := http.Get(llURL)
+		if llErr != nil {
+			log.Printf("IG long-lived token http error (%s): %v", host, llErr)
+			continue
+		}
+		llBody, _ := io.ReadAll(llResp.Body)
+		llResp.Body.Close()
+		log.Printf("IG long-lived token response (%s): status=%d body=%s", host, llResp.StatusCode, string(llBody))
+		var longToken struct {
+			AccessToken string `json:"access_token"`
+		}
+		json.Unmarshal(llBody, &longToken)
+		if longToken.AccessToken != "" {
+			token = longToken.AccessToken
+			break
+		}
 	}
 
 	igUserID := fmt.Sprintf("%d", shortToken.UserID)
 
-	// Try fetching profile with Authorization header (some IG API versions
-	// reject the access_token query parameter on read endpoints).
-	profileURL := fmt.Sprintf("%s/me?fields=id,username,profile_picture_url", igGraphAPIUnversioned)
-	profileReq, _ := http.NewRequest("GET", profileURL, nil)
-	profileReq.Header.Set("Authorization", "Bearer "+token)
-	profileResp, err := http.DefaultClient.Do(profileReq)
-	if err != nil {
-		return nil, err
-	}
-	defer profileResp.Body.Close()
-
-	profileBody, _ := io.ReadAll(profileResp.Body)
-	log.Printf("IG profile response: status=%d body=%s", profileResp.StatusCode, string(profileBody))
-
+	// Fetch profile: try both hosts and both /me and /{user_id} endpoints.
 	var profile struct {
 		ID                string   `json:"id"`
 		Username          string   `json:"username"`
 		ProfilePictureURL string   `json:"profile_picture_url"`
 		Error             *igError `json:"error"`
 	}
-	json.Unmarshal(profileBody, &profile)
-
-	if profile.Error != nil {
-		log.Printf("IG profile fetch error: %v", profile.Error)
+	profileEndpoints := []string{
+		fmt.Sprintf("%s/me", igGraphAPIUnversioned),
+		fmt.Sprintf("%s/%s", igGraphAPIUnversioned, igUserID),
+		fmt.Sprintf("https://graph.facebook.com/me"),
+		fmt.Sprintf("https://graph.facebook.com/%s", igUserID),
+	}
+	profileParams := url.Values{
+		"fields":       {"id,username,profile_picture_url"},
+		"access_token": {token},
+	}
+	for _, ep := range profileEndpoints {
+		reqURL := fmt.Sprintf("%s?%s", ep, profileParams.Encode())
+		log.Printf("IG profile trying: %s", ep)
+		pResp, pErr := http.Get(reqURL)
+		if pErr != nil {
+			log.Printf("IG profile http error (%s): %v", ep, pErr)
+			continue
+		}
+		pBody, _ := io.ReadAll(pResp.Body)
+		pResp.Body.Close()
+		log.Printf("IG profile response (%s): status=%d body=%s", ep, pResp.StatusCode, string(pBody))
+		var p struct {
+			ID                string   `json:"id"`
+			Username          string   `json:"username"`
+			ProfilePictureURL string   `json:"profile_picture_url"`
+			Error             *igError `json:"error"`
+		}
+		json.Unmarshal(pBody, &p)
+		if p.Username != "" || p.ID != "" {
+			profile = p
+			break
+		}
 	}
 
 	if profile.ID != "" {
