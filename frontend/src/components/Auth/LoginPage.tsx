@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
 import type { PublicSettings } from '../../types';
-import { Zap, X, Cookie, FileText } from 'lucide-react';
+import { Zap, X, Cookie, FileText, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Auth.css';
 
@@ -55,6 +55,7 @@ export function LoginPage() {
   };
 
   const hasImprint = !!publicSettings?.imprintHtml;
+  const hasPrivacyPolicy = !!publicSettings?.privacyPolicyHtml;
 
   return (
     <div className="auth-page">
@@ -101,11 +102,18 @@ export function LoginPage() {
           Don't have an account? <Link to="/register">Create one</Link>
         </p>
 
-        {hasImprint && (
+        {(hasImprint || hasPrivacyPolicy) && (
           <p className="auth-legal-links">
-            <button className="link-btn" onClick={() => setImprintOpen(true)}>
-              <FileText size={12} /> Imprint
-            </button>
+            {hasImprint && (
+              <button className="link-btn" onClick={() => setImprintOpen(true)}>
+                <FileText size={12} /> Imprint
+              </button>
+            )}
+            {hasPrivacyPolicy && (
+              <Link to="/privacy" className="link-btn">
+                <Shield size={12} /> Privacy Policy
+              </Link>
+            )}
           </p>
         )}
       </div>

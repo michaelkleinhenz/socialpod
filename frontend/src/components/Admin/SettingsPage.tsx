@@ -13,6 +13,7 @@ export function SettingsPage() {
     adobeExpressClientId: '',
     allowSelfRegistration: true,
     imprintHtml: '',
+    privacyPolicyHtml: '',
     cookieBannerEnabled: false,
     cookieBannerText: '',
     openRouterModel: '',
@@ -53,6 +54,7 @@ export function SettingsPage() {
         webhookVerifyToken: settings.webhookVerifyToken,
         adobeExpressClientId: settings.adobeExpressClientId,
         imprintHtml: settings.imprintHtml,
+        privacyPolicyHtml: settings.privacyPolicyHtml,
         cookieBannerEnabled: settings.cookieBannerEnabled,
         cookieBannerText: settings.cookieBannerText,
         linkedInClientId: settings.linkedInClientId || '',
@@ -440,6 +442,21 @@ export function SettingsPage() {
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               HTML content for the imprint / legal notice. A link to view it will appear on the login page when this is non-empty.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Privacy Policy (HTML)</label>
+            <textarea
+              className="textarea"
+              rows={8}
+              placeholder={'<h2>Privacy Policy</h2>\n<p>Your privacy policy content here...</p>'}
+              value={settings.privacyPolicyHtml}
+              onChange={e => setSettings(s => ({ ...s, privacyPolicyHtml: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              HTML content for the privacy policy. When non-empty, a link appears on the login page and a public page is available at <code>/privacy</code>.
             </span>
           </div>
         </div>

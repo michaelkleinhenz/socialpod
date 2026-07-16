@@ -27,6 +27,7 @@ import { MobileCreatePage } from './components/MobileCreate/MobileCreatePage';
 import { NewsPage } from './components/News/NewsPage';
 import { EpisodePage } from './components/Episode/EpisodePage';
 import { InvitePage } from './components/Auth/InvitePage';
+import { PrivacyPolicyPage } from './components/Auth/PrivacyPolicyPage';
 import './styles/global.css';
 
 // Register service worker for PWA / Web Share Target
@@ -62,6 +63,7 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <RegisterPage />} />
       <Route path="/invite" element={user ? <Navigate to="/" /> : <InvitePage />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/log" element={<ProtectedRoute><Layout><LogPage /></Layout></ProtectedRoute>} />
       <Route path="/suffixes" element={<ProtectedRoute><Layout><SuffixesPage /></Layout></ProtectedRoute>} />

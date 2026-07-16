@@ -208,6 +208,7 @@ export interface AppSettings {
   adobeExpressClientId: string;
   allowSelfRegistration: boolean;
   imprintHtml: string;
+  privacyPolicyHtml: string;
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
   openRouterModel: string;
@@ -239,6 +240,7 @@ export interface TeamInvite {
 export interface PublicSettings {
   adobeExpressClientId: string;
   imprintHtml: string;
+  privacyPolicyHtml: string;
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
   openRouterEnabled: boolean;
