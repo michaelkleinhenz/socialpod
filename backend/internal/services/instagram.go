@@ -537,10 +537,14 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		token = shortToken.AccessToken
 	}
 
-	// Get user profile
+	// Get user profile using the user ID endpoint directly.
+	// The /me endpoint is unsupported on recent Instagram API versions,
+	// so we query /{user_id} which we already have from the token exchange.
+	igUserID := fmt.Sprintf("%d", shortToken.UserID)
+
 	profileResp, err := http.Get(fmt.Sprintf(
-		"%s/me?fields=user_id,username,profile_picture_url&access_token=%s",
-		igGraphAPI, token))
+		"%s/%s?fields=id,username,profile_picture_url&access_token=%s",
+		igGraphAPI, igUserID, token))
 	if err != nil {
 		return nil, err
 	}
@@ -561,27 +565,11 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		log.Printf("IG profile fetch error: %v", profile.Error)
 	}
 
-	igUserID := profile.ID
-	if igUserID == "" {
-		igUserID = fmt.Sprintf("%d", shortToken.UserID)
+	if profile.ID != "" {
+		igUserID = profile.ID
 	}
 
-	// If username wasn't returned, fetch it via the user ID endpoint as fallback
 	username := profile.Username
-	if username == "" && igUserID != "" {
-		log.Printf("IG username empty from /me, trying /%s endpoint", igUserID)
-		fallbackResp, fbErr := http.Get(fmt.Sprintf(
-			"%s/%s?fields=username&access_token=%s",
-			igGraphAPI, igUserID, token))
-		if fbErr == nil {
-			defer fallbackResp.Body.Close()
-			var fb struct {
-				Username string `json:"username"`
-			}
-			json.NewDecoder(fallbackResp.Body).Decode(&fb)
-			username = fb.Username
-		}
-	}
 
 	account := &models.SocialAccount{
 		Platform:    models.PlatformInstagram,
