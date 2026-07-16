@@ -457,6 +457,7 @@ func (h *AdminHandler) GetPublicSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"adobeExpressClientId":  settings.AdobeExpressClientID,
 		"imprintHtml":           settings.ImprintHTML,
+		"privacyPolicyHtml":     settings.PrivacyPolicyHTML,
 		"cookieBannerEnabled":   settings.CookieBannerEnabled,
 		"cookieBannerText":      settings.CookieBannerText,
 		"openRouterEnabled":     settings.OpenRouterAPIKey != "",
@@ -504,6 +505,7 @@ type UpdateSettingsInput struct {
 	AdobeExpressClientID  *string `json:"adobeExpressClientId,omitempty"`
 	AllowSelfRegistration *bool   `json:"allowSelfRegistration,omitempty"`
 	ImprintHTML           *string `json:"imprintHtml,omitempty"`
+	PrivacyPolicyHTML     *string `json:"privacyPolicyHtml,omitempty"`
 	CookieBannerEnabled   *bool   `json:"cookieBannerEnabled,omitempty"`
 	CookieBannerText      *string `json:"cookieBannerText,omitempty"`
 	OpenRouterAPIKey      *string `json:"openRouterApiKey,omitempty"`
@@ -551,6 +553,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.ImprintHTML != nil {
 		update["imprintHtml"] = *input.ImprintHTML
+	}
+	if input.PrivacyPolicyHTML != nil {
+		update["privacyPolicyHtml"] = *input.PrivacyPolicyHTML
 	}
 	if input.CookieBannerEnabled != nil {
 		update["cookieBannerEnabled"] = *input.CookieBannerEnabled

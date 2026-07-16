@@ -73,6 +73,9 @@
   text-align: center;
   margin-top: 12px;
   font-size: 13px;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
 }
 
 .link-btn {
@@ -86,6 +89,7 @@
   gap: 4px;
   padding: 0;
   transition: color 0.15s;
+  text-decoration: none;
 }
 
 .link-btn:hover {

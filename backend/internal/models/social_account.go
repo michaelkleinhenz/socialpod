@@ -62,6 +62,7 @@ type AppSettings struct {
 	AdobeExpressClientID  string             `bson:"adobeExpressClientId" json:"adobeExpressClientId"`
 	AllowSelfRegistration bool               `bson:"allowSelfRegistration" json:"allowSelfRegistration"`
 	ImprintHTML           string             `bson:"imprintHtml" json:"imprintHtml"`
+	PrivacyPolicyHTML     string             `bson:"privacyPolicyHtml" json:"privacyPolicyHtml"`
 	CookieBannerEnabled   bool               `bson:"cookieBannerEnabled" json:"cookieBannerEnabled"`
 	CookieBannerText      string             `bson:"cookieBannerText" json:"cookieBannerText"`
 	OpenRouterAPIKey      string             `bson:"openRouterApiKey" json:"-"`
