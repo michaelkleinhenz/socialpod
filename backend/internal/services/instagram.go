@@ -517,34 +517,41 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 	}
 
 	// Exchange for long-lived token
-	llResp, err := http.Get(fmt.Sprintf(
-		"%s/access_token?grant_type=ig_exchange_token&client_secret=%s&access_token=%s",
-		igGraphAPI, clientSecret, shortToken.AccessToken))
+	llURL := fmt.Sprintf("%s/access_token?%s", igGraphAPI, url.Values{
+		"grant_type":    {"ig_exchange_token"},
+		"client_secret": {clientSecret},
+		"access_token":  {shortToken.AccessToken},
+	}.Encode())
+	llResp, err := http.Get(llURL)
 	if err != nil {
 		return nil, err
 	}
 	defer llResp.Body.Close()
 
+	llBody, _ := io.ReadAll(llResp.Body)
+	log.Printf("IG long-lived token response: status=%d body=%s", llResp.StatusCode, string(llBody))
+
 	var longToken struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-		ExpiresIn   int64  `json:"expires_in"`
+		AccessToken string   `json:"access_token"`
+		TokenType   string   `json:"token_type"`
+		ExpiresIn   int64    `json:"expires_in"`
+		Error       *igError `json:"error"`
 	}
-	json.NewDecoder(llResp.Body).Decode(&longToken)
+	json.Unmarshal(llBody, &longToken)
 
 	token := longToken.AccessToken
 	if token == "" {
+		log.Printf("IG long-lived token empty, falling back to short-lived token")
 		token = shortToken.AccessToken
 	}
 
-	// Get user profile using the user ID endpoint directly.
-	// The /me endpoint is unsupported on recent Instagram API versions,
-	// so we query /{user_id} which we already have from the token exchange.
 	igUserID := fmt.Sprintf("%d", shortToken.UserID)
 
-	profileResp, err := http.Get(fmt.Sprintf(
-		"%s/%s?fields=id,username,profile_picture_url&access_token=%s",
-		igGraphAPI, igUserID, token))
+	profileURL := fmt.Sprintf("%s/%s?%s", igGraphAPI, igUserID, url.Values{
+		"fields":       {"id,username,profile_picture_url"},
+		"access_token": {token},
+	}.Encode())
+	profileResp, err := http.Get(profileURL)
 	if err != nil {
 		return nil, err
 	}
