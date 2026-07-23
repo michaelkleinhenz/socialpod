@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -477,6 +480,66 @@ func (h *PostHandler) UploadImage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"url": url, "filename": filepath.Base(url)})
 }
 
+// safeURLClient is an HTTP client with timeouts used for user-supplied URLs.
+var safeURLClient = &http.Client{
+	Timeout: 30 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return errors.New("too many redirects")
+		}
+		return validateURL(req.URL)
+	},
+}
+
+// validateURL checks that a URL is safe to fetch server-side:
+// only http/https schemes, and the resolved IP is not a private/reserved range.
+func validateURL(u *url.URL) error {
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+	}
+
+	host := u.Hostname()
+	if host == "" {
+		return errors.New("empty host")
+	}
+
+	// Resolve all IPs for the host and reject private/reserved ranges.
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("DNS lookup failed: %w", err)
+	}
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("URL resolves to a private address")
+		}
+	}
+	return nil
+}
+
+// isPrivateIP returns true for loopback, link-local, and RFC-1918 ranges.
+func isPrivateIP(ip net.IP) bool {
+	privateRanges := []struct {
+		network string
+	}{
+		{"10.0.0.0/8"},
+		{"172.16.0.0/12"},
+		{"192.168.0.0/16"},
+		{"127.0.0.0/8"},
+		{"169.254.0.0/16"},
+		{"0.0.0.0/8"},
+		{"::1/128"},
+		{"fc00::/7"},
+		{"fe80::/10"},
+	}
+	for _, r := range privateRanges {
+		_, cidr, _ := net.ParseCIDR(r.network)
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // UploadFromURL downloads an image/video from an external URL and stores it.
 // Used by the Adobe Express integration to bypass CORS restrictions.
 func (h *PostHandler) UploadFromURL(c *gin.Context) {
@@ -488,6 +551,17 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 		return
 	}
 
+	// Validate URL before fetching to prevent SSRF.
+	parsedURL, err := url.Parse(input.URL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid URL"})
+		return
+	}
+	if err := validateURL(parsedURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Retry download up to 3 times — the asset may not be ready on S3 yet.
 	var data []byte
 	var hdrCT string
@@ -495,7 +569,7 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 		if attempt > 0 {
 			time.Sleep(2 * time.Second)
 		}
-		resp, err := http.Get(input.URL)
+		resp, err := safeURLClient.Get(input.URL)
 		if err != nil {
 			if attempt == 2 {
 				c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to download: " + err.Error()})
