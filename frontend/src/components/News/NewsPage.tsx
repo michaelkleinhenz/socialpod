@@ -18,6 +18,8 @@ const TWITTER_LIMIT = 280;
 const MASTODON_LIMIT = 500;
 const LINKEDIN_LIMIT = 3000;
 
+const DEFAULT_PLATFORMS: Platform[] = ['bluesky', 'instagram'];
+
 export function NewsPage() {
   const [pluginReady, setPluginReady] = useState<boolean | null>(null);
 
@@ -59,7 +61,7 @@ export function NewsPage() {
   const [contentOverrides, setContentOverrides] = useState<Record<string, string>>({});
   const [customizePerPlatform, setCustomizePerPlatform] = useState(true);
   const [firstComment, setFirstComment] = useState('');
-  const [platforms, setPlatforms] = useState<Platform[]>(['bluesky', 'instagram']);
+  const [platforms, setPlatforms] = useState<Platform[]>(DEFAULT_PLATFORMS);
   const [scheduledAt, setScheduledAt] = useState(
     format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm")
   );
@@ -120,15 +122,18 @@ export function NewsPage() {
   // Load social posting data when toggle is enabled
   useEffect(() => {
     if (!addSocialPost || accountsLoaded) return;
-    api.getActiveAccounts().then(accs => { setAccounts(accs); setAccountsLoaded(true); }).catch(() => setAccountsLoaded(true));
+    api.getActiveAccounts().then(accs => { setAccounts(accs); setAccountsLoaded(true); }).catch(() => {});
     api.getSuffixes().then(setSuffixes).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
   }, [addSocialPost, accountsLoaded]);
 
   useEffect(() => {
-    if (!accountsLoaded) return;
-    setPlatforms(prev => prev.filter(p => accounts.some(a => a.platform === p)));
-  }, [accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!addSocialPost || !accountsLoaded) return;
+    setPlatforms(prev => {
+      const base = prev.length > 0 ? prev : DEFAULT_PLATFORMS;
+      return base.filter(p => accounts.some(a => a.platform === p));
+    });
+  }, [addSocialPost, accountsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (customizePerPlatform && platforms.length <= 1) {
@@ -316,7 +321,7 @@ export function NewsPage() {
     setContentOverrides({});
     setCustomizePerPlatform(false);
     setFirstComment('');
-    setPlatforms([]);
+    setPlatforms(DEFAULT_PLATFORMS.filter(p => accounts.some(a => a.platform === p)));
     setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"));
     setStatus('scheduled');
     setSuffixIds({});
