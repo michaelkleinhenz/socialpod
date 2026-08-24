@@ -249,3 +249,16 @@ Adobe Express requires popups and cross-origin iframes. If they are blocked:
 **Brave**: Set Shields down for the site, or allow all cookies and disable Block pop-ups under Brave Shields.
 
 > Adobe Express requires users to sign in with an Adobe account when first exporting a design.
+
+### Troubleshooting: Login succeeds but the editor stays logged out
+
+If the login popup opens, you authenticate, and then the Adobe Express editor returns to the same screen but still shows you as logged out, the Adobe Embed SDK has lost its session. This is a known Adobe SDK issue (`CCXSDK-6179`) caused by browsers blocking third-party cookies/storage for the embedded Adobe iframe.
+
+The integration code itself does not store the Adobe session — it is managed entirely inside Adobe’s iframe — so the fix is in the browser:
+
+- **Chrome:** `chrome://settings/cookies` → turn off “Block third-party cookies” or add exceptions for your SocialPod domain and `[*.]adobe.com`.
+- **Safari:** Settings → Privacy → disable “Prevent Cross-Site Tracking” and “Block All Cookies”.
+- **Firefox:** Click the shield icon in the address bar on SocialPod and turn off Enhanced Tracking Protection.
+- **Brave:** Lower Shields for the SocialPod domain and allow third-party cookies.
+
+Also verify that the **Redirect URI pattern** in your Adobe Developer Console project still matches your current SocialPod URL.
