@@ -127,6 +127,10 @@ func (h *EpisodeHandler) Submit(c *gin.Context) {
 	if form, err := c.MultipartForm(); err == nil {
 		uploadedImageFiles = form.File["image"]
 	}
+	if len(uploadedImageFiles) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image is required"})
+		return
+	}
 
 	imgHelper := &NewsHandler{DB: h.DB, UploadDir: h.UploadDir}
 	var savedImageURLs []string
