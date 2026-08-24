@@ -183,6 +183,16 @@ curl -X PUT http://localhost:8080/api/mentions/{id} \
   -H "Content-Type: application/json" \
   -d '{"handles":{"bluesky":"@acme-new.bsky.social"}}'
 
+# Export mentions as JSON
+curl http://localhost:8080/api/mentions/export \
+  -H "Authorization: Bearer sm_..."
+
+# Import mentions from JSON
+curl -X POST http://localhost:8080/api/mentions/import \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '[{"name":"Acme Corp","handles":{"bluesky":"@acme.bsky.social"}}]'
+
 # Delete a mention
 curl -X DELETE http://localhost:8080/api/mentions/{id} \
   -H "Authorization: Bearer sm_..."
@@ -190,72 +200,242 @@ curl -X DELETE http://localhost:8080/api/mentions/{id} \
 
 ---
 
-## Convention Mode
+## Password & API Token
 
 ```bash
-# List queues
-curl http://localhost:8080/api/convention/queues \
-  -H "Authorization: Bearer sm_..."
-
-# Create a queue
-curl -X POST http://localhost:8080/api/convention/queues \
+# Update your password
+curl -X PUT http://localhost:8080/api/auth/password \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
-  -d '{"name":"Essen SPIEL 2026","startDate":"2026-10-27T00:00:00Z","endDate":"2026-11-10T00:00:00Z","postsPerDay":3,"minHoursBetweenPosts":6,"platforms":["bluesky","instagram"],"hashtags":["#EssenSPIEL"]}'
+  -d '{"currentPassword":"old-password","newPassword":"new-password"}'
 
-# `postsPerDay` sets the target number of posts per day; `minHoursBetweenPosts`
-# is the minimum delay between two consecutive posts and takes precedence — it
-# caps the effective posts/day at floor(24 / minHoursBetweenPosts). While the
-# queue is active and inside its window, the server automatically picks one
-# approved item at random and publishes it on this cadence (gaps carry ±60
-# minutes of jitter); nothing is pre-scheduled. (The legacy `timeSlots` field is
-# accepted but no longer used.) Optional `watermarkId` selects an overlay
-# watermark that is composited onto each image at post time.
+# Generate/reveal a user API token
+curl -X POST http://localhost:8080/api/auth/api-token \
+  -H "Authorization: Bearer sm_..."
+```
 
-# Get a queue (includes items)
-curl http://localhost:8080/api/convention/queues/{id} \
+---
+
+## Dashboard
+
+```bash
+# Get dashboard stats (post counts by status, platform breakdown)
+curl http://localhost:8080/api/dashboard/stats \
   -H "Authorization: Bearer sm_..."
 
-# Add a photo item
-curl -X POST http://localhost:8080/api/convention/queues/{id}/items \
-  -H "Authorization: Bearer sm_..." \
-  -F "image=@photo.jpg"
+# Get AI-generated dashboard insights (requires OpenRouter key)
+curl -X POST http://localhost:8080/api/dashboard/ai-insights \
+  -H "Authorization: Bearer sm_..."
+```
 
-# Update an item
-curl -X PUT http://localhost:8080/api/convention/queues/{id}/items/{iid} \
+---
+
+## News Creator
+
+News Creator is a team plugin that creates news-style posts from a headline, article URL, and image. Data is forwarded to a configurable n8n webhook and optionally creates a social post.
+
+```bash
+curl -X POST http://localhost:8080/api/news/submit \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"episodeNumber":42,"newsTagline":"Breaking news!","articleUrl":"https://example.com/news","shownotes":"Optional notes","addSocialPosting":true,"platforms":["bluesky"],"scheduledAt":"2026-06-01T09:00:00Z","status":"scheduled","contentOverrides":{"bluesky":"Custom text"}}' \
+  -F "image=@news.jpg"
+```
+
+---
+
+## Episode Creator
+
+Episode Creator is a team plugin for podcast episode creation. Supports three episode types (`news`, `review`, `special`). Review-type episodes include additional game metadata fields.
+
+```bash
+curl -X POST http://localhost:8080/api/episode/submit \
+  -H "Authorization: Bearer sm_..." \
+  -F 'data={"episodeNumber":42,"episodeTitle":"My Episode","episodeType":"review","episodeDate":"2026-06-01T00:00:00Z","summary":"Episode summary","gameNamePublisher":"Great Game","linkPublisher":"https://publisher.com","linkBGG":"https://boardgamegeek.com/boardgame/123","rules":"Game rules","scene":"Scene description","introText":"Intro","addSocialPosting":true,"platforms":["bluesky"],"scheduledAt":"2026-06-01T09:00:00Z","status":"scheduled"}' \
+  -F "image=@cover.jpg"
+```
+
+---
+
+## BGG (BoardGameGeek)
+
+Fetches board game metadata from BGG, downloads and processes the cover image with optional watermarks and overlays, generates AI summaries and hashtags, and resolves social media handles for publishers/designers/artists.
+
+```bash
+# Fetch game info from a BGG URL
+curl "http://localhost:8080/api/bgg/fetch?url=https://boardgamegeek.com/boardgame/174430/glen-more-ii-chronicles&episodeType=review" \
+  -H "Authorization: Bearer sm_..."
+# Returns: game metadata, AI summary, suggested hashtags, social handles, processed image URL
+
+# Get team BGG settings
+curl http://localhost:8080/api/team/settings \
+  -H "Authorization: Bearer sm_..."
+```
+
+---
+
+## Team Setup & Plugin Management
+
+```bash
+# Team admin creates their own team
+curl -X POST http://localhost:8080/api/team/setup \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
-  -d '{"caption":"Amazing booth at #EssenSPIEL!","status":"approved"}'
+  -d '{"name":"My Team"}'
+```
 
-# Reorder items
-curl -X POST http://localhost:8080/api/convention/queues/{id}/reorder \
+### Admin-only team endpoints
+
+```bash
+# Get/update team plugins (enable/disable features per team)
+curl http://localhost:8080/api/admin/teams/{id}/plugins \
+  -H "Authorization: Bearer sm_..."
+curl -X PUT http://localhost:8080/api/admin/teams/{id}/plugins \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
-  -d '{"order":["<item-id-1>","<item-id-2>","<item-id-3>"]}'
+  -d '["news_creator","episode_creator"]'
 
-# Analyze a single item (AI caption generation)
-curl -X POST http://localhost:8080/api/convention/queues/{id}/items/{iid}/analyze \
+# Get/update team BGG settings (watermarks, overlays, n8n webhook URLs, etc.)
+curl http://localhost:8080/api/admin/teams/{id}/settings \
   -H "Authorization: Bearer sm_..."
 
-# Analyze all pending items
-curl -X POST http://localhost:8080/api/convention/queues/{id}/analyze-all \
+# Generate team API token (format: st_...)
+curl -X POST http://localhost:8080/api/admin/teams/{id}/token \
+  -H "Authorization: Bearer sm_..."
+```
+
+---
+
+## Team Invites
+
+Invite users to a team by email. Invitees receive a link to create their account. Tokens expire after 7 days.
+
+```bash
+# Get invite info (public — used by invitee to see team name before signing up)
+curl "http://localhost:8080/api/invites/info?token=abc123..."
+
+# Accept an invite (public — creates account and returns JWT)
+curl -X POST http://localhost:8080/api/invites/accept \
+  -H "Content-Type: application/json" \
+  -d '{"token":"abc123...","name":"John Doe","password":"securepassword"}'
+
+# Admin creates an invite
+curl -X POST http://localhost:8080/api/admin/teams/{id}/invites \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"email":"friend@example.com"}'
+
+# Admin lists/deletes invites
+curl http://localhost:8080/api/admin/teams/{id}/invites \
   -H "Authorization: Bearer sm_..."
 
-# Preview the upcoming schedule (projected post times + approved count)
-curl http://localhost:8080/api/convention/queues/{id}/preview \
+# Team admins can also manage their own invites
+curl -X POST http://localhost:8080/api/team/invites \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"email":"new-team-member@example.com"}'
+curl http://localhost:8080/api/team/invites \
+  -H "Authorization: Bearer sm_..."
+```
+
+---
+
+## Team Admin Endpoints
+
+Team admins can manage their own team's accounts and members (scoped to their team):
+
+```bash
+# List team accounts
+curl http://localhost:8080/api/team/accounts \
+  -H "Authorization: Bearer st_..."
+
+# Add a Bluesky account for the team
+curl -X POST http://localhost:8080/api/team/accounts/bluesky \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"identifier":"handle.bsky.social","appPassword":"xxxx-xxxx-xxxx-xxxx"}'
+
+# Add a Twitter account for the team
+curl -X POST http://localhost:8080/api/team/accounts/twitter \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"apiKey":"...","apiKeySecret":"...","accessToken":"...","accessTokenSecret":"..."}'
+
+# Add a Mastodon account for the team
+curl -X POST http://localhost:8080/api/team/accounts/mastodon \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"instance":"mastodon.social","accessToken":"..."}'
+
+# Add a Threads account for the team
+curl -X POST http://localhost:8080/api/team/accounts/threads \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"accessToken":"..."}'
+
+# Add a LinkedIn account for the team
+curl -X POST http://localhost:8080/api/team/accounts/linkedin \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"authorId":"..."}'
+
+# Get OAuth auth URLs for team-scoped accounts
+curl http://localhost:8080/api/team/instagram/auth-url \
+  -H "Authorization: Bearer st_..."
+
+# Toggle account active/inactive
+curl -X PATCH http://localhost:8080/api/team/accounts/{id}/toggle \
+  -H "Authorization: Bearer st_..."
+
+# Delete a team account
+curl -X DELETE http://localhost:8080/api/team/accounts/{id} \
+  -H "Authorization: Bearer st_..."
+
+# List team members
+curl http://localhost:8080/api/team/members \
+  -H "Authorization: Bearer st_..."
+
+# Add a member by email
+curl -X POST http://localhost:8080/api/team/members \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"email":"existing-user@example.com"}'
+
+# Remove a member
+curl -X DELETE http://localhost:8080/api/team/members/{userId} \
+  -H "Authorization: Bearer st_..."
+
+# Update team BGG settings
+curl -X PUT http://localhost:8080/api/team/settings \
+  -H "Authorization: Bearer st_..." \
+  -H "Content-Type: application/json" \
+  -d '{"bggWatermarkId":"...","newsCreatorUrl":"https://..."}'
+```
+
+---
+
+## Publisher Handles
+
+Admin-only catalog of publisher/designer/artist names mapped to their social media handles. Used as a lookup reference during BGG imports to avoid repeated AI handle resolution.
+
+```bash
+# List all entries
+curl http://localhost:8080/api/admin/publisher-handles \
   -H "Authorization: Bearer sm_..."
 
-# Post one random approved item immediately (manual trigger; automatic posting
-# otherwise happens on the queue's cadence in the background)
-curl -X POST http://localhost:8080/api/convention/queues/{id}/schedule \
-  -H "Authorization: Bearer sm_..."
+# Create an entry
+curl -X POST http://localhost:8080/api/admin/publisher-handles \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Acme Games","handles":{"bluesky":"@acme.bsky.social","instagram":"@acmegames","twitter":"@acme_games"}}'
 
-# Delete an item
-curl -X DELETE http://localhost:8080/api/convention/queues/{id}/items/{iid} \
-  -H "Authorization: Bearer sm_..."
+# Update an entry
+curl -X PUT http://localhost:8080/api/admin/publisher-handles/{id} \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"handles":{"bluesky":"@new-handle.bsky.social"}}'
 
-# Delete a queue
-curl -X DELETE http://localhost:8080/api/convention/queues/{id} \
+# Delete an entry
+curl -X DELETE http://localhost:8080/api/admin/publisher-handles/{id} \
   -H "Authorization: Bearer sm_..."
 ```
 
@@ -264,10 +444,17 @@ curl -X DELETE http://localhost:8080/api/convention/queues/{id} \
 ## Image Upload
 
 ```bash
+# Upload a single image
 curl -X POST http://localhost:8080/api/upload \
   -H "Authorization: Bearer sm_..." \
   -F "image=@photo.jpg"
 # Returns: {"url": "/api/uploads/1234567890.jpg", "filename": "1234567890.jpg"}
+
+# Upload from a remote URL
+curl -X POST http://localhost:8080/api/upload-from-url \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/photo.jpg"}'
 ```
 
 Include returned URLs in the `imageUrls` array of the post `data` field, or attach binary files directly as `images` fields.

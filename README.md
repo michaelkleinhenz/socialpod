@@ -15,7 +15,10 @@ A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, *
 - **Suffix management** — append platform-specific text snippets at publish time
 - **@ Autocomplete** — saved mentions with per-platform handles
 - **Instagram inbox** — receive and reply to comments and DMs via webhooks
-- **Multitenancy** — teams with shared posts, suffixes, and API tokens
+- **News & Episode Creators** — team plugins for automated news posts and podcast episodes via n8n
+- **BGG integration** — fetch board game data, cover art, and AI summaries from BoardGameGeek
+- **Multitenancy** — teams with shared posts, suffixes, API tokens, and team invites
+- **PWA share target** — share images/videos directly from mobile apps into SocialPod
 - **REST API** — full scheduling API with API token authentication
 - **n8n node** — native community node for workflow automation
 

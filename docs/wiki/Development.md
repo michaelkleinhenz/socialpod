@@ -33,13 +33,13 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 
 | Path | Description |
 |---|---|
-| `cmd/server/main.go` | Wires dependencies; defines route groups (public, authenticated, admin) |
+| `cmd/server/main.go` | Wires dependencies; defines route groups (public, authenticated, admin, team admin) |
 | `internal/config/` | Loads all config from environment variables |
 | `internal/database/mongo.go` | MongoDB wrapper with typed collection accessors and index creation |
 | `internal/models/` | BSON-tagged Go structs for each collection |
 | `internal/handlers/` | One file per handler group (`auth.go`, `posts.go`, `admin.go`, etc.) |
 | `internal/middleware/auth.go` | `AuthRequired` — tries JWT → user API token → team API token |
-| `internal/services/` | `bluesky.go`, `instagram.go`, `linkedin.go`, `mastodon.go`, `threads.go`, `twitter.go`, `youtube.go`, `scheduler.go`, `imageutil.go` |
+| `internal/services/` | `bluesky.go`, `instagram.go`, `linkedin.go`, `mastodon.go`, `threads.go`, `twitter.go`, `youtube.go`, `scheduler.go`, `imageutil.go`, `email.go` |
 
 The scheduler runs every 30 seconds, queries for `status == "scheduled"` and `scheduledAt <= now`, and publishes posts. Suffixes are fetched from the DB and appended at publish time.
 
@@ -70,7 +70,7 @@ Posts and suffixes are scoped: if the user has a `teamId`, queries filter by tea
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.24+
 - Node.js 20+
 - MongoDB (either local or via `make mongo`)
 

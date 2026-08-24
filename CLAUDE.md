@@ -49,13 +49,13 @@ The build sequence: `npm run build` → `cp -r frontend/dist backend/cmd/server/
 ### Backend (`backend/`)
 Go module `socialmedia`, using Gin as the HTTP framework.
 
-- `cmd/server/main.go` — wires all dependencies; defines the three route groups: public `/api`, authenticated `/api` (JWT/API-token required), admin-only `/api/admin`
+- `cmd/server/main.go` — wires all dependencies; defines four route groups: public `/api`, authenticated `/api` (JWT/API-token required), admin-only `/api/admin`, team-admin `/api/team`
 - `internal/config/` — loads all config from environment variables
 - `internal/database/mongo.go` — `MongoDB` wrapper that exposes typed collection accessors (`Posts()`, `Users()`, `Teams()`, etc.) and creates indexes on startup
-- `internal/models/` — BSON-tagged Go structs for each MongoDB collection
-- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `suffixes.go`)
+- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `suffix.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`)
+- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `suffixes.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`)
 - `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context
-- `internal/services/` — `bluesky.go`, `instagram.go`, `scheduler.go`, `imageutil.go`
+- `internal/services/` — platform-specific: `bluesky.go`, `instagram.go`, `twitter.go`, `mastodon.go`, `threads.go`, `linkedin.go`, `youtube.go`; infrastructure: `scheduler.go`, `imageutil.go`, `email.go`
 
 The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts where `status == "scheduled"` and `scheduledAt <= now`, and publishes them. Suffixes are fetched from the DB and appended at publish time (not stored on the post itself).
 
