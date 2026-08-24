@@ -190,35 +190,13 @@ When the approved set empties, posting pauses until you approve more photos.
 
 ---
 
-## Instagram Inbox
+## Instagram Feed
 
-SocialPod displays Instagram comments and direct messages via Meta webhooks in a unified inbox.
-
-### Prerequisites
-
-- `APP_URL` must be publicly accessible over HTTPS.
-- An Instagram account connected in **Accounts**.
-
-### Configuring Meta Webhooks
-
-1. In your Meta app dashboard, go to **Webhooks**.
-2. Add a subscription for the **Instagram** object.
-3. Set the **Callback URL** to:
-   ```
-   https://your-domain.com/api/webhooks/instagram
-   ```
-4. Set the **Verify Token** to any string.
-5. Subscribe to the `comments` and `messages` fields.
-
-### Using the Inbox
+SocialPod displays your Instagram account's published post feed with engagement stats in a unified inbox.
 
 | Tab | Description |
 |---|---|
-| **Comments** | Instagram comments with unread counts and reply support |
-| **Direct Messages** | DMs with unread tracking and reply support |
-| **Feed** | Your Instagram account's own post feed |
-
-Messages are marked as read when opened. Click **Reply** to respond directly from SocialPod.
+| **Feed** | Your Instagram and Bluesky account post feeds with like and comment counts |
 
 ---
 

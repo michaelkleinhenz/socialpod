@@ -24,10 +24,9 @@
 **Images not showing in Instagram posts**
 - Instagram fetches images from your server. `APP_URL` must be publicly accessible, not `localhost`.
 
-**Instagram inbox is empty / webhooks not arriving**
-- Confirm `APP_URL` is reachable over HTTPS. Meta does not deliver webhooks to `localhost` or HTTP endpoints.
-- Verify the webhook subscription shows a green checkmark in the Meta app dashboard.
-- Check that the `comments` and `messages` fields are subscribed.
+**Instagram feed is empty**
+- Confirm your Instagram account is connected in **Accounts** and has published posts.
+- Try reconnecting the account if posts are not appearing.
 
 ---
 

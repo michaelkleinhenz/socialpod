@@ -90,7 +90,6 @@ Additional requirements:
 
 - `instagram_business_basic` — read profile info
 - `instagram_business_content_publish` — create and publish posts
-- `instagram_business_manage_messages` — manage messages
 
 ---
 

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **Docker** and **Docker Compose** (v2)
-- A publicly reachable domain for Instagram OAuth and webhooks (`APP_URL` must be accessible from Meta's servers)
+- A publicly reachable domain for Instagram OAuth (`APP_URL` must be accessible from Meta's servers)
 - Platform-specific credentials — see [[Connecting Platforms]]
 
 ## Quick Start

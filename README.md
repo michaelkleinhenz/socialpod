@@ -14,7 +14,7 @@ A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, *
 - **Convention Mode** — drip-publish event photos with AI caption generation
 - **Suffix management** — append platform-specific text snippets at publish time
 - **@ Autocomplete** — saved mentions with per-platform handles
-- **Instagram inbox** — receive and reply to comments and DMs via webhooks
+- **Instagram feed** — view your Instagram account's post feed with engagement stats
 - **News & Episode Creators** — team plugins for automated news posts and podcast episodes via n8n
 - **BGG integration** — fetch board game data, cover art, and AI summaries from BoardGameGeek
 - **Multitenancy** — teams with shared posts, suffixes, API tokens, and team invites
