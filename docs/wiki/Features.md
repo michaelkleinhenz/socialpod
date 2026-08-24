@@ -234,6 +234,141 @@ Team API tokens (format: `st_...`) can be generated from the admin **Teams** pag
 
 ---
 
+## Dashboard with AI Insights
+
+The admin dashboard provides an overview of your social media activity with AI-powered insights.
+
+### Dashboard Stats
+
+Navigate to the admin area to see post counts broken down by status (scheduled, published, failed, draft) and platform distribution across all connected networks.
+
+### AI Insights
+
+When an OpenRouter API key is configured, click **Generate Insights** on the dashboard to receive AI-generated analysis of your posting patterns, platform performance, and suggestions for improvement. The analysis respects the configured AI output language.
+
+---
+
+## News Creator
+
+A team plugin for creating "news" style social posts from a headline and article URL. Data is forwarded to a configurable n8n webhook for automated processing.
+
+### Enabling News Creator
+
+1. An admin must enable the `news_creator` plugin for the team in **Admin → Teams → Plugins**.
+2. Configure the n8n webhook URL and bearer token in **Admin → Teams → Team Settings → News Creator Integration**.
+
+### Creating a News Post
+
+1. Click **News** in the sidebar.
+2. Enter the **Episode Number**, **News Tagline**, and **Article URL**.
+3. Optionally click **BGG Import** to auto-populate fields from a BoardGameGeek URL.
+4. Upload a cover image (drag-and-drop, clipboard paste, or file browse).
+5. Optionally enable **Add as Social Media Posting** to also schedule a social post with the news item.
+
+---
+
+## Episode Creator
+
+A team plugin for podcast episode creation. Supports three episode types — News, Review, and Special — each with its own image overlay watermark.
+
+### Enabling Episode Creator
+
+1. An admin must enable the `episode_creator` plugin for the team in **Admin → Teams → Plugins**.
+2. Configure the n8n webhook URL, bearer token, and per-type overlay images in **Admin → Teams → Team Settings → Episode Creator Integration**.
+
+### Creating an Episode
+
+1. Click **Episodes** in the sidebar.
+2. Enter the **Episode Number**, select the **Type** (News/Review/Special), set the **Date**, and enter the **Title**.
+3. For **Review** episodes, additional fields appear: Game Name and Publisher, Links (Publisher and BGG), Rules, Scene (with AI generation), and Intro Text.
+4. Upload a cover image and apply the episode type's overlay watermark in the crop modal.
+
+---
+
+## BGG (BoardGameGeek) Integration
+
+Fetch board game metadata, cover images, AI summaries, and social handles directly from BoardGameGeek URLs.
+
+### Using BGG Import
+
+- From the **News** or **Episode** pages: click the BGG Import button, paste a BGG game URL, and fields auto-populate with the game's tagline, article URL, shownotes, and processed cover image.
+- From **Convention Mode**: add items in bulk from BGG URLs — each URL fetches game data, generates an AI caption, letterboxes the cover art with episode-type overlays, and creates a queue item ready for approval.
+- The **BGG fetch API** (`/api/bgg/fetch`) returns game metadata, an AI one-sentence summary, suggested hashtags, resolved social handles for publishers/designers/artists (using the local Publisher Handles catalog with AI fallback), and a watermark-processed cover image.
+
+### Admin Configuration
+
+Admins can configure per-team BGG settings:
+- **Watermark overlay** and X/Y cover position offsets
+- **AI handle lookup** toggle for resolving social handles during imports
+- **Scene prompt template** for AI-generated episode scene text
+
+---
+
+## PWA Share Target
+
+SocialPod registers as a Web Share Target, allowing you to share images and videos from other apps directly into SocialPod to schedule a post.
+
+### How to Use
+
+1. Install SocialPod as a PWA (Add to Home Screen in your mobile browser).
+2. From any app that supports sharing (Photos, Safari, Chrome, etc.), tap the **Share** button.
+3. Select **SocialPod** from the share sheet.
+4. SocialPod opens with the shared media pre-loaded. Add a caption, choose platforms, set the schedule, and post.
+
+The Share Target page persists media in a service worker cache, so shared files survive a browser tab being backgrounded.
+
+---
+
+## Mobile Quick Create
+
+A standalone, phone-optimized page for quickly creating posts on mobile devices. Designed to be bookmarked or added to the home screen.
+
+### How to Access
+
+Navigate to `/m/create` on your mobile device. The page loads outside the main app layout for a fast, focused experience.
+
+### Usage
+
+1. Choose a post type: **Post**, **Story**, or **Reel**.
+2. Compose your post in the full Post Editor.
+3. Save — the editor clears and returns to the type chooser for the next post.
+
+Editor state (post type and draft content) persists in `localStorage`, so closing and reopening the page restores your in-progress post rather than dropping you back at the type chooser.
+
+---
+
+## Team Invites
+
+Invite new users to join your team by email. Invitees receive a link to create their account.
+
+### Sending Invites (Team Admin or Admin)
+
+1. Go to **Admin → My Team** (team admin) or **Admin → Teams → Manage Members** (global admin).
+2. Click **Invite**, enter the recipient's email address, and send.
+3. The invitee receives an email with a link valid for 7 days.
+
+### Accepting an Invite
+
+1. Open the invite link — it shows the team name and invited email.
+2. Enter your name and a password (minimum 8 characters).
+3. Click **Join Team** — your account is created and you're logged in immediately.
+
+Global admins can manage all invites from **Admin → Teams → select a team → Manage Members**.
+
+---
+
+## Publisher Handles
+
+An admin-maintained catalog of publisher, designer, and artist names mapped to their social media handles across platforms. Used as a lookup reference during BGG imports.
+
+### Managing Publisher Handles (Admin)
+
+1. Go to **Admin → Publisher Handles**.
+2. Click **Add Entry**, enter the name (as it appears on BGG) and fill in handles per platform.
+3. During BGG imports, the local catalog is checked first for known names; only unknown names trigger AI handle resolution.
+
+---
+
 ## Adobe Express Integration
 
 SocialPod can integrate the [Adobe Express Embed SDK](https://developer.adobe.com/express/embed-sdk/) to let users create images directly inside the post editor. Enable it by entering your Adobe Express Client ID in **Settings → Adobe Express**.

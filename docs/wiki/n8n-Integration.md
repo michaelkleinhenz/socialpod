@@ -1,17 +1,21 @@
 # n8n Integration
 
-SocialPod ships with a native **n8n community node** in the `n8n-nodes-socialpod/` directory. It handles authentication automatically and supports all post and suffix operations.
+SocialPod ships with a native **n8n community node** in the `n8n-nodes-socialpod/` directory. It handles authentication automatically and supports all post, suffix, mention, account, watermark, and AI text operations.
 
-> **Platform support**: The n8n node currently supports **Bluesky** and **Instagram**. X (Twitter), Mastodon, Threads, and LinkedIn can be scheduled via the [[REST API]] directly.
+> **Platform support**: The n8n node supports all seven platforms: **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, **LinkedIn**, and **YouTube**. Each platform has its own set of content, account, suffix, and handle fields when creating or updating posts.
 
 ## Supported Operations
 
 | Resource | Operations |
 |---|---|
-| **Post** | Create, Get, List, Update, Delete, Reschedule |
+| **Post** | Create, Get, List, Update, Delete, Reschedule, Retry |
 | **Suffix** | Create, List, Update, Delete |
+| **Mention** | Create, List, Update, Delete, Export, Import |
+| **Account** | List |
+| **Watermark** | List, Delete |
+| **AI Text** | Generate |
 
-The **Post → Create** and **Post → Update** operations include a **Post Type** field: `Post` (default), `Reel`, and `Story`.
+The **Post → Create** and **Post → Update** operations include a **Post Type** field: `Post` (default), `Reel`, and `Story`. Post **Retry** re-publishes a failed post.
 
 ## Installation
 

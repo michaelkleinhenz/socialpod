@@ -76,7 +76,7 @@
 - Items with analysis errors display the error message inline; click the AI icon to retry.
 
 **Convention queue shows "more items than slots" warning**
-- Either reduce the number of approved items, extend the **End date**, increase **Posts per day**, or add more **Time slots**.
+- Either reduce the number of approved items, extend the **End date**, increase **Posts per day**, or reduce **Min. hours between posts**.
 
 ---
 
@@ -90,3 +90,26 @@
 
 **n8n node install fails with `isolated-vm` / `node-gyp` errors**
 - You ran `npm install` without `--omit=dev`. Use `npm install --omit=dev` — n8n provides `n8n-workflow` at runtime, so the build-time dependency is not needed.
+
+**n8n node shows fewer operations than expected**
+- The n8n node supports 21 operations across 6 resources: Post (7 ops), Mention (6 ops), Suffix (4 ops), Watermark (2 ops), Account (1 op), and AI Text (1 op). If operations are missing, update to the latest version of `n8n-nodes-socialpod`.
+
+---
+
+## Team Features
+
+**News or Episode Creator tabs not appearing**
+- The `news_creator` and `episode_creator` plugins must be enabled per team by an admin at **Admin → Teams → Plugins**.
+- Each plugin requires a valid n8n webhook URL and bearer token in **Admin → Teams → Team Settings**.
+
+**Team invites link expired or invalid**
+- Invite tokens expire after 7 days. Generate a new invite from **Admin → Teams → Manage Members**.
+- The invite page is public at `/invite?token=...` and does not require authentication.
+
+**BGG import returns errors**
+- BoardGameGeek's XML API sometimes returns `202 Accepted` when data is being generated. The backend retries up to 5 times with 2-second delays.
+- For convention BGG item imports, each URL is processed independently — check the per-URL error messages in the response.
+
+**Publisher handle not resolving during BGG import**
+- Check **Admin → Publisher Handles** — if the name isn't in the local catalog, the system falls back to AI handle lookup.
+- AI handle lookup requires an OpenRouter API key with a capable model.
