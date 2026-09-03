@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings } from '../../types';
-import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles } from 'lucide-react';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2 } from 'lucide-react';
 import { ImageCropper } from '../Common/ImageCropper';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
@@ -11,6 +11,9 @@ import '../PostEditor/PostEditor.css';
 import './News.css';
 
 const MAX_IMAGE_BYTES = 1_000_000;
+
+let _ccEditor: any = null;
+let _ccClientId = '';
 
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
@@ -74,6 +77,10 @@ export function NewsPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // Adobe Express
+  const [adobeClientId, setAdobeClientId] = useState('');
+  const [adobeLoading, setAdobeLoading] = useState(false);
+
   // AI generation
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -99,6 +106,7 @@ export function NewsPage() {
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.hasBggApiToken) setBggEnabled(true);
       if (s.openRouterEnabled) setAiEnabled(true);
+      if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
   }, []);
 
@@ -111,11 +119,13 @@ export function NewsPage() {
     img.src = watermark.url.startsWith('/') ? apiUrl + watermark.url : watermark.url;
   }, [watermark, apiUrl]);
 
-  // Clean up preview URLs
+  // Clean up preview URLs and Adobe Express state
   useEffect(() => {
     return () => {
       if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
       if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+      document.body.classList.remove('adobe-express-open');
+      document.getElementById('adobe-zindex-fix')?.remove();
     };
   }, []);
 
@@ -209,6 +219,100 @@ export function NewsPage() {
     setShowCropper(false);
     if (fileRef.current) fileRef.current.value = '';
   };
+
+  const launchAdobeExpress = useCallback(async () => {
+    if (!adobeClientId) return;
+    setAdobeLoading(true);
+    document.body.classList.add('adobe-express-open');
+
+    if (!document.getElementById('adobe-zindex-fix')) {
+      const s = document.createElement('style');
+      s.id = 'adobe-zindex-fix';
+      s.textContent = 'body > div:not(#root) { z-index: 9999 !important; }';
+      document.head.appendChild(s);
+    }
+
+    const closeAdobe = () => {
+      document.body.classList.remove('adobe-express-open');
+      document.getElementById('adobe-zindex-fix')?.remove();
+    };
+
+    try {
+      if (!_ccEditor || _ccClientId !== adobeClientId) {
+        if (!(window as any).CCEverywhere) {
+          await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
+        }
+        const { editor } = await (window as any).CCEverywhere.initialize(
+          { clientId: adobeClientId, appName: 'SocialPod' },
+          { loginMode: 'delayed' },
+        );
+        _ccEditor = editor;
+        _ccClientId = adobeClientId;
+      }
+
+      _ccEditor.create(
+        { canvasSize: { width: 1080, height: 1080, unit: 'px' } },
+        {
+          callbacks: {
+            onPublish: async (...args: any[]) => {
+              const params = args.find((a: any) => a?.asset) || args[args.length - 1];
+              const assetData = params?.asset?.[0]?.data;
+              if (!assetData) {
+                closeAdobe();
+                toast.error('No image data received');
+                return;
+              }
+              try {
+                let file: File;
+                if (assetData.startsWith('data:')) {
+                  const res = await fetch(assetData);
+                  const blob = await res.blob();
+                  file = new File([blob], 'design.png', { type: blob.type || 'image/png' });
+                } else {
+                  const uploaded = await api.uploadFromURL(assetData);
+                  const proxyUrl = (import.meta.env.VITE_API_URL || '') + uploaded.url;
+                  const res = await fetch(proxyUrl);
+                  const blob = await res.blob();
+                  file = new File([blob], uploaded.filename || 'design.png', { type: blob.type || 'image/png' });
+                }
+                if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+                if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+                setImageFile(file);
+                setImagePreviewUrl(URL.createObjectURL(file));
+                setCroppedBlob(null);
+                setCroppedPreviewUrl(null);
+                setCroppedSize(null);
+                setShowCropper(true);
+                closeAdobe();
+                toast.success('Design added');
+              } catch (err: any) {
+                closeAdobe();
+                toast.error(err.message || 'Failed to save design');
+              }
+            },
+            onCancel: closeAdobe,
+            onError: (err: any) => {
+              closeAdobe();
+              toast.error('Adobe Express error: ' + (err?.message || err?.toString() || 'Unknown error'));
+            },
+          },
+        },
+        [
+          {
+            id: 'save-to-news',
+            label: 'Add to News',
+            action: { target: 'publish' },
+            style: { uiType: 'button' },
+          },
+        ],
+      );
+    } catch {
+      closeAdobe();
+      toast.error('Failed to open Adobe Express');
+    } finally {
+      setAdobeLoading(false);
+    }
+  }, [adobeClientId, imagePreviewUrl, croppedPreviewUrl]);
 
   // Account lookups
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
@@ -544,25 +648,37 @@ export function NewsPage() {
             <label><Image size={14} /> Image <span style={{ color: 'var(--danger)' }}>*</span></label>
 
             {!imageFile ? (
-              <div
-                onDragOver={onDragOver}
-                onDragLeave={onDragLeave}
-                onDrop={onDrop}
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-sm, 8px)',
-                  padding: '32px 16px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  background: dragOver ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
-                  transition: 'all 0.15s',
-                  color: 'var(--text-muted)',
-                  fontSize: 14,
-                }}
-              >
-                <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
-                <div>Drop an image here, click to browse, or paste from clipboard</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-sm, 8px)',
+                    padding: '32px 16px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    background: dragOver ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
+                    transition: 'all 0.15s',
+                    color: 'var(--text-muted)',
+                    fontSize: 14,
+                  }}
+                >
+                  <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
+                  <div>Drop an image here, click to browse, or paste from clipboard</div>
+                </div>
+                {adobeClientId && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={launchAdobeExpress}
+                    disabled={adobeLoading}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <Wand2 size={14} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                  </button>
+                )}
               </div>
             ) : (
               <div>
@@ -599,7 +715,7 @@ export function NewsPage() {
                     {croppedSize} × {croppedSize} px · {(croppedBlob.size / 1024).toFixed(0)} KB
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => setShowCropper(true)}
@@ -612,6 +728,15 @@ export function NewsPage() {
                   >
                     <Image size={14} /> Replace
                   </button>
+                  {adobeClientId && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={launchAdobeExpress}
+                      disabled={adobeLoading}
+                    >
+                      <Wand2 size={14} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

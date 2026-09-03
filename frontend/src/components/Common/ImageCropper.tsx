@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, type ReactNode } from 'react';
 import { Crop, X } from 'lucide-react';
 
 export interface CropRect {
@@ -24,6 +24,7 @@ export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, waterm
   const [imgNaturalSize, setImgNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [dragging, setDragging] = useState<{ startX: number; startY: number; origRect: CropRect } | null>(null);
   const [resizing, setResizing] = useState<{ corner: string; startX: number; startY: number; origRect: CropRect } | null>(null);
+  const [displayMetrics, setDisplayMetrics] = useState({ scale: 1, offsetX: 0, offsetY: 0 });
   const cropImgRef = useRef<HTMLImageElement>(null);
   const cropContainerRef = useRef<HTMLDivElement>(null);
 
@@ -31,6 +32,25 @@ export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, waterm
     if (!cropImgRef.current || !imgNaturalSize) return 1;
     return cropImgRef.current.clientWidth / imgNaturalSize.w;
   };
+
+  const updateDisplayMetrics = useCallback(() => {
+    const img = cropImgRef.current;
+    const container = cropContainerRef.current;
+    if (!img || !container || !imgNaturalSize) return;
+    const ir = img.getBoundingClientRect();
+    const cr = container.getBoundingClientRect();
+    setDisplayMetrics({
+      scale: img.clientWidth / imgNaturalSize.w,
+      offsetX: ir.left - cr.left,
+      offsetY: ir.top - cr.top,
+    });
+  }, [imgNaturalSize]);
+
+  useLayoutEffect(() => {
+    updateDisplayMetrics();
+    window.addEventListener('resize', updateDisplayMetrics);
+    return () => window.removeEventListener('resize', updateDisplayMetrics);
+  }, [updateDisplayMetrics]);
 
   const onCropImageLoad = () => {
     const img = cropImgRef.current;
@@ -204,9 +224,10 @@ export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, waterm
 
   const renderCropOverlay = () => {
     if (!cropRect || !imgNaturalSize) return null;
-    const scale = getDisplayScale();
-    const x = cropRect.x * scale;
-    const y = cropRect.y * scale;
+    const { scale, offsetX, offsetY } = displayMetrics;
+
+    const x = cropRect.x * scale + offsetX;
+    const y = cropRect.y * scale + offsetY;
     const size = cropRect.size * scale;
     const handleSz = 14;
 
