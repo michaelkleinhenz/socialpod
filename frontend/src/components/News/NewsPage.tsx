@@ -378,7 +378,6 @@ export function NewsPage() {
       // AI abstract first (if available)
       if (data.aiAbstract) {
         parts.push(data.aiAbstract);
-        parts.push('');
       }
 
       // Title line
