@@ -62,7 +62,7 @@ export function NewsPage() {
   // Social posting fields
   const [content, setContent] = useState('');
   const [contentOverrides, setContentOverrides] = useState<Record<string, string>>({});
-  const [customizePerPlatform, setCustomizePerPlatform] = useState(true);
+  const [customizePerPlatform, setCustomizePerPlatform] = useState(false);
   const [firstComment, setFirstComment] = useState('');
   const [platforms, setPlatforms] = useState<Platform[]>(DEFAULT_PLATFORMS);
   const [scheduledAt, setScheduledAt] = useState(
