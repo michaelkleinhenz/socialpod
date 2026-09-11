@@ -62,7 +62,7 @@ export function NewsPage() {
   // Social posting fields
   const [content, setContent] = useState('');
   const [contentOverrides, setContentOverrides] = useState<Record<string, string>>({});
-  const [customizePerPlatform, setCustomizePerPlatform] = useState(true);
+  const [customizePerPlatform, setCustomizePerPlatform] = useState(false);
   const [firstComment, setFirstComment] = useState('');
   const [platforms, setPlatforms] = useState<Platform[]>(DEFAULT_PLATFORMS);
   const [scheduledAt, setScheduledAt] = useState(
@@ -378,7 +378,6 @@ export function NewsPage() {
       // AI abstract first (if available)
       if (data.aiAbstract) {
         parts.push(data.aiAbstract);
-        parts.push('');
       }
 
       // Title line
@@ -862,37 +861,50 @@ export function NewsPage() {
               <div className="form-group">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <label style={{ margin: 0 }}>Content</label>
-                  {platforms.length > 1 && (
-                    <label className="customize-per-platform-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', margin: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={customizePerPlatform}
-                        onChange={e => {
-                          const checked = e.target.checked;
-                          if (checked) {
-                            const baseText = content;
-                            setCustomizePerPlatform(true);
-                            setContent('');
-                            const newOverrides: Record<string, string> = {};
-                            for (const p of platforms) {
-                              newOverrides[p] = baseText;
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {aiEnabled && platforms.length > 0 && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ margin: 0, padding: '2px 8px' }}
+                        onClick={generateAIContent}
+                        disabled={generating || !newsTagline.trim()}
+                        title={!newsTagline.trim() ? 'Enter a news tagline first' : 'Generate social media text from news details'}
+                      >
+                        {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                      </button>
+                    )}
+                    {platforms.length > 1 && (
+                      <label className="customize-per-platform-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={customizePerPlatform}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            if (checked) {
+                              const baseText = content;
+                              setCustomizePerPlatform(true);
+                              setContent('');
+                              const newOverrides: Record<string, string> = {};
+                              for (const p of platforms) {
+                                newOverrides[p] = baseText;
+                              }
+                              setContentOverrides(newOverrides);
+                            } else {
+                              let longest = '';
+                              for (const p of platforms) {
+                                const val = contentOverrides[p] || '';
+                                if (val.length > longest.length) longest = val;
+                              }
+                              setContent(longest);
+                              setContentOverrides({});
+                              setCustomizePerPlatform(false);
                             }
-                            setContentOverrides(newOverrides);
-                          } else {
-                            let longest = '';
-                            for (const p of platforms) {
-                              const val = contentOverrides[p] || '';
-                              if (val.length > longest.length) longest = val;
-                            }
-                            setContent(longest);
-                            setContentOverrides({});
-                            setCustomizePerPlatform(false);
-                          }
-                        }}
-                      />
-                      Customize per platform
-                    </label>
-                  )}
+                          }}
+                        />
+                        Customize per platform
+                      </label>
+                    )}
+                  </div>
                 </div>
 
                 {customizePerPlatform && platforms.length > 1 ? (
@@ -938,17 +950,6 @@ export function NewsPage() {
                   </>
                 )}
 
-                {aiEnabled && platforms.length > 0 && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                    onClick={generateAIContent}
-                    disabled={generating || !newsTagline.trim()}
-                    title={!newsTagline.trim() ? 'Enter a news tagline first' : 'Generate social media text from news details'}
-                  >
-                    {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
-                  </button>
-                )}
               </div>
 
               {/* Suffix selectors */}
