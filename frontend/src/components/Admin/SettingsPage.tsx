@@ -18,6 +18,12 @@ export function SettingsPage() {
     cookieBannerText: '',
     openRouterModel: '',
     aiLanguage: '',
+    promptGameSummary: '',
+    promptGameAbstract: '',
+    promptHashtags: '',
+    promptHandleLookup: '',
+    promptSocialPost: '',
+    promptDashboardInsights: '',
   });
   const [igSecret, setIgSecret] = useState('');
   const [linkedInClientSecret, setLinkedInClientSecret] = useState('');
@@ -71,6 +77,12 @@ export function SettingsPage() {
       data.mailgunFromEmail = settings.mailgunFromEmail || '';
       data.openRouterModel = settings.openRouterModel;
       data.aiLanguage = settings.aiLanguage;
+      data.promptGameSummary = settings.promptGameSummary || '';
+      data.promptGameAbstract = settings.promptGameAbstract || '';
+      data.promptHashtags = settings.promptHashtags || '';
+      data.promptHandleLookup = settings.promptHandleLookup || '';
+      data.promptSocialPost = settings.promptSocialPost || '';
+      data.promptDashboardInsights = settings.promptDashboardInsights || '';
       const updated = await api.updateSettings(data);
       setSettings(updated);
       toast.success('Settings saved');
@@ -343,6 +355,105 @@ export function SettingsPage() {
             </span>
           </div>
 
+        </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>AI Prompt Templates</h3>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '-8px 0 16px' }}>
+          Customize the system prompts used for AI-generated content. Leave blank to use the built-in defaults.
+        </p>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>BGG Game Abstract (Shownotes)</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="You are a board game expert writing quick abstracts for podcast shownotes..."
+              value={settings.promptGameAbstract || ''}
+              onChange={e => setSettings(s => ({ ...s, promptGameAbstract: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Generates a 1-2 line abstract prepended to the shownotes when importing from BGG.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>BGG Game Summary (Social Post)</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="You are a board game expert. Write exactly one sentence..."
+              value={settings.promptGameSummary || ''}
+              onChange={e => setSettings(s => ({ ...s, promptGameSummary: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Generates a one-sentence summary included in the suggested social media post text.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Social Media Post</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="You are a social media copywriter..."
+              value={settings.promptSocialPost || ''}
+              onChange={e => setSettings(s => ({ ...s, promptSocialPost: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Used when generating social media post text with the "Generate with AI" button.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Hashtag Generation</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="You are a social media expert for board game content..."
+              value={settings.promptHashtags || ''}
+              onChange={e => setSettings(s => ({ ...s, promptHashtags: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Generates hashtag suggestions when importing a game from BGG.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Handle Lookup</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="You are a board game industry expert..."
+              value={settings.promptHandleLookup || ''}
+              onChange={e => setSettings(s => ({ ...s, promptHandleLookup: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Looks up social media handles for publishers, designers, and artists.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Dashboard Insights</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="You are a social media strategy analyst..."
+              value={settings.promptDashboardInsights || ''}
+              onChange={e => setSettings(s => ({ ...s, promptDashboardInsights: e.target.value }))}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Analyzes posting data and generates recommendations on the admin dashboard.
+            </span>
+          </div>
         </div>
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />

@@ -518,8 +518,14 @@ type UpdateSettingsInput struct {
 	YouTubeClientSecret   *string `json:"youtubeClientSecret,omitempty"`
 	MailgunBaseURL        *string `json:"mailgunBaseUrl,omitempty"`
 	MailgunAPIKey         *string `json:"mailgunApiKey,omitempty"`
-	MailgunDomain         *string `json:"mailgunDomain,omitempty"`
-	MailgunFromEmail      *string `json:"mailgunFromEmail,omitempty"`
+	MailgunDomain           *string `json:"mailgunDomain,omitempty"`
+	MailgunFromEmail        *string `json:"mailgunFromEmail,omitempty"`
+	PromptGameSummary       *string `json:"promptGameSummary,omitempty"`
+	PromptGameAbstract      *string `json:"promptGameAbstract,omitempty"`
+	PromptHashtags          *string `json:"promptHashtags,omitempty"`
+	PromptHandleLookup      *string `json:"promptHandleLookup,omitempty"`
+	PromptSocialPost        *string `json:"promptSocialPost,omitempty"`
+	PromptDashboardInsights *string `json:"promptDashboardInsights,omitempty"`
 }
 
 func (h *AdminHandler) UpdateSettings(c *gin.Context) {
@@ -598,6 +604,24 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.MailgunFromEmail != nil {
 		update["mailgunFromEmail"] = *input.MailgunFromEmail
+	}
+	if input.PromptGameSummary != nil {
+		update["promptGameSummary"] = *input.PromptGameSummary
+	}
+	if input.PromptGameAbstract != nil {
+		update["promptGameAbstract"] = *input.PromptGameAbstract
+	}
+	if input.PromptHashtags != nil {
+		update["promptHashtags"] = *input.PromptHashtags
+	}
+	if input.PromptHandleLookup != nil {
+		update["promptHandleLookup"] = *input.PromptHandleLookup
+	}
+	if input.PromptSocialPost != nil {
+		update["promptSocialPost"] = *input.PromptSocialPost
+	}
+	if input.PromptDashboardInsights != nil {
+		update["promptDashboardInsights"] = *input.PromptDashboardInsights
 	}
 
 	upsert := true
@@ -1400,7 +1424,10 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 		model = "openai/gpt-4o-mini"
 	}
 
-	systemPrompt := "You are a social media copywriter. The user gives you a prompt (which may include URLs for context). Write a ready-to-post social media post based on the prompt. Reply with ONLY the post text, no quotes, no commentary, no labels."
+	systemPrompt := settings.PromptSocialPost
+	if systemPrompt == "" {
+		systemPrompt = "You are a social media copywriter. The user gives you a prompt (which may include URLs for context). Write a ready-to-post social media post based on the prompt. Reply with ONLY the post text, no quotes, no commentary, no labels."
+	}
 	hasBluesky := false
 	if len(input.Platforms) > 0 {
 		var platforms []models.Platform
@@ -1604,7 +1631,9 @@ Recent post content snippets:
 	if settings.AILanguage != "" {
 		langInstr = fmt.Sprintf(" Write all text values in %s.", settings.AILanguage)
 	}
-	systemPrompt := `You are a social media strategy analyst. Analyze the posting data provided and give actionable recommendations. Respond in valid JSON with this exact structure:
+	systemPrompt := settings.PromptDashboardInsights
+	if systemPrompt == "" {
+		systemPrompt = `You are a social media strategy analyst. Analyze the posting data provided and give actionable recommendations. Respond in valid JSON with this exact structure:
 {
   "stats": [
     {"label": "short label", "value": "number or short text", "trend": "up|down|neutral"}
@@ -1614,7 +1643,9 @@ Recent post content snippets:
   ]
 }
 
-Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). Reply ONLY with valid JSON, no markdown fences.` + langInstr
+Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). Reply ONLY with valid JSON, no markdown fences.`
+	}
+	systemPrompt += langInstr
 
 	reqBody, _ := json.Marshal(map[string]any{
 		"model": model,

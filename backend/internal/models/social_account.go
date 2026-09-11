@@ -77,5 +77,11 @@ type AppSettings struct {
 	MailgunAPIKey         string             `bson:"mailgunApiKey" json:"-"`
 	MailgunDomain         string             `bson:"mailgunDomain" json:"mailgunDomain"`
 	MailgunFromEmail      string             `bson:"mailgunFromEmail" json:"mailgunFromEmail"`
+	PromptGameSummary      string `bson:"promptGameSummary,omitempty" json:"promptGameSummary,omitempty"`
+	PromptGameAbstract     string `bson:"promptGameAbstract,omitempty" json:"promptGameAbstract,omitempty"`
+	PromptHashtags         string `bson:"promptHashtags,omitempty" json:"promptHashtags,omitempty"`
+	PromptHandleLookup     string `bson:"promptHandleLookup,omitempty" json:"promptHandleLookup,omitempty"`
+	PromptSocialPost       string `bson:"promptSocialPost,omitempty" json:"promptSocialPost,omitempty"`
+	PromptDashboardInsights string `bson:"promptDashboardInsights,omitempty" json:"promptDashboardInsights,omitempty"`
 	UpdatedAt             time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

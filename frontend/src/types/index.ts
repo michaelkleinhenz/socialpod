@@ -93,11 +93,14 @@ export interface BGGGameData {
   designers: string[];
   artists: string[];
   publishers: string[];
+  categories: string[];
+  mechanics: string[];
   rating?: string;
   weight?: string;
   imageBase64: string;
   imageFilename: string;
   description?: string;
+  aiAbstract?: string;
   suggestedContent: string;
   suggestedContentByPlatform?: Record<string, string>;
   suggestedHashtags?: string[];
@@ -223,6 +226,12 @@ export interface AppSettings {
   mailgunDomain?: string;
   mailgunFromEmail?: string;
   hasMailgunApiKey?: boolean;
+  promptGameSummary?: string;
+  promptGameAbstract?: string;
+  promptHashtags?: string;
+  promptHandleLookup?: string;
+  promptSocialPost?: string;
+  promptDashboardInsights?: string;
   updatedAt?: string;
 }
 
