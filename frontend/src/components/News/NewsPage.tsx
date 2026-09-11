@@ -373,20 +373,43 @@ export function NewsPage() {
 
       if (data.title) setNewsTagline(`"${data.title}"`);
 
-      const lines: string[] = [];
-      if (data.title) lines.push(data.title + (data.yearPublished ? ` (${data.yearPublished})` : ''));
-      if (data.designers?.length) lines.push(`Designer: ${data.designers.join(', ')}`);
-      if (data.artists?.length) lines.push(`Artist: ${data.artists.join(', ')}`);
-      if (data.publishers?.length) lines.push(`Publisher: ${data.publishers.join(', ')}`);
-      if (data.minPlayers && data.maxPlayers) lines.push(`Players: ${data.minPlayers}–${data.maxPlayers}`);
-      if (data.minPlaytime && data.maxPlaytime) {
-        lines.push(data.minPlaytime === data.maxPlaytime ? `Playtime: ${data.minPlaytime} min` : `Playtime: ${data.minPlaytime}–${data.maxPlaytime} min`);
+      const parts: string[] = [];
+
+      // AI abstract first (if available)
+      if (data.aiAbstract) {
+        parts.push(data.aiAbstract);
+        parts.push('');
       }
-      if (data.minAge) lines.push(`Age: ${data.minAge}+`);
-      if (data.rating) lines.push(`Rating: ${data.rating}`);
-      if (data.weight) lines.push(`Weight: ${data.weight}`);
-      if (data.description) lines.push(data.description);
-      setShownotes(lines.filter(l => l.trim()).join('\n'));
+
+      // Title line
+      if (data.title) parts.push(data.title + (data.yearPublished ? ` (${data.yearPublished})` : ''));
+
+      // Compact metadata on fewer lines
+      const meta: string[] = [];
+      if (data.designers?.length) meta.push(`Designer: ${data.designers.join(', ')}`);
+      if (data.artists?.length) meta.push(`Artist: ${data.artists.join(', ')}`);
+      if (data.publishers?.length) meta.push(`Publisher: ${data.publishers.join(', ')}`);
+      if (meta.length) parts.push(meta.join(' | '));
+
+      const stats: string[] = [];
+      if (data.minPlayers && data.maxPlayers) stats.push(`${data.minPlayers}–${data.maxPlayers} Players`);
+      if (data.minPlaytime && data.maxPlaytime) {
+        stats.push(data.minPlaytime === data.maxPlaytime ? `${data.minPlaytime} min` : `${data.minPlaytime}–${data.maxPlaytime} min`);
+      }
+      if (data.minAge) stats.push(`Age ${data.minAge}+`);
+      if (data.rating) stats.push(`Rating ${data.rating}`);
+      if (data.weight) stats.push(`Weight ${data.weight}`);
+      if (stats.length) parts.push(stats.join(' | '));
+
+      // Description with empty lines removed
+      if (data.description) {
+        const cleanDesc = data.description
+          .split('\n')
+          .filter((l: string) => l.trim() !== '')
+          .join('\n');
+        parts.push(cleanDesc);
+      }
+      setShownotes(parts.filter(l => l !== undefined).join('\n'));
 
       if (data.imageBase64) {
         const byteStr = atob(data.imageBase64);

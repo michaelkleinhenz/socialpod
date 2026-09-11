@@ -91,11 +91,14 @@ type BGGGameResponse struct {
 	Designers                   []string          `json:"designers"`
 	Artists                     []string          `json:"artists"`
 	Publishers                  []string          `json:"publishers"`
+	Categories                  []string          `json:"categories"`
+	Mechanics                   []string          `json:"mechanics"`
 	Rating                      string            `json:"rating,omitempty"`
 	Weight                      string            `json:"weight,omitempty"`
 	ImageBase64                 string            `json:"imageBase64"`
 	ImageFilename               string            `json:"imageFilename"`
 	Description                 string            `json:"description,omitempty"`
+	AIAbstract                  string            `json:"aiAbstract,omitempty"`
 	SuggestedContent            string            `json:"suggestedContent"`
 	SuggestedContentByPlatform  map[string]string `json:"suggestedContentByPlatform,omitempty"`
 	SuggestedHashtags           []string          `json:"suggestedHashtags,omitempty"`
@@ -172,6 +175,14 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		}
 	}
 
+	// Generate AI abstract for shownotes (best-effort; omitted if not configured)
+	aiAbstract := ""
+	if settings.OpenRouterAPIKey != "" {
+		if s, err := h.generateGameAbstract(ctx, title, description, categories, mechanics, designers, artists, publishers, item, settings); err == nil {
+			aiAbstract = s
+		}
+	}
+
 	// Download and process cover image (best-effort)
 	imageBase64 := ""
 	imageFilename := ""
@@ -230,11 +241,14 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		Designers:                  nilSlice(designers),
 		Artists:                    nilSlice(artists),
 		Publishers:                 nilSlice(publishers),
+		Categories:                 nilSlice(categories),
+		Mechanics:                  nilSlice(mechanics),
 		Rating:                     trimFloat(item.Stats.Ratings.Average.Value),
 		Weight:                     trimFloat(item.Stats.Ratings.Weight.Value),
 		ImageBase64:                imageBase64,
 		ImageFilename:              imageFilename,
 		Description:                description,
+		AIAbstract:                 aiAbstract,
 		SuggestedContent:           baseContent,
 		SuggestedContentByPlatform: contentByPlatform,
 		SuggestedHashtags:          suggestedHashtags,
@@ -563,7 +577,10 @@ func (h *BGGHandler) generateGameSummary(ctx context.Context, description, title
 		model = "openai/gpt-4o-mini"
 	}
 
-	systemPrompt := "You are a board game expert. Write exactly one sentence that captures what makes this board game unique and fun to play. Be concise and engaging. Do not translate the name of the game. Reply with ONLY the single sentence, no quotes, no extra text."
+	systemPrompt := settings.PromptGameSummary
+	if systemPrompt == "" {
+		systemPrompt = "You are a board game expert. Write exactly one sentence that captures what makes this board game unique and fun to play. Be concise and engaging. Do not translate the name of the game. Reply with ONLY the single sentence, no quotes, no extra text."
+	}
 	if settings.AILanguage != "" {
 		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
 	}
@@ -609,6 +626,100 @@ func (h *BGGHandler) generateGameSummary(ctx context.Context, description, title
 	return strings.TrimSpace(result.Choices[0].Message.Content), nil
 }
 
+// generateGameAbstract generates a 1-2 line shownotes abstract with key facts about the game.
+func (h *BGGHandler) generateGameAbstract(ctx context.Context, title, description string, categories, mechanics []string, designers, artists, publishers []string, item bggItem, settings models.AppSettings) (string, error) {
+	model := settings.OpenRouterModel
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	systemPrompt := settings.PromptGameAbstract
+	if systemPrompt == "" {
+		systemPrompt = "You are a board game expert writing quick abstracts for podcast shownotes. Given a board game's data, write exactly 1-2 concise lines summarizing the most interesting facts: key mechanics, notable features, release year if known, whether it is crowdfunding or retail, and author/illustrator if they are notable. Do not translate the game name. Reply with ONLY the abstract text, no quotes, no labels, no extra commentary."
+	}
+	if settings.AILanguage != "" {
+		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
+	}
+
+	desc := description
+	if len(desc) > 1500 {
+		desc = desc[:1500] + "..."
+	}
+
+	var inputParts []string
+	inputParts = append(inputParts, "Game: "+title)
+	if item.YearPub.Value != "" && item.YearPub.Value != "0" {
+		inputParts = append(inputParts, "Year: "+item.YearPub.Value)
+	}
+	if len(designers) > 0 {
+		inputParts = append(inputParts, "Designers: "+strings.Join(designers, ", "))
+	}
+	if len(artists) > 0 {
+		inputParts = append(inputParts, "Artists: "+strings.Join(artists, ", "))
+	}
+	if len(publishers) > 0 {
+		inputParts = append(inputParts, "Publishers: "+strings.Join(publishers, ", "))
+	}
+	if len(categories) > 0 {
+		cats := categories
+		if len(cats) > 6 {
+			cats = cats[:6]
+		}
+		inputParts = append(inputParts, "Categories: "+strings.Join(cats, ", "))
+	}
+	if len(mechanics) > 0 {
+		mechs := mechanics
+		if len(mechs) > 6 {
+			mechs = mechs[:6]
+		}
+		inputParts = append(inputParts, "Mechanics: "+strings.Join(mechs, ", "))
+	}
+	if item.MinPlayers.Value != "" && item.MaxPlayers.Value != "" {
+		inputParts = append(inputParts, fmt.Sprintf("Players: %s-%s", item.MinPlayers.Value, item.MaxPlayers.Value))
+	}
+	if item.MinTime.Value != "" && item.MaxTime.Value != "" {
+		inputParts = append(inputParts, fmt.Sprintf("Playtime: %s-%s min", item.MinTime.Value, item.MaxTime.Value))
+	}
+	if desc != "" {
+		inputParts = append(inputParts, "Description: "+desc)
+	}
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]any{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": strings.Join(inputParts, "\n")},
+		},
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("OpenRouter returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct{ Content string `json:"content"` } `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
+		return "", fmt.Errorf("invalid OpenRouter response")
+	}
+	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+}
+
 // generateGameHashtags generates 3-5 conservative hashtags for Instagram/Twitter posts.
 func (h *BGGHandler) generateGameHashtags(ctx context.Context, title string, categories []string, mechanics []string, settings models.AppSettings) ([]string, error) {
 	model := settings.OpenRouterModel
@@ -616,7 +727,9 @@ func (h *BGGHandler) generateGameHashtags(ctx context.Context, title string, cat
 		model = "openai/gpt-4o-mini"
 	}
 
-	systemPrompt := `You are a social media expert for board game content. Generate 3 to 5 hashtags for an Instagram/Twitter post about a board game.
+	systemPrompt := settings.PromptHashtags
+	if systemPrompt == "" {
+		systemPrompt = `You are a social media expert for board game content. Generate 3 to 5 hashtags for an Instagram/Twitter post about a board game.
 
 Rules:
 - Always include #boardgames
@@ -625,6 +738,7 @@ Rules:
 - Be conservative: 3 strong hashtags beat 5 weak ones
 - Do NOT include niche, obscure, or overly specific tags
 - Reply with ONLY the hashtags separated by spaces, no other text, no punctuation besides #`
+	}
 
 	var inputParts []string
 	inputParts = append(inputParts, "Game: "+title)
@@ -804,7 +918,9 @@ func (h *BGGHandler) lookupHandlesViaAI(ctx context.Context, names []string, cat
 	}
 
 	platformList := "instagram, bluesky, threads, mastodon, twitter"
-	systemPrompt := `You are a board game industry expert. Given a list of board game publisher, designer, or artist names, find their social media handles.
+	systemPrompt := settings.PromptHandleLookup
+	if systemPrompt == "" {
+		systemPrompt = `You are a board game industry expert. Given a list of board game publisher, designer, or artist names, find their social media handles.
 Return ONLY a JSON object where keys are the exact input names and values are objects mapping platform names to handles (with @ prefix).
 Only include platforms where you are confident the handle is correct. If you don't know a handle, omit that platform.
 Platforms to consider: ` + platformList + `.
@@ -813,6 +929,7 @@ Example output format:
   "Lookout Games": {"instagram": "@lookoutgames", "bluesky": "@lookout.bsky.social"},
   "Uwe Rosenberg": {"instagram": "@uwerosenberg"}
 }`
+	}
 	if examples != "" {
 		systemPrompt += "\n\nKnown handles from our catalog (use as reference):\n" + examples
 	}
