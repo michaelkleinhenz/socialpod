@@ -132,7 +132,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	var settings models.AppSettings
 	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
 
-	item, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
+	item, err := fetchBGGItem(ctx, gameID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -256,7 +256,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, error) {
+func fetchBGGItem(ctx context.Context, gameID string) (bggItem, error) {
 	apiURL := fmt.Sprintf("https://boardgamegeek.com/xmlapi2/thing?id=%s&stats=1", gameID)
 
 	for attempt := 0; attempt < 5; attempt++ {
@@ -279,9 +279,6 @@ func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, er
 		req.Header.Set("sec-ch-ua", `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`)
 		req.Header.Set("sec-ch-ua-mobile", "?0")
 		req.Header.Set("sec-ch-ua-platform", `"Windows"`)
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -294,7 +291,7 @@ func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, er
 			continue
 		}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return bggItem{}, fmt.Errorf("BGG API authentication failed — add your BGG API token in Admin › Settings")
+			return bggItem{}, fmt.Errorf("BGG API returned %d — the request was rejected by BoardGameGeek", resp.StatusCode)
 		}
 		if resp.StatusCode != http.StatusOK {
 			return bggItem{}, fmt.Errorf("BGG API returned %d", resp.StatusCode)
