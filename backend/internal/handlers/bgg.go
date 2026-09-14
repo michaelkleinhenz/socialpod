@@ -278,13 +278,8 @@ func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, er
 		if err != nil {
 			return bggItem{}, err
 		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-		req.Header.Set("Referer", "https://boardgamegeek.com/")
-		req.Header.Set("sec-ch-ua", `"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"`)
-		req.Header.Set("sec-ch-ua-mobile", "?0")
-		req.Header.Set("sec-ch-ua-platform", `"Windows"`)
+		req.Header.Set("User-Agent", "SocialPod/1.0")
+		req.Header.Set("Accept", "application/xml")
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -304,6 +299,9 @@ func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, er
 			continue
 		}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			if strings.Contains(string(body), "Just a moment") || resp.Header.Get("cf-mitigated") != "" {
+				return bggItem{}, fmt.Errorf("BGG API request blocked by Cloudflare (HTTP %d) — the server IP may be rate-limited, try again later", resp.StatusCode)
+			}
 			return bggItem{}, fmt.Errorf("BGG API authentication failed (HTTP %d) — add your BGG API token in Admin › Settings", resp.StatusCode)
 		}
 		if resp.StatusCode != http.StatusOK {
