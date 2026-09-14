@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html"
+	"log"
 	"image"
 	"image/color"
 	"image/draw"
@@ -130,7 +131,11 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	defer cancel()
 
 	var settings models.AppSettings
-	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		log.Printf("[BGG] FetchGame: failed to load settings: %v", err)
+	}
+	log.Printf("[BGG] FetchGame: settings loaded, BGGAPIToken present=%v len=%d, OpenRouterAPIKey present=%v",
+		settings.BGGAPIToken != "", len(settings.BGGAPIToken), settings.OpenRouterAPIKey != "")
 
 	item, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 	if err != nil {
@@ -258,6 +263,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 
 func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, error) {
 	apiURL := fmt.Sprintf("https://boardgamegeek.com/xmlapi2/thing?id=%s&stats=1", gameID)
+	log.Printf("[BGG] fetchBGGItem: gameID=%s tokenPresent=%v tokenLen=%d", gameID, token != "", len(token))
 
 	for attempt := 0; attempt < 5; attempt++ {
 		if attempt > 0 {
@@ -285,16 +291,20 @@ func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, er
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
+			log.Printf("[BGG] attempt %d: request error: %v", attempt, err)
 			return bggItem{}, fmt.Errorf("failed to reach BGG API: %w", err)
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
+		log.Printf("[BGG] attempt %d: status=%d contentType=%s bodyLen=%d bodyPreview=%.200s",
+			attempt, resp.StatusCode, resp.Header.Get("Content-Type"), len(body), string(body))
+
 		if resp.StatusCode == http.StatusAccepted {
 			continue
 		}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return bggItem{}, fmt.Errorf("BGG API authentication failed — add your BGG API token in Admin › Settings")
+			return bggItem{}, fmt.Errorf("BGG API authentication failed (HTTP %d) — add your BGG API token in Admin › Settings", resp.StatusCode)
 		}
 		if resp.StatusCode != http.StatusOK {
 			return bggItem{}, fmt.Errorf("BGG API returned %d", resp.StatusCode)
