@@ -1179,7 +1179,7 @@ func (h *ConventionHandler) fetchBGGGameInfo(ctx context.Context, bggURL string)
 	var settings models.AppSettings
 	h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
 
-	item, err := fetchBGGItem(ctx, gameID)
+	item, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 	if err != nil {
 		return nil
 	}
@@ -1412,7 +1412,7 @@ func (h *ConventionHandler) AddBGGItems(c *gin.Context) {
 		}
 		gameID := m[1]
 
-		game, err := fetchBGGItem(ctx, gameID)
+		game, err := fetchBGGItem(ctx, gameID, settings.BGGAPIToken)
 		if err != nil {
 			errs = append(errs, itemError{URL: rawURL, Error: err.Error()})
 			continue
