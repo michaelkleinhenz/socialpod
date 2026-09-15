@@ -527,6 +527,7 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 	// Try graph.instagram.com first (documented host), then graph.facebook.com
 	// as fallback (Meta docs state both hosts serve all endpoints).
 	token := shortToken.AccessToken
+	var tokenExpiresIn int64
 	llParams := url.Values{
 		"grant_type":    {"ig_exchange_token"},
 		"client_secret": {clientSecret},
@@ -545,10 +546,12 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		log.Printf("IG long-lived token response (%s): status=%d body=%s", host, llResp.StatusCode, string(llBody))
 		var longToken struct {
 			AccessToken string `json:"access_token"`
+			ExpiresIn   int64  `json:"expires_in"`
 		}
 		json.Unmarshal(llBody, &longToken)
 		if longToken.AccessToken != "" {
 			token = longToken.AccessToken
+			tokenExpiresIn = longToken.ExpiresIn
 			break
 		}
 	}
@@ -611,6 +614,46 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		AvatarURL:   profile.ProfilePictureURL,
 		IsActive:    true,
 	}
+	if tokenExpiresIn > 0 {
+		account.TokenExpiry = time.Now().Add(time.Duration(tokenExpiresIn) * time.Second)
+	}
 
 	return account, nil
+}
+
+// RefreshLongLivedToken exchanges the current long-lived token for a new one.
+// Instagram long-lived tokens can be refreshed when they are at least 24 hours
+// old and not yet expired.
+func (s *InstagramService) RefreshLongLivedToken(ctx context.Context, account *models.SocialAccount) error {
+	resp, err := http.Get(fmt.Sprintf("%s/refresh_access_token?%s", igGraphAPIUnversioned, url.Values{
+		"grant_type":   {"ig_refresh_token"},
+		"access_token": {account.AccessToken},
+	}.Encode()))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("IG token refresh response: status=%d body=%s", resp.StatusCode, string(body))
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	json.Unmarshal(body, &tokenResp)
+
+	if tokenResp.AccessToken == "" {
+		return fmt.Errorf("IG token refresh failed: empty access_token")
+	}
+
+	expiry := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	_, err = s.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": account.ID}, bson.M{
+		"$set": bson.M{
+			"accessToken": tokenResp.AccessToken,
+			"tokenExpiry": expiry,
+			"updatedAt":   time.Now(),
+		},
+	})
+	return err
 }

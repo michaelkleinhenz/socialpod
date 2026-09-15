@@ -294,6 +294,60 @@ func (s *LinkedInService) ExchangeCodeForToken(ctx context.Context, code, client
 	return account, nil
 }
 
+// RefreshAccessToken uses the stored refresh_token to get a new access_token.
+func (s *LinkedInService) RefreshAccessToken(ctx context.Context, account *models.SocialAccount, clientID, clientSecret string) error {
+	if account.RefreshToken == "" {
+		return fmt.Errorf("no refresh token available")
+	}
+
+	params := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {account.RefreshToken},
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"https://www.linkedin.com/oauth/v2/accessToken",
+		strings.NewReader(params.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("LinkedIn token refresh response: status=%d body=%s", resp.StatusCode, string(body))
+
+	var tokenResp struct {
+		AccessToken  string `json:"access_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		RefreshToken string `json:"refresh_token"`
+	}
+	json.Unmarshal(body, &tokenResp)
+
+	if tokenResp.AccessToken == "" {
+		return fmt.Errorf("LinkedIn token refresh failed: empty access_token")
+	}
+
+	update := bson.M{
+		"accessToken": tokenResp.AccessToken,
+		"tokenExpiry": time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+		"updatedAt":   time.Now(),
+	}
+	if tokenResp.RefreshToken != "" {
+		update["refreshToken"] = tokenResp.RefreshToken
+	}
+
+	_, err = s.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": account.ID}, bson.M{"$set": update})
+	return err
+}
+
 func (s *LinkedInService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
 	if accountID == "" {
 		return nil, fmt.Errorf("linkedin account ID is required")

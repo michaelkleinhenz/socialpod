@@ -42,17 +42,22 @@ func (s *Scheduler) Start() {
 	log.Println("Post scheduler started")
 	ticker := time.NewTicker(30 * time.Second)
 	avatarTicker := time.NewTicker(6 * time.Hour)
+	tokenTicker := time.NewTicker(1 * time.Hour)
 	go func() {
 		s.refreshAccountAvatars()
+		s.refreshExpiringTokens()
 		for {
 			select {
 			case <-ticker.C:
 				s.processScheduledPosts()
 			case <-avatarTicker.C:
 				s.refreshAccountAvatars()
+			case <-tokenTicker.C:
+				s.refreshExpiringTokens()
 			case <-s.stop:
 				ticker.Stop()
 				avatarTicker.Stop()
+				tokenTicker.Stop()
 				return
 			}
 		}
@@ -122,6 +127,63 @@ func (s *Scheduler) refreshAccountAvatars() {
 	}
 
 	log.Printf("Avatar refresh: processed %d accounts", len(accounts))
+}
+
+func (s *Scheduler) refreshExpiringTokens() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	// Refresh tokens expiring within the next 7 days.
+	threshold := time.Now().Add(7 * 24 * time.Hour)
+	cursor, err := s.DB.SocialAccounts().Find(ctx, bson.M{
+		"isActive":    true,
+		"tokenExpiry": bson.M{"$ne": time.Time{}, "$lte": threshold},
+	})
+	if err != nil {
+		log.Printf("Token refresh: failed to list accounts: %v", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var accounts []models.SocialAccount
+	if err := cursor.All(ctx, &accounts); err != nil {
+		log.Printf("Token refresh: failed to decode accounts: %v", err)
+		return
+	}
+
+	var settings models.AppSettings
+	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	refreshed := 0
+	for _, account := range accounts {
+		var refreshErr error
+
+		switch account.Platform {
+		case models.PlatformInstagram:
+			refreshErr = s.Instagram.RefreshLongLivedToken(ctx, &account)
+		case models.PlatformThreads:
+			refreshErr = s.Threads.RefreshLongLivedToken(ctx, &account)
+		case models.PlatformLinkedIn:
+			if account.RefreshToken != "" && settings.LinkedInClientID != "" {
+				refreshErr = s.LinkedIn.RefreshAccessToken(ctx, &account, settings.LinkedInClientID, settings.LinkedInClientSecret)
+			} else {
+				continue
+			}
+		default:
+			continue
+		}
+
+		if refreshErr != nil {
+			log.Printf("Token refresh: %s account %s (%s): %v", account.Platform, account.AccountName, account.ID.Hex(), refreshErr)
+		} else {
+			refreshed++
+			log.Printf("Token refresh: %s account %s refreshed successfully", account.Platform, account.AccountName)
+		}
+	}
+
+	if len(accounts) > 0 {
+		log.Printf("Token refresh: checked %d accounts, refreshed %d", len(accounts), refreshed)
+	}
 }
 
 func (s *Scheduler) processScheduledPosts() {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
@@ -175,6 +176,41 @@ func (s *ThreadsService) FetchProfile(account *models.SocialAccount) (displayNam
 		account.ThreadsUserID = profile.ID
 	}
 	return profile.Username, profile.ThreadsProfilePictureURL, nil
+}
+
+// RefreshLongLivedToken exchanges the current long-lived token for a new one.
+func (s *ThreadsService) RefreshLongLivedToken(ctx context.Context, account *models.SocialAccount) error {
+	resp, err := http.Get(fmt.Sprintf("%s/refresh_access_token?%s", threadsGraphAPI, url.Values{
+		"grant_type":   {"th_refresh_token"},
+		"access_token": {account.AccessToken},
+	}.Encode()))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("Threads token refresh response: status=%d body=%s", resp.StatusCode, string(body))
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	json.Unmarshal(body, &tokenResp)
+
+	if tokenResp.AccessToken == "" {
+		return fmt.Errorf("Threads token refresh failed: empty access_token")
+	}
+
+	expiry := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	_, err = s.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": account.ID}, bson.M{
+		"$set": bson.M{
+			"accessToken": tokenResp.AccessToken,
+			"tokenExpiry": expiry,
+			"updatedAt":   time.Now(),
+		},
+	})
+	return err
 }
 
 func (s *ThreadsService) getAccount(ctx context.Context, accountID string) (*models.SocialAccount, error) {
