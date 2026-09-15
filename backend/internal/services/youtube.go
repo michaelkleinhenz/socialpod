@@ -184,7 +184,7 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 }
 
 func (s *YouTubeService) ensureValidToken(ctx context.Context, account *models.SocialAccount, settings *models.AppSettings) (string, error) {
-	if account.TokenExpiry.IsZero() || time.Now().Before(account.TokenExpiry.Add(-5*time.Minute)) {
+	if account.TokenExpiry == nil || account.TokenExpiry.IsZero() || time.Now().Before(account.TokenExpiry.Add(-5*time.Minute)) {
 		return account.AccessToken, nil
 	}
 
@@ -265,7 +265,7 @@ func (s *YouTubeService) ExchangeCodeForToken(ctx context.Context, code, clientI
 		DisplayName:      channelName,
 		AccessToken:      tokenResp.AccessToken,
 		RefreshToken:     tokenResp.RefreshToken,
-		TokenExpiry:      time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
+		TokenExpiry:      timePtr(time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)),
 		YouTubeChannelID: channelID,
 		AvatarURL:        avatarURL,
 		IsActive:         true,
@@ -329,3 +329,5 @@ func (s *YouTubeService) getAccount(ctx context.Context, accountID string) (*mod
 	}
 	return &account, nil
 }
+
+func timePtr(t time.Time) *time.Time { return &t }

@@ -615,7 +615,8 @@ func (s *InstagramService) ExchangeCodeForToken(ctx context.Context, code, clien
 		IsActive:    true,
 	}
 	if tokenExpiresIn > 0 {
-		account.TokenExpiry = time.Now().Add(time.Duration(tokenExpiresIn) * time.Second)
+		expiry := time.Now().Add(time.Duration(tokenExpiresIn) * time.Second)
+		account.TokenExpiry = &expiry
 	}
 
 	return account, nil

@@ -14,7 +14,7 @@ type SocialAccount struct {
 	DisplayName  string             `bson:"displayName" json:"displayName"`
 	AccessToken  string             `bson:"accessToken" json:"-"`
 	RefreshToken string             `bson:"refreshToken,omitempty" json:"-"`
-	TokenExpiry  time.Time          `bson:"tokenExpiry,omitempty" json:"tokenExpiry,omitempty"`
+	TokenExpiry  *time.Time         `bson:"tokenExpiry,omitempty" json:"tokenExpiry,omitempty"`
 	// Bluesky-specific
 	AppPassword  string `bson:"appPassword,omitempty" json:"-"`
 	DID          string `bson:"did,omitempty" json:"did,omitempty"`
