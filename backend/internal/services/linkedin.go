@@ -277,7 +277,8 @@ func (s *LinkedInService) ExchangeCodeForToken(ctx context.Context, code, client
 		IsActive:    true,
 	}
 	if tokenResp.ExpiresIn > 0 {
-		account.TokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+		expiry := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+		account.TokenExpiry = &expiry
 	}
 	if tokenResp.RefreshToken != "" {
 		account.RefreshToken = tokenResp.RefreshToken

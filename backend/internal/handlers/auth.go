@@ -298,7 +298,10 @@ func (h *AuthHandler) AccountWarnings(c *gin.Context) {
 		if canAutoRenew {
 			continue
 		}
-		daysLeft := int(time.Until(a.TokenExpiry).Hours() / 24)
+		if a.TokenExpiry == nil {
+			continue
+		}
+		daysLeft := int(time.Until(*a.TokenExpiry).Hours() / 24)
 		if daysLeft < 0 {
 			daysLeft = 0
 		}
