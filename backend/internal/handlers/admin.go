@@ -673,7 +673,13 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 
 	var teamID *primitive.ObjectID
 	var successRedirect, errorRedirect string
-	if strings.HasPrefix(state, "instagram_admin_auth:") {
+	var reauthAccountID string
+
+	if strings.HasPrefix(state, "instagram_reauth:") {
+		reauthAccountID = strings.TrimPrefix(state, "instagram_reauth:")
+		successRedirect = "/admin/accounts?instagram=reconnected"
+		errorRedirect = "/admin/accounts?error="
+	} else if strings.HasPrefix(state, "instagram_admin_auth:") {
 		rawID := strings.TrimPrefix(state, "instagram_admin_auth:")
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
@@ -711,6 +717,38 @@ func (h *AdminHandler) InstagramCallback(c *gin.Context) {
 	account, err := h.Instagram.ExchangeCodeForToken(ctx, code, settings.InstagramAppID, settings.InstagramAppSecret, redirectURI)
 	if err != nil {
 		c.Redirect(http.StatusFound, errorRedirect+err.Error())
+		return
+	}
+
+	if reauthAccountID != "" {
+		objID, err := primitive.ObjectIDFromHex(reauthAccountID)
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"invalid_account_id")
+			return
+		}
+		update := bson.M{
+			"accessToken": account.AccessToken,
+			"tokenExpiry": account.TokenExpiry,
+			"updatedAt":   time.Now(),
+		}
+		if account.IGUserID != "" {
+			update["igUserId"] = account.IGUserID
+		}
+		if account.DisplayName != "" {
+			update["displayName"] = account.DisplayName
+		}
+		if account.AccountName != "" {
+			update["accountName"] = account.AccountName
+		}
+		if account.AvatarURL != "" {
+			update["avatarUrl"] = account.AvatarURL
+		}
+		_, err = h.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": update})
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"update_failed")
+			return
+		}
+		c.Redirect(http.StatusFound, successRedirect)
 		return
 	}
 
@@ -783,7 +821,13 @@ func (h *AdminHandler) LinkedInCallback(c *gin.Context) {
 
 	var teamID *primitive.ObjectID
 	var successRedirect, errorRedirect string
-	if strings.HasPrefix(state, "linkedin_admin_auth:") {
+	var reauthAccountID string
+
+	if strings.HasPrefix(state, "linkedin_reauth:") {
+		reauthAccountID = strings.TrimPrefix(state, "linkedin_reauth:")
+		successRedirect = "/admin/accounts?linkedin=reconnected"
+		errorRedirect = "/admin/accounts?error="
+	} else if strings.HasPrefix(state, "linkedin_admin_auth:") {
 		rawID := strings.TrimPrefix(state, "linkedin_admin_auth:")
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
@@ -820,6 +864,43 @@ func (h *AdminHandler) LinkedInCallback(c *gin.Context) {
 	account, err := h.LinkedIn.ExchangeCodeForToken(ctx, code, settings.LinkedInClientID, settings.LinkedInClientSecret, redirectURI)
 	if err != nil {
 		c.Redirect(http.StatusFound, errorRedirect+url.QueryEscape(err.Error()))
+		return
+	}
+
+	if reauthAccountID != "" {
+		objID, err := primitive.ObjectIDFromHex(reauthAccountID)
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"invalid_account_id")
+			return
+		}
+		update := bson.M{
+			"accessToken": account.AccessToken,
+			"updatedAt":   time.Now(),
+		}
+		if account.RefreshToken != "" {
+			update["refreshToken"] = account.RefreshToken
+		}
+		if account.TokenExpiry != nil {
+			update["tokenExpiry"] = account.TokenExpiry
+		}
+		if account.LinkedInPersonURN != "" {
+			update["linkedinPersonUrn"] = account.LinkedInPersonURN
+		}
+		if account.DisplayName != "" {
+			update["displayName"] = account.DisplayName
+		}
+		if account.AccountName != "" {
+			update["accountName"] = account.AccountName
+		}
+		if account.AvatarURL != "" {
+			update["avatarUrl"] = account.AvatarURL
+		}
+		_, err = h.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": update})
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"update_failed")
+			return
+		}
+		c.Redirect(http.StatusFound, successRedirect)
 		return
 	}
 
@@ -892,7 +973,13 @@ func (h *AdminHandler) YouTubeCallback(c *gin.Context) {
 
 	var teamID *primitive.ObjectID
 	var successRedirect, errorRedirect string
-	if strings.HasPrefix(state, "youtube_auth:") {
+	var reauthAccountID string
+
+	if strings.HasPrefix(state, "youtube_reauth:") {
+		reauthAccountID = strings.TrimPrefix(state, "youtube_reauth:")
+		successRedirect = "/admin/accounts?youtube=reconnected"
+		errorRedirect = "/admin/accounts?error="
+	} else if strings.HasPrefix(state, "youtube_auth:") {
 		rawID := strings.TrimPrefix(state, "youtube_auth:")
 		if tid, err := primitive.ObjectIDFromHex(rawID); err == nil {
 			teamID = &tid
@@ -922,6 +1009,43 @@ func (h *AdminHandler) YouTubeCallback(c *gin.Context) {
 	account, err := h.YouTube.ExchangeCodeForToken(ctx, code, settings.YouTubeClientID, settings.YouTubeClientSecret, redirectURI)
 	if err != nil {
 		c.Redirect(http.StatusFound, errorRedirect+url.QueryEscape(err.Error()))
+		return
+	}
+
+	if reauthAccountID != "" {
+		objID, err := primitive.ObjectIDFromHex(reauthAccountID)
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"invalid_account_id")
+			return
+		}
+		update := bson.M{
+			"accessToken": account.AccessToken,
+			"updatedAt":   time.Now(),
+		}
+		if account.RefreshToken != "" {
+			update["refreshToken"] = account.RefreshToken
+		}
+		if account.TokenExpiry != nil {
+			update["tokenExpiry"] = account.TokenExpiry
+		}
+		if account.YouTubeChannelID != "" {
+			update["youtubeChannelId"] = account.YouTubeChannelID
+		}
+		if account.DisplayName != "" {
+			update["displayName"] = account.DisplayName
+		}
+		if account.AccountName != "" {
+			update["accountName"] = account.AccountName
+		}
+		if account.AvatarURL != "" {
+			update["avatarUrl"] = account.AvatarURL
+		}
+		_, err = h.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": update})
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"update_failed")
+			return
+		}
+		c.Redirect(http.StatusFound, successRedirect)
 		return
 	}
 
@@ -2168,17 +2292,25 @@ func (h *AdminHandler) MastodonCallback(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/admin/accounts?error=invalid_state")
 		return
 	}
-	// Clean up the used state.
 	h.DB.MastodonOAuthStates().DeleteOne(ctx, bson.M{"state": state})
+
+	var reauthAccountID string
+	if strings.HasPrefix(oauthState.State, "reauth:") {
+		parts := strings.SplitN(oauthState.State, ":", 3)
+		if len(parts) >= 2 {
+			reauthAccountID = parts[1]
+		}
+	}
 
 	successRedirect := "/admin/accounts?mastodon=connected"
 	errorRedirect := "/admin/accounts?error="
-	if oauthState.IsTeamAdmin {
+	if reauthAccountID != "" {
+		successRedirect = "/admin/accounts?mastodon=reconnected"
+	} else if oauthState.IsTeamAdmin {
 		successRedirect = "/admin/team-accounts?mastodon=connected"
 		errorRedirect = "/admin/team-accounts?error="
 	}
 
-	// Exchange code for access token.
 	tokenBody, _ := json.Marshal(map[string]string{
 		"client_id":     oauthState.ClientID,
 		"client_secret": oauthState.ClientSecret,
@@ -2206,6 +2338,40 @@ func (h *AdminHandler) MastodonCallback(c *gin.Context) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil || tokenResp.AccessToken == "" {
 		c.Redirect(http.StatusFound, errorRedirect+"invalid_token_response")
+		return
+	}
+
+	if reauthAccountID != "" {
+		objID, err := primitive.ObjectIDFromHex(reauthAccountID)
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"invalid_account_id")
+			return
+		}
+		update := bson.M{
+			"accessToken": tokenResp.AccessToken,
+			"updatedAt":   time.Now(),
+		}
+		tmpAccount := models.SocialAccount{
+			AccessToken:      tokenResp.AccessToken,
+			MastodonInstance: oauthState.Instance,
+		}
+		if h.Mastodon != nil {
+			if dn, av, err := h.Mastodon.FetchProfile(&tmpAccount); err == nil {
+				if dn != "" {
+					update["displayName"] = dn
+					update["accountName"] = dn
+				}
+				if av != "" {
+					update["avatarUrl"] = av
+				}
+			}
+		}
+		_, err = h.DB.SocialAccounts().UpdateOne(ctx, bson.M{"_id": objID}, bson.M{"$set": update})
+		if err != nil {
+			c.Redirect(http.StatusFound, errorRedirect+"update_failed")
+			return
+		}
+		c.Redirect(http.StatusFound, successRedirect)
 		return
 	}
 
@@ -2428,6 +2594,216 @@ func (h *AdminHandler) UpdateTeamPlugins(c *gin.Context) {
 		"availablePlugins": models.AvailablePlugins,
 		"enabledPlugins":   plugins,
 	})
+}
+
+func (h *AdminHandler) TestAccount(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var account models.SocialAccount
+	filter := bson.M{"_id": id}
+	if teamIDRaw, hasTeam := c.Get("teamId"); hasTeam && teamIDRaw.(string) != "" {
+		tid, err := primitive.ObjectIDFromHex(teamIDRaw.(string))
+		if err == nil {
+			filter["teamId"] = tid
+		}
+	}
+	if err := h.DB.SocialAccounts().FindOne(ctx, filter).Decode(&account); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		return
+	}
+
+	var validationErr error
+	switch account.Platform {
+	case models.PlatformBluesky:
+		if h.Bluesky != nil {
+			_, _, validationErr = h.Bluesky.FetchProfile(&account)
+		}
+	case models.PlatformTwitter:
+		if h.Twitter != nil {
+			_, _, _, validationErr = h.Twitter.FetchProfile(&account)
+		}
+	case models.PlatformMastodon:
+		if h.Mastodon != nil {
+			_, _, validationErr = h.Mastodon.FetchProfile(&account)
+		}
+	case models.PlatformInstagram:
+		if h.Instagram != nil {
+			_, _, validationErr = h.Instagram.FetchProfile(&account)
+		}
+	case models.PlatformThreads:
+		if h.Threads != nil {
+			_, _, validationErr = h.Threads.FetchProfile(&account)
+		}
+	case models.PlatformLinkedIn:
+		if h.LinkedIn != nil {
+			_, _, validationErr = h.LinkedIn.FetchProfile(&account)
+		}
+	case models.PlatformYouTube:
+		if h.YouTube != nil {
+			_, _, validationErr = h.YouTube.FetchProfile(&account)
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported platform"})
+		return
+	}
+
+	if validationErr != nil {
+		c.JSON(http.StatusOK, gin.H{"valid": false, "error": validationErr.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"valid": true})
+}
+
+func (h *AdminHandler) TeamTestAccount(c *gin.Context) {
+	h.TestAccount(c)
+}
+
+func (h *AdminHandler) ReauthAccountURL(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var account models.SocialAccount
+	if err := h.DB.SocialAccounts().FindOne(ctx, bson.M{"_id": id}).Decode(&account); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		return
+	}
+
+	accountIDHex := id.Hex()
+
+	switch account.Platform {
+	case models.PlatformInstagram:
+		state := "instagram_reauth:" + accountIDHex
+		authURL, err := h.instagramAuthURL(ctx, state)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"url": authURL})
+
+	case models.PlatformLinkedIn:
+		state := "linkedin_reauth:" + accountIDHex
+		authURL, err := h.linkedInAuthURL(ctx, state)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"url": authURL})
+
+	case models.PlatformYouTube:
+		state := "youtube_reauth:" + accountIDHex
+		authURL, err := h.youtubeAuthURL(ctx, state)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"url": authURL})
+
+	case models.PlatformMastodon:
+		if account.MastodonInstance == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Mastodon instance not set on account"})
+			return
+		}
+		var teamID *primitive.ObjectID
+		teamID = account.TeamID
+		isTeamAdmin := false
+		if _, ok := c.Get("isTeamAdmin"); ok {
+			isTeamAdmin = true
+		}
+		h.mastodonReauthURL(c, accountIDHex, account.MastodonInstance, teamID, isTeamAdmin)
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This platform does not support OAuth re-authentication. Please delete and re-add the account."})
+	}
+}
+
+func (h *AdminHandler) mastodonReauthURL(c *gin.Context, accountID string, instance string, teamID *primitive.ObjectID, isTeamAdmin bool) {
+	if !strings.HasPrefix(instance, "http://") && !strings.HasPrefix(instance, "https://") {
+		instance = "https://" + instance
+	}
+	instance = strings.TrimRight(instance, "/")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	var settings models.AppSettings
+	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "settings not found"})
+		return
+	}
+	if settings.AppURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "APP_URL not configured in settings"})
+		return
+	}
+
+	redirectURI := settings.AppURL + "/api/auth/mastodon/callback"
+
+	regBody, _ := json.Marshal(map[string]string{
+		"client_name":   "SocialPod",
+		"redirect_uris": redirectURI,
+		"scopes":        "read write",
+		"website":       settings.AppURL,
+	})
+	resp, err := http.Post(instance+"/api/v1/apps", "application/json", bytes.NewReader(regBody))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to reach Mastodon instance: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("app registration failed (%d): %s", resp.StatusCode, string(body))})
+		return
+	}
+
+	var reg struct {
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&reg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse app registration response"})
+		return
+	}
+
+	stateBytes := make([]byte, 16)
+	rand.Read(stateBytes)
+	state := hex.EncodeToString(stateBytes)
+
+	oauthState := models.MastodonOAuthState{
+		State:        "reauth:" + accountID + ":" + state,
+		Instance:     instance,
+		ClientID:     reg.ClientID,
+		ClientSecret: reg.ClientSecret,
+		RedirectURI:  redirectURI,
+		TeamID:       teamID,
+		IsTeamAdmin:  isTeamAdmin,
+		CreatedAt:    time.Now(),
+	}
+	if _, err := h.DB.MastodonOAuthStates().InsertOne(ctx, oauthState); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save OAuth state"})
+		return
+	}
+
+	authURL := instance + "/oauth/authorize" +
+		"?client_id=" + url.QueryEscape(reg.ClientID) +
+		"&redirect_uri=" + url.QueryEscape(redirectURI) +
+		"&scope=read+write" +
+		"&response_type=code" +
+		"&state=" + url.QueryEscape(oauthState.State)
+
+	c.JSON(http.StatusOK, gin.H{"url": authURL})
 }
 
 func formatSnippets(snippets []string) string {

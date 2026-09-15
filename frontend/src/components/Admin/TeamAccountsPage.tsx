@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { SocialAccount, PublicSettings } from '../../types';
-import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Clock, AlertTriangle, CheckCircle, XCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
@@ -63,6 +63,9 @@ export function TeamAccountsPage() {
   const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
   const [connectingYouTube, setConnectingYouTube] = useState(false);
   const [youtubeConfigured, setYoutubeConfigured] = useState(false);
+  const [testingAccount, setTestingAccount] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { valid: boolean; error?: string }>>({});
+  const [reconnecting, setReconnecting] = useState<string | null>(null);
 
   const createTeam = async () => {
     if (!newTeamName.trim()) { toast.error('Team name is required'); return; }
@@ -86,20 +89,23 @@ export function TeamAccountsPage() {
     }).catch(() => {});
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get('mastodon') === 'connected') {
-      toast.success('Mastodon account connected');
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (params.get('instagram') === 'connected') {
-      toast.success('Instagram account connected');
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (params.get('linkedin') === 'connected') {
-      toast.success('LinkedIn account connected');
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (params.get('youtube') === 'connected') {
-      toast.success('YouTube account connected');
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (params.get('error')) {
+    const platforms = ['mastodon', 'instagram', 'linkedin', 'youtube'] as const;
+    let handled = false;
+    for (const p of platforms) {
+      const val = params.get(p);
+      if (val === 'connected') {
+        toast.success(`${p.charAt(0).toUpperCase() + p.slice(1)} account connected`);
+        handled = true; break;
+      }
+      if (val === 'reconnected') {
+        toast.success(`${p.charAt(0).toUpperCase() + p.slice(1)} account reconnected`);
+        handled = true; break;
+      }
+    }
+    if (!handled && params.get('error')) {
       toast.error('Connection failed: ' + params.get('error'));
+    }
+    if (handled || params.get('error')) {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [user?.teamId]);
@@ -267,6 +273,39 @@ export function TeamAccountsPage() {
     }
   };
 
+  const testAccount = async (id: string) => {
+    setTestingAccount(id);
+    try {
+      const result = await api.testTeamAccount(id);
+      setTestResults(prev => ({ ...prev, [id]: result }));
+      if (result.valid) {
+        toast.success('Token is valid');
+      } else {
+        toast.error('Token is invalid: ' + (result.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      setTestResults(prev => ({ ...prev, [id]: { valid: false, error: err.message } }));
+      toast.error('Test failed: ' + err.message);
+    } finally {
+      setTestingAccount(null);
+    }
+  };
+
+  const reconnectAccount = async (id: string) => {
+    setReconnecting(id);
+    try {
+      const { url } = await api.getTeamReauthUrl(id);
+      window.location.href = url;
+    } catch (err: any) {
+      toast.error(err.message);
+      setReconnecting(null);
+    }
+  };
+
+  const canOAuthReconnect = (platform: string) => {
+    return ['instagram', 'mastodon', 'linkedin', 'youtube'].includes(platform);
+  };
+
   const toggleAccount = async (id: string) => {
     try {
       const updated = await api.toggleTeamAccount(id);
@@ -343,6 +382,39 @@ export function TeamAccountsPage() {
               <div className="account-handle">@{account.accountName}</div>
               {!account.isActive && <span className="badge badge-draft" style={{ marginBottom: 6 }}>Disabled</span>}
               <TokenExpiryBadge tokenExpiry={account.tokenExpiry} />
+              {testResults[account.id] && (
+                <div className={`token-expiry ${testResults[account.id].valid ? 'token-valid' : 'token-invalid'}`}>
+                  {testResults[account.id].valid
+                    ? <><CheckCircle size={12} /> Token valid</>
+                    : <><XCircle size={12} /> Token invalid</>
+                  }
+                </div>
+              )}
+              <div className="account-actions">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => testAccount(account.id)}
+                  disabled={testingAccount === account.id}
+                >
+                  {testingAccount === account.id
+                    ? <><Loader2 size={12} className="spinning" /> Testing...</>
+                    : 'Test Token'
+                  }
+                </button>
+                {canOAuthReconnect(account.platform) && (testResults[account.id]?.valid === false || (account.tokenExpiry && new Date(account.tokenExpiry) < new Date())) && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => reconnectAccount(account.id)}
+                    disabled={reconnecting === account.id}
+                    style={{ background: 'var(--warning-text, #7a5c00)', borderColor: 'var(--warning-text, #7a5c00)' }}
+                  >
+                    {reconnecting === account.id
+                      ? <><Loader2 size={12} className="spinning" /> Redirecting...</>
+                      : <><RefreshCw size={12} /> Reconnect</>
+                    }
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
