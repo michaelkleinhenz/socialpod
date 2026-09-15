@@ -47,6 +47,15 @@ export function LoginPage() {
       toast.success('Welcome back!');
       const next = searchParams.get('next');
       if (next) navigate(next);
+
+      api.getAccountWarnings().then(({ warnings }) => {
+        for (const w of warnings) {
+          const msg = w.daysLeft === 0
+            ? `${w.platform} token for "${w.accountName}" has expired. Please re-authenticate.`
+            : `${w.platform} token for "${w.accountName}" expires in ${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'}. Please re-authenticate.`;
+          toast.error(msg, { duration: 10000 });
+        }
+      }).catch(() => {});
     } catch (err: any) {
       toast.error(err.message);
     } finally {

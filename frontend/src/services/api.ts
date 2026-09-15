@@ -74,6 +74,10 @@ class ApiClient {
     return this.request<{ apiToken: string }>('/auth/api-token', { method: 'POST' });
   }
 
+  getAccountWarnings() {
+    return this.request<{ warnings: { accountId: string; platform: string; accountName: string; expiresAt: string; daysLeft: number }[] }>('/account-warnings');
+  }
+
   // Posts
   getPosts(params?: { start?: string; end?: string; status?: string; platform?: string }) {
     const query = new URLSearchParams();

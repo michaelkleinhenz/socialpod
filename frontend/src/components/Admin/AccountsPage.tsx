@@ -1,10 +1,39 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { SocialAccount, Team, PublicSettings } from '../../types';
-import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Clock, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import './Admin.css';
+
+function TokenExpiryBadge({ tokenExpiry }: { tokenExpiry?: string }) {
+  if (!tokenExpiry) return null;
+  const expiry = new Date(tokenExpiry);
+  if (isNaN(expiry.getTime())) return null;
+  const now = new Date();
+  const daysLeft = Math.floor((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const dateStr = expiry.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+  if (daysLeft < 0) {
+    return (
+      <div className="token-expiry token-expired">
+        <AlertTriangle size={12} /> Token expired
+      </div>
+    );
+  }
+  if (daysLeft <= 7) {
+    return (
+      <div className="token-expiry token-expiring-soon">
+        <AlertTriangle size={12} /> Expires in {daysLeft}d ({dateStr})
+      </div>
+    );
+  }
+  return (
+    <div className="token-expiry token-expiry-ok">
+      <Clock size={12} /> Expires {dateStr}
+    </div>
+  );
+}
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -294,6 +323,7 @@ export function AccountsPage() {
                 <div className="account-name">{account.displayName || account.accountName}</div>
                 <div className="account-handle">@{account.accountName}</div>
                 {!account.isActive && <span className="badge badge-draft" style={{ marginBottom: 6 }}>Disabled</span>}
+                <TokenExpiryBadge tokenExpiry={account.tokenExpiry} />
                 <div style={{ marginTop: 8 }}>
                   <select
                     className="input"

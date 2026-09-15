@@ -156,6 +156,7 @@ func main() {
 		auth.GET("/auth/me", authHandler.Me)
 		auth.PUT("/auth/password", authHandler.UpdatePassword)
 		auth.POST("/auth/api-token", authHandler.GenerateAPIToken)
+		auth.GET("/account-warnings", authHandler.AccountWarnings)
 
 		// Posts
 		auth.GET("/posts", postHandler.List)

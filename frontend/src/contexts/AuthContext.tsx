@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import toast from 'react-hot-toast';
 import { api } from '../services/api';
 import type { User } from '../types';
 
@@ -21,7 +22,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = api.getToken();
     if (token) {
       api.getMe()
-        .then(setUser)
+        .then(u => {
+          setUser(u);
+          api.getAccountWarnings().then(({ warnings }) => {
+            for (const w of warnings) {
+              const msg = w.daysLeft === 0
+                ? `${w.platform} token for "${w.accountName}" has expired. Please re-authenticate.`
+                : `${w.platform} token for "${w.accountName}" expires in ${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'}. Please re-authenticate.`;
+              toast.error(msg, { duration: 10000 });
+            }
+          }).catch(() => {});
+        })
         .catch(() => api.setToken(null))
         .finally(() => setLoading(false));
     } else {

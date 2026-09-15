@@ -236,6 +236,84 @@ func (h *AuthHandler) UpdatePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
+type TokenWarning struct {
+	AccountID   string `json:"accountId"`
+	Platform    string `json:"platform"`
+	AccountName string `json:"accountName"`
+	ExpiresAt   string `json:"expiresAt"`
+	DaysLeft    int    `json:"daysLeft"`
+}
+
+func (h *AuthHandler) AccountWarnings(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
+	// Determine which accounts to check based on user's team membership.
+	var teamID *primitive.ObjectID
+	if isTeam, ok := c.Get("isTeamToken"); ok && isTeam.(bool) {
+		teamID = &objID
+	} else {
+		var user models.User
+		if err := h.DB.Users().FindOne(ctx, bson.M{"_id": objID}).Decode(&user); err != nil {
+			c.JSON(http.StatusOK, gin.H{"warnings": []TokenWarning{}})
+			return
+		}
+		teamID = user.TeamID
+	}
+
+	if teamID == nil {
+		c.JSON(http.StatusOK, gin.H{"warnings": []TokenWarning{}})
+		return
+	}
+
+	threshold := time.Now().Add(7 * 24 * time.Hour)
+	cursor, err := h.DB.SocialAccounts().Find(ctx, bson.M{
+		"isActive":    true,
+		"teamId":      teamID,
+		"tokenExpiry": bson.M{"$ne": time.Time{}, "$lte": threshold},
+	})
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"warnings": []TokenWarning{}})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var accounts []models.SocialAccount
+	cursor.All(ctx, &accounts)
+
+	var warnings []TokenWarning
+	for _, a := range accounts {
+		canAutoRenew := false
+		switch a.Platform {
+		case models.PlatformInstagram, models.PlatformThreads:
+			canAutoRenew = true
+		case models.PlatformLinkedIn:
+			canAutoRenew = a.RefreshToken != ""
+		case models.PlatformYouTube:
+			canAutoRenew = a.RefreshToken != ""
+		}
+		if canAutoRenew {
+			continue
+		}
+		daysLeft := int(time.Until(a.TokenExpiry).Hours() / 24)
+		if daysLeft < 0 {
+			daysLeft = 0
+		}
+		warnings = append(warnings, TokenWarning{
+			AccountID:   a.ID.Hex(),
+			Platform:    string(a.Platform),
+			AccountName: a.DisplayName,
+			ExpiresAt:   a.TokenExpiry.Format(time.RFC3339),
+			DaysLeft:    daysLeft,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"warnings": warnings})
+}
+
 func (h *AuthHandler) GenerateAPIToken(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))

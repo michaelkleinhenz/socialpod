@@ -453,6 +453,34 @@
   margin-top: 2px;
 }
 
+.token-expiry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.token-expiry-ok {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+.token-expiring-soon {
+  color: var(--warning-text, #7a5c00);
+  background: var(--warning-bg, #fff8e1);
+  border: 1px solid var(--warning-border, #f9a825);
+}
+
+.token-expired {
+  color: var(--danger, #ef4444);
+  background: var(--danger-bg, #fef2f2);
+  border: 1px solid var(--danger-border, #ef4444);
+}
+
 /* Settings */
 .settings-card {
   max-width: 700px;
