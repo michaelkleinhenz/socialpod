@@ -191,6 +191,14 @@ class ApiClient {
     return this.request<any>(`/admin/accounts/${id}/toggle`, { method: 'PATCH' });
   }
 
+  testAccount(id: string) {
+    return this.request<{ valid: boolean; error?: string }>(`/admin/accounts/${id}/test`, { method: 'POST' });
+  }
+
+  getReauthUrl(id: string) {
+    return this.request<{ url: string }>(`/admin/accounts/${id}/reauth-url`);
+  }
+
   assignAccountTeam(id: string, teamId: string | null) {
     return this.request<any>(`/admin/accounts/${id}/team`, {
       method: 'PATCH',
@@ -244,6 +252,14 @@ class ApiClient {
 
   toggleTeamAccount(id: string) {
     return this.request<any>(`/team/accounts/${id}/toggle`, { method: 'PATCH' });
+  }
+
+  testTeamAccount(id: string) {
+    return this.request<{ valid: boolean; error?: string }>(`/team/accounts/${id}/test`, { method: 'POST' });
+  }
+
+  getTeamReauthUrl(id: string) {
+    return this.request<{ url: string }>(`/team/accounts/${id}/reauth-url`);
   }
 
   getTeamInstagramAuthUrl() {

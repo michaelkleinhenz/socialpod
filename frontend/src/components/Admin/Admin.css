@@ -481,6 +481,30 @@
   border: 1px solid var(--danger-border, #ef4444);
 }
 
+.token-valid {
+  color: var(--success, #22c55e);
+  background: var(--success-bg, #f0fdf4);
+  border: 1px solid var(--success-border, #22c55e);
+}
+
+.token-invalid {
+  color: var(--danger, #ef4444);
+  background: var(--danger-bg, #fef2f2);
+  border: 1px solid var(--danger-border, #ef4444);
+}
+
+.account-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.account-actions .btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 /* Settings */
 .settings-card {
   max-width: 700px;
