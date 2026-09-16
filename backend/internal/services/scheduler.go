@@ -103,7 +103,7 @@ func (s *Scheduler) refreshAccountAvatars() {
 		case models.PlatformLinkedIn:
 			displayName, avatarURL, fetchErr = s.LinkedIn.FetchProfile(&account)
 		case models.PlatformYouTube:
-			displayName, avatarURL, fetchErr = s.YouTube.FetchProfile(&account)
+			displayName, avatarURL, fetchErr = s.YouTube.FetchProfile(ctx, &account)
 		default:
 			continue
 		}

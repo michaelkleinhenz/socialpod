@@ -184,7 +184,7 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 }
 
 func (s *YouTubeService) ensureValidToken(ctx context.Context, account *models.SocialAccount, settings *models.AppSettings) (string, error) {
-	if account.TokenExpiry == nil || account.TokenExpiry.IsZero() || time.Now().Before(account.TokenExpiry.Add(-5*time.Minute)) {
+	if account.TokenExpiry != nil && !account.TokenExpiry.IsZero() && time.Now().Before(account.TokenExpiry.Add(-5*time.Minute)) {
 		return account.AccessToken, nil
 	}
 
@@ -257,7 +257,7 @@ func (s *YouTubeService) ExchangeCodeForToken(ctx context.Context, code, clientI
 		return nil, fmt.Errorf("failed to get YouTube access token")
 	}
 
-	channelName, channelID, avatarURL := s.fetchChannelInfo(tokenResp.AccessToken)
+	channelName, channelID, avatarURL, _ := s.fetchChannelInfo(tokenResp.AccessToken)
 
 	account := &models.SocialAccount{
 		Platform:         models.PlatformYouTube,
@@ -274,15 +274,23 @@ func (s *YouTubeService) ExchangeCodeForToken(ctx context.Context, code, clientI
 	return account, nil
 }
 
-func (s *YouTubeService) fetchChannelInfo(accessToken string) (name, channelID, avatarURL string) {
-	req, _ := http.NewRequest("GET", youtubeChannelURL, nil)
+func (s *YouTubeService) fetchChannelInfo(accessToken string) (name, channelID, avatarURL string, err error) {
+	req, err := http.NewRequest("GET", youtubeChannelURL, nil)
+	if err != nil {
+		return "", "", "", err
+	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "YouTube Channel", "", ""
+		return "", "", "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", "", "", fmt.Errorf("YouTube API error (%d): %s", resp.StatusCode, string(body))
+	}
 
 	var result struct {
 		Items []struct {
@@ -301,13 +309,24 @@ func (s *YouTubeService) fetchChannelInfo(accessToken string) (name, channelID, 
 
 	if len(result.Items) > 0 {
 		item := result.Items[0]
-		return item.Snippet.Title, item.ID, item.Snippet.Thumbnails.Default.URL
+		return item.Snippet.Title, item.ID, item.Snippet.Thumbnails.Default.URL, nil
 	}
-	return "YouTube Channel", "", ""
+	return "YouTube Channel", "", "", nil
 }
 
-func (s *YouTubeService) FetchProfile(account *models.SocialAccount) (string, string, error) {
-	name, _, avatar := s.fetchChannelInfo(account.AccessToken)
+func (s *YouTubeService) FetchProfile(ctx context.Context, account *models.SocialAccount) (string, string, error) {
+	var settings models.AppSettings
+	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+
+	accessToken, err := s.ensureValidToken(ctx, account, &settings)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to refresh YouTube token: %w", err)
+	}
+
+	name, _, avatar, err := s.fetchChannelInfo(accessToken)
+	if err != nil {
+		return "", "", err
+	}
 	return name, avatar, nil
 }
 

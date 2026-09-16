@@ -2647,7 +2647,7 @@ func (h *AdminHandler) TestAccount(c *gin.Context) {
 		}
 	case models.PlatformYouTube:
 		if h.YouTube != nil {
-			_, _, validationErr = h.YouTube.FetchProfile(&account)
+			_, _, validationErr = h.YouTube.FetchProfile(ctx, &account)
 		}
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported platform"})
