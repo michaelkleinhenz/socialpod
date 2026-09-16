@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { ConventionQueue, Platform, SocialAccount, Suffix, Watermark } from '../../types';
+import type { ConventionQueue, Platform, SocialAccount, Footer, Watermark } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -35,14 +35,14 @@ function QueueFormModal({
   const [minHoursBetween, setMinHoursBetween] = useState(initial?.minHoursBetweenPosts ?? 0);
   const [platforms, setPlatforms] = useState<Platform[]>(initial?.platforms ?? []);
   const [accountIds, setAccountIds] = useState<Record<string, string>>(initial?.accountIds ?? {});
-  const [suffixIds, setSuffixIds] = useState<Record<string, string>>(initial?.suffixIds ?? {});
-  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
+  const [footerIds, setFooterIds] = useState<Record<string, string>>(initial?.footerIds ?? {});
+  const [footers, setFooters] = useState<Footer[]>([]);
   const [watermarkId, setWatermarkId] = useState(initial?.watermarkId ?? '');
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getFooters().then(setFooters).catch(() => {});
     api.getWatermarks().then(setWatermarks).catch(() => {});
   }, []);
 
@@ -91,7 +91,7 @@ function QueueFormModal({
         minHoursBetweenPosts: minHoursBetween,
         platforms,
         accountIds,
-        suffixIds,
+        footerIds,
         watermarkId: watermarkId || null,
       });
     } finally {
@@ -284,17 +284,17 @@ function QueueFormModal({
             </div>
           )}
 
-          {suffixes.length > 0 && platforms.length > 0 && (
+          {footers.length > 0 && platforms.length > 0 && (
             <div className="form-group">
-              <label>Default suffixes</label>
+              <label>Default footers</label>
               <div className="account-selects">
                 {platforms.map(p => (
                   <div key={p} className="account-select-row">
                     <PlatformIcon platform={p} />
                     <select
                       className="select"
-                      value={suffixIds[p] ?? ''}
-                      onChange={e => setSuffixIds(prev => {
+                      value={footerIds[p] ?? ''}
+                      onChange={e => setFooterIds(prev => {
                         const next = { ...prev };
                         if (e.target.value) next[p] = e.target.value;
                         else delete next[p];
@@ -302,7 +302,7 @@ function QueueFormModal({
                       })}
                     >
                       <option value="">None</option>
-                      {suffixes.map(s => (
+                      {footers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>

@@ -101,19 +101,19 @@
   gap: 6px;
 }
 
-.suffix-selectors {
+.footer-selectors {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.suffix-selector-row {
+.footer-selector-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.suffix-label {
+.footer-label {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -123,17 +123,17 @@
   min-width: 130px;
 }
 
-.suffix-label.disabled {
+.footer-label.disabled {
   opacity: 0.4;
 }
 
-.suffix-select {
+.footer-select {
   flex: 1;
   font-size: 13px;
   padding: 6px 10px;
 }
 
-.suffix-select:disabled {
+.footer-select:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

@@ -156,7 +156,7 @@ type ConventionQueueInput struct {
 	TimeSlots            []string          `json:"timeSlots,omitempty"`
 	Platforms            []models.Platform `json:"platforms" binding:"required"`
 	AccountIDs           map[string]string `json:"accountIds,omitempty"`
-	SuffixIDs            map[string]string `json:"suffixIds,omitempty"`
+	FooterIDs            map[string]string `json:"footerIds,omitempty"`
 	WatermarkID          *string           `json:"watermarkId,omitempty"`
 }
 
@@ -210,7 +210,7 @@ func (h *ConventionHandler) CreateQueue(c *gin.Context) {
 		TimeSlots:            input.TimeSlots,
 		Platforms:            input.Platforms,
 		AccountIDs:           input.AccountIDs,
-		SuffixIDs:            input.SuffixIDs,
+		FooterIDs:            input.FooterIDs,
 		WatermarkID:          parseWatermarkID(input.WatermarkID),
 		Status:               models.ConventionQueueStatusActive,
 		CreatedAt:            time.Now(),
@@ -351,7 +351,7 @@ func (h *ConventionHandler) UpdateQueue(c *gin.Context) {
 		"timeSlots":            input.TimeSlots,
 		"platforms":            input.Platforms,
 		"accountIds":           input.AccountIDs,
-		"suffixIds":            input.SuffixIDs,
+		"footerIds":            input.FooterIDs,
 		"watermarkId":          parseWatermarkID(input.WatermarkID),
 		"updatedAt":            time.Now(),
 	}})
@@ -513,7 +513,7 @@ type UpdateItemInput struct {
 	BGGURL     *string           `json:"bggUrl,omitempty"`
 	Platforms  []models.Platform `json:"platforms,omitempty"`
 	AccountIDs map[string]string `json:"accountIds"`
-	SuffixIDs  map[string]string `json:"suffixIds"`
+	FooterIDs  map[string]string `json:"footerIds"`
 }
 
 func (h *ConventionHandler) UpdateItem(c *gin.Context) {
@@ -556,8 +556,8 @@ func (h *ConventionHandler) UpdateItem(c *gin.Context) {
 	if input.AccountIDs != nil {
 		update["accountIds"] = input.AccountIDs
 	}
-	if input.SuffixIDs != nil {
-		update["suffixIds"] = input.SuffixIDs
+	if input.FooterIDs != nil {
+		update["footerIds"] = input.FooterIDs
 	}
 
 	result, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
@@ -1096,9 +1096,9 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 	if len(accountIDs) == 0 {
 		accountIDs = queue.AccountIDs
 	}
-	suffixIDs := item.SuffixIDs
-	if len(suffixIDs) == 0 {
-		suffixIDs = queue.SuffixIDs
+	footerIDs := item.FooterIDs
+	if len(footerIDs) == 0 {
+		footerIDs = queue.FooterIDs
 	}
 
 	// A gallery item carries several images; a plain item has just ImageURL.
@@ -1131,7 +1131,7 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 		ScheduledAt: scheduledAt,
 		Status:      models.PostStatusScheduled,
 		AccountIDs:  accountIDs,
-		SuffixIDs:   suffixIDs,
+		FooterIDs:   footerIDs,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}

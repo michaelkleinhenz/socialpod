@@ -50,7 +50,7 @@ type EpisodeSubmitInput struct {
 	ImageURLs        []string          `json:"imageUrls,omitempty"`
 	Tags             []string          `json:"tags,omitempty"`
 	Status           models.PostStatus `json:"status,omitempty"`
-	SuffixIDs        map[string]string `json:"suffixIds,omitempty"`
+	FooterIDs        map[string]string `json:"footerIds,omitempty"`
 	ContentOverrides map[string]string `json:"contentOverrides,omitempty"`
 	AccountIDs       map[string]string `json:"accountIds,omitempty"`
 	FirstComment     string            `json:"firstComment,omitempty"`
@@ -266,7 +266,7 @@ func (h *EpisodeHandler) createPost(ctx context.Context, c *gin.Context, input *
 		Tags:             input.Tags,
 		AccountIDs:       input.AccountIDs,
 		ImageURLs:        allImages,
-		SuffixIDs:        input.SuffixIDs,
+		FooterIDs:        input.FooterIDs,
 		ContentOverrides: input.ContentOverrides,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),

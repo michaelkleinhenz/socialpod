@@ -63,7 +63,7 @@ func (m *MongoDB) ensureIndexes() {
 		Options: options.Index().SetUnique(true),
 	})
 
-	m.Suffixes().Indexes().CreateMany(ctx, []mongo.IndexModel{
+	m.Footers().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
@@ -128,8 +128,8 @@ func (m *MongoDB) Settings() *mongo.Collection {
 	return m.Database.Collection("settings")
 }
 
-func (m *MongoDB) Suffixes() *mongo.Collection {
-	return m.Database.Collection("suffixes")
+func (m *MongoDB) Footers() *mongo.Collection {
+	return m.Database.Collection("footers")
 }
 
 func (m *MongoDB) Watermarks() *mongo.Collection {

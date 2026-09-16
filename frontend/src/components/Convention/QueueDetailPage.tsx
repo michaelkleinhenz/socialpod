@@ -8,7 +8,7 @@ import type {
   SchedulePreview,
   SocialAccount,
   Platform,
-  Suffix,
+  Footer,
   Watermark,
 } from '../../types';
 import { format, parseISO } from 'date-fns';
@@ -65,9 +65,9 @@ function QueueItemCard({
   item,
   index,
   queueId,
-  suffixes,
+  footers,
   queuePlatforms,
-  queueSuffixIds,
+  queueFooterIds,
   overlayUrl,
   onUpdate,
   onDelete,
@@ -78,9 +78,9 @@ function QueueItemCard({
   item: ConventionQueueItem;
   index: number;
   queueId: string;
-  suffixes: Suffix[];
+  footers: Footer[];
   queuePlatforms: Platform[];
-  queueSuffixIds: Record<string, string>;
+  queueFooterIds: Record<string, string>;
   overlayUrl?: string;
   onUpdate: (item: ConventionQueueItem) => void;
   onDelete: () => void;
@@ -90,7 +90,7 @@ function QueueItemCard({
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
   const [bggUrl, setBggUrl] = useState(item.bggUrl ?? '');
-  const [itemSuffixIds, setItemSuffixIds] = useState<Record<string, string>>(item.suffixIds ?? {});
+  const [itemFooterIds, setItemFooterIds] = useState<Record<string, string>>(item.footerIds ?? {});
   const [analyzing, setAnalyzing] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -100,7 +100,7 @@ function QueueItemCard({
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const bggSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const suffixSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const footerSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     setCaption(item.caption ?? '');
@@ -147,14 +147,14 @@ function QueueItemCard({
     clearTimeout(saveTimer.current);
     clearTimeout(savedFlashTimer.current);
     clearTimeout(bggSaveTimer.current);
-    clearTimeout(suffixSaveTimer.current);
+    clearTimeout(footerSaveTimer.current);
   }, []);
 
-  const saveSuffixIds = (newSuffixIds: Record<string, string>) => {
-    clearTimeout(suffixSaveTimer.current);
-    suffixSaveTimer.current = setTimeout(async () => {
+  const saveFooterIds = (newFooterIds: Record<string, string>) => {
+    clearTimeout(footerSaveTimer.current);
+    footerSaveTimer.current = setTimeout(async () => {
       try {
-        const updated = await api.updateConventionItem(queueId, item.id, { suffixIds: newSuffixIds });
+        const updated = await api.updateConventionItem(queueId, item.id, { footerIds: newFooterIds });
         onUpdate(updated);
       } catch {
         // silently fail
@@ -162,12 +162,12 @@ function QueueItemCard({
     }, 600);
   };
 
-  const handleSuffixChange = (platform: string, value: string) => {
-    const next = { ...itemSuffixIds };
+  const handleFooterChange = (platform: string, value: string) => {
+    const next = { ...itemFooterIds };
     if (value) next[platform] = value;
     else delete next[platform];
-    setItemSuffixIds(next);
-    saveSuffixIds(next);
+    setItemFooterIds(next);
+    saveFooterIds(next);
   };
 
   const toggleApprove = async () => {
@@ -215,16 +215,13 @@ function QueueItemCard({
 
   const effectivePlatforms = item.platforms && item.platforms.length > 0 ? item.platforms : queuePlatforms;
 
-  // Character limit: strictest of the effective platforms, minus the length of
-  // the selected suffix for each (an item override falls back to the queue
-  // default). Mirrors the PostEditor so captions are validated identically.
-  const suffixLen = (platform: Platform) => {
-    const id = itemSuffixIds[platform] ?? queueSuffixIds[platform];
+  const footerLen = (platform: Platform) => {
+    const id = itemFooterIds[platform] ?? queueFooterIds[platform];
     if (!id) return 0;
-    const s = suffixes.find(x => x.id === id);
-    return s ? s.content.length + 1 : 0; // +1 for the newline separator
+    const s = footers.find(x => x.id === id);
+    return s ? s.content.length + 1 : 0;
   };
-  const effectiveLimit = (platform: Platform) => platformLimit(platform) - suffixLen(platform);
+  const effectiveLimit = (platform: Platform) => platformLimit(platform) - footerLen(platform);
   const charLimit = effectivePlatforms.length === 0
     ? effectiveLimit('instagram')
     : Math.min(...effectivePlatforms.map(effectiveLimit));
@@ -237,7 +234,7 @@ function QueueItemCard({
   // published its item is removed from the queue entirely.
   const isLocked = item.status === 'scheduled';
 
-  const suffixPlatformLabels: Record<string, string> = {
+  const footerPlatformLabels: Record<string, string> = {
     bluesky: 'Bluesky',
     instagram: 'Instagram',
     twitter: 'X/Twitter',
@@ -363,22 +360,22 @@ function QueueItemCard({
           {effectivePlatforms.map(p => <PlatformIcon key={p} platform={p} />)}
         </div>
 
-        {suffixes.length > 0 && (
-          <div className="conv-suffix-selectors">
+        {footers.length > 0 && (
+          <div className="conv-footer-selectors">
             {effectivePlatforms.map(platform => (
-              <div key={platform} className="conv-suffix-row">
+              <div key={platform} className="conv-footer-row">
                 <label>
                   <PlatformIcon platform={platform} size={11} />
-                  {suffixPlatformLabels[platform] ?? platform}
+                  {footerPlatformLabels[platform] ?? platform}
                 </label>
                 <select
                   className="select"
-                  value={itemSuffixIds[platform] ?? queueSuffixIds[platform] ?? ''}
-                  onChange={e => handleSuffixChange(platform, e.target.value)}
+                  value={itemFooterIds[platform] ?? queueFooterIds[platform] ?? ''}
+                  onChange={e => handleFooterChange(platform, e.target.value)}
                   disabled={isLocked}
                 >
                   <option value="">— queue default —</option>
-                  {suffixes.map(s => (
+                  {footers.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -527,7 +524,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [queue, setQueue] = useState<ConventionQueue | null>(null);
   const [items, setItems] = useState<ConventionQueueItem[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
-  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
+  const [footers, setFooters] = useState<Footer[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [bggUrls, setBggUrls] = useState('');
@@ -562,7 +559,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   useEffect(() => { loadQueue(); }, [loadQueue]);
 
   useEffect(() => {
-    api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getFooters().then(setFooters).catch(() => {});
     api.getWatermarks().then(setWatermarks).catch(() => {});
   }, []);
 
@@ -979,9 +976,9 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
               item={item}
               index={idx}
               queueId={queue.id}
-              suffixes={suffixes}
+              footers={footers}
               queuePlatforms={queue.platforms}
-              queueSuffixIds={queue.suffixIds ?? {}}
+              queueFooterIds={queue.footerIds ?? {}}
               overlayUrl={overlayUrl}
               onUpdate={handleUpdateItem}
               onDelete={() => handleDeleteItem(item)}

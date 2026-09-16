@@ -48,7 +48,7 @@ type CreatePostInput struct {
 	AccountIDs       map[string]string `json:"accountIds,omitempty"`
 	ImageURLs        []string          `json:"imageUrls,omitempty"`
 	Status           models.PostStatus `json:"status,omitempty"`
-	SuffixIDs        map[string]string `json:"suffixIds,omitempty"`
+	FooterIDs        map[string]string `json:"footerIds,omitempty"`
 	ContentOverrides map[string]string `json:"contentOverrides,omitempty"`
 	EpisodeNews      *EpisodeNewsInput `json:"episodeNews,omitempty"`
 }
@@ -63,7 +63,7 @@ type UpdatePostInput struct {
 	AccountIDs       map[string]string  `json:"accountIds,omitempty"`
 	ImageURLs        []string           `json:"imageUrls,omitempty"`
 	Status           *models.PostStatus `json:"status,omitempty"`
-	SuffixIDs        map[string]string  `json:"suffixIds"`
+	FooterIDs        map[string]string  `json:"footerIds"`
 	ContentOverrides map[string]string  `json:"contentOverrides"`
 }
 
@@ -168,7 +168,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 		Tags:             input.Tags,
 		AccountIDs:       input.AccountIDs,
 		ImageURLs:        input.ImageURLs,
-		SuffixIDs:        input.SuffixIDs,
+		FooterIDs:        input.FooterIDs,
 		ContentOverrides: input.ContentOverrides,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -363,8 +363,8 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.Status != nil {
 		update["status"] = *input.Status
 	}
-	if input.SuffixIDs != nil {
-		update["suffixIds"] = input.SuffixIDs
+	if input.FooterIDs != nil {
+		update["footerIds"] = input.FooterIDs
 	}
 	// ContentOverrides uses explicit null-check via the json tag (no omitempty) so
 	// an empty map from the client clears all overrides, while absence keeps existing.
@@ -724,11 +724,11 @@ func (h *PostHandler) Retry(c *gin.Context) {
 	c.JSON(http.StatusOK, post)
 }
 
-func (h *PostHandler) suffixContent(ctx context.Context, suffixIDStr string, teamID *primitive.ObjectID) string {
-	if suffixIDStr == "" {
+func (h *PostHandler) footerContent(ctx context.Context, footerIDStr string, teamID *primitive.ObjectID) string {
+	if footerIDStr == "" {
 		return ""
 	}
-	oid, err := primitive.ObjectIDFromHex(suffixIDStr)
+	oid, err := primitive.ObjectIDFromHex(footerIDStr)
 	if err != nil {
 		return ""
 	}
@@ -736,11 +736,11 @@ func (h *PostHandler) suffixContent(ctx context.Context, suffixIDStr string, tea
 	if teamID != nil {
 		filter["teamId"] = teamID
 	}
-	var suffix models.Suffix
-	if err := h.DB.Suffixes().FindOne(ctx, filter).Decode(&suffix); err != nil {
+	var footer models.Footer
+	if err := h.DB.Footers().FindOne(ctx, filter).Decode(&footer); err != nil {
 		return ""
 	}
-	return suffix.Content
+	return footer.Content
 }
 
 func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
@@ -786,11 +786,11 @@ func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
 	instagramText := platformContent("instagram")
 	bskyText := platformContent("bluesky")
 
-	if post.SuffixIDs != nil {
-		if s := h.suffixContent(ctx, post.SuffixIDs["instagram"], post.TeamID); s != "" {
+	if post.FooterIDs != nil {
+		if s := h.footerContent(ctx, post.FooterIDs["instagram"], post.TeamID); s != "" {
 			instagramText = instagramText + "\n" + s
 		}
-		if s := h.suffixContent(ctx, post.SuffixIDs["bluesky"], post.TeamID); s != "" {
+		if s := h.footerContent(ctx, post.FooterIDs["bluesky"], post.TeamID); s != "" {
 			bskyText = bskyText + "\n" + s
 		}
 	}

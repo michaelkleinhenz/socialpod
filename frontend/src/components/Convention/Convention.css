@@ -667,19 +667,19 @@
 
 .conv-overrides-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 
-.conv-suffix-selectors {
+.conv-footer-selectors {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 
-.conv-suffix-row {
+.conv-footer-row {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.conv-suffix-row label {
+.conv-footer-row label {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -689,7 +689,7 @@
   min-width: 80px;
 }
 
-.conv-suffix-row .select {
+.conv-footer-row .select {
   flex: 1;
   font-size: 12px;
   padding: 3px 6px;

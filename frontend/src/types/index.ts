@@ -155,14 +155,14 @@ export interface Post {
   results?: PostResult[];
   tags?: string[];
   accountIds?: Record<string, string>;
-  suffixIds?: Record<string, string>;
+  footerIds?: Record<string, string>;
   contentOverrides?: Record<string, string>;
   episodeNews?: EpisodeNews;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Suffix {
+export interface Footer {
   id: string;
   userId: string;
   name: string;
@@ -280,7 +280,7 @@ export interface ConventionQueue {
   timeSlots?: string[];
   platforms: Platform[];
   accountIds?: Record<string, string>;
-  suffixIds?: Record<string, string>;
+  footerIds?: Record<string, string>;
   /** Optional overlay watermark applied to every image at post time. */
   watermarkId?: string;
   status: string;
@@ -309,7 +309,7 @@ export interface ConventionQueueItem {
   sortOrder: number;
   platforms?: Platform[];
   accountIds?: Record<string, string>;
-  suffixIds?: Record<string, string>;
+  footerIds?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }

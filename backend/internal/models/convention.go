@@ -35,7 +35,7 @@ type ConventionQueue struct {
 	TimeSlots  []string          `bson:"timeSlots,omitempty" json:"timeSlots,omitempty"`
 	Platforms  []Platform        `bson:"platforms" json:"platforms"`
 	AccountIDs map[string]string `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
-	SuffixIDs  map[string]string `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
+	FooterIDs  map[string]string `bson:"footerIds,omitempty" json:"footerIds,omitempty"`
 	// WatermarkID, when set, is an overlay watermark that is composited onto
 	// each image at post time.
 	WatermarkID *primitive.ObjectID `bson:"watermarkId,omitempty" json:"watermarkId,omitempty"`
@@ -71,7 +71,7 @@ type ConventionQueueItem struct {
 	SortOrder  int                 `bson:"sortOrder" json:"sortOrder"`
 	Platforms  []Platform          `bson:"platforms,omitempty" json:"platforms,omitempty"`
 	AccountIDs map[string]string   `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
-	SuffixIDs  map[string]string   `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
+	FooterIDs  map[string]string   `bson:"footerIds,omitempty" json:"footerIds,omitempty"`
 	CreatedAt  time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt  time.Time           `bson:"updatedAt" json:"updatedAt"`
 }
