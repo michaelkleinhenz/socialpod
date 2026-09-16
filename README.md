@@ -12,12 +12,12 @@ A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, *
 - **Multi-platform posting** — cross-post with per-platform text customization
 - **Image editor** — crop, annotate, apply filters and watermarks in the browser
 - **Convention Mode** — drip-publish event photos with AI caption generation
-- **Suffix management** — append platform-specific text snippets at publish time
+- **Footer management** — append platform-specific text snippets at publish time
 - **@ Autocomplete** — saved mentions with per-platform handles
 - **Instagram feed** — view your Instagram account's post feed with engagement stats
 - **News & Episode Creators** — team plugins for automated news posts and podcast episodes via n8n
 - **BGG integration** — fetch board game data, cover art, and AI summaries from BoardGameGeek
-- **Multitenancy** — teams with shared posts, suffixes, API tokens, and team invites
+- **Multitenancy** — teams with shared posts, footers, API tokens, and team invites
 - **PWA share target** — share images/videos directly from mobile apps into SocialPod
 - **REST API** — full scheduling API with API token authentication
 - **n8n node** — native community node for workflow automation
@@ -55,7 +55,7 @@ Full documentation is in the [Wiki](../../wiki):
 |---|---|
 | [Getting Started](../../wiki/Getting-Started) | Configuration, environment variables, production deployment |
 | [Connecting Platforms](../../wiki/Connecting-Platforms) | Auth setup for each social network |
-| [Features](../../wiki/Features) | Image editor, suffixes, mentions, AI generation, convention mode, and more |
+| [Features](../../wiki/Features) | Image editor, footers, mentions, AI generation, convention mode, and more |
 | [REST API](../../wiki/REST-API) | Full API reference with curl examples |
 | [n8n Integration](../../wiki/n8n-Integration) | Installing and using the native n8n community node |
 | [Development](../../wiki/Development) | Architecture, Makefile, CI/CD |

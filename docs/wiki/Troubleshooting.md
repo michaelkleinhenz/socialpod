@@ -91,7 +91,7 @@
 - You ran `npm install` without `--omit=dev`. Use `npm install --omit=dev` — n8n provides `n8n-workflow` at runtime, so the build-time dependency is not needed.
 
 **n8n node shows fewer operations than expected**
-- The n8n node supports 21 operations across 6 resources: Post (7 ops), Mention (6 ops), Suffix (4 ops), Watermark (2 ops), Account (1 op), and AI Text (1 op). If operations are missing, update to the latest version of `n8n-nodes-socialpod`.
+- The n8n node supports 21 operations across 6 resources: Post (7 ops), Mention (6 ops), Footer (4 ops), Watermark (2 ops), Account (1 op), and AI Text (1 op). If operations are missing, update to the latest version of `n8n-nodes-socialpod`.
 
 ---
 

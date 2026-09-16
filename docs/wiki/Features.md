@@ -2,21 +2,21 @@
 
 ---
 
-## Suffix Management
+## Footer Management
 
-Suffixes are text snippets **automatically appended** to a post when it is published, without counting against the character limit visible in the editor.
+Footers are text snippets **automatically appended** to a post when it is published, without counting against the character limit visible in the editor.
 
-### Creating Suffixes
+### Creating Footers
 
-1. Click **Suffixes** in the sidebar.
-2. Click **New Suffix**, give it a name and content (e.g. `🌐 mysite.com`).
+1. Click **Footers** in the sidebar.
+2. Click **New Footer**, give it a name and content (e.g. `🌐 mysite.com`).
 3. Click **Create**.
 
-### Using Suffixes in Posts
+### Using Footers in Posts
 
-When composing a post, suffix dropdowns appear per platform. The character counter deducts the suffix length in real time so you always see accurate remaining characters.
+When composing a post, footer dropdowns appear per platform. The character counter deducts the footer length in real time so you always see accurate remaining characters.
 
-Suffixes are stored by reference — updating a suffix affects all future posts that use it.
+Footers are stored by reference — updating a footer affects all future posts that use it.
 
 ---
 
@@ -205,8 +205,8 @@ SocialPod displays your Instagram account's published post feed with engagement 
 - The **first user** to register becomes the **admin**.
 - Subsequent users are regular users who manage their own posts.
 - **Admins** have access to: Dashboard with AI insights, social account management, user management, and application settings.
-- Each user's posts and suffixes are isolated by default.
-- **Teams**: admins can create teams and assign users. Team members share posts and suffixes scoped to the team.
+- Each user's posts and footers are isolated by default.
+- **Teams**: admins can create teams and assign users. Team members share posts and footers scoped to the team.
 
 Team API tokens (format: `st_...`) can be generated from the admin **Teams** page.
 
