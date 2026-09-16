@@ -280,6 +280,7 @@ export function TeamAccountsPage() {
       setTestResults(prev => ({ ...prev, [id]: result }));
       if (result.valid) {
         toast.success('Token is valid');
+        loadAccounts();
       } else {
         toast.error('Token is invalid: ' + (result.error || 'Unknown error'));
       }
