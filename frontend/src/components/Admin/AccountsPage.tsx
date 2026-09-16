@@ -6,8 +6,8 @@ import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import './Admin.css';
 
-function TokenExpiryBadge({ tokenExpiry }: { tokenExpiry?: string }) {
-  if (!tokenExpiry) return null;
+function TokenExpiryBadge({ tokenExpiry, platform }: { tokenExpiry?: string; platform?: string }) {
+  if (!tokenExpiry || platform === 'youtube') return null;
   const expiry = new Date(tokenExpiry);
   if (isNaN(expiry.getTime())) return null;
   const now = new Date();
@@ -363,7 +363,7 @@ export function AccountsPage() {
                 <div className="account-name">{account.displayName || account.accountName}</div>
                 <div className="account-handle">@{account.accountName}</div>
                 {!account.isActive && <span className="badge badge-draft" style={{ marginBottom: 6 }}>Disabled</span>}
-                <TokenExpiryBadge tokenExpiry={account.tokenExpiry} />
+                <TokenExpiryBadge tokenExpiry={account.tokenExpiry} platform={account.platform} />
                 {testResults[account.id] && (
                   <div className={`token-expiry ${testResults[account.id].valid ? 'token-valid' : 'token-invalid'}`}>
                     {testResults[account.id].valid
