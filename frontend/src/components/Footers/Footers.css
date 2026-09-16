@@ -4,76 +4,76 @@
   margin-top: 4px;
 }
 
-.suffix-form-card {
+.footer-form-card {
   margin-bottom: 16px;
 }
 
-.suffix-form-header {
+.footer-form-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
 
-.suffix-form-header h3 {
+.footer-form-header h3 {
   font-size: 16px;
   font-weight: 600;
 }
 
-.suffix-char-hint {
+.footer-char-hint {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
   text-align: right;
 }
 
-.suffix-list {
+.footer-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.suffix-card {
+.footer-card {
   padding: 16px;
 }
 
-.suffix-row {
+.footer-row {
   display: flex;
   align-items: flex-start;
   gap: 12px;
 }
 
-.suffix-info {
+.footer-info {
   flex: 1;
   min-width: 0;
 }
 
-.suffix-name {
+.footer-name {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 4px;
 }
 
-.suffix-content {
+.footer-content {
   font-size: 13px;
   color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.suffix-actions {
+.footer-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.suffix-edit-form {
+.footer-edit-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.suffix-edit-actions {
+.footer-edit-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;

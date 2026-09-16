@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, PostStatus, Suffix, SocialAccount, MentionEntry, TeamSettings } from '../../types';
+import type { Post, Platform, PostType, PostStatus, Footer, SocialAccount, MentionEntry, TeamSettings } from '../../types';
 import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Newspaper, Loader, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
@@ -24,7 +24,7 @@ interface PostDraft {
   platforms?: Platform[];
   scheduledAt?: string;
   status?: PostStatus;
-  suffixIds?: Record<string, string>;
+  footerIds?: Record<string, string>;
   addNews?: boolean;
   newsEpisodeNumber?: string;
   newsTitle?: string;
@@ -84,14 +84,14 @@ interface PreviewProps {
   twitterAccount?: SocialAccount | null;
   mastodonAccount?: SocialAccount | null;
   linkedinAccount?: SocialAccount | null;
-  bluskySuffix?: string;
-  instagramSuffix?: string;
-  twitterSuffix?: string;
-  mastodonSuffix?: string;
-  linkedinSuffix?: string;
+  bluskyFooter?: string;
+  instagramFooter?: string;
+  twitterFooter?: string;
+  mastodonFooter?: string;
+  linkedinFooter?: string;
 }
 
-function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, mastodonAccount, linkedinAccount, bluskySuffix, instagramSuffix, twitterSuffix, mastodonSuffix, linkedinSuffix }: PreviewProps) {
+function PostPreview({ content, contentOverrides, platforms, imageUrls, scheduledAt, apiUrl, blueskyAccount, instagramAccount, twitterAccount, mastodonAccount, linkedinAccount, bluskyFooter, instagramFooter, twitterFooter, mastodonFooter, linkedinFooter }: PreviewProps) {
   const time = scheduledAt
     ? format(parseISO(new Date(scheduledAt).toISOString()), 'MMM d, yyyy · HH:mm')
     : '';
@@ -107,11 +107,11 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
   const twBase = (contentOverrides?.['twitter'] ?? '') || content;
   const mstBase = (contentOverrides?.['mastodon'] ?? '') || content;
   const liBase = (contentOverrides?.['linkedin'] ?? '') || content;
-  const bskyContent = bluskySuffix ? bskyBase + '\n' + bluskySuffix : bskyBase;
-  const igContent = instagramSuffix ? igBase + '\n' + instagramSuffix : igBase;
-  const twContent = twitterSuffix ? twBase + '\n' + twitterSuffix : twBase;
-  const mstContent = mastodonSuffix ? mstBase + '\n' + mastodonSuffix : mstBase;
-  const liContent = linkedinSuffix ? liBase + '\n' + linkedinSuffix : liBase;
+  const bskyContent = bluskyFooter ? bskyBase + '\n' + bluskyFooter : bskyBase;
+  const igContent = instagramFooter ? igBase + '\n' + instagramFooter : igBase;
+  const twContent = twitterFooter ? twBase + '\n' + twitterFooter : twBase;
+  const mstContent = mastodonFooter ? mstBase + '\n' + mastodonFooter : mstBase;
+  const liContent = linkedinFooter ? liBase + '\n' + linkedinFooter : liBase;
 
   if (platforms.length === 0) {
     return (
@@ -426,8 +426,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const objUrlCache = useRef<Map<File, string>>(new Map());
   const [tags] = useState<string[]>(post?.tags || []);
   const [status, setStatus] = useState(draft?.status ?? post?.status ?? 'scheduled');
-  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
-  const [suffixIds, setSuffixIds] = useState<Record<string, string>>(draft?.suffixIds ?? post?.suffixIds ?? {});
+  const [footers, setFooters] = useState<Footer[]>([]);
+  const [footerIds, setFooterIds] = useState<Record<string, string>>(draft?.footerIds ?? post?.footerIds ?? {});
   const [mentions, setMentions] = useState<MentionEntry[]>([]);
   const [bggUrl, setBggUrl] = useState('');
   const [bggImportedUrl, setBggImportedUrl] = useState('');
@@ -476,7 +476,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         setNewsEnabled(true);
       }
     }).catch(() => {});
-    api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getFooters().then(setFooters).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
     loadAccounts();
     api.getWatermarks().then((wms: any[]) => {
@@ -502,7 +502,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       try {
         localStorage.setItem(draftKey, JSON.stringify({
           content, contentOverrides, customizePerPlatform, firstComment,
-          platforms, scheduledAt, status, suffixIds,
+          platforms, scheduledAt, status, footerIds,
           addNews, newsEpisodeNumber, newsTitle, newsAdditionalText,
         }));
       } catch {
@@ -511,7 +511,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }, 400);
     return () => clearTimeout(id);
   }, [draftKey, content, contentOverrides, customizePerPlatform, firstComment,
-      platforms, scheduledAt, status, suffixIds,
+      platforms, scheduledAt, status, footerIds,
       addNews, newsEpisodeNumber, newsTitle, newsAdditionalText]);
 
   useEffect(() => {
@@ -713,10 +713,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     );
   };
 
-  const suffixLen = (platform: Platform) => {
-    const id = suffixIds[platform];
+  const footerLen = (platform: Platform) => {
+    const id = footerIds[platform];
     if (!id) return 0;
-    const s = suffixes.find(x => x.id === id);
+    const s = footers.find(x => x.id === id);
     return s ? s.content.length + 1 : 0; // +1 for newline separator
   };
 
@@ -729,7 +729,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   };
 
   const effectiveLimit = (platform: Platform) =>
-    platformLimit(platform) - suffixLen(platform);
+    platformLimit(platform) - footerLen(platform);
 
   const charLimit = platforms.length === 0 ? effectiveLimit('instagram') : Math.min(
     ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
@@ -858,7 +858,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         imageUrls,
         tags,
         status: postNow ? 'scheduled' : status,
-        suffixIds: (isStory || isReel) ? {} : suffixIds,
+        footerIds: (isStory || isReel) ? {} : footerIds,
         contentOverrides: (isStory || isReel || !customizePerPlatform) ? {} : contentOverrides,
         accountIds,
       };
@@ -884,7 +884,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || status !== (post?.status || 'scheduled')
     || JSON.stringify(platforms) !== JSON.stringify(post?.platforms || ['bluesky'])
     || images.length !== (post?.imageUrls || []).length
-    || JSON.stringify(suffixIds) !== JSON.stringify(post?.suffixIds || {})
+    || JSON.stringify(footerIds) !== JSON.stringify(post?.footerIds || {})
     || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {});
 
   const fetchBGGData = async () => {
@@ -1238,9 +1238,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   )}
                 </div>
 
-                {/* Suffix selectors */}
-                {suffixes.length > 0 && platforms.length > 0 && (() => {
-                  const suffixPlatformLabels: Record<string, string> = {
+                {/* Footer selectors */}
+                {footers.length > 0 && platforms.length > 0 && (() => {
+                  const footerPlatformLabels: Record<string, string> = {
                     bluesky: 'Bluesky',
                     instagram: 'Instagram',
                     twitter: 'X/Twitter',
@@ -1249,16 +1249,16 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     linkedin: 'LinkedIn',
                   };
                   return (
-                    <div className="suffix-selectors">
+                    <div className="footer-selectors">
                       {platforms.map(platform => (
-                        <div key={platform} className="suffix-selector-row">
-                          <label className="suffix-label">
-                            <PlatformIcon platform={platform} size={12} /> {suffixPlatformLabels[platform] ?? platform} suffix
+                        <div key={platform} className="footer-selector-row">
+                          <label className="footer-label">
+                            <PlatformIcon platform={platform} size={12} /> {footerPlatformLabels[platform] ?? platform} footer
                           </label>
                           <select
-                            className="select suffix-select"
-                            value={suffixIds[platform] || ''}
-                            onChange={e => setSuffixIds(prev => {
+                            className="select footer-select"
+                            value={footerIds[platform] || ''}
+                            onChange={e => setFooterIds(prev => {
                               const next = { ...prev };
                               if (e.target.value) next[platform] = e.target.value;
                               else delete next[platform];
@@ -1266,7 +1266,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                             })}
                           >
                             <option value="">None</option>
-                            {suffixes.map(s => (
+                            {footers.map(s => (
                               <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
                           </select>
@@ -1479,11 +1479,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 twitterAccount={twitterAccount}
                 mastodonAccount={mastodonAccount}
                 linkedinAccount={linkedinAccount}
-                bluskySuffix={suffixes.find(s => s.id === suffixIds['bluesky'])?.content}
-                instagramSuffix={suffixes.find(s => s.id === suffixIds['instagram'])?.content}
-                twitterSuffix={suffixes.find(s => s.id === suffixIds['twitter'])?.content}
-                mastodonSuffix={suffixes.find(s => s.id === suffixIds['mastodon'])?.content}
-                linkedinSuffix={suffixes.find(s => s.id === suffixIds['linkedin'])?.content}
+                bluskyFooter={footers.find(s => s.id === footerIds['bluesky'])?.content}
+                instagramFooter={footers.find(s => s.id === footerIds['instagram'])?.content}
+                twitterFooter={footers.find(s => s.id === footerIds['twitter'])?.content}
+                mastodonFooter={footers.find(s => s.id === footerIds['mastodon'])?.content}
+                linkedinFooter={footers.find(s => s.id === footerIds['linkedin'])?.content}
               />
             )}
           </div>

@@ -92,7 +92,7 @@ class SocialPod {
                         { name: 'AI Text', value: 'aiText' },
                         { name: 'Mention', value: 'mention' },
                         { name: 'Post', value: 'post' },
-                        { name: 'Suffix', value: 'suffix' },
+                        { name: 'Footer', value: 'footer' },
                         { name: 'Watermark', value: 'watermark' },
                     ],
                     default: 'post',
@@ -251,18 +251,18 @@ class SocialPod {
                     ],
                     default: 'create',
                 },
-                // ── Suffix: operation ─────────────────────────────────────────────
+                // ── Footer: operation ─────────────────────────────────────────────
                 {
                     displayName: 'Operation',
                     name: 'operation',
                     type: 'options',
                     noDataExpression: true,
-                    displayOptions: { show: { resource: ['suffix'] } },
+                    displayOptions: { show: { resource: ['footer'] } },
                     options: [
-                        { name: 'Create', value: 'create', action: 'Create a suffix' },
-                        { name: 'Delete', value: 'delete', action: 'Delete a suffix' },
-                        { name: 'List', value: 'list', action: 'List suffixes' },
-                        { name: 'Update', value: 'update', action: 'Update a suffix' },
+                        { name: 'Create', value: 'create', action: 'Create a footer' },
+                        { name: 'Delete', value: 'delete', action: 'Delete a footer' },
+                        { name: 'List', value: 'list', action: 'List footers' },
+                        { name: 'Update', value: 'update', action: 'Update a footer' },
                     ],
                     default: 'list',
                 },
@@ -303,17 +303,17 @@ class SocialPod {
                     default: '',
                     description: 'ID of the post to act on',
                 },
-                // ── Shared: Suffix ID ─────────────────────────────────────────────
+                // ── Shared: Footer ID ─────────────────────────────────────────────
                 {
-                    displayName: 'Suffix ID',
-                    name: 'suffixId',
+                    displayName: 'Footer ID',
+                    name: 'footerId',
                     type: 'string',
                     required: true,
                     displayOptions: {
-                        show: { resource: ['suffix'], operation: ['update', 'delete'] },
+                        show: { resource: ['footer'], operation: ['update', 'delete'] },
                     },
                     default: '',
-                    description: 'ID of the suffix to act on',
+                    description: 'ID of the footer to act on',
                 },
                 // ── Post: Create — required fields ────────────────────────────────
                 {
@@ -395,7 +395,7 @@ class SocialPod {
                             placeholder: '/api/uploads/abc.jpg, /api/uploads/def.png',
                             description: 'Comma-separated list of image URLs already uploaded to SocialPod',
                         },
-                        ...platformSuffixFields('Suffix ID', 'SuffixId', 'ID of the suffix to append when publishing'),
+                        ...platformSuffixFields('Footer ID', 'FooterId', 'ID of the footer to append when publishing'),
                         {
                             displayName: 'First Comment',
                             name: 'firstComment',
@@ -482,7 +482,7 @@ class SocialPod {
                             default: '',
                             description: 'Comma-separated list of image URLs (replaces existing images)',
                         },
-                        ...platformSuffixFields('Suffix ID', 'SuffixId', 'Set to the suffix ID to apply, or leave empty to remove'),
+                        ...platformSuffixFields('Footer ID', 'FooterId', 'Set to the footer ID to apply, or leave empty to remove'),
                         {
                             displayName: 'First Comment',
                             name: 'firstComment',
@@ -561,15 +561,15 @@ class SocialPod {
                         },
                     ],
                 },
-                // ── Suffix: Create ────────────────────────────────────────────────
+                // ── Footer: Create ────────────────────────────────────────────────
                 {
                     displayName: 'Name',
                     name: 'name',
                     type: 'string',
                     required: true,
-                    displayOptions: { show: { resource: ['suffix'], operation: ['create'] } },
+                    displayOptions: { show: { resource: ['footer'], operation: ['create'] } },
                     default: '',
-                    description: 'Short display name for this suffix (e.g. "Website footer")',
+                    description: 'Short display name for this footer (e.g. "Website footer")',
                 },
                 {
                     displayName: 'Content',
@@ -577,17 +577,17 @@ class SocialPod {
                     type: 'string',
                     typeOptions: { rows: 3 },
                     required: true,
-                    displayOptions: { show: { resource: ['suffix'], operation: ['create'] } },
+                    displayOptions: { show: { resource: ['footer'], operation: ['create'] } },
                     default: '',
                     description: 'Text that will be appended to posts at publish time',
                 },
-                // ── Suffix: Update ────────────────────────────────────────────────
+                // ── Footer: Update ────────────────────────────────────────────────
                 {
                     displayName: 'Update Fields',
                     name: 'updateFields',
                     type: 'collection',
                     placeholder: 'Add Field',
-                    displayOptions: { show: { resource: ['suffix'], operation: ['update'] } },
+                    displayOptions: { show: { resource: ['footer'], operation: ['update'] } },
                     default: {},
                     options: [
                         {
@@ -730,9 +730,9 @@ class SocialPod {
                         const body = { content, platforms, scheduledAt, postType, status };
                         if (extra.imageUrls)
                             body.imageUrls = parseList(extra.imageUrls);
-                        const suffixIds = collectPlatformMap(extra, 'SuffixId', PLATFORM_KEYS);
-                        if (Object.keys(suffixIds).length)
-                            body.suffixIds = suffixIds;
+                        const footerIds = collectPlatformMap(extra, 'FooterId', PLATFORM_KEYS);
+                        if (Object.keys(footerIds).length)
+                            body.footerIds = footerIds;
                         if (extra.firstComment)
                             body.firstComment = extra.firstComment;
                         if (extra.tags)
@@ -798,7 +798,7 @@ class SocialPod {
                             body.imageUrls = parseList(fields.imageUrls);
                         if ((_b = fields.platforms) === null || _b === void 0 ? void 0 : _b.length)
                             body.platforms = fields.platforms;
-                        body.suffixIds = collectPlatformMap(fields, 'SuffixId', PLATFORM_KEYS);
+                        body.footerIds = collectPlatformMap(fields, 'FooterId', PLATFORM_KEYS);
                         if (fields.firstComment !== undefined && fields.firstComment !== '')
                             body.firstComment = fields.firstComment;
                         if (fields.tags)
@@ -849,13 +849,13 @@ class SocialPod {
                     else {
                         throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown post operation: ${operation}`);
                     }
-                    // ── Suffix ──────────────────────────────────────────────────────
+                    // ── Footer ──────────────────────────────────────────────────────
                 }
-                else if (resource === 'suffix') {
+                else if (resource === 'footer') {
                     if (operation === 'list') {
                         responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
                             method: 'GET',
-                            url: `${baseUrl}/api/suffixes`,
+                            url: `${baseUrl}/api/footers`,
                         });
                     }
                     else if (operation === 'create') {
@@ -863,13 +863,13 @@ class SocialPod {
                         const content = this.getNodeParameter('content', i);
                         responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
                             method: 'POST',
-                            url: `${baseUrl}/api/suffixes`,
+                            url: `${baseUrl}/api/footers`,
                             body: { name, content },
                             headers: { 'Content-Type': 'application/json' },
                         });
                     }
                     else if (operation === 'update') {
-                        const suffixId = this.getNodeParameter('suffixId', i);
+                        const footerId = this.getNodeParameter('footerId', i);
                         const fields = this.getNodeParameter('updateFields', i, {});
                         const body = {};
                         if (fields.name !== undefined && fields.name !== '')
@@ -878,20 +878,20 @@ class SocialPod {
                             body.content = fields.content;
                         responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
                             method: 'PUT',
-                            url: `${baseUrl}/api/suffixes/${suffixId}`,
+                            url: `${baseUrl}/api/footers/${footerId}`,
                             body,
                             headers: { 'Content-Type': 'application/json' },
                         });
                     }
                     else if (operation === 'delete') {
-                        const suffixId = this.getNodeParameter('suffixId', i);
+                        const footerId = this.getNodeParameter('footerId', i);
                         responseData = await this.helpers.httpRequestWithAuthentication.call(this, 'socialPodApi', {
                             method: 'DELETE',
-                            url: `${baseUrl}/api/suffixes/${suffixId}`,
+                            url: `${baseUrl}/api/footers/${footerId}`,
                         });
                     }
                     else {
-                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown suffix operation: ${operation}`);
+                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unknown footer operation: ${operation}`);
                     }
                     // ── Watermark ───────────────────────────────────────────────────
                 }

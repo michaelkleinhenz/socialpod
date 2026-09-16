@@ -211,11 +211,11 @@ func (s *Scheduler) processScheduledPosts() {
 	}
 }
 
-func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string, teamID *primitive.ObjectID) string {
-	if suffixIDStr == "" {
+func (s *Scheduler) footerContent(ctx context.Context, footerIDStr string, teamID *primitive.ObjectID) string {
+	if footerIDStr == "" {
 		return ""
 	}
-	oid, err := primitive.ObjectIDFromHex(suffixIDStr)
+	oid, err := primitive.ObjectIDFromHex(footerIDStr)
 	if err != nil {
 		return ""
 	}
@@ -223,11 +223,11 @@ func (s *Scheduler) suffixContent(ctx context.Context, suffixIDStr string, teamI
 	if teamID != nil {
 		filter["teamId"] = teamID
 	}
-	var suffix models.Suffix
-	if err := s.DB.Suffixes().FindOne(ctx, filter).Decode(&suffix); err != nil {
+	var footer models.Footer
+	if err := s.DB.Footers().FindOne(ctx, filter).Decode(&footer); err != nil {
 		return ""
 	}
-	return suffix.Content
+	return footer.Content
 }
 
 // resolveAccountID returns the first active account ID for the given platform
@@ -273,21 +273,21 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	var results []models.PostResult
 	allSuccess := true
 
-	bluskySuffix := ""
-	instagramSuffix := ""
-	twitterSuffix := ""
-	mastodonSuffix := ""
-	threadsSuffix := ""
-	linkedInSuffix := ""
-	youtubeSuffix := ""
-	if post.SuffixIDs != nil {
-		bluskySuffix = s.suffixContent(ctx, post.SuffixIDs["bluesky"], post.TeamID)
-		instagramSuffix = s.suffixContent(ctx, post.SuffixIDs["instagram"], post.TeamID)
-		twitterSuffix = s.suffixContent(ctx, post.SuffixIDs["twitter"], post.TeamID)
-		mastodonSuffix = s.suffixContent(ctx, post.SuffixIDs["mastodon"], post.TeamID)
-		threadsSuffix = s.suffixContent(ctx, post.SuffixIDs["threads"], post.TeamID)
-		linkedInSuffix = s.suffixContent(ctx, post.SuffixIDs["linkedin"], post.TeamID)
-		youtubeSuffix = s.suffixContent(ctx, post.SuffixIDs["youtube"], post.TeamID)
+	bluskyFooter := ""
+	instagramFooter := ""
+	twitterFooter := ""
+	mastodonFooter := ""
+	threadsFooter := ""
+	linkedInFooter := ""
+	youtubeFooter := ""
+	if post.FooterIDs != nil {
+		bluskyFooter = s.footerContent(ctx, post.FooterIDs["bluesky"], post.TeamID)
+		instagramFooter = s.footerContent(ctx, post.FooterIDs["instagram"], post.TeamID)
+		twitterFooter = s.footerContent(ctx, post.FooterIDs["twitter"], post.TeamID)
+		mastodonFooter = s.footerContent(ctx, post.FooterIDs["mastodon"], post.TeamID)
+		threadsFooter = s.footerContent(ctx, post.FooterIDs["threads"], post.TeamID)
+		linkedInFooter = s.footerContent(ctx, post.FooterIDs["linkedin"], post.TeamID)
+		youtubeFooter = s.footerContent(ctx, post.FooterIDs["youtube"], post.TeamID)
 	}
 
 	platformContent := func(platform models.Platform) string {
@@ -299,11 +299,11 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 		return post.Content
 	}
 
-	applyContent := func(base, suffix string) string {
-		if suffix == "" {
+	applyContent := func(base, footer string) string {
+		if footer == "" {
 			return base
 		}
-		return base + "\n" + suffix
+		return base + "\n" + footer
 	}
 
 	for _, platform := range post.Platforms {
@@ -327,7 +327,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				results = append(results, result)
 				continue
 			}
-			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(platformContent(models.PlatformBluesky), bluskySuffix), post.ImageURLs, accountID)
+			postURI, postCID, err := s.Bluesky.Post(ctx, applyContent(platformContent(models.PlatformBluesky), bluskyFooter), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -361,7 +361,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				results = append(results, result)
 				continue
 			}
-			tweetID, err := s.Twitter.Post(ctx, applyContent(platformContent(models.PlatformTwitter), twitterSuffix), post.ImageURLs, accountID)
+			tweetID, err := s.Twitter.Post(ctx, applyContent(platformContent(models.PlatformTwitter), twitterFooter), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -416,7 +416,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 					result.Error = "reel requires a video"
 					allSuccess = false
 				} else {
-					postID, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformInstagram), instagramSuffix), accountID)
+					postID, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformInstagram), instagramFooter), accountID)
 					if err != nil {
 						result.Success = false
 						result.Error = err.Error()
@@ -429,7 +429,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 					}
 				}
 			} else {
-				postID, err := s.Instagram.Post(ctx, applyContent(platformContent(models.PlatformInstagram), instagramSuffix), post.ImageURLs, accountID)
+				postID, err := s.Instagram.Post(ctx, applyContent(platformContent(models.PlatformInstagram), instagramFooter), post.ImageURLs, accountID)
 				if err != nil {
 					result.Success = false
 					result.Error = err.Error()
@@ -462,7 +462,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				results = append(results, result)
 				continue
 			}
-			statusURL, err := s.Mastodon.Post(ctx, applyContent(platformContent(models.PlatformMastodon), mastodonSuffix), post.ImageURLs, accountID)
+			statusURL, err := s.Mastodon.Post(ctx, applyContent(platformContent(models.PlatformMastodon), mastodonFooter), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -490,7 +490,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				results = append(results, result)
 				continue
 			}
-			postID, err := s.Threads.Post(ctx, applyContent(platformContent(models.PlatformThreads), threadsSuffix), post.ImageURLs, accountID)
+			postID, err := s.Threads.Post(ctx, applyContent(platformContent(models.PlatformThreads), threadsFooter), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -518,7 +518,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				results = append(results, result)
 				continue
 			}
-			postID, err := s.LinkedIn.Post(ctx, applyContent(platformContent(models.PlatformLinkedIn), linkedInSuffix), post.ImageURLs, accountID)
+			postID, err := s.LinkedIn.Post(ctx, applyContent(platformContent(models.PlatformLinkedIn), linkedInFooter), post.ImageURLs, accountID)
 			if err != nil {
 				result.Success = false
 				result.Error = err.Error()
@@ -556,7 +556,7 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 				result.Error = "YouTube Short requires a video"
 				allSuccess = false
 			} else {
-				postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeSuffix), accountID)
+				postID, err := s.YouTube.PostShort(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformYouTube), youtubeFooter), accountID)
 				if err != nil {
 					result.Success = false
 					result.Error = err.Error()

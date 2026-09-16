@@ -93,7 +93,7 @@ func main() {
 	// Handlers
 	authHandler := &handlers.AuthHandler{DB: db, Secret: cfg.JWTSecret}
 	postHandler := &handlers.PostHandler{DB: db, UploadDir: cfg.UploadDir}
-	suffixHandler := &handlers.SuffixHandler{DB: db}
+	footerHandler := &handlers.FooterHandler{DB: db}
 	mentionHandler := &handlers.MentionHandler{DB: db}
 	bskyService := &services.BlueskyService{DB: db, UploadDir: cfg.UploadDir}
 	igService := &services.InstagramService{DB: db}
@@ -190,11 +190,11 @@ func main() {
 		auth.POST("/watermarks", adminHandler.UploadWatermark)
 		auth.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
 
-		// Suffixes (team/user scoped)
-		auth.GET("/suffixes", suffixHandler.List)
-		auth.POST("/suffixes", suffixHandler.Create)
-		auth.PUT("/suffixes/:id", suffixHandler.Update)
-		auth.DELETE("/suffixes/:id", suffixHandler.Delete)
+		// Footers (team/user scoped)
+		auth.GET("/footers", footerHandler.List)
+		auth.POST("/footers", footerHandler.Create)
+		auth.PUT("/footers/:id", footerHandler.Update)
+		auth.DELETE("/footers/:id", footerHandler.Delete)
 
 		// Mentions (team/user scoped)
 		auth.GET("/mentions", mentionHandler.List)

@@ -16,7 +16,7 @@ import { PublisherHandlesPage } from './components/Admin/PublisherHandlesPage';
 import { WatermarksPage } from './components/Admin/WatermarksPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
 import { LogPage } from './components/Log/LogPage';
-import { SuffixesPage } from './components/Suffixes/SuffixesPage';
+import { FootersPage } from './components/Footers/FootersPage';
 import { MentionsPage } from './components/Mentions/MentionsPage';
 import { FeedPage } from './components/Inbox/FeedPage';
 import { ShareTargetPage } from './components/ShareTarget/ShareTargetPage';
@@ -66,7 +66,7 @@ function AppRoutes() {
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/log" element={<ProtectedRoute><Layout><LogPage /></Layout></ProtectedRoute>} />
-      <Route path="/suffixes" element={<ProtectedRoute><Layout><SuffixesPage /></Layout></ProtectedRoute>} />
+      <Route path="/footers" element={<ProtectedRoute><Layout><FootersPage /></Layout></ProtectedRoute>} />
       <Route path="/mentions" element={<ProtectedRoute><Layout><MentionsPage /></Layout></ProtectedRoute>} />
       <Route path="/feed" element={<ProtectedRoute><Layout><FeedPage /></Layout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Layout><ProfilePage /></Layout></ProtectedRoute>} />

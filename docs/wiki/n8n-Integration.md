@@ -1,15 +1,15 @@
 # n8n Integration
 
-SocialPod ships with a native **n8n community node** in the `n8n-nodes-socialpod/` directory. It handles authentication automatically and supports all post, suffix, mention, account, watermark, and AI text operations.
+SocialPod ships with a native **n8n community node** in the `n8n-nodes-socialpod/` directory. It handles authentication automatically and supports all post, footer, mention, account, watermark, and AI text operations.
 
-> **Platform support**: The n8n node supports all seven platforms: **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, **LinkedIn**, and **YouTube**. Each platform has its own set of content, account, suffix, and handle fields when creating or updating posts.
+> **Platform support**: The n8n node supports all seven platforms: **Bluesky**, **Instagram**, **X (Twitter)**, **Mastodon**, **Threads**, **LinkedIn**, and **YouTube**. Each platform has its own set of content, account, footer, and handle fields when creating or updating posts.
 
 ## Supported Operations
 
 | Resource | Operations |
 |---|---|
 | **Post** | Create, Get, List, Update, Delete, Reschedule, Retry |
-| **Suffix** | Create, List, Update, Delete |
+| **Footer** | Create, List, Update, Delete |
 | **Mention** | Create, List, Update, Delete, Export, Import |
 | **Account** | List |
 | **Watermark** | List, Delete |

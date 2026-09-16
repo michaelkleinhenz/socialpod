@@ -130,7 +130,7 @@ From **Keys and Tokens**, click **Generate** next to **Access Token and Secret**
 
 - Text up to 280 characters
 - Up to 4 images per tweet (JPEG, PNG, GIF, WebP; max 5 MB each)
-- Per-platform text customization and suffix support
+- Per-platform text customization and footer support
 
 ---
 
@@ -157,7 +157,7 @@ Mastodon uses **Bearer tokens** generated directly from your instance — no dev
 - Text up to 500 characters
 - Up to 4 images (uploaded via the v2 media endpoint with async polling)
 - Fediverse handle displayed as `@user@instance`
-- Per-platform text customization and suffix support
+- Per-platform text customization and footer support
 
 ---
 
@@ -190,7 +190,7 @@ Threads uses the **Meta Threads API** with a long-lived user access token.
 - Text posts up to 500 characters
 - Single image posts (image must be publicly accessible via `APP_URL`)
 - Carousel posts with up to 10 images
-- Per-platform text customization and suffix support
+- Per-platform text customization and footer support
 
 ---
 
@@ -233,7 +233,7 @@ SocialPod uses the **LinkedIn OAuth 2.0 Authorization Code** web flow — no man
 - Text posts up to 3,000 characters
 - Single or multiple image posts
 - Posts published to member's feed with public visibility
-- Per-platform text customization and suffix support
+- Per-platform text customization and footer support
 
 ---
 
@@ -290,5 +290,5 @@ SocialPod uses the **Google OAuth 2.0 Authorization Code** web flow to connect Y
 - Title derived from post content (truncated to 100 characters)
 - Description set from full post content
 - Published publicly with category "People & Blogs" (ID 22)
-- Per-platform text customization and suffix support
+- Per-platform text customization and footer support
 - Automatic token refresh via stored refresh token

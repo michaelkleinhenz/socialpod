@@ -58,7 +58,7 @@ export function Layout({ children }: { children: ReactNode }) {
       icon: SlidersHorizontal,
       label: 'Post Tools',
       children: [
-        { kind: 'leaf' as const, path: '/suffixes', icon: Signature, label: 'Suffixes' },
+        { kind: 'leaf' as const, path: '/footers', icon: Signature, label: 'Footers' },
         { kind: 'leaf' as const, path: '/mentions', icon: AtSign, label: 'Mentions' },
         { kind: 'leaf' as const, path: '/watermarks', icon: Image, label: 'Watermarks' },
       ],

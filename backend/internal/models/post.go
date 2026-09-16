@@ -74,7 +74,7 @@ type Post struct {
 	Results      []PostResult       `bson:"results,omitempty" json:"results,omitempty"`
 	Tags         []string           `bson:"tags,omitempty" json:"tags,omitempty"`
 	AccountIDs      map[string]string  `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
-	SuffixIDs       map[string]string  `bson:"suffixIds,omitempty" json:"suffixIds,omitempty"`
+	FooterIDs       map[string]string  `bson:"footerIds,omitempty" json:"footerIds,omitempty"`
 	ContentOverrides map[string]string `bson:"contentOverrides,omitempty" json:"contentOverrides,omitempty"`
 	EpisodeNews  *EpisodeNews       `bson:"episodeNews,omitempty" json:"episodeNews,omitempty"`
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`

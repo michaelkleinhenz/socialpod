@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Platform, Suffix, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings } from '../../types';
+import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings } from '../../types';
 import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2 } from 'lucide-react';
 import { ImageCropper } from '../Common/ImageCropper';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -69,8 +69,8 @@ export function NewsPage() {
     format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm")
   );
   const [status, setStatus] = useState<'scheduled' | 'draft'>('scheduled');
-  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
-  const [suffixIds, setSuffixIds] = useState<Record<string, string>>({});
+  const [footers, setFooters] = useState<Footer[]>([]);
+  const [footerIds, setFooterIds] = useState<Record<string, string>>({});
   const [mentions, setMentions] = useState<MentionEntry[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -133,7 +133,7 @@ export function NewsPage() {
   useEffect(() => {
     if (!addSocialPost || accountsLoaded) return;
     api.getActiveAccounts().then(accs => { setAccounts(accs); setAccountsLoaded(true); }).catch(() => {});
-    api.getSuffixes().then(setSuffixes).catch(() => {});
+    api.getFooters().then(setFooters).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
   }, [addSocialPost, accountsLoaded]);
 
@@ -328,10 +328,10 @@ export function NewsPage() {
     );
   };
 
-  const suffixLen = (platform: Platform) => {
-    const id = suffixIds[platform];
+  const footerLen = (platform: Platform) => {
+    const id = footerIds[platform];
     if (!id) return 0;
-    const s = suffixes.find(x => x.id === id);
+    const s = footers.find(x => x.id === id);
     return s ? s.content.length + 1 : 0;
   };
 
@@ -344,7 +344,7 @@ export function NewsPage() {
   };
 
   const effectiveLimit = (platform: Platform) =>
-    platformLimit(platform) - suffixLen(platform);
+    platformLimit(platform) - footerLen(platform);
 
   const charLimit = platforms.length === 0 ? effectiveLimit('instagram') : Math.min(
     ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
@@ -450,7 +450,7 @@ export function NewsPage() {
     setPlatforms(DEFAULT_PLATFORMS.filter(p => accounts.some(a => a.platform === p)));
     setScheduledAt(format(new Date(Date.now() + 3600000), "yyyy-MM-dd'T'HH:mm"));
     setStatus('scheduled');
-    setSuffixIds({});
+    setFooterIds({});
   };
 
   const generateAIContent = async () => {
@@ -525,7 +525,7 @@ export function NewsPage() {
       data.platforms = platforms;
       data.scheduledAt = new Date(scheduledAt).toISOString();
       data.status = status;
-      data.suffixIds = suffixIds;
+      data.footerIds = footerIds;
       data.contentOverrides = customizePerPlatform ? contentOverrides : {};
       data.accountIds = accountIds;
       data.postType = 'post';
@@ -568,7 +568,7 @@ export function NewsPage() {
     );
   }
 
-  const suffixPlatformLabels: Record<string, string> = {
+  const footerPlatformLabels: Record<string, string> = {
     bluesky: 'Bluesky',
     instagram: 'Instagram',
     twitter: 'X/Twitter',
@@ -952,18 +952,18 @@ export function NewsPage() {
 
               </div>
 
-              {/* Suffix selectors */}
-              {suffixes.length > 0 && platforms.length > 0 && (
-                <div className="suffix-selectors">
+              {/* Footer selectors */}
+              {footers.length > 0 && platforms.length > 0 && (
+                <div className="footer-selectors">
                   {platforms.map(platform => (
-                    <div key={platform} className="suffix-selector-row">
-                      <label className="suffix-label">
-                        <PlatformIcon platform={platform} size={12} /> {suffixPlatformLabels[platform] ?? platform} suffix
+                    <div key={platform} className="footer-selector-row">
+                      <label className="footer-label">
+                        <PlatformIcon platform={platform} size={12} /> {footerPlatformLabels[platform] ?? platform} footer
                       </label>
                       <select
-                        className="select suffix-select"
-                        value={suffixIds[platform] || ''}
-                        onChange={e => setSuffixIds(prev => {
+                        className="select footer-select"
+                        value={footerIds[platform] || ''}
+                        onChange={e => setFooterIds(prev => {
                           const next = { ...prev };
                           if (e.target.value) next[platform] = e.target.value;
                           else delete next[platform];
@@ -971,7 +971,7 @@ export function NewsPage() {
                         })}
                       >
                         <option value="">None</option>
-                        {suffixes.map(s => (
+                        {footers.map(s => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>

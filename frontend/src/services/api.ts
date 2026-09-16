@@ -385,27 +385,27 @@ class ApiClient {
     }>('/dashboard/ai-insights', { method: 'POST' });
   }
 
-  // Suffixes
-  getSuffixes() {
-    return this.request<any[]>('/suffixes');
+  // Footers
+  getFooters() {
+    return this.request<any[]>('/footers');
   }
 
-  createSuffix(data: { name: string; content: string }) {
-    return this.request<any>('/suffixes', {
+  createFooter(data: { name: string; content: string }) {
+    return this.request<any>('/footers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  updateSuffix(id: string, data: { name?: string; content?: string }) {
-    return this.request<any>(`/suffixes/${id}`, {
+  updateFooter(id: string, data: { name?: string; content?: string }) {
+    return this.request<any>(`/footers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  deleteSuffix(id: string) {
-    return this.request<any>(`/suffixes/${id}`, { method: 'DELETE' });
+  deleteFooter(id: string) {
+    return this.request<any>(`/footers/${id}`, { method: 'DELETE' });
   }
 
   // Mentions

@@ -14,12 +14,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type SuffixHandler struct {
+type FooterHandler struct {
 	DB *database.MongoDB
 }
 
-// suffixFilter returns a bson filter scoped to the user's team (if any) or user.
-func suffixFilter(c *gin.Context) bson.M {
+func footerFilter(c *gin.Context) bson.M {
 	if teamID, ok := c.Get("teamId"); ok {
 		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
 		return bson.M{"teamId": tid}
@@ -29,32 +28,32 @@ func suffixFilter(c *gin.Context) bson.M {
 	return bson.M{"userId": uid}
 }
 
-func (h *SuffixHandler) List(c *gin.Context) {
-	filter := suffixFilter(c)
+func (h *FooterHandler) List(c *gin.Context) {
+	filter := footerFilter(c)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	opts := options.Find().SetSort(bson.D{{Key: "name", Value: 1}})
-	cursor, err := h.DB.Suffixes().Find(ctx, filter, opts)
+	cursor, err := h.DB.Footers().Find(ctx, filter, opts)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch suffixes"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch footers"})
 		return
 	}
 	defer cursor.Close(ctx)
 
-	var suffixes []models.Suffix
-	if err := cursor.All(ctx, &suffixes); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode suffixes"})
+	var footers []models.Footer
+	if err := cursor.All(ctx, &footers); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode footers"})
 		return
 	}
-	if suffixes == nil {
-		suffixes = []models.Suffix{}
+	if footers == nil {
+		footers = []models.Footer{}
 	}
-	c.JSON(http.StatusOK, suffixes)
+	c.JSON(http.StatusOK, footers)
 }
 
-func (h *SuffixHandler) Create(c *gin.Context) {
+func (h *FooterHandler) Create(c *gin.Context) {
 	var input struct {
 		Name    string `json:"name" binding:"required"`
 		Content string `json:"content" binding:"required"`
@@ -67,7 +66,7 @@ func (h *SuffixHandler) Create(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	suffix := models.Suffix{
+	footer := models.Footer{
 		UserID:    objID,
 		Name:      input.Name,
 		Content:   input.Content,
@@ -77,26 +76,26 @@ func (h *SuffixHandler) Create(c *gin.Context) {
 
 	if teamID, ok := c.Get("teamId"); ok {
 		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
-		suffix.TeamID = &tid
+		footer.TeamID = &tid
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Suffixes().InsertOne(ctx, suffix)
+	result, err := h.DB.Footers().InsertOne(ctx, footer)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create suffix"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create footer"})
 		return
 	}
 
-	suffix.ID = result.InsertedID.(primitive.ObjectID)
-	c.JSON(http.StatusCreated, suffix)
+	footer.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusCreated, footer)
 }
 
-func (h *SuffixHandler) Update(c *gin.Context) {
-	suffixID, err := primitive.ObjectIDFromHex(c.Param("id"))
+func (h *FooterHandler) Update(c *gin.Context) {
+	footerID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid suffix ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid footer ID"})
 		return
 	}
 
@@ -109,8 +108,8 @@ func (h *SuffixHandler) Update(c *gin.Context) {
 		return
 	}
 
-	filter := suffixFilter(c)
-	filter["_id"] = suffixID
+	filter := footerFilter(c)
+	filter["_id"] = footerID
 
 	update := bson.M{"updatedAt": time.Now()}
 	if input.Name != nil {
@@ -123,35 +122,35 @@ func (h *SuffixHandler) Update(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Suffixes().UpdateOne(ctx, filter, bson.M{"$set": update})
+	result, err := h.DB.Footers().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || result.MatchedCount == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Suffix not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Footer not found"})
 		return
 	}
 
-	var suffix models.Suffix
-	h.DB.Suffixes().FindOne(ctx, bson.M{"_id": suffixID}).Decode(&suffix)
-	c.JSON(http.StatusOK, suffix)
+	var footer models.Footer
+	h.DB.Footers().FindOne(ctx, bson.M{"_id": footerID}).Decode(&footer)
+	c.JSON(http.StatusOK, footer)
 }
 
-func (h *SuffixHandler) Delete(c *gin.Context) {
-	suffixID, err := primitive.ObjectIDFromHex(c.Param("id"))
+func (h *FooterHandler) Delete(c *gin.Context) {
+	footerID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid suffix ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid footer ID"})
 		return
 	}
 
-	filter := suffixFilter(c)
-	filter["_id"] = suffixID
+	filter := footerFilter(c)
+	filter["_id"] = footerID
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Suffixes().DeleteOne(ctx, filter)
+	result, err := h.DB.Footers().DeleteOne(ctx, filter)
 	if err != nil || result.DeletedCount == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Suffix not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Footer not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Suffix deleted"})
+	c.JSON(http.StatusOK, gin.H{"message": "Footer deleted"})
 }

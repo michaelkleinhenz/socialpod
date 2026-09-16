@@ -41,7 +41,7 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 | `internal/middleware/auth.go` | `AuthRequired` — tries JWT → user API token → team API token |
 | `internal/services/` | `bluesky.go`, `instagram.go`, `linkedin.go`, `mastodon.go`, `threads.go`, `twitter.go`, `youtube.go`, `scheduler.go`, `imageutil.go`, `email.go` |
 
-The scheduler runs every 30 seconds, queries for `status == "scheduled"` and `scheduledAt <= now`, and publishes posts. Suffixes are fetched from the DB and appended at publish time.
+The scheduler runs every 30 seconds, queries for `status == "scheduled"` and `scheduledAt <= now`, and publishes posts. Footers are fetched from the DB and appended at publish time.
 
 ### Frontend (`frontend/`)
 
@@ -60,9 +60,9 @@ React 19 + TypeScript + Vite. No state management library — auth state lives i
 |---|---|---|
 | Global admin | `isAdmin=true` | Full access to `/api/admin/*` |
 | Team admin | `isTeamAdmin=true` + `teamId` | `/api/team/*` — own team's accounts and members |
-| Regular user | — | `/api/posts`, `/api/suffixes`, `/api/watermarks`, `/api/inbox` |
+| Regular user | — | `/api/posts`, `/api/footers`, `/api/watermarks`, `/api/inbox` |
 
-Posts and suffixes are scoped: if the user has a `teamId`, queries filter by team; otherwise by `userId`.
+Posts and footers are scoped: if the user has a `teamId`, queries filter by team; otherwise by `userId`.
 
 ---
 

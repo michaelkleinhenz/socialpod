@@ -40,7 +40,7 @@ curl http://localhost:8080/api/health
 | `status` | string | No | `scheduled` (default) or `draft` |
 | `imageUrls` | array | No | Pre-uploaded image/video URLs |
 | `firstComment` | string | No | Posted as the first comment after publishing |
-| `suffixIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
+| `footerIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
 | `accountIds` | object | No | `{"bluesky":"<id>"}` — specific account to use per platform |
 | `contentOverrides` | object | No | Per-platform caption overrides; missing platforms fall back to `content` |
 | `tags` | array | No | Tags for internal organisation |
@@ -93,10 +93,10 @@ curl -X POST http://localhost:8080/api/posts \
   -F 'data={"content":"Short clip caption","platforms":["youtube"],"postType":"reel","scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled"}' \
   -F "images=@short.mp4"
 
-# Create a post with suffixes
+# Create a post with footers
 curl -X POST http://localhost:8080/api/posts \
   -H "Authorization: Bearer sm_..." \
-  -F 'data={"content":"Check this out","platforms":["bluesky","instagram"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","suffixIds":{"bluesky":"<suffix-id>","instagram":"<suffix-id>"}}'
+  -F 'data={"content":"Check this out","platforms":["bluesky","instagram"],"scheduledAt":"2025-06-01T09:00:00Z","status":"scheduled","footerIds":{"bluesky":"<footer-id>","instagram":"<footer-id>"}}'
 
 # List posts (optional: start, end, status, platform query params)
 curl "http://localhost:8080/api/posts?start=2025-01-01T00:00:00Z&end=2025-12-31T23:59:59Z&status=scheduled" \
@@ -138,27 +138,27 @@ curl http://localhost:8080/api/accounts \
 
 ---
 
-## Suffixes
+## Footers
 
 ```bash
-# List suffixes
-curl http://localhost:8080/api/suffixes \
+# List footers
+curl http://localhost:8080/api/footers \
   -H "Authorization: Bearer sm_..."
 
-# Create a suffix
-curl -X POST http://localhost:8080/api/suffixes \
+# Create a footer
+curl -X POST http://localhost:8080/api/footers \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
   -d '{"name":"Website footer","content":"🌐 mysite.com"}'
 
-# Update a suffix
-curl -X PUT http://localhost:8080/api/suffixes/{id} \
+# Update a footer
+curl -X PUT http://localhost:8080/api/footers/{id} \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \
   -d '{"content":"🌐 mysite.com | follow for more"}'
 
-# Delete a suffix
-curl -X DELETE http://localhost:8080/api/suffixes/{id} \
+# Delete a footer
+curl -X DELETE http://localhost:8080/api/footers/{id} \
   -H "Authorization: Bearer sm_..."
 ```
 

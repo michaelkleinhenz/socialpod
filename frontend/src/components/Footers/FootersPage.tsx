@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { Suffix } from '../../types';
+import type { Footer } from '../../types';
 import { Plus, Pencil, Trash2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
-import './Suffixes.css';
+import './Footers.css';
 
-export function SuffixesPage() {
-  const [suffixes, setSuffixes] = useState<Suffix[]>([]);
+export function FootersPage() {
+  const [footers, setFooters] = useState<Footer[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -14,7 +14,7 @@ export function SuffixesPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getSuffixes().then(setSuffixes).catch(() => toast.error('Failed to load suffixes'));
+    api.getFooters().then(setFooters).catch(() => toast.error('Failed to load footers'));
   }, []);
 
   const resetForm = () => {
@@ -31,10 +31,10 @@ export function SuffixesPage() {
     }
     setSaving(true);
     try {
-      const created = await api.createSuffix({ name: name.trim(), content: content.trim() });
-      setSuffixes(prev => [...prev, created]);
+      const created = await api.createFooter({ name: name.trim(), content: content.trim() });
+      setFooters(prev => [...prev, created]);
       resetForm();
-      toast.success('Suffix created');
+      toast.success('Footer created');
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -42,10 +42,10 @@ export function SuffixesPage() {
     }
   };
 
-  const startEdit = (suffix: Suffix) => {
-    setEditingId(suffix.id);
-    setName(suffix.name);
-    setContent(suffix.content);
+  const startEdit = (footer: Footer) => {
+    setEditingId(footer.id);
+    setName(footer.name);
+    setContent(footer.content);
     setShowForm(false);
   };
 
@@ -56,10 +56,10 @@ export function SuffixesPage() {
     }
     setSaving(true);
     try {
-      const updated = await api.updateSuffix(id, { name: name.trim(), content: content.trim() });
-      setSuffixes(prev => prev.map(s => s.id === id ? updated : s));
+      const updated = await api.updateFooter(id, { name: name.trim(), content: content.trim() });
+      setFooters(prev => prev.map(s => s.id === id ? updated : s));
       resetForm();
-      toast.success('Suffix updated');
+      toast.success('Footer updated');
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -68,11 +68,11 @@ export function SuffixesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this suffix?')) return;
+    if (!confirm('Delete this footer?')) return;
     try {
-      await api.deleteSuffix(id);
-      setSuffixes(prev => prev.filter(s => s.id !== id));
-      toast.success('Suffix deleted');
+      await api.deleteFooter(id);
+      setFooters(prev => prev.filter(s => s.id !== id));
+      toast.success('Footer deleted');
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -82,18 +82,18 @@ export function SuffixesPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Suffixes</h1>
+          <h1>Footers</h1>
           <p className="page-subtitle">Automatically append text to posts per platform when publishing.</p>
         </div>
         <button className="btn btn-primary" onClick={() => { resetForm(); setShowForm(true); }}>
-          <Plus size={16} /> New Suffix
+          <Plus size={16} /> New Footer
         </button>
       </div>
 
       {showForm && (
-        <div className="card suffix-form-card">
-          <div className="suffix-form-header">
-            <h3>New Suffix</h3>
+        <div className="card footer-form-card">
+          <div className="footer-form-header">
+            <h3>New Footer</h3>
             <button className="btn btn-ghost btn-sm" onClick={resetForm}><X size={16} /></button>
           </div>
           <div className="form-group">
@@ -115,7 +115,7 @@ export function SuffixesPage() {
               onChange={e => setContent(e.target.value)}
               rows={3}
             />
-            <div className="suffix-char-hint">{content.length} characters</div>
+            <div className="footer-char-hint">{content.length} characters</div>
           </div>
           <div className="modal-actions">
             <button className="btn btn-secondary" onClick={resetForm}>Cancel</button>
@@ -126,16 +126,16 @@ export function SuffixesPage() {
         </div>
       )}
 
-      {suffixes.length === 0 && !showForm ? (
+      {footers.length === 0 && !showForm ? (
         <div className="card empty-state">
-          <p>No suffixes yet. Create one to automatically append text when publishing.</p>
+          <p>No footers yet. Create one to automatically append text when publishing.</p>
         </div>
       ) : (
-        <div className="suffix-list">
-          {suffixes.map(suffix => (
-            <div key={suffix.id} className="card suffix-card">
-              {editingId === suffix.id ? (
-                <div className="suffix-edit-form">
+        <div className="footer-list">
+          {footers.map(footer => (
+            <div key={footer.id} className="card footer-card">
+              {editingId === footer.id ? (
+                <div className="footer-edit-form">
                   <div className="form-group">
                     <label>Name</label>
                     <input
@@ -153,28 +153,28 @@ export function SuffixesPage() {
                       onChange={e => setContent(e.target.value)}
                       rows={3}
                     />
-                    <div className="suffix-char-hint">{content.length} characters</div>
+                    <div className="footer-char-hint">{content.length} characters</div>
                   </div>
-                  <div className="suffix-edit-actions">
+                  <div className="footer-edit-actions">
                     <button className="btn btn-ghost btn-sm" onClick={resetForm}>
                       <X size={14} /> Cancel
                     </button>
-                    <button className="btn btn-primary btn-sm" onClick={() => handleUpdate(suffix.id)} disabled={saving}>
+                    <button className="btn btn-primary btn-sm" onClick={() => handleUpdate(footer.id)} disabled={saving}>
                       <Check size={14} /> {saving ? 'Saving...' : 'Save'}
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="suffix-row">
-                  <div className="suffix-info">
-                    <div className="suffix-name">{suffix.name}</div>
-                    <div className="suffix-content">{suffix.content}</div>
+                <div className="footer-row">
+                  <div className="footer-info">
+                    <div className="footer-name">{footer.name}</div>
+                    <div className="footer-content">{footer.content}</div>
                   </div>
-                  <div className="suffix-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(suffix)} title="Edit">
+                  <div className="footer-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => startEdit(footer)} title="Edit">
                       <Pencil size={14} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(suffix.id)} title="Delete">
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(footer.id)} title="Delete">
                       <Trash2 size={14} color="var(--danger)" />
                     </button>
                   </div>

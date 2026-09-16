@@ -52,12 +52,12 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 - `cmd/server/main.go` — wires all dependencies; defines four route groups: public `/api`, authenticated `/api` (JWT/API-token required), admin-only `/api/admin`, team-admin `/api/team`
 - `internal/config/` — loads all config from environment variables
 - `internal/database/mongo.go` — `MongoDB` wrapper that exposes typed collection accessors (`Posts()`, `Users()`, `Teams()`, etc.) and creates indexes on startup
-- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `suffix.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`)
-- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `suffixes.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`)
+- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `footer.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`)
+- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `footers.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`)
 - `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context
 - `internal/services/` — platform-specific: `bluesky.go`, `instagram.go`, `twitter.go`, `mastodon.go`, `threads.go`, `linkedin.go`, `youtube.go`; infrastructure: `scheduler.go`, `imageutil.go`, `email.go`
 
-The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts where `status == "scheduled"` and `scheduledAt <= now`, and publishes them. Suffixes are fetched from the DB and appended at publish time (not stored on the post itself).
+The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts where `status == "scheduled"` and `scheduledAt <= now`, and publishes them. Footers are fetched from the DB and appended at publish time (not stored on the post itself).
 
 Convention queues have their own 30-second background loop (`ConventionHandler.StartAutoPoster` in `handlers/convention.go`). Approved queue items are a *set*, not pre-scheduled: whenever a queue is active and inside its date window and its `nextPostAt` is due, the loop picks one approved item at random, creates a `scheduled` post for it (which the shared scheduler then publishes), marks the item consumed, and rolls `nextPostAt` forward by the schedule gap. `POST /convention/queues/:id/schedule` is a manual "post one random item now" trigger.
 
@@ -69,7 +69,7 @@ React 19 + TypeScript + Vite. No state management library — auth state lives i
 - `src/types/index.ts` — all shared TypeScript types (`Post`, `User`, `Team`, `SocialAccount`, etc.)
 - `src/App.tsx` — route definitions; `ProtectedRoute` enforces `adminOnly`/`teamAdminOnly` flags
 
-Components are organized by feature under `src/components/` (Calendar, PostEditor, Admin, Inbox, Suffixes, etc.).
+Components are organized by feature under `src/components/` (Calendar, PostEditor, Admin, Inbox, Footers, etc.).
 
 ### Post create/update API contract
 Posts are submitted as `multipart/form-data` with two fields: `data` (JSON string of the post object) and `images` (zero or more binary files). This applies to both the REST API and the frontend `ApiClient.createPost`/`updatePost` methods.
@@ -78,14 +78,14 @@ Posts are submitted as `multipart/form-data` with two fields: `data` (JSON strin
 Three roles with distinct Gin context keys:
 - **Global admin** (`isAdmin=true`) — full access to `/api/admin/*`
 - **Team admin** (`isTeamAdmin=true` + `teamId` set) — access to `/api/team/*`; can manage their own team's accounts and members
-- **Regular user** — access to `/api/posts`, `/api/suffixes`, `/api/watermarks`, `/api/inbox`
+- **Regular user** — access to `/api/posts`, `/api/footers`, `/api/watermarks`, `/api/inbox`
 
-Posts and suffixes are scoped: if the user has a `teamId`, queries filter by team; otherwise by `userId`.
+Posts and footers are scoped: if the user has a `teamId`, queries filter by team; otherwise by `userId`.
 
 ### n8n integration (`n8n-nodes-socialpod/`)
 A pre-built n8n community node with a `dist/` directory already compiled. Install with `npm install --omit=dev` on the target machine — full `npm install` fails on Node < 22 due to the `isolated-vm` transitive dev dependency.
 
-Supported resources: Post (create/get/list/update/delete/reschedule/retry), Suffix (CRUD), Account (list), Mention (CRUD + export/import), Watermark (list/delete), AI Text (generate). All seven platforms are supported: Bluesky, Instagram, Twitter/X, Mastodon, Threads, LinkedIn, YouTube.
+Supported resources: Post (create/get/list/update/delete/reschedule/retry), Footer (CRUD), Account (list), Mention (CRUD + export/import), Watermark (list/delete), AI Text (generate). All seven platforms are supported: Bluesky, Instagram, Twitter/X, Mastodon, Threads, LinkedIn, YouTube.
 
 ## Environment
 Copy `.env.example` to `.env` and set at minimum `JWT_SECRET` (strong random string) and `MONGO_PASSWORD` before exposing the service. `APP_URL` must be publicly reachable for Instagram OAuth and webhooks to work.
