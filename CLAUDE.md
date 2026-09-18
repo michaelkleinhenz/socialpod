@@ -53,13 +53,18 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 - `internal/config/` — loads all config from environment variables
 - `internal/database/mongo.go` — `MongoDB` wrapper that exposes typed collection accessors (`Posts()`, `Users()`, `Teams()`, etc.) and creates indexes on startup
 - `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `footer.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`)
-- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `footers.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`)
-- `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context
+- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `footers.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`, `mcp.go`)
+- `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context. The same bearer token authenticates both REST API and MCP requests.
 - `internal/services/` — platform-specific: `bluesky.go`, `instagram.go`, `twitter.go`, `mastodon.go`, `threads.go`, `linkedin.go`, `youtube.go`; infrastructure: `scheduler.go`, `imageutil.go`, `email.go`
 
 The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts where `status == "scheduled"` and `scheduledAt <= now`, and publishes them. Footers are fetched from the DB and appended at publish time (not stored on the post itself).
 
 Convention queues have their own 30-second background loop (`ConventionHandler.StartAutoPoster` in `handlers/convention.go`). Approved queue items are a *set*, not pre-scheduled: whenever a queue is active and inside its date window and its `nextPostAt` is due, the loop picks one approved item at random, creates a `scheduled` post for it (which the shared scheduler then publishes), marks the item consumed, and rolls `nextPostAt` forward by the schedule gap. `POST /convention/queues/:id/schedule` is a manual "post one random item now" trigger.
+
+### MCP server (`handlers/mcp.go`)
+An MCP (Model Context Protocol) server is available at `POST /api/mcp` using the Streamable HTTP transport. It exposes all user-level operations as MCP tools: posts CRUD, footers, mentions, watermarks, accounts, and profile. Authentication uses the same bearer token (`sm_...`) as the REST API — one token works for both interfaces.
+
+MCP clients (Claude Code, OpenCode, etc.) configure the server URL and an `Authorization: Bearer <token>` header. The MCP handler implements the JSON-RPC 2.0 protocol with `initialize`, `ping`, `tools/list`, and `tools/call` methods. Each tool performs the same database queries as the corresponding REST handler, respecting team/user scoping.
 
 ### Frontend (`frontend/`)
 React 19 + TypeScript + Vite. No state management library — auth state lives in `AuthContext`, everything else is local component state fetched via the `ApiClient`.
@@ -81,6 +86,9 @@ Three roles with distinct Gin context keys:
 - **Regular user** — access to `/api/posts`, `/api/footers`, `/api/watermarks`, `/api/inbox`
 
 Posts and footers are scoped: if the user has a `teamId`, queries filter by team; otherwise by `userId`.
+
+### Unified token authentication
+A single bearer token (`sm_...` prefix for users, `st_...` for teams) authenticates all external access: REST API calls (`/api/*`) and MCP requests (`/api/mcp`). Tokens are generated on the Profile page and passed as `Authorization: Bearer <token>`. Regenerating a token invalidates the previous one everywhere.
 
 ### n8n integration (`n8n-nodes-socialpod/`)
 A pre-built n8n community node with a `dist/` directory already compiled. Install with `npm install --omit=dev` on the target machine — full `npm install` fails on Node < 22 due to the `isolated-vm` transitive dev dependency.

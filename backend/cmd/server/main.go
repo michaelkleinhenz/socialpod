@@ -113,6 +113,7 @@ func main() {
 	episodeHandler := &handlers.EpisodeHandler{DB: db, UploadDir: cfg.UploadDir}
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
+	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -205,6 +206,9 @@ func main() {
 		auth.POST("/mentions/import", mentionHandler.Import)
 
 		// Convention mode
+		// MCP server (Streamable HTTP transport)
+		auth.POST("/mcp", mcpHandler.Handle)
+
 		auth.GET("/convention/queues", conventionHandler.ListQueues)
 		auth.POST("/convention/queues", conventionHandler.CreateQueue)
 		auth.GET("/convention/queues/:id", conventionHandler.GetQueue)
