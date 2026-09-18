@@ -26,6 +26,52 @@ function findMentionQuery(text: string, cursor: number): MentionState | null {
   return { query: match[1], start: cursor - match[0].length };
 }
 
+function getCaretCoordinates(element: HTMLTextAreaElement, position: number): { top: number; left: number; lineHeight: number } {
+  const mirror = document.createElement('div');
+  const computed = getComputedStyle(element);
+
+  const stylesToCopy = [
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
+    'letterSpacing', 'textTransform', 'wordSpacing', 'textIndent',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'boxSizing', 'lineHeight', 'tabSize',
+  ];
+
+  mirror.style.position = 'absolute';
+  mirror.style.top = '0';
+  mirror.style.left = '-9999px';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.wordWrap = 'break-word';
+  mirror.style.overflow = 'hidden';
+  mirror.style.width = `${element.offsetWidth}px`;
+
+  for (const prop of stylesToCopy) {
+    mirror.style.setProperty(
+      prop.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`),
+      computed.getPropertyValue(prop.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)),
+    );
+  }
+
+  mirror.appendChild(document.createTextNode(element.value.substring(0, position)));
+
+  const marker = document.createElement('span');
+  marker.textContent = '​';
+  mirror.appendChild(marker);
+
+  document.body.appendChild(mirror);
+
+  const coords = {
+    top: marker.offsetTop + parseInt(computed.borderTopWidth) - element.scrollTop,
+    left: marker.offsetLeft + parseInt(computed.borderLeftWidth) - element.scrollLeft,
+    lineHeight: parseInt(computed.lineHeight) || Math.ceil(parseFloat(computed.fontSize) * 1.2),
+  };
+
+  document.body.removeChild(mirror);
+  return coords;
+}
+
 export function MentionTextarea({
   value,
   onChange,
@@ -44,10 +90,12 @@ export function MentionTextarea({
 
   const [mentionState, setMentionState] = useState<MentionState | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   const filteredMentions = mentionState
     ? mentions
         .filter(m => {
+          if (platform && !m.handles[platform]) return false;
           const q = mentionState.query.toLowerCase();
           if (!q) return true;
           return (
@@ -62,10 +110,11 @@ export function MentionTextarea({
     (mention: MentionEntry) => {
       if (!mentionState) return;
       const { query, start } = mentionState;
-      const tokenLen = 1 + query.length; // '@' + query chars
+      const tokenLen = 1 + query.length;
 
       if (platform) {
-        const handle = mention.handles[platform] || `@${mention.name}`;
+        const handle = mention.handles[platform];
+        if (!handle) return;
         const normalized = handle.startsWith('@') ? handle : `@${handle}`;
         onChange(value.slice(0, start) + normalized + ' ' + value.slice(start + tokenLen));
       } else {
@@ -73,16 +122,27 @@ export function MentionTextarea({
       }
 
       setMentionState(null);
+      setDropdownPos(null);
     },
     [mentionState, platform, value, onChange, onMentionInsert],
   );
 
+  const updateMentionState = (textarea: HTMLTextAreaElement, newValue: string) => {
+    const cursor = textarea.selectionStart ?? newValue.length;
+    const state = findMentionQuery(newValue, cursor);
+    setMentionState(state);
+    if (state) {
+      setSelectedIdx(0);
+      const coords = getCaretCoordinates(textarea, state.start);
+      setDropdownPos({ top: coords.top + coords.lineHeight, left: coords.left });
+    } else {
+      setDropdownPos(null);
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newVal = e.target.value;
-    const cursor = e.target.selectionStart ?? newVal.length;
-    const state = findMentionQuery(newVal, cursor);
-    setMentionState(state);
-    if (state) setSelectedIdx(0);
+    updateMentionState(e.target, newVal);
     onChange(newVal);
   };
 
@@ -102,12 +162,15 @@ export function MentionTextarea({
       }
     } else if (e.key === 'Escape') {
       setMentionState(null);
+      setDropdownPos(null);
     }
   };
 
   const handleBlur = () => {
-    // Delay so mousedown on dropdown option fires first
-    setTimeout(() => setMentionState(null), 150);
+    setTimeout(() => {
+      setMentionState(null);
+      setDropdownPos(null);
+    }, 150);
   };
 
   return (
@@ -123,8 +186,11 @@ export function MentionTextarea({
         rows={rows}
         disabled={disabled}
       />
-      {mentionState && filteredMentions.length > 0 && (
-        <div className="mention-dropdown">
+      {mentionState && filteredMentions.length > 0 && dropdownPos && (
+        <div
+          className="mention-dropdown"
+          style={{ top: `${dropdownPos.top + 4}px`, left: `${dropdownPos.left}px` }}
+        >
           {filteredMentions.map((mention, i) => {
             const handle = platform ? mention.handles[platform] : null;
             const platformCount = Object.values(mention.handles).filter(Boolean).length;

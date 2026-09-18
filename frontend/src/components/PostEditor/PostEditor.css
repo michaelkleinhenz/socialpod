@@ -676,9 +676,8 @@
 /* Mention autocomplete dropdown */
 .mention-dropdown {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
+  min-width: 200px;
+  max-width: 320px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 8px;
