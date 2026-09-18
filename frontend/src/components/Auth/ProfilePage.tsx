@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
-import { Key, Copy, RefreshCw, UsersRound, Lock, Server, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { Key, Copy, RefreshCw, UsersRound, Lock, ChevronDown, ChevronRight, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export function ProfilePage() {
@@ -64,6 +64,8 @@ export function ProfilePage() {
     }
   };
 
+  const restBaseUrl = `${window.location.origin}/api`;
+
   const claudeCodeConfig = displayToken ? JSON.stringify({
     "mcpServers": {
       "socialpod": {
@@ -86,11 +88,22 @@ export function ProfilePage() {
     }
   }, null, 2) : null;
 
-  const curlExample = displayToken
+  const restCurlExample = displayToken
+    ? `# List your scheduled posts
+curl ${restBaseUrl}/posts?status=scheduled \\
+  -H "Authorization: Bearer ${displayToken}"
+
+# Create a new post
+curl -X POST ${restBaseUrl}/posts \\
+  -H "Authorization: Bearer ${displayToken}" \\
+  -F 'data={"content":"Hello!","platforms":["bluesky"],"scheduledAt":"2025-01-15T14:00:00Z"}'`
+    : null;
+
+  const mcpCurlExample = displayToken
     ? `curl -X POST ${mcpUrl} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${displayToken}" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'`
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
     : null;
 
   return (
@@ -177,16 +190,17 @@ export function ProfilePage() {
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
 
         <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Key size={18} /> API Access
+          <Key size={18} /> API &amp; MCP Access
         </h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-          Use an API token to access SocialPod from external tools, scripts, and MCP clients.
+          A single bearer token authenticates both the REST API and the MCP server.
+          Use it to schedule posts from scripts, n8n workflows, or AI assistants like Claude Code and OpenCode.
         </p>
 
         {displayToken && (
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
-              Your API Token
+              Bearer Token
             </label>
             <div style={{
               background: 'var(--bg-primary)',
@@ -205,53 +219,29 @@ export function ProfilePage() {
                 <Copy size={14} />
               </button>
             </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, marginBottom: 0 }}>
+              Pass as <code style={codeInlineStyle}>Authorization: Bearer {'<token>'}</code> to any endpoint.
+              Works for both <code style={codeInlineStyle}>/api/*</code> (REST) and <code style={codeInlineStyle}>/api/mcp</code> (MCP).
+            </p>
           </div>
         )}
 
-        <button className="btn btn-primary" onClick={generateToken} disabled={generating} style={{ marginBottom: 8 }}>
-          <RefreshCw size={16} />
-          {generating ? 'Generating...' : displayToken ? 'Regenerate Token' : 'Generate API Token'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <button className="btn btn-primary" onClick={generateToken} disabled={generating}>
+            <RefreshCw size={16} />
+            {generating ? 'Generating...' : displayToken ? 'Regenerate Token' : 'Generate Token'}
+          </button>
+          {displayToken && (
+            <button className="btn btn-ghost" onClick={() => copyToClipboard(mcpUrl, 'MCP URL copied')} title="Copy MCP server URL">
+              <Copy size={14} /> Copy MCP URL
+            </button>
+          )}
+        </div>
 
         {displayToken && (
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, marginBottom: 0 }}>
-            Regenerating will invalidate the current token.
+            Regenerating replaces the current token everywhere it is used (REST API, MCP, n8n).
           </p>
-        )}
-
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-        <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Server size={18} /> MCP Server
-        </h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-          Connect AI coding assistants to SocialPod using the Model Context Protocol (MCP).
-          This gives AI tools access to manage your posts, footers, mentions, and accounts.
-        </p>
-
-        {displayToken && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
-              MCP Server URL
-            </label>
-            <div style={{
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '12px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              fontFamily: 'monospace',
-              fontSize: 13,
-              wordBreak: 'break-all',
-            }}>
-              <span style={{ flex: 1 }}>{mcpUrl}</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => copyToClipboard(mcpUrl, 'URL copied')}>
-                <Copy size={14} />
-              </button>
-            </div>
-          </div>
         )}
 
         {!displayToken && (
@@ -260,11 +250,11 @@ export function ProfilePage() {
             border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)',
             padding: '16px',
-            marginBottom: 16,
+            marginTop: 16,
             color: 'var(--text-secondary)',
             fontSize: 14,
           }}>
-            Generate an API token above to see your MCP server configuration.
+            Generate a token to see setup instructions for the REST API and MCP server.
           </div>
         )}
 
@@ -286,6 +276,7 @@ export function ProfilePage() {
                 color: 'var(--text-primary)',
                 fontSize: 14,
                 fontWeight: 500,
+                marginTop: 16,
               }}
             >
               {mcpExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -302,21 +293,21 @@ export function ProfilePage() {
               }}>
                 <MCPInstructions
                   title="Claude Code"
-                  description={<>Add the following to your <code style={codeInlineStyle}>claude_desktop_config.json</code> or project <code style={codeInlineStyle}>.mcp.json</code> file:</>}
+                  description={<>Add to your <code style={codeInlineStyle}>claude_desktop_config.json</code> or project <code style={codeInlineStyle}>.mcp.json</code>:</>}
                   config={claudeCodeConfig!}
                   onCopy={copyToClipboard}
                 />
 
                 <MCPInstructions
                   title="OpenCode"
-                  description={<>Add the following to your <code style={codeInlineStyle}>opencode.json</code> configuration:</>}
+                  description={<>Add to your <code style={codeInlineStyle}>opencode.json</code>:</>}
                   config={openCodeConfig!}
                   onCopy={copyToClipboard}
                 />
 
                 <MCPInstructions
                   title="Generic MCP Client"
-                  description="Any MCP client supporting the Streamable HTTP transport can connect using:"
+                  description="Any MCP client supporting Streamable HTTP can connect:"
                   config={JSON.stringify({
                     url: mcpUrl,
                     transport: "streamable-http",
@@ -329,14 +320,24 @@ export function ProfilePage() {
 
                 <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                   <h4 style={{ fontSize: 14, marginBottom: 8, color: 'var(--text-primary)' }}>
-                    Test with curl
+                    REST API (curl)
                   </h4>
-                  <CodeBlock code={curlExample!} onCopy={copyToClipboard} />
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                    The same token works with the REST API at <code style={codeInlineStyle}>{restBaseUrl}</code>:
+                  </p>
+                  <CodeBlock code={restCurlExample!} onCopy={copyToClipboard} />
                 </div>
 
                 <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                   <h4 style={{ fontSize: 14, marginBottom: 8, color: 'var(--text-primary)' }}>
-                    Available Tools
+                    MCP Server (curl)
+                  </h4>
+                  <CodeBlock code={mcpCurlExample!} onCopy={copyToClipboard} />
+                </div>
+
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <h4 style={{ fontSize: 14, marginBottom: 8, color: 'var(--text-primary)' }}>
+                    Available MCP Tools
                   </h4>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     <ToolList />
