@@ -162,6 +162,29 @@ export interface Post {
   updatedAt: string;
 }
 
+export interface NewsDraft {
+  id: string;
+  userId: string;
+  teamId?: string;
+  episodeNumber?: string;
+  newsTagline?: string;
+  articleUrl?: string;
+  shownotes?: string;
+  imageUrls?: string[];
+  addSocialPosting: boolean;
+  content?: string;
+  platforms?: Platform[];
+  scheduledAt?: string;
+  status?: PostStatus;
+  footerIds?: Record<string, string>;
+  contentOverrides?: Record<string, string>;
+  accountIds?: Record<string, string>;
+  firstComment?: string;
+  postType?: PostType;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Footer {
   id: string;
   userId: string;

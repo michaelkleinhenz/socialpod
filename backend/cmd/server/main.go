@@ -173,6 +173,12 @@ func main() {
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)
 		auth.POST("/news/submit", newsHandler.Submit)
+		auth.GET("/news/drafts", newsHandler.ListDrafts)
+		auth.POST("/news/drafts", newsHandler.SaveDraft)
+		auth.GET("/news/drafts/:id", newsHandler.GetDraft)
+		auth.PUT("/news/drafts/:id", newsHandler.UpdateDraft)
+		auth.DELETE("/news/drafts/:id", newsHandler.DeleteDraft)
+		auth.POST("/news/drafts/:id/post", newsHandler.PostDraft)
 		auth.POST("/episode/submit", episodeHandler.Submit)
 
 		// Team settings (read-only for all team members — sidebar plugin visibility)

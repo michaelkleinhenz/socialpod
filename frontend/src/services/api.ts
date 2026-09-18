@@ -594,6 +594,36 @@ class ApiClient {
     return this.request<any>('/news/submit', { method: 'POST', body: form });
   }
 
+  listNewsDrafts() {
+    return this.request<import('../types').NewsDraft[]>('/news/drafts');
+  }
+
+  getNewsDraft(id: string) {
+    return this.request<import('../types').NewsDraft>(`/news/drafts/${id}`);
+  }
+
+  saveNewsDraft(data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('image', f));
+    return this.request<import('../types').NewsDraft>('/news/drafts', { method: 'POST', body: form });
+  }
+
+  updateNewsDraft(id: string, data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('image', f));
+    return this.request<import('../types').NewsDraft>(`/news/drafts/${id}`, { method: 'PUT', body: form });
+  }
+
+  deleteNewsDraft(id: string) {
+    return this.request<{ message: string }>(`/news/drafts/${id}`, { method: 'DELETE' });
+  }
+
+  postNewsDraft(id: string) {
+    return this.request<any>(`/news/drafts/${id}/post`, { method: 'POST' });
+  }
+
   submitEpisode(data: any, files?: File[]) {
     const form = new FormData();
     form.append('data', JSON.stringify(data));
