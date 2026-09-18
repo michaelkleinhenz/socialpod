@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type NewsHandler struct {
@@ -311,4 +312,335 @@ func (h *NewsHandler) saveUpload(fh *multipart.FileHeader) (string, error) {
 	})
 
 	return "/api/uploads/" + filename, nil
+}
+
+func newsDraftScopeFilter(c *gin.Context) bson.M {
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		return bson.M{"teamId": tid}
+	}
+	userID, _ := c.Get("userId")
+	uid, _ := primitive.ObjectIDFromHex(userID.(string))
+	return bson.M{"userId": uid}
+}
+
+func (h *NewsHandler) SaveDraft(c *gin.Context) {
+	var input NewsSubmitInput
+	if err := json.Unmarshal([]byte(c.PostForm("data")), &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft data: " + err.Error()})
+		return
+	}
+
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
+	var uploadedImageFiles []*multipart.FileHeader
+	if form, err := c.MultipartForm(); err == nil {
+		uploadedImageFiles = form.File["image"]
+	}
+
+	var savedImageURLs []string
+	for _, fh := range uploadedImageFiles {
+		url, uploadErr := h.saveUpload(fh)
+		if uploadErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
+			return
+		}
+		savedImageURLs = append(savedImageURLs, url)
+	}
+
+	allImages := append(input.ImageURLs, savedImageURLs...)
+
+	platModels := make([]models.Platform, len(input.Platforms))
+	for i, p := range input.Platforms {
+		platModels[i] = models.Platform(p)
+	}
+
+	draft := models.NewsDraft{
+		UserID:           objID,
+		EpisodeNumber:    input.EpisodeNumber,
+		NewsTagline:      input.NewsTagline,
+		ArticleURL:       input.ArticleURL,
+		Shownotes:        input.Shownotes,
+		ImageURLs:        allImages,
+		AddSocialPosting: input.AddSocialPosting,
+		Content:          input.Content,
+		Platforms:        platModels,
+		ScheduledAt:      input.ScheduledAt,
+		Tags:             input.Tags,
+		Status:           input.Status,
+		FooterIDs:        input.FooterIDs,
+		ContentOverrides: input.ContentOverrides,
+		AccountIDs:       input.AccountIDs,
+		FirstComment:     input.FirstComment,
+		PostType:         input.PostType,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		draft.TeamID = &tid
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := h.DB.NewsDrafts().InsertOne(ctx, draft)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save draft"})
+		return
+	}
+	draft.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusOK, draft)
+}
+
+func (h *NewsHandler) ListDrafts(c *gin.Context) {
+	filter := newsDraftScopeFilter(c)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	cursor, err := h.DB.NewsDrafts().Find(ctx, filter, opts)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch drafts"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var drafts []models.NewsDraft
+	if err := cursor.All(ctx, &drafts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode drafts"})
+		return
+	}
+	if drafts == nil {
+		drafts = []models.NewsDraft{}
+	}
+	c.JSON(http.StatusOK, drafts)
+}
+
+func (h *NewsHandler) GetDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	filter := newsDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var draft models.NewsDraft
+	if err := h.DB.NewsDrafts().FindOne(ctx, filter).Decode(&draft); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, draft)
+}
+
+func (h *NewsHandler) UpdateDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	var input NewsSubmitInput
+	if err := json.Unmarshal([]byte(c.PostForm("data")), &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft data: " + err.Error()})
+		return
+	}
+
+	filter := newsDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	var uploadedImageFiles []*multipart.FileHeader
+	if form, err := c.MultipartForm(); err == nil {
+		uploadedImageFiles = form.File["image"]
+	}
+
+	var savedImageURLs []string
+	for _, fh := range uploadedImageFiles {
+		url, uploadErr := h.saveUpload(fh)
+		if uploadErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
+			return
+		}
+		savedImageURLs = append(savedImageURLs, url)
+	}
+
+	allImages := append(input.ImageURLs, savedImageURLs...)
+
+	platModels := make([]models.Platform, len(input.Platforms))
+	for i, p := range input.Platforms {
+		platModels[i] = models.Platform(p)
+	}
+
+	update := bson.M{
+		"episodeNumber":    input.EpisodeNumber,
+		"newsTagline":      input.NewsTagline,
+		"articleUrl":       input.ArticleURL,
+		"shownotes":        input.Shownotes,
+		"imageUrls":        allImages,
+		"addSocialPosting": input.AddSocialPosting,
+		"content":          input.Content,
+		"platforms":        platModels,
+		"scheduledAt":      input.ScheduledAt,
+		"tags":             input.Tags,
+		"status":           input.Status,
+		"footerIds":        input.FooterIDs,
+		"contentOverrides": input.ContentOverrides,
+		"accountIds":       input.AccountIDs,
+		"firstComment":     input.FirstComment,
+		"postType":         input.PostType,
+		"updatedAt":        time.Now(),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	res, err := h.DB.NewsDrafts().UpdateOne(ctx, filter, bson.M{"$set": update})
+	if err != nil || res.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+
+	var draft models.NewsDraft
+	h.DB.NewsDrafts().FindOne(ctx, bson.M{"_id": draftID}).Decode(&draft)
+	c.JSON(http.StatusOK, draft)
+}
+
+func (h *NewsHandler) DeleteDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	filter := newsDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := h.DB.NewsDrafts().DeleteOne(ctx, filter)
+	if err != nil || res.DeletedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Draft deleted"})
+}
+
+func (h *NewsHandler) PostDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	filter := newsDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var draft models.NewsDraft
+	if err := h.DB.NewsDrafts().FindOne(ctx, filter).Decode(&draft); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+
+	if draft.EpisodeNumber == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeNumber is required"})
+		return
+	}
+	if draft.NewsTagline == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "newsTagline is required"})
+		return
+	}
+	if draft.ArticleURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "articleUrl is required"})
+		return
+	}
+
+	teamIDStr, ok := c.Get("teamId")
+	if !ok || teamIDStr.(string) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No team associated with this account"})
+		return
+	}
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	pluginEnabled := false
+	for _, p := range team.EnabledPlugins {
+		if p == "news_creator" {
+			pluginEnabled = true
+			break
+		}
+	}
+	if !pluginEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "news_creator plugin is not enabled for this team"})
+		return
+	}
+
+	if team.NewsCreatorURL == "" || team.NewsCreatorBearerToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "News creator URL or bearer token not configured"})
+		return
+	}
+
+	input := &NewsSubmitInput{
+		EpisodeNumber:    draft.EpisodeNumber,
+		NewsTagline:      draft.NewsTagline,
+		ArticleURL:       draft.ArticleURL,
+		Shownotes:        draft.Shownotes,
+		AddSocialPosting: draft.AddSocialPosting,
+		Content:          draft.Content,
+		Platforms:        draft.Platforms,
+		ScheduledAt:      draft.ScheduledAt,
+		ImageURLs:        draft.ImageURLs,
+		Tags:             draft.Tags,
+		Status:           draft.Status,
+		FooterIDs:        draft.FooterIDs,
+		ContentOverrides: draft.ContentOverrides,
+		AccountIDs:       draft.AccountIDs,
+		FirstComment:     draft.FirstComment,
+		PostType:         draft.PostType,
+	}
+
+	newsErr := h.sendToN8N(ctx, &team, input, draft.ImageURLs)
+	if newsErr != nil {
+		log.Printf("[NewsCreator] Error sending draft to n8n: %v", newsErr)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send news: " + newsErr.Error()})
+		return
+	}
+
+	var post *models.Post
+	if draft.AddSocialPosting {
+		created, postErr := h.createPost(ctx, c, input, nil)
+		if postErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "News sent but failed to create post: " + postErr.Error()})
+			return
+		}
+		post = created
+	}
+
+	h.DB.NewsDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+
+	resp := gin.H{"message": "News submitted successfully"}
+	if post != nil {
+		resp["post"] = post
+	}
+	c.JSON(http.StatusOK, resp)
 }
