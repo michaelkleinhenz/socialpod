@@ -682,10 +682,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const handleMentionInsert = useCallback(
     (mention: MentionEntry, queryStart: number, queryLength: number) => {
       if (platforms.length === 1) {
-        // Single platform: insert the handle directly into base content
-        const handle = mention.handles[platforms[0]] || `@${mention.name}`;
-        const normalized = handle.startsWith('@') ? handle : `@${handle}`;
-        setContent(prev => prev.slice(0, queryStart) + normalized + ' ' + prev.slice(queryStart + queryLength));
+        const handle = mention.handles[platforms[0]];
+        if (handle) {
+          const normalized = handle.startsWith('@') ? handle : `@${handle}`;
+          setContent(prev => prev.slice(0, queryStart) + normalized + ' ' + prev.slice(queryStart + queryLength));
+        } else {
+          setContent(prev => prev.slice(0, queryStart) + prev.slice(queryStart + queryLength));
+        }
         return;
       }
 
@@ -694,15 +697,22 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       const newOverrides: Record<string, string> = {};
       for (const p of platforms) {
         const baseText = contentOverrides[p] ?? content;
-        const handle = mention.handles[p] || `@${mention.name}`;
-        const normalized = handle.startsWith('@') ? handle : `@${handle}`;
-        newOverrides[p] = baseText.slice(0, queryStart) + normalized + ' ' + baseText.slice(queryStart + queryLength);
+        const handle = mention.handles[p];
+        if (handle) {
+          const normalized = handle.startsWith('@') ? handle : `@${handle}`;
+          newOverrides[p] = baseText.slice(0, queryStart) + normalized + ' ' + baseText.slice(queryStart + queryLength);
+        } else {
+          newOverrides[p] = baseText.slice(0, queryStart) + baseText.slice(queryStart + queryLength);
+        }
       }
       setContentOverrides(newOverrides);
-      // Keep base content in sync with first platform's handle so char count stays consistent
-      const firstHandle = mention.handles[platforms[0]] || `@${mention.name}`;
-      const firstNormalized = firstHandle.startsWith('@') ? firstHandle : `@${firstHandle}`;
-      setContent(prev => prev.slice(0, queryStart) + firstNormalized + ' ' + prev.slice(queryStart + queryLength));
+      const firstHandle = mention.handles[platforms[0]];
+      if (firstHandle) {
+        const firstNormalized = firstHandle.startsWith('@') ? firstHandle : `@${firstHandle}`;
+        setContent(prev => prev.slice(0, queryStart) + firstNormalized + ' ' + prev.slice(queryStart + queryLength));
+      } else {
+        setContent(prev => prev.slice(0, queryStart) + prev.slice(queryStart + queryLength));
+      }
     },
     [platforms, contentOverrides, content],
   );
