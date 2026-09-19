@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, PostStatus, Footer, SocialAccount, MentionEntry, TeamSettings } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Newspaper, Loader, AlertTriangle } from 'lucide-react';
+import type { Post, Platform, PostType, PostStatus, Footer, SocialAccount, MentionEntry } from '../../types';
+import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import toast from 'react-hot-toast';
@@ -25,10 +25,6 @@ interface PostDraft {
   scheduledAt?: string;
   status?: PostStatus;
   footerIds?: Record<string, string>;
-  addNews?: boolean;
-  newsEpisodeNumber?: string;
-  newsTitle?: string;
-  newsAdditionalText?: string;
 }
 
 interface Props {
@@ -430,17 +426,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [footerIds, setFooterIds] = useState<Record<string, string>>(draft?.footerIds ?? post?.footerIds ?? {});
   const [mentions, setMentions] = useState<MentionEntry[]>([]);
   const [bggUrl, setBggUrl] = useState('');
-  const [bggImportedUrl, setBggImportedUrl] = useState('');
   const [fetchingBgg, setFetchingBgg] = useState(false);
   const [bggError, setBggError] = useState('');
   const [bggEnabled, setBggEnabled] = useState(false);
   const [bggSuggestedByPlatform, setBggSuggestedByPlatform] = useState<Record<string, string>>({});
   const [bggHashtagSuffix, setBggHashtagSuffix] = useState('');
-  const [newsEnabled, setNewsEnabled] = useState(false);
-  const [addNews, setAddNews] = useState(draft?.addNews ?? post?.episodeNews?.enabled ?? false);
-  const [newsEpisodeNumber, setNewsEpisodeNumber] = useState(draft?.newsEpisodeNumber ?? post?.episodeNews?.episodeNumber ?? '');
-  const [newsTitle, setNewsTitle] = useState(draft?.newsTitle ?? post?.episodeNews?.title ?? '');
-  const [newsAdditionalText, setNewsAdditionalText] = useState(draft?.newsAdditionalText ?? post?.episodeNews?.additionalText ?? '');
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -471,11 +461,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       if (s.openRouterEnabled) setAiEnabled(true);
       setBggEnabled(true);
     }).catch(() => {});
-    api.getTeamSettings().then((s: TeamSettings) => {
-      if (s.episodeNewsUrl && s.hasEpisodeNewsBearerToken && s.enabledPlugins?.includes('episode_news')) {
-        setNewsEnabled(true);
-      }
-    }).catch(() => {});
     api.getFooters().then(setFooters).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
     loadAccounts();
@@ -503,7 +488,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         localStorage.setItem(draftKey, JSON.stringify({
           content, contentOverrides, customizePerPlatform, firstComment,
           platforms, scheduledAt, status, footerIds,
-          addNews, newsEpisodeNumber, newsTitle, newsAdditionalText,
         }));
       } catch {
         // quota exceeded / private mode — best-effort only
@@ -511,8 +495,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }, 400);
     return () => clearTimeout(id);
   }, [draftKey, content, contentOverrides, customizePerPlatform, firstComment,
-      platforms, scheduledAt, status, footerIds,
-      addNews, newsEpisodeNumber, newsTitle, newsAdditionalText]);
+      platforms, scheduledAt, status, footerIds]);
 
   useEffect(() => {
     if (!accountsLoaded) return;
@@ -873,15 +856,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         accountIds,
       };
 
-      if (addNews && newsEnabled && !isStory && !isReel) {
-        postData.episodeNews = {
-          episodeNumber: newsEpisodeNumber,
-          title: newsTitle,
-          additionalText: newsAdditionalText,
-          bggLink: bggImportedUrl || '',
-        };
-      }
-
       await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
     } finally {
       setSaving(false);
@@ -903,7 +877,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     setBggError('');
     try {
       const data = await api.fetchBGGGame(bggUrl.trim());
-      setBggImportedUrl(bggUrl.trim());
       if (data.imageBase64) {
         const byteStr = atob(data.imageBase64);
         const arr = new Uint8Array(byteStr.length);
@@ -1298,53 +1271,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   />
                 </div>
 
-                {/* Episode News */}
-                {newsEnabled && (
-                  <div className="form-group">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, marginBottom: 8 }}>
-                      <input
-                        type="checkbox"
-                        checked={addNews}
-                        onChange={e => setAddNews(e.target.checked)}
-                      />
-                      <Newspaper size={14} /> Add News
-                    </label>
-                    {addNews && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px', background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 13 }}>Episode Number</label>
-                          <input
-                            type="text"
-                            className="input"
-                            value={newsEpisodeNumber}
-                            onChange={e => setNewsEpisodeNumber(e.target.value)}
-                            placeholder="e.g. 42"
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 13 }}>Title</label>
-                          <input
-                            type="text"
-                            className="input"
-                            value={newsTitle}
-                            onChange={e => setNewsTitle(e.target.value)}
-                            placeholder="Episode title"
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 13 }}>Additional Text <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
-                          <textarea
-                            className="textarea"
-                            value={newsAdditionalText}
-                            onChange={e => setNewsAdditionalText(e.target.value)}
-                            placeholder="Any extra notes for this episode news…"
-                            rows={2}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </>
             )}
 
@@ -1521,7 +1447,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               <button
                 className="btn btn-post-now"
                 onClick={() => handleSubmit(true)}
-                disabled={saving || overLimit || accountsError || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}
+                disabled={saving || overLimit || accountsError}
                 title={accountsError ? 'Connected accounts failed to load' : 'Publish immediately'}
               >
                 <Zap size={16} /> Post Now
@@ -1530,7 +1456,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             <button
               className="btn btn-primary"
               onClick={() => handleSubmit()}
-              disabled={saving || overLimit || accountsError || (addNews && newsEnabled && (!newsEpisodeNumber.trim() || !newsTitle.trim()))}
+              disabled={saving || overLimit || accountsError}
               title={accountsError ? 'Connected accounts failed to load' : undefined}
             >
               <Send size={16} /> {saving ? 'Saving...' : post ? 'Update' : 'Schedule'}

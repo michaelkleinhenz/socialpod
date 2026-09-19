@@ -106,6 +106,11 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
+	m.EpisodeDrafts().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -163,6 +168,10 @@ func (m *MongoDB) MastodonOAuthStates() *mongo.Collection {
 
 func (m *MongoDB) NewsDrafts() *mongo.Collection {
 	return m.Database.Collection("news_drafts")
+}
+
+func (m *MongoDB) EpisodeDrafts() *mongo.Collection {
+	return m.Database.Collection("episode_drafts")
 }
 
 func (m *MongoDB) TeamInvites() *mongo.Collection {

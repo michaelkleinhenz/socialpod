@@ -185,6 +185,36 @@ export interface NewsDraft {
   updatedAt: string;
 }
 
+export interface EpisodeDraft {
+  id: string;
+  userId: string;
+  teamId?: string;
+  episodeNumber?: string;
+  episodeTitle?: string;
+  episodeType?: string;
+  summary?: string;
+  episodeDate?: string;
+  gameNamePublisher?: string;
+  linkPublisher?: string;
+  linkBGG?: string;
+  rules?: string;
+  scene?: string;
+  introText?: string;
+  imageUrls?: string[];
+  addSocialPosting: boolean;
+  content?: string;
+  platforms?: Platform[];
+  scheduledAt?: string;
+  status?: PostStatus;
+  footerIds?: Record<string, string>;
+  contentOverrides?: Record<string, string>;
+  accountIds?: Record<string, string>;
+  firstComment?: string;
+  postType?: PostType;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Footer {
   id: string;
   userId: string;

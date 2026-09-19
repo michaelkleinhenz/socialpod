@@ -180,6 +180,12 @@ func main() {
 		auth.DELETE("/news/drafts/:id", newsHandler.DeleteDraft)
 		auth.POST("/news/drafts/:id/post", newsHandler.PostDraft)
 		auth.POST("/episode/submit", episodeHandler.Submit)
+		auth.GET("/episode/drafts", episodeHandler.ListDrafts)
+		auth.POST("/episode/drafts", episodeHandler.SaveDraft)
+		auth.GET("/episode/drafts/:id", episodeHandler.GetDraft)
+		auth.PUT("/episode/drafts/:id", episodeHandler.UpdateDraft)
+		auth.DELETE("/episode/drafts/:id", episodeHandler.DeleteDraft)
+		auth.POST("/episode/drafts/:id/post", episodeHandler.PostDraft)
 
 		// Team settings (read-only for all team members — sidebar plugin visibility)
 		auth.GET("/team/settings", bggHandler.GetTeamSettings)

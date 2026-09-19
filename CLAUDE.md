@@ -52,7 +52,7 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 - `cmd/server/main.go` — wires all dependencies; defines four route groups: public `/api`, authenticated `/api` (JWT/API-token required), admin-only `/api/admin`, team-admin `/api/team`
 - `internal/config/` — loads all config from environment variables
 - `internal/database/mongo.go` — `MongoDB` wrapper that exposes typed collection accessors (`Posts()`, `Users()`, `Teams()`, etc.) and creates indexes on startup
-- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `footer.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`)
+- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `footer.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`, `news_draft.go`, `episode_draft.go`)
 - `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `footers.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`, `mcp.go`)
 - `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context. The same bearer token authenticates both REST API and MCP requests.
 - `internal/services/` — platform-specific: `bluesky.go`, `instagram.go`, `twitter.go`, `mastodon.go`, `threads.go`, `linkedin.go`, `youtube.go`; infrastructure: `scheduler.go`, `imageutil.go`, `email.go`
@@ -62,9 +62,11 @@ The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts wh
 Convention queues have their own 30-second background loop (`ConventionHandler.StartAutoPoster` in `handlers/convention.go`). Approved queue items are a *set*, not pre-scheduled: whenever a queue is active and inside its date window and its `nextPostAt` is due, the loop picks one approved item at random, creates a `scheduled` post for it (which the shared scheduler then publishes), marks the item consumed, and rolls `nextPostAt` forward by the schedule gap. `POST /convention/queues/:id/schedule` is a manual "post one random item now" trigger.
 
 ### MCP server (`handlers/mcp.go`)
-An MCP (Model Context Protocol) server is available at `POST /api/mcp` using the Streamable HTTP transport. It exposes all user-level operations as MCP tools: posts CRUD, footers, mentions, watermarks, accounts, and profile. Authentication uses the same bearer token (`sm_...`) as the REST API — one token works for both interfaces.
+An MCP (Model Context Protocol) server is available at `POST /api/mcp` using the Streamable HTTP transport. It exposes all user-level operations as MCP tools: posts CRUD, footers, mentions, watermarks, accounts, profile, news drafts, and episode drafts. Authentication uses the same bearer token (`sm_...`) as the REST API — one token works for both interfaces.
 
 MCP clients (Claude Code, OpenCode, etc.) configure the server URL and an `Authorization: Bearer <token>` header. The MCP handler implements the JSON-RPC 2.0 protocol with `initialize`, `ping`, `tools/list`, and `tools/call` methods. Each tool performs the same database queries as the corresponding REST handler, respecting team/user scoping.
+
+MCP draft tools: `create_news_draft`, `list_news_drafts`, `get_news_draft`, `update_news_draft`, `delete_news_draft`, `post_news_draft`, `create_episode_draft`, `list_episode_drafts`, `get_episode_draft`, `update_episode_draft`, `delete_episode_draft`, `post_episode_draft`. Post drafts (post/story/reel) are regular posts created with `status: "draft"` via `create_post`.
 
 ### Frontend (`frontend/`)
 React 19 + TypeScript + Vite. No state management library — auth state lives in `AuthContext`, everything else is local component state fetched via the `ApiClient`.
@@ -74,7 +76,16 @@ React 19 + TypeScript + Vite. No state management library — auth state lives i
 - `src/types/index.ts` — all shared TypeScript types (`Post`, `User`, `Team`, `SocialAccount`, etc.)
 - `src/App.tsx` — route definitions; `ProtectedRoute` enforces `adminOnly`/`teamAdminOnly` flags
 
-Components are organized by feature under `src/components/` (Calendar, PostEditor, Admin, Inbox, Footers, etc.).
+Components are organized by feature under `src/components/` (Calendar, PostEditor, Admin, Inbox, Footers, News, Episode, etc.).
+
+### Draft system
+Three draft types exist across the application:
+
+- **Post/Story/Reel drafts** — regular `Post` documents with `status: "draft"`. Created through the PostEditor (Calendar page). The Calendar page has a "Drafts" tab that lists all draft posts across types, with edit/schedule/delete actions. MCP: use `create_post` with `status: "draft"`.
+- **News drafts** — stored in the `news_drafts` collection (`models/news_draft.go`). Managed through the News page's Create/Drafts tabs. REST: `GET/POST /api/news/drafts`, `GET/PUT/DELETE /api/news/drafts/:id`, `POST /api/news/drafts/:id/post`. MCP: `create_news_draft`, `list_news_drafts`, `get_news_draft`, `update_news_draft`, `delete_news_draft`, `post_news_draft`.
+- **Episode drafts** — stored in the `episode_drafts` collection (`models/episode_draft.go`). Managed through the Episodes page's Create/Drafts tabs. REST: `GET/POST /api/episode/drafts`, `GET/PUT/DELETE /api/episode/drafts/:id`, `POST /api/episode/drafts/:id/post`. MCP: `create_episode_draft`, `list_episode_drafts`, `get_episode_draft`, `update_episode_draft`, `delete_episode_draft`, `post_episode_draft`.
+
+News and episode drafts follow the same lifecycle: create → list/browse → edit → publish (sends to webhook + optionally creates a social post + deletes the draft). Drafts are submitted as `multipart/form-data` with `data` (JSON) and optional `images` fields.
 
 ### Post create/update API contract
 Posts are submitted as `multipart/form-data` with two fields: `data` (JSON string of the post object) and `images` (zero or more binary files). This applies to both the REST API and the frontend `ApiClient.createPost`/`updatePost` methods.
