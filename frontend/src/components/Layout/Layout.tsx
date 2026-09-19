@@ -6,7 +6,7 @@ import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
   ScrollText, UsersRound, Signature, Image, LayoutGrid,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
-  Newspaper, Mic,
+  Newspaper, Mic, Bot,
 } from 'lucide-react';
 import './Layout.css';
 
@@ -20,6 +20,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [newsPluginEnabled, setNewsPluginEnabled] = useState(false);
   const [episodePluginEnabled, setEpisodePluginEnabled] = useState(false);
+  const [agentPluginEnabled, setAgentPluginEnabled] = useState(false);
 
   useEffect(() => {
     if (user?.teamId) {
@@ -29,6 +30,9 @@ export function Layout({ children }: { children: ReactNode }) {
         }
         if (s.enabledPlugins?.includes('episode_creator') && s.episodeCreatorUrl && s.hasEpisodeCreatorBearerToken) {
           setEpisodePluginEnabled(true);
+        }
+        if (s.enabledPlugins?.includes('agent')) {
+          setAgentPluginEnabled(true);
         }
       }).catch(() => {});
     }
@@ -50,6 +54,7 @@ export function Layout({ children }: { children: ReactNode }) {
         { kind: 'leaf' as const, path: '/convention', icon: Tent, label: 'Convention' },
         ...(newsPluginEnabled ? [{ kind: 'leaf' as const, path: '/news', icon: Newspaper, label: 'News' }] : []),
         ...(episodePluginEnabled ? [{ kind: 'leaf' as const, path: '/episodes', icon: Mic, label: 'Episodes' }] : []),
+        ...(agentPluginEnabled ? [{ kind: 'leaf' as const, path: '/agent', icon: Bot, label: 'Agent' }] : []),
       ],
     },
     {
@@ -80,7 +85,7 @@ export function Layout({ children }: { children: ReactNode }) {
         ]),
       ],
     }] : []),
-  ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled, episodePluginEnabled]);
+  ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled, episodePluginEnabled, agentPluginEnabled]);
 
   const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
   const groupButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});

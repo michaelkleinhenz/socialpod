@@ -45,6 +45,7 @@ export interface TeamSettings {
   episodeOverlaySpecialOffsetX?: number;
   episodeOverlaySpecialOffsetY?: number;
   scenePromptTemplate?: string;
+  agentSystemPrompt?: string;
 }
 
 export interface Plugin {
@@ -68,6 +69,11 @@ export const AVAILABLE_PLUGINS: Plugin[] = [
     id: 'episode_creator',
     label: 'Episode Creator',
     description: 'Adds an "Episodes" page for creating podcast episodes and optionally scheduling social media posts.',
+  },
+  {
+    id: 'agent',
+    label: 'Agent',
+    description: 'Adds an "Agent" page that uses AI to automatically create news, episode, or post drafts from a URL or description.',
   },
 ];
 

@@ -12,6 +12,7 @@ var AvailablePlugins = []string{
 	"episode_news",
 	"news_creator",
 	"episode_creator",
+	"agent",
 }
 
 type Team struct {
@@ -40,6 +41,7 @@ type Team struct {
 	EpisodeOverlaySpecialOffsetY int                 `bson:"episodeOverlaySpecialOffsetY,omitempty" json:"episodeOverlaySpecialOffsetY,omitempty"`
 	BGGHandleLookupEnabled     *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
 	ScenePromptTemplate        string              `bson:"scenePromptTemplate,omitempty" json:"scenePromptTemplate,omitempty"`
+	AgentSystemPrompt          string              `bson:"agentSystemPrompt,omitempty" json:"agentSystemPrompt,omitempty"`
 	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt               time.Time           `bson:"updatedAt" json:"updatedAt"`

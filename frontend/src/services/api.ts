@@ -661,7 +661,14 @@ class ApiClient {
     return this.request<any>(`/episode/drafts/${id}/post`, { method: 'POST' });
   }
 
-  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayNewsOffsetX?: number; episodeOverlayNewsOffsetY?: number; episodeOverlayReviewId?: string; episodeOverlayReviewOffsetX?: number; episodeOverlayReviewOffsetY?: number; episodeOverlaySpecialId?: string; episodeOverlaySpecialOffsetX?: number; episodeOverlaySpecialOffsetY?: number }) {
+  agentGenerate(data: { url?: string; description?: string; entityType: string }) {
+    return this.request<any>('/agent/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayNewsOffsetX?: number; episodeOverlayNewsOffsetY?: number; episodeOverlayReviewId?: string; episodeOverlayReviewOffsetX?: number; episodeOverlayReviewOffsetY?: number; episodeOverlaySpecialId?: string; episodeOverlaySpecialOffsetX?: number; episodeOverlaySpecialOffsetY?: number; agentSystemPrompt?: string }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -673,7 +680,7 @@ class ApiClient {
     return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);
   }
 
-  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayNewsOffsetX?: number; episodeOverlayNewsOffsetY?: number; episodeOverlayReviewId?: string; episodeOverlayReviewOffsetX?: number; episodeOverlayReviewOffsetY?: number; episodeOverlaySpecialId?: string; episodeOverlaySpecialOffsetX?: number; episodeOverlaySpecialOffsetY?: number }) {
+  updateAdminTeamBggSettings(teamId: string, data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayNewsOffsetX?: number; episodeOverlayNewsOffsetY?: number; episodeOverlayReviewId?: string; episodeOverlayReviewOffsetX?: number; episodeOverlayReviewOffsetY?: number; episodeOverlaySpecialId?: string; episodeOverlaySpecialOffsetX?: number; episodeOverlaySpecialOffsetY?: number; agentSystemPrompt?: string }) {
     return this.request<{ message: string }>(`/admin/teams/${teamId}/settings`, {
       method: 'PUT',
       body: JSON.stringify(data),
