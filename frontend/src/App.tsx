@@ -26,6 +26,7 @@ import { ConventionMobilePage } from './components/Convention/ConventionMobilePa
 import { MobileCreatePage } from './components/MobileCreate/MobileCreatePage';
 import { NewsPage } from './components/News/NewsPage';
 import { EpisodePage } from './components/Episode/EpisodePage';
+import { AgentPage } from './components/Agent/AgentPage';
 import { InvitePage } from './components/Auth/InvitePage';
 import { PrivacyPolicyPage } from './components/Auth/PrivacyPolicyPage';
 import './styles/global.css';
@@ -90,6 +91,8 @@ function AppRoutes() {
       <Route path="/news" element={<ProtectedRoute><Layout><NewsPage /></Layout></ProtectedRoute>} />
       {/* Episode Creator */}
       <Route path="/episodes" element={<ProtectedRoute><Layout><EpisodePage /></Layout></ProtectedRoute>} />
+      {/* Agent */}
+      <Route path="/agent" element={<ProtectedRoute><Layout><AgentPage /></Layout></ProtectedRoute>} />
       {/* PWA Web Share Target — standalone mobile UI, no sidebar */}
       <Route path="/share-target" element={<ShareTargetPage />} />
       <Route path="*" element={<Navigate to="/" />} />

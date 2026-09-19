@@ -114,6 +114,7 @@ func main() {
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir}
+	agentHandler := &handlers.AgentHandler{DB: db, UploadDir: cfg.UploadDir}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -216,6 +217,9 @@ func main() {
 		auth.DELETE("/mentions/:id", mentionHandler.Delete)
 		auth.GET("/mentions/export", mentionHandler.Export)
 		auth.POST("/mentions/import", mentionHandler.Import)
+
+		// Agent (AI content generation)
+		auth.POST("/agent/generate", agentHandler.Generate)
 
 		// Convention mode
 		// MCP server (Streamable HTTP transport)

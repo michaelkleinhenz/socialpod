@@ -1054,6 +1054,7 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
 		"bggHandleLookupEnabled":        handleLookup,
 		"scenePromptTemplate":           team.ScenePromptTemplate,
+		"agentSystemPrompt":             team.AgentSystemPrompt,
 		"enabledPlugins":                enabledPlugins,
 	})
 }
@@ -1094,6 +1095,7 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
 		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
 		ScenePromptTemplate           *string `json:"scenePromptTemplate"`
+		AgentSystemPrompt             *string `json:"agentSystemPrompt"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1129,6 +1131,14 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 			unsetFields["scenePromptTemplate"] = ""
 		} else {
 			setFields["scenePromptTemplate"] = *input.ScenePromptTemplate
+		}
+	}
+
+	if input.AgentSystemPrompt != nil {
+		if *input.AgentSystemPrompt == "" {
+			unsetFields["agentSystemPrompt"] = ""
+		} else {
+			setFields["agentSystemPrompt"] = *input.AgentSystemPrompt
 		}
 	}
 
@@ -1325,6 +1335,7 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
 		"bggHandleLookupEnabled":        adminHandleLookup,
 		"scenePromptTemplate":           team.ScenePromptTemplate,
+		"agentSystemPrompt":             team.AgentSystemPrompt,
 		"enabledPlugins":                adminEnabledPlugins,
 	})
 }
@@ -1360,6 +1371,7 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
 		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
 		ScenePromptTemplate           *string `json:"scenePromptTemplate"`
+		AgentSystemPrompt             *string `json:"agentSystemPrompt"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1395,6 +1407,14 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 			unsetFields["scenePromptTemplate"] = ""
 		} else {
 			setFields["scenePromptTemplate"] = *input.ScenePromptTemplate
+		}
+	}
+
+	if input.AgentSystemPrompt != nil {
+		if *input.AgentSystemPrompt == "" {
+			unsetFields["agentSystemPrompt"] = ""
+		} else {
+			setFields["agentSystemPrompt"] = *input.AgentSystemPrompt
 		}
 	}
 
