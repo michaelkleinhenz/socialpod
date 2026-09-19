@@ -213,6 +213,18 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 		return h.toolDeleteNewsDraft(c, args)
 	case "post_news_draft":
 		return h.toolPostNewsDraft(c, args)
+	case "create_episode_draft":
+		return h.toolCreateEpisodeDraft(c, args)
+	case "list_episode_drafts":
+		return h.toolListEpisodeDrafts(c, args)
+	case "get_episode_draft":
+		return h.toolGetEpisodeDraft(c, args)
+	case "update_episode_draft":
+		return h.toolUpdateEpisodeDraft(c, args)
+	case "delete_episode_draft":
+		return h.toolDeleteEpisodeDraft(c, args)
+	case "post_episode_draft":
+		return h.toolPostEpisodeDraft(c, args)
 	default:
 		return map[string]string{"error": "Unknown tool: " + name}, true
 	}
@@ -1261,6 +1273,370 @@ func (h *MCPHandler) toolPostNewsDraft(c *gin.Context, args map[string]any) (any
 	return resp, false
 }
 
+// --- Episode draft tools ---
+
+func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any) (any, bool) {
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
+	platforms := strSliceArg(args, "platforms")
+	platModels := make([]models.Platform, len(platforms))
+	for i, p := range platforms {
+		platModels[i] = models.Platform(p)
+	}
+
+	draft := models.EpisodeDraft{
+		UserID:            objID,
+		EpisodeNumber:     strArg(args, "episodeNumber"),
+		EpisodeTitle:      strArg(args, "episodeTitle"),
+		EpisodeType:       strArg(args, "episodeType"),
+		Summary:           strArg(args, "summary"),
+		EpisodeDate:       strArg(args, "episodeDate"),
+		GameNamePublisher: strArg(args, "gameNamePublisher"),
+		LinkPublisher:     strArg(args, "linkPublisher"),
+		LinkBGG:           strArg(args, "linkBGG"),
+		Rules:             strArg(args, "rules"),
+		Scene:             strArg(args, "scene"),
+		IntroText:         strArg(args, "introText"),
+		ImageURLs:         strSliceArg(args, "imageUrls"),
+		AddSocialPosting:  boolArg(args, "addSocialPosting"),
+		Content:           strArg(args, "content"),
+		Platforms:         platModels,
+		ScheduledAt:       strArg(args, "scheduledAt"),
+		Tags:              strSliceArg(args, "tags"),
+		Status:            models.PostStatus(strArg(args, "status")),
+		FooterIDs:         mapStrArg(args, "footerIds"),
+		ContentOverrides:  mapStrArg(args, "contentOverrides"),
+		AccountIDs:        mapStrArg(args, "accountIds"),
+		FirstComment:      strArg(args, "firstComment"),
+		PostType:          models.PostType(strArg(args, "postType")),
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		draft.TeamID = &tid
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := h.DB.EpisodeDrafts().InsertOne(ctx, draft)
+	if err != nil {
+		return map[string]string{"error": "Failed to create draft"}, true
+	}
+	draft.ID = result.InsertedID.(primitive.ObjectID)
+	return draft, false
+}
+
+func (h *MCPHandler) toolListEpisodeDrafts(c *gin.Context, _ map[string]any) (any, bool) {
+	filter := mcpScopeFilter(c)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	cursor, err := h.DB.EpisodeDrafts().Find(ctx, filter, opts)
+	if err != nil {
+		return map[string]string{"error": "Failed to fetch drafts"}, true
+	}
+	defer cursor.Close(ctx)
+
+	var drafts []models.EpisodeDraft
+	if err := cursor.All(ctx, &drafts); err != nil {
+		return map[string]string{"error": "Failed to decode drafts"}, true
+	}
+	if drafts == nil {
+		drafts = []models.EpisodeDraft{}
+	}
+	return drafts, false
+}
+
+func (h *MCPHandler) toolGetEpisodeDraft(c *gin.Context, args map[string]any) (any, bool) {
+	id := strArg(args, "id")
+	if id == "" {
+		return map[string]string{"error": "id is required"}, true
+	}
+	draftID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return map[string]string{"error": "Invalid draft ID"}, true
+	}
+
+	filter := mcpScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var draft models.EpisodeDraft
+	if err := h.DB.EpisodeDrafts().FindOne(ctx, filter).Decode(&draft); err != nil {
+		return map[string]string{"error": "Draft not found"}, true
+	}
+	return draft, false
+}
+
+func (h *MCPHandler) toolUpdateEpisodeDraft(c *gin.Context, args map[string]any) (any, bool) {
+	id := strArg(args, "id")
+	if id == "" {
+		return map[string]string{"error": "id is required"}, true
+	}
+	draftID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return map[string]string{"error": "Invalid draft ID"}, true
+	}
+
+	filter := mcpScopeFilter(c)
+	filter["_id"] = draftID
+
+	update := bson.M{"updatedAt": time.Now()}
+
+	if v, ok := args["episodeNumber"]; ok {
+		if s, ok := v.(string); ok {
+			update["episodeNumber"] = s
+		}
+	}
+	if v, ok := args["episodeTitle"]; ok {
+		if s, ok := v.(string); ok {
+			update["episodeTitle"] = s
+		}
+	}
+	if v, ok := args["episodeType"]; ok {
+		if s, ok := v.(string); ok {
+			update["episodeType"] = s
+		}
+	}
+	if v, ok := args["summary"]; ok {
+		if s, ok := v.(string); ok {
+			update["summary"] = s
+		}
+	}
+	if v, ok := args["episodeDate"]; ok {
+		if s, ok := v.(string); ok {
+			update["episodeDate"] = s
+		}
+	}
+	if v, ok := args["gameNamePublisher"]; ok {
+		if s, ok := v.(string); ok {
+			update["gameNamePublisher"] = s
+		}
+	}
+	if v, ok := args["linkPublisher"]; ok {
+		if s, ok := v.(string); ok {
+			update["linkPublisher"] = s
+		}
+	}
+	if v, ok := args["linkBGG"]; ok {
+		if s, ok := v.(string); ok {
+			update["linkBGG"] = s
+		}
+	}
+	if v, ok := args["rules"]; ok {
+		if s, ok := v.(string); ok {
+			update["rules"] = s
+		}
+	}
+	if v, ok := args["scene"]; ok {
+		if s, ok := v.(string); ok {
+			update["scene"] = s
+		}
+	}
+	if v, ok := args["introText"]; ok {
+		if s, ok := v.(string); ok {
+			update["introText"] = s
+		}
+	}
+	if v, ok := args["content"]; ok {
+		if s, ok := v.(string); ok {
+			update["content"] = s
+		}
+	}
+	if v, ok := args["firstComment"]; ok {
+		if s, ok := v.(string); ok {
+			update["firstComment"] = s
+		}
+	}
+	if v, ok := args["scheduledAt"]; ok {
+		if s, ok := v.(string); ok {
+			update["scheduledAt"] = s
+		}
+	}
+	if v, ok := args["addSocialPosting"]; ok {
+		if b, ok := v.(bool); ok {
+			update["addSocialPosting"] = b
+		}
+	}
+	if v, ok := args["postType"]; ok {
+		if s, ok := v.(string); ok {
+			update["postType"] = s
+		}
+	}
+	if v, ok := args["status"]; ok {
+		if s, ok := v.(string); ok {
+			update["status"] = s
+		}
+	}
+	if platforms := strSliceArg(args, "platforms"); platforms != nil {
+		platModels := make([]models.Platform, len(platforms))
+		for i, p := range platforms {
+			platModels[i] = models.Platform(p)
+		}
+		update["platforms"] = platModels
+	}
+	if tags := strSliceArg(args, "tags"); tags != nil {
+		update["tags"] = tags
+	}
+	if imageURLs := strSliceArg(args, "imageUrls"); imageURLs != nil {
+		update["imageUrls"] = imageURLs
+	}
+	if footerIDs := mapStrArg(args, "footerIds"); footerIDs != nil {
+		update["footerIds"] = footerIDs
+	}
+	if overrides := mapStrArg(args, "contentOverrides"); overrides != nil {
+		update["contentOverrides"] = overrides
+	}
+	if accountIDs := mapStrArg(args, "accountIds"); accountIDs != nil {
+		update["accountIds"] = accountIDs
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	res, err := h.DB.EpisodeDrafts().UpdateOne(ctx, filter, bson.M{"$set": update})
+	if err != nil || res.MatchedCount == 0 {
+		return map[string]string{"error": "Draft not found"}, true
+	}
+
+	var draft models.EpisodeDraft
+	h.DB.EpisodeDrafts().FindOne(ctx, bson.M{"_id": draftID}).Decode(&draft)
+	return draft, false
+}
+
+func (h *MCPHandler) toolDeleteEpisodeDraft(c *gin.Context, args map[string]any) (any, bool) {
+	id := strArg(args, "id")
+	if id == "" {
+		return map[string]string{"error": "id is required"}, true
+	}
+	draftID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return map[string]string{"error": "Invalid draft ID"}, true
+	}
+
+	filter := mcpScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := h.DB.EpisodeDrafts().DeleteOne(ctx, filter)
+	if err != nil || res.DeletedCount == 0 {
+		return map[string]string{"error": "Draft not found"}, true
+	}
+	return map[string]string{"message": "Draft deleted"}, false
+}
+
+func (h *MCPHandler) toolPostEpisodeDraft(c *gin.Context, args map[string]any) (any, bool) {
+	id := strArg(args, "id")
+	if id == "" {
+		return map[string]string{"error": "id is required"}, true
+	}
+	draftID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return map[string]string{"error": "Invalid draft ID"}, true
+	}
+
+	filter := mcpScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var draft models.EpisodeDraft
+	if err := h.DB.EpisodeDrafts().FindOne(ctx, filter).Decode(&draft); err != nil {
+		return map[string]string{"error": "Draft not found"}, true
+	}
+
+	if draft.EpisodeNumber == "" || draft.EpisodeTitle == "" || draft.EpisodeType == "" || draft.EpisodeDate == "" {
+		return map[string]string{"error": "Draft is incomplete: episodeNumber, episodeTitle, episodeType, and episodeDate are required"}, true
+	}
+
+	teamIDStr, ok := c.Get("teamId")
+	if !ok || teamIDStr.(string) == "" {
+		return map[string]string{"error": "No team associated with this account"}, true
+	}
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
+	if err != nil {
+		return map[string]string{"error": "Invalid team ID"}, true
+	}
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		return map[string]string{"error": "Team not found"}, true
+	}
+
+	pluginEnabled := false
+	for _, p := range team.EnabledPlugins {
+		if p == "episode_creator" {
+			pluginEnabled = true
+			break
+		}
+	}
+	if !pluginEnabled {
+		return map[string]string{"error": "episode_creator plugin is not enabled for this team"}, true
+	}
+	if team.EpisodeCreatorURL == "" || team.EpisodeCreatorBearerToken == "" {
+		return map[string]string{"error": "Episode creator URL or bearer token not configured"}, true
+	}
+
+	eh := &EpisodeHandler{DB: h.DB, UploadDir: h.UploadDir}
+	input := &EpisodeSubmitInput{
+		EpisodeNumber:     draft.EpisodeNumber,
+		EpisodeTitle:      draft.EpisodeTitle,
+		EpisodeType:       draft.EpisodeType,
+		Summary:           draft.Summary,
+		EpisodeDate:       draft.EpisodeDate,
+		GameNamePublisher: draft.GameNamePublisher,
+		LinkPublisher:     draft.LinkPublisher,
+		LinkBGG:           draft.LinkBGG,
+		Rules:             draft.Rules,
+		Scene:             draft.Scene,
+		IntroText:         draft.IntroText,
+		AddSocialPosting:  draft.AddSocialPosting,
+		Content:           draft.Content,
+		Platforms:         draft.Platforms,
+		ScheduledAt:       draft.ScheduledAt,
+		ImageURLs:         draft.ImageURLs,
+		Tags:              draft.Tags,
+		Status:            draft.Status,
+		FooterIDs:         draft.FooterIDs,
+		ContentOverrides:  draft.ContentOverrides,
+		AccountIDs:        draft.AccountIDs,
+		FirstComment:      draft.FirstComment,
+		PostType:          draft.PostType,
+	}
+
+	if webhookErr := eh.sendToWebhook(ctx, &team, input, draft.ImageURLs); webhookErr != nil {
+		return map[string]string{"error": "Failed to send episode: " + webhookErr.Error()}, true
+	}
+
+	var post *models.Post
+	if draft.AddSocialPosting {
+		created, postErr := eh.createPost(ctx, c, input, nil)
+		if postErr != nil {
+			return map[string]string{"error": "Episode sent but failed to create post: " + postErr.Error()}, true
+		}
+		post = created
+	}
+
+	h.DB.EpisodeDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+
+	resp := map[string]any{"message": "Episode submitted successfully"}
+	if post != nil {
+		resp["post"] = post
+	}
+	return resp, false
+}
+
 // --- Tool definitions ---
 
 func (h *MCPHandler) toolDefinitions() []mcpTool {
@@ -1542,6 +1918,104 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		{
 			Name:        "post_news_draft",
 			Description: "Submit a news draft for publishing. This sends the news to the configured webhook and optionally creates a social media post, then deletes the draft. The draft must have episodeNumber, newsTagline, and articleUrl filled in.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},
+				"required":   []string{"id"},
+			},
+		},
+		{
+			Name:        "create_episode_draft",
+			Description: "Create an episode draft for later review and posting. Drafts store episode data (number, title, type, date, review details) and optionally social media posting settings. The draft can be reviewed and submitted later via post_episode_draft.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"episodeNumber":     map[string]any{"type": "string", "description": "Episode number"},
+					"episodeTitle":      map[string]any{"type": "string", "description": "Episode title"},
+					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special"}, "description": "Episode type"},
+					"summary":           map[string]any{"type": "string", "description": "Episode summary"},
+					"episodeDate":       map[string]any{"type": "string", "description": "Episode date (ISO datetime)"},
+					"gameNamePublisher": map[string]any{"type": "string", "description": "Game name and publisher (review type)"},
+					"linkPublisher":     map[string]any{"type": "string", "description": "Publisher link (review type)"},
+					"linkBGG":           map[string]any{"type": "string", "description": "BoardGameGeek link (review type)"},
+					"rules":             map[string]any{"type": "string", "description": "Rules text (review type)"},
+					"scene":             map[string]any{"type": "string", "description": "Scene description (review type)"},
+					"introText":         map[string]any{"type": "string", "description": "Introduction text (review type)"},
+					"imageUrls":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs (must already be uploaded)"},
+					"addSocialPosting":  map[string]any{"type": "boolean", "description": "Whether to create a social media post when the draft is submitted"},
+					"content":           map[string]any{"type": "string", "description": "Social media post content"},
+					"platforms":         map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": []string{"bluesky", "instagram", "twitter", "mastodon", "threads", "linkedin", "youtube"}}, "description": "Target platforms for the social post"},
+					"scheduledAt":       map[string]any{"type": "string", "description": "When to publish the social post (RFC3339)"},
+					"status":            map[string]any{"type": "string", "enum": []string{"draft", "scheduled"}, "description": "Status for the social post"},
+					"tags":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
+					"postType":          map[string]any{"type": "string", "enum": []string{"post", "story", "reel"}, "description": "Post type (default: post)"},
+					"firstComment":      map[string]any{"type": "string", "description": "First comment text"},
+					"accountIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
+					"footerIds":         map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
+					"contentOverrides":  map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
+				},
+			},
+		},
+		{
+			Name:        "list_episode_drafts",
+			Description: "List all episode drafts, sorted by most recently updated.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+		},
+		{
+			Name:        "get_episode_draft",
+			Description: "Get a single episode draft by its ID.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},
+				"required":   []string{"id"},
+			},
+		},
+		{
+			Name:        "update_episode_draft",
+			Description: "Update an existing episode draft. Only provided fields are changed.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":                map[string]any{"type": "string", "description": "Draft ID"},
+					"episodeNumber":     map[string]any{"type": "string", "description": "Episode number"},
+					"episodeTitle":      map[string]any{"type": "string", "description": "Episode title"},
+					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special"}, "description": "Episode type"},
+					"summary":           map[string]any{"type": "string", "description": "Episode summary"},
+					"episodeDate":       map[string]any{"type": "string", "description": "Episode date"},
+					"gameNamePublisher": map[string]any{"type": "string", "description": "Game name and publisher"},
+					"linkPublisher":     map[string]any{"type": "string", "description": "Publisher link"},
+					"linkBGG":           map[string]any{"type": "string", "description": "BGG link"},
+					"rules":             map[string]any{"type": "string", "description": "Rules text"},
+					"scene":             map[string]any{"type": "string", "description": "Scene description"},
+					"introText":         map[string]any{"type": "string", "description": "Introduction text"},
+					"imageUrls":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs"},
+					"addSocialPosting":  map[string]any{"type": "boolean", "description": "Whether to include a social media post"},
+					"content":           map[string]any{"type": "string", "description": "Social media post content"},
+					"platforms":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Target platforms"},
+					"scheduledAt":       map[string]any{"type": "string", "description": "Scheduled time (RFC3339)"},
+					"status":            map[string]any{"type": "string", "enum": []string{"draft", "scheduled"}, "description": "Social post status"},
+					"tags":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
+					"postType":          map[string]any{"type": "string", "description": "Post type"},
+					"firstComment":      map[string]any{"type": "string", "description": "First comment"},
+					"accountIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
+					"footerIds":         map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
+					"contentOverrides":  map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
+				},
+				"required": []string{"id"},
+			},
+		},
+		{
+			Name:        "delete_episode_draft",
+			Description: "Delete an episode draft by its ID.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},
+				"required":   []string{"id"},
+			},
+		},
+		{
+			Name:        "post_episode_draft",
+			Description: "Submit an episode draft for publishing. This sends the episode to the configured webhook and optionally creates a social media post, then deletes the draft. The draft must have episodeNumber, episodeTitle, episodeType, and episodeDate filled in.",
 			InputSchema: map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},

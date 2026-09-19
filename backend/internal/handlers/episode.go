@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type EpisodeHandler struct {
@@ -232,6 +233,366 @@ func (h *EpisodeHandler) sendToWebhook(ctx context.Context, team *models.Team, i
 
 	log.Printf("[EpisodeCreator] Success (HTTP %d)", resp.StatusCode)
 	return nil
+}
+
+// --- Episode draft methods ---
+
+func episodeDraftScopeFilter(c *gin.Context) bson.M {
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		return bson.M{"teamId": tid}
+	}
+	userID, _ := c.Get("userId")
+	uid, _ := primitive.ObjectIDFromHex(userID.(string))
+	return bson.M{"userId": uid}
+}
+
+func (h *EpisodeHandler) SaveDraft(c *gin.Context) {
+	var input EpisodeSubmitInput
+	if err := json.Unmarshal([]byte(c.PostForm("data")), &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft data: " + err.Error()})
+		return
+	}
+
+	userID, _ := c.Get("userId")
+	objID, _ := primitive.ObjectIDFromHex(userID.(string))
+
+	var uploadedImageFiles []*multipart.FileHeader
+	if form, err := c.MultipartForm(); err == nil {
+		uploadedImageFiles = form.File["image"]
+	}
+
+	imgHelper := &NewsHandler{DB: h.DB, UploadDir: h.UploadDir}
+	var savedImageURLs []string
+	for _, fh := range uploadedImageFiles {
+		url, uploadErr := imgHelper.saveUpload(fh)
+		if uploadErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
+			return
+		}
+		savedImageURLs = append(savedImageURLs, url)
+	}
+
+	allImages := append(input.ImageURLs, savedImageURLs...)
+
+	platModels := make([]models.Platform, len(input.Platforms))
+	for i, p := range input.Platforms {
+		platModels[i] = models.Platform(p)
+	}
+
+	draft := models.EpisodeDraft{
+		UserID:            objID,
+		EpisodeNumber:     input.EpisodeNumber,
+		EpisodeTitle:      input.EpisodeTitle,
+		EpisodeType:       input.EpisodeType,
+		Summary:           input.Summary,
+		EpisodeDate:       input.EpisodeDate,
+		GameNamePublisher: input.GameNamePublisher,
+		LinkPublisher:     input.LinkPublisher,
+		LinkBGG:           input.LinkBGG,
+		Rules:             input.Rules,
+		Scene:             input.Scene,
+		IntroText:         input.IntroText,
+		ImageURLs:         allImages,
+		AddSocialPosting:  input.AddSocialPosting,
+		Content:           input.Content,
+		Platforms:         platModels,
+		ScheduledAt:       input.ScheduledAt,
+		Tags:              input.Tags,
+		Status:            input.Status,
+		FooterIDs:         input.FooterIDs,
+		ContentOverrides:  input.ContentOverrides,
+		AccountIDs:        input.AccountIDs,
+		FirstComment:      input.FirstComment,
+		PostType:          input.PostType,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	if teamID, ok := c.Get("teamId"); ok {
+		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
+		draft.TeamID = &tid
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := h.DB.EpisodeDrafts().InsertOne(ctx, draft)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save draft"})
+		return
+	}
+	draft.ID = result.InsertedID.(primitive.ObjectID)
+	c.JSON(http.StatusOK, draft)
+}
+
+func (h *EpisodeHandler) ListDrafts(c *gin.Context) {
+	filter := episodeDraftScopeFilter(c)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	cursor, err := h.DB.EpisodeDrafts().Find(ctx, filter, opts)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch drafts"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var drafts []models.EpisodeDraft
+	if err := cursor.All(ctx, &drafts); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode drafts"})
+		return
+	}
+	if drafts == nil {
+		drafts = []models.EpisodeDraft{}
+	}
+	c.JSON(http.StatusOK, drafts)
+}
+
+func (h *EpisodeHandler) GetDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	filter := episodeDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var draft models.EpisodeDraft
+	if err := h.DB.EpisodeDrafts().FindOne(ctx, filter).Decode(&draft); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, draft)
+}
+
+func (h *EpisodeHandler) UpdateDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	var input EpisodeSubmitInput
+	if err := json.Unmarshal([]byte(c.PostForm("data")), &input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft data: " + err.Error()})
+		return
+	}
+
+	filter := episodeDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	var uploadedImageFiles []*multipart.FileHeader
+	if form, err := c.MultipartForm(); err == nil {
+		uploadedImageFiles = form.File["image"]
+	}
+
+	imgHelper := &NewsHandler{DB: h.DB, UploadDir: h.UploadDir}
+	var savedImageURLs []string
+	for _, fh := range uploadedImageFiles {
+		url, uploadErr := imgHelper.saveUpload(fh)
+		if uploadErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
+			return
+		}
+		savedImageURLs = append(savedImageURLs, url)
+	}
+
+	allImages := append(input.ImageURLs, savedImageURLs...)
+
+	platModels := make([]models.Platform, len(input.Platforms))
+	for i, p := range input.Platforms {
+		platModels[i] = models.Platform(p)
+	}
+
+	update := bson.M{
+		"episodeNumber":     input.EpisodeNumber,
+		"episodeTitle":      input.EpisodeTitle,
+		"episodeType":       input.EpisodeType,
+		"summary":           input.Summary,
+		"episodeDate":       input.EpisodeDate,
+		"gameNamePublisher": input.GameNamePublisher,
+		"linkPublisher":     input.LinkPublisher,
+		"linkBGG":           input.LinkBGG,
+		"rules":             input.Rules,
+		"scene":             input.Scene,
+		"introText":         input.IntroText,
+		"imageUrls":         allImages,
+		"addSocialPosting":  input.AddSocialPosting,
+		"content":           input.Content,
+		"platforms":         platModels,
+		"scheduledAt":       input.ScheduledAt,
+		"tags":              input.Tags,
+		"status":            input.Status,
+		"footerIds":         input.FooterIDs,
+		"contentOverrides":  input.ContentOverrides,
+		"accountIds":        input.AccountIDs,
+		"firstComment":      input.FirstComment,
+		"postType":          input.PostType,
+		"updatedAt":         time.Now(),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	res, err := h.DB.EpisodeDrafts().UpdateOne(ctx, filter, bson.M{"$set": update})
+	if err != nil || res.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+
+	var draft models.EpisodeDraft
+	h.DB.EpisodeDrafts().FindOne(ctx, bson.M{"_id": draftID}).Decode(&draft)
+	c.JSON(http.StatusOK, draft)
+}
+
+func (h *EpisodeHandler) DeleteDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	filter := episodeDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := h.DB.EpisodeDrafts().DeleteOne(ctx, filter)
+	if err != nil || res.DeletedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Draft deleted"})
+}
+
+func (h *EpisodeHandler) PostDraft(c *gin.Context) {
+	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+
+	filter := episodeDraftScopeFilter(c)
+	filter["_id"] = draftID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var draft models.EpisodeDraft
+	if err := h.DB.EpisodeDrafts().FindOne(ctx, filter).Decode(&draft); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
+		return
+	}
+
+	if draft.EpisodeNumber == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeNumber is required"})
+		return
+	}
+	if draft.EpisodeTitle == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeTitle is required"})
+		return
+	}
+	if draft.EpisodeType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeType is required"})
+		return
+	}
+	if draft.EpisodeDate == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeDate is required"})
+		return
+	}
+
+	teamIDStr, ok := c.Get("teamId")
+	if !ok || teamIDStr.(string) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No team associated with this account"})
+		return
+	}
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
+		return
+	}
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+		return
+	}
+
+	pluginEnabled := false
+	for _, p := range team.EnabledPlugins {
+		if p == "episode_creator" {
+			pluginEnabled = true
+			break
+		}
+	}
+	if !pluginEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episode_creator plugin is not enabled for this team"})
+		return
+	}
+
+	if team.EpisodeCreatorURL == "" || team.EpisodeCreatorBearerToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Episode creator URL or bearer token not configured"})
+		return
+	}
+
+	input := &EpisodeSubmitInput{
+		EpisodeNumber:     draft.EpisodeNumber,
+		EpisodeTitle:      draft.EpisodeTitle,
+		EpisodeType:       draft.EpisodeType,
+		Summary:           draft.Summary,
+		EpisodeDate:       draft.EpisodeDate,
+		GameNamePublisher: draft.GameNamePublisher,
+		LinkPublisher:     draft.LinkPublisher,
+		LinkBGG:           draft.LinkBGG,
+		Rules:             draft.Rules,
+		Scene:             draft.Scene,
+		IntroText:         draft.IntroText,
+		AddSocialPosting:  draft.AddSocialPosting,
+		Content:           draft.Content,
+		Platforms:         draft.Platforms,
+		ScheduledAt:       draft.ScheduledAt,
+		ImageURLs:         draft.ImageURLs,
+		Tags:              draft.Tags,
+		Status:            draft.Status,
+		FooterIDs:         draft.FooterIDs,
+		ContentOverrides:  draft.ContentOverrides,
+		AccountIDs:        draft.AccountIDs,
+		FirstComment:      draft.FirstComment,
+		PostType:          draft.PostType,
+	}
+
+	webhookErr := h.sendToWebhook(ctx, &team, input, draft.ImageURLs)
+	if webhookErr != nil {
+		log.Printf("[EpisodeCreator] Error sending draft to webhook: %v", webhookErr)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send episode: " + webhookErr.Error()})
+		return
+	}
+
+	var post *models.Post
+	if draft.AddSocialPosting {
+		created, postErr := h.createPost(ctx, c, input, nil)
+		if postErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Episode sent but failed to create post: " + postErr.Error()})
+			return
+		}
+		post = created
+	}
+
+	h.DB.EpisodeDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+
+	resp := gin.H{"message": "Episode submitted successfully"}
+	if post != nil {
+		resp["post"] = post
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *EpisodeHandler) createPost(ctx context.Context, c *gin.Context, input *EpisodeSubmitInput, imageURLs []string) (*models.Post, error) {

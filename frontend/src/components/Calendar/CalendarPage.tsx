@@ -6,12 +6,13 @@ import {
 } from 'date-fns';
 import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { api } from '../../services/api';
-import type { Post, PostType, SocialAccount } from '../../types';
+import type { Post, PostType, Platform, SocialAccount } from '../../types';
 import { PostEditor } from '../PostEditor/PostEditor';
 import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
 import { DroppableDay } from './DroppableDay';
-import { ChevronLeft, ChevronRight, Plus, Filter } from 'lucide-react';
+import { PlatformIcon } from '../Common/PlatformIcon';
+import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader, Image } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
@@ -32,6 +33,12 @@ export function CalendarPage() {
   const [filterPlatform, setFilterPlatform] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [activeTab, setActiveTab] = useState<'calendar' | 'drafts'>('calendar');
+  const [draftPosts, setDraftPosts] = useState<Post[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null);
+
+  const apiUrl = import.meta.env.VITE_API_URL || '';
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -73,6 +80,54 @@ export function CalendarPage() {
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   useEffect(() => { api.getActiveAccounts().then(setAccounts).catch(() => {}); }, []);
+
+  const fetchDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    try {
+      const data = await api.getPosts({ status: 'draft' });
+      setDraftPosts(data);
+    } catch {
+      toast.error('Failed to load drafts');
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'drafts') fetchDrafts();
+  }, [activeTab, fetchDrafts]);
+
+  const handlePublishDraft = async (post: Post) => {
+    setPublishingDraftId(post.id);
+    try {
+      const updated = await api.updatePost(post.id, { ...post, status: 'scheduled' });
+      setDraftPosts(prev => prev.filter(p => p.id !== post.id));
+      setPosts(prev => [...prev.filter(p => p.id !== post.id), updated]);
+      toast.success('Draft scheduled for publishing');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to schedule draft');
+    } finally {
+      setPublishingDraftId(null);
+    }
+  };
+
+  const handleDeleteDraft = async (postId: string) => {
+    try {
+      await api.deletePost(postId);
+      setDraftPosts(prev => prev.filter(p => p.id !== postId));
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      toast.success('Draft deleted');
+    } catch {
+      toast.error('Failed to delete draft');
+    }
+  };
+
+  const handleEditDraft = (post: Post) => {
+    setEditingPost(post);
+    setSelectedDate(null);
+    setEditorPostType(post.postType || 'post');
+    setEditorOpen(true);
+  };
 
   const hasAccounts = accounts.length > 0;
 
@@ -154,6 +209,7 @@ export function CalendarPage() {
         toast.success('Post created');
       }
       setEditorOpen(false);
+      if (activeTab === 'drafts') fetchDrafts();
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -191,22 +247,38 @@ export function CalendarPage() {
         <div className="calendar-actions">
           <div className="view-toggle">
             <button
-              className={`view-toggle-btn ${viewMode === 'month' ? 'active' : ''}`}
-              onClick={() => setViewMode('month')}
+              className={`view-toggle-btn ${activeTab === 'calendar' && viewMode === 'month' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('calendar'); setViewMode('month'); }}
             >
               Month
             </button>
             <button
-              className={`view-toggle-btn ${viewMode === '3day' ? 'active' : ''}`}
-              onClick={() => setViewMode('3day')}
+              className={`view-toggle-btn ${activeTab === 'calendar' && viewMode === '3day' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('calendar'); setViewMode('3day'); }}
             >
               3 Day
             </button>
             <button
-              className={`view-toggle-btn ${viewMode === 'week' ? 'active' : ''}`}
-              onClick={() => setViewMode('week')}
+              className={`view-toggle-btn ${activeTab === 'calendar' && viewMode === 'week' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('calendar'); setViewMode('week'); }}
             >
               Week
+            </button>
+            <button
+              className={`view-toggle-btn ${activeTab === 'drafts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('drafts')}
+              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <FileText size={14} /> Drafts
+              {draftPosts.length > 0 && <span style={{
+                background: 'var(--accent)',
+                color: '#fff',
+                borderRadius: 10,
+                padding: '1px 6px',
+                fontSize: 10,
+                fontWeight: 600,
+                lineHeight: '16px',
+              }}>{draftPosts.length}</span>}
             </button>
           </div>
           <div className="filter-group">
@@ -242,6 +314,114 @@ export function CalendarPage() {
         </div>
       </div>
 
+      {/* Drafts Tab */}
+      {activeTab === 'drafts' && (
+        <div style={{ padding: '0 0 24px' }}>
+          {draftsLoading ? (
+            <div className="loading-screen"><div className="spinner" /></div>
+          ) : draftPosts.length === 0 ? (
+            <div className="empty-state">
+              <FileText size={48} />
+              <p>No drafts yet</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+                Create a post and save it as a draft to review it later before scheduling.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {draftPosts.map(post => (
+                <div key={post.id} className="card" style={{ padding: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    {post.imageUrls && post.imageUrls.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        {post.imageUrls.slice(0, 3).map((url, i) => (
+                          <img
+                            key={i}
+                            src={url.startsWith('/') ? apiUrl + url : url}
+                            alt=""
+                            style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover' }}
+                          />
+                        ))}
+                        {post.imageUrls.length > 3 && (
+                          <div style={{
+                            width: 56, height: 56, borderRadius: 6,
+                            background: 'var(--bg-secondary, #1e293b)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 12, color: 'var(--text-muted)',
+                          }}>
+                            +{post.imageUrls.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{
+                          background: 'var(--bg-secondary, #1e293b)',
+                          borderRadius: 4,
+                          padding: '1px 6px',
+                          fontSize: 11,
+                          textTransform: 'capitalize',
+                        }}>
+                          {post.postType || 'post'}
+                        </span>
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          {post.platforms.map(p => (
+                            <PlatformIcon key={p} platform={p as Platform} size={12} />
+                          ))}
+                        </span>
+                      </div>
+                      <div style={{
+                        fontSize: 14,
+                        lineHeight: 1.4,
+                        overflow: 'hidden',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        wordBreak: 'break-word',
+                      }}>
+                        {post.content || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>(No content)</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                        <span>Scheduled: {format(parseISO(post.scheduledAt), 'MMM d, yyyy HH:mm')}</span>
+                        <span>·</span>
+                        <span>Updated {format(parseISO(post.updatedAt), 'MMM d, yyyy HH:mm')}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleEditDraft(post)}
+                        title="Edit this draft"
+                      >
+                        <Edit3 size={14} /> Edit
+                      </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handlePublishDraft(post)}
+                        disabled={publishingDraftId === post.id}
+                        title="Schedule this draft for publishing"
+                      >
+                        {publishingDraftId === post.id ? <><Loader size={14} className="post-editor-spin" /> Scheduling...</> : <><Play size={14} /> Schedule</>}
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleDeleteDraft(post.id)}
+                        title="Delete this draft"
+                        style={{ color: 'var(--danger)' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'calendar' && (
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {viewMode === '3day' ? (
           <div className="week-grid three-day-grid">
@@ -367,8 +547,9 @@ export function CalendarPage() {
           {draggedPost && <CalendarPost post={draggedPost} onClick={() => {}} isDragging />}
         </DragOverlay>
       </DndContext>
+      )}
 
-      {loading && <div className="calendar-loading"><div className="spinner" /></div>}
+      {loading && activeTab === 'calendar' && <div className="calendar-loading"><div className="spinner" /></div>}
 
       {editorOpen && (
         <PostEditor

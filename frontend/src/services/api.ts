@@ -631,6 +631,36 @@ class ApiClient {
     return this.request<any>('/episode/submit', { method: 'POST', body: form });
   }
 
+  listEpisodeDrafts() {
+    return this.request<import('../types').EpisodeDraft[]>('/episode/drafts');
+  }
+
+  getEpisodeDraft(id: string) {
+    return this.request<import('../types').EpisodeDraft>(`/episode/drafts/${id}`);
+  }
+
+  saveEpisodeDraft(data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('image', f));
+    return this.request<import('../types').EpisodeDraft>('/episode/drafts', { method: 'POST', body: form });
+  }
+
+  updateEpisodeDraft(id: string, data: any, files?: File[]) {
+    const form = new FormData();
+    form.append('data', JSON.stringify(data));
+    files?.forEach(f => form.append('image', f));
+    return this.request<import('../types').EpisodeDraft>(`/episode/drafts/${id}`, { method: 'PUT', body: form });
+  }
+
+  deleteEpisodeDraft(id: string) {
+    return this.request<{ message: string }>(`/episode/drafts/${id}`, { method: 'DELETE' });
+  }
+
+  postEpisodeDraft(id: string) {
+    return this.request<any>(`/episode/drafts/${id}/post`, { method: 'POST' });
+  }
+
   updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayNewsOffsetX?: number; episodeOverlayNewsOffsetY?: number; episodeOverlayReviewId?: string; episodeOverlayReviewOffsetX?: number; episodeOverlayReviewOffsetY?: number; episodeOverlaySpecialId?: string; episodeOverlaySpecialOffsetX?: number; episodeOverlaySpecialOffsetY?: number }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',
