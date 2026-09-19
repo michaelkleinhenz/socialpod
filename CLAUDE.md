@@ -68,6 +68,8 @@ MCP clients (Claude Code, OpenCode, etc.) configure the server URL and an `Autho
 
 MCP draft tools: `create_news_draft`, `list_news_drafts`, `get_news_draft`, `update_news_draft`, `delete_news_draft`, `post_news_draft`, `create_episode_draft`, `list_episode_drafts`, `get_episode_draft`, `update_episode_draft`, `delete_episode_draft`, `post_episode_draft`. Post drafts (post/story/reel) are regular posts created with `status: "draft"` via `create_post`.
 
+MCP image uploads: the `upload_image` tool accepts base64-encoded image data and a filename, stores the file (disk + MongoDB), and returns its URL. All create/update tools (`create_post`, `update_post`, `create_news_draft`, `update_news_draft`, `create_episode_draft`, `update_episode_draft`) also accept an `images` parameter — an array of `{data, filename}` objects with base64-encoded data — for inline image upload in a single tool call. Uploaded image URLs are merged with any `imageUrls` passed in the same call. Supported types: jpg, jpeg, png, gif, webp, mp4, mov.
+
 ### Frontend (`frontend/`)
 React 19 + TypeScript + Vite. No state management library — auth state lives in `AuthContext`, everything else is local component state fetched via the `ApiClient`.
 
