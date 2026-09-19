@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, EpisodeDraft } from '../../types';
-import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Dice5, FileText, Trash2, Play, Edit3, Save } from 'lucide-react';
+import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Wand2, Dice5, FileText, Trash2, Play, Edit3, Save } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
@@ -11,6 +11,9 @@ import '../PostEditor/PostEditor.css';
 import '../News/News.css';
 
 const MAX_IMAGE_BYTES = 1_000_000;
+
+let _ccEditor: any = null;
+let _ccClientId = '';
 
 const BLUESKY_LIMIT = 300;
 const INSTAGRAM_LIMIT = 2200;
@@ -90,7 +93,7 @@ export function EpisodePage() {
   // Social posting fields
   const [content, setContent] = useState('');
   const [contentOverrides, setContentOverrides] = useState<Record<string, string>>({});
-  const [customizePerPlatform, setCustomizePerPlatform] = useState(true);
+  const [customizePerPlatform, setCustomizePerPlatform] = useState(false);
   const [firstComment, setFirstComment] = useState('');
   const [platforms, setPlatforms] = useState<Platform[]>(DEFAULT_PLATFORMS);
   const [scheduledAt, setScheduledAt] = useState(
@@ -112,6 +115,10 @@ export function EpisodePage() {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [postingDraftId, setPostingDraftId] = useState<string | null>(null);
+
+  // Adobe Express
+  const [adobeClientId, setAdobeClientId] = useState('');
+  const [adobeLoading, setAdobeLoading] = useState(false);
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
@@ -146,6 +153,7 @@ export function EpisodePage() {
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.openRouterEnabled) setAiEnabled(true);
       if (s.hasBggApiToken) setBggEnabled(true);
+      if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
   }, []);
 
@@ -178,11 +186,13 @@ export function EpisodePage() {
     img.src = watermark.url.startsWith('/') ? apiUrl + watermark.url : watermark.url;
   }, [watermark, apiUrl]);
 
-  // Clean up preview URLs
+  // Clean up preview URLs and Adobe Express state
   useEffect(() => {
     return () => {
       if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
       if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+      document.body.classList.remove('adobe-express-open');
+      document.getElementById('adobe-zindex-fix')?.remove();
     };
   }, []);
 
@@ -284,6 +294,100 @@ export function EpisodePage() {
     setShowCropper(false);
     if (fileRef.current) fileRef.current.value = '';
   };
+
+  const launchAdobeExpress = useCallback(async () => {
+    if (!adobeClientId) return;
+    setAdobeLoading(true);
+    document.body.classList.add('adobe-express-open');
+
+    if (!document.getElementById('adobe-zindex-fix')) {
+      const s = document.createElement('style');
+      s.id = 'adobe-zindex-fix';
+      s.textContent = 'body > div:not(#root) { z-index: 9999 !important; }';
+      document.head.appendChild(s);
+    }
+
+    const closeAdobe = () => {
+      document.body.classList.remove('adobe-express-open');
+      document.getElementById('adobe-zindex-fix')?.remove();
+    };
+
+    try {
+      if (!_ccEditor || _ccClientId !== adobeClientId) {
+        if (!(window as any).CCEverywhere) {
+          await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
+        }
+        const { editor } = await (window as any).CCEverywhere.initialize(
+          { clientId: adobeClientId, appName: 'SocialPod' },
+          { loginMode: 'delayed' },
+        );
+        _ccEditor = editor;
+        _ccClientId = adobeClientId;
+      }
+
+      _ccEditor.create(
+        { canvasSize: { width: 1080, height: 1080, unit: 'px' } },
+        {
+          callbacks: {
+            onPublish: async (...args: any[]) => {
+              const params = args.find((a: any) => a?.asset) || args[args.length - 1];
+              const assetData = params?.asset?.[0]?.data;
+              if (!assetData) {
+                closeAdobe();
+                toast.error('No image data received');
+                return;
+              }
+              try {
+                let file: File;
+                if (assetData.startsWith('data:')) {
+                  const res = await fetch(assetData);
+                  const blob = await res.blob();
+                  file = new File([blob], 'design.png', { type: blob.type || 'image/png' });
+                } else {
+                  const uploaded = await api.uploadFromURL(assetData);
+                  const proxyUrl = (import.meta.env.VITE_API_URL || '') + uploaded.url;
+                  const res = await fetch(proxyUrl);
+                  const blob = await res.blob();
+                  file = new File([blob], uploaded.filename || 'design.png', { type: blob.type || 'image/png' });
+                }
+                if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+                if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+                setImageFile(file);
+                setImagePreviewUrl(URL.createObjectURL(file));
+                setCroppedBlob(null);
+                setCroppedPreviewUrl(null);
+                setCroppedSize(null);
+                setShowCropper(true);
+                closeAdobe();
+                toast.success('Design added');
+              } catch (err: any) {
+                closeAdobe();
+                toast.error(err.message || 'Failed to save design');
+              }
+            },
+            onCancel: closeAdobe,
+            onError: (err: any) => {
+              closeAdobe();
+              toast.error('Adobe Express error: ' + (err?.message || err?.toString() || 'Unknown error'));
+            },
+          },
+        },
+        [
+          {
+            id: 'save-to-episode',
+            label: 'Add to Episode',
+            action: { target: 'publish' },
+            style: { uiType: 'button' },
+          },
+        ],
+      );
+    } catch {
+      closeAdobe();
+      toast.error('Failed to open Adobe Express');
+    } finally {
+      setAdobeLoading(false);
+    }
+  }, [adobeClientId, imagePreviewUrl, croppedPreviewUrl]);
 
   // Account lookups
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
@@ -1076,25 +1180,37 @@ export function EpisodePage() {
             <label><Image size={14} /> Image <span style={{ color: 'var(--danger)' }}>*</span></label>
 
             {!imageFile ? (
-              <div
-                onDragOver={onDragOver}
-                onDragLeave={onDragLeave}
-                onDrop={onDrop}
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-sm, 8px)',
-                  padding: '32px 16px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  background: dragOver ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
-                  transition: 'all 0.15s',
-                  color: 'var(--text-muted)',
-                  fontSize: 14,
-                }}
-              >
-                <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
-                <div>Drop an image here, click to browse, or paste from clipboard</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-sm, 8px)',
+                    padding: '32px 16px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    background: dragOver ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
+                    transition: 'all 0.15s',
+                    color: 'var(--text-muted)',
+                    fontSize: 14,
+                  }}
+                >
+                  <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
+                  <div>Drop an image here, click to browse, or paste from clipboard</div>
+                </div>
+                {adobeClientId && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={launchAdobeExpress}
+                    disabled={adobeLoading}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <Wand2 size={14} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                  </button>
+                )}
               </div>
             ) : (
               <div>
@@ -1130,7 +1246,7 @@ export function EpisodePage() {
                     {croppedSize} × {croppedSize} px · {(croppedBlob.size / 1024).toFixed(0)} KB
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => setShowCropper(true)}
@@ -1143,6 +1259,15 @@ export function EpisodePage() {
                   >
                     <Image size={14} /> Replace
                   </button>
+                  {adobeClientId && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={launchAdobeExpress}
+                      disabled={adobeLoading}
+                    >
+                      <Wand2 size={14} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1262,12 +1387,24 @@ export function EpisodePage() {
               <div className="form-group">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <label style={{ margin: 0 }}>Content</label>
-                  {platforms.length > 1 && (
-                    <label className="customize-per-platform-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', margin: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={customizePerPlatform}
-                        onChange={e => {
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {aiEnabled && platforms.length > 0 && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ margin: 0, padding: '2px 8px' }}
+                        onClick={generateAIContent}
+                        disabled={generating || !episodeTitle.trim()}
+                        title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
+                      >
+                        {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
+                      </button>
+                    )}
+                    {platforms.length > 1 && (
+                      <label className="customize-per-platform-toggle" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={customizePerPlatform}
+                          onChange={e => {
                           const checked = e.target.checked;
                           if (checked) {
                             const baseText = content;
@@ -1293,6 +1430,7 @@ export function EpisodePage() {
                       Customize per platform
                     </label>
                   )}
+                  </div>
                 </div>
 
                 {customizePerPlatform && platforms.length > 1 ? (
@@ -1321,17 +1459,6 @@ export function EpisodePage() {
                         </div>
                       );
                     })}
-                    {aiEnabled && platforms.length > 0 && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ alignSelf: 'flex-start', marginTop: -8 }}
-                        onClick={generateAIContent}
-                        disabled={generating || !episodeTitle.trim()}
-                        title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
-                      >
-                        {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
-                      </button>
-                    )}
                   </>
                 ) : (
                   <>
@@ -1343,20 +1470,8 @@ export function EpisodePage() {
                       placeholder="What's on your mind? Use #hashtags for tags..."
                       rows={5}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      {aiEnabled && platforms.length > 0 ? (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={generateAIContent}
-                          disabled={generating || !episodeTitle.trim()}
-                          title={!episodeTitle.trim() ? 'Enter an episode title first' : 'Generate social media text from episode details'}
-                        >
-                          {generating ? <><Loader size={14} className="post-editor-spin" /> Generating...</> : <><Sparkles size={14} /> Generate with AI</>}
-                        </button>
-                      ) : <span />}
-                      <div className={`char-counter ${charClass}`}>
-                        {charCount} / {charLimit}
-                      </div>
+                    <div className={`char-counter ${charClass}`} style={{ textAlign: 'right' }}>
+                      {charCount} / {charLimit}
                     </div>
                   </>
                 )}
