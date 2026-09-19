@@ -12,7 +12,7 @@ import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
 import { DroppableDay } from './DroppableDay';
 import { PlatformIcon } from '../Common/PlatformIcon';
-import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader, Image } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
