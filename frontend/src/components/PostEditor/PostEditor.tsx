@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, PostStatus, Footer, SocialAccount, MentionEntry } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Tag, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle } from 'lucide-react';
+import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry } from '../../types';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import toast from 'react-hot-toast';
@@ -23,7 +23,6 @@ interface PostDraft {
   firstComment?: string;
   platforms?: Platform[];
   scheduledAt?: string;
-  status?: PostStatus;
   footerIds?: Record<string, string>;
 }
 
@@ -421,7 +420,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   // Cache for object URLs so we don't create a new one on every render.
   const objUrlCache = useRef<Map<File, string>>(new Map());
   const [tags] = useState<string[]>(post?.tags || []);
-  const [status, setStatus] = useState(draft?.status ?? post?.status ?? 'scheduled');
   const [footers, setFooters] = useState<Footer[]>([]);
   const [footerIds, setFooterIds] = useState<Record<string, string>>(draft?.footerIds ?? post?.footerIds ?? {});
   const [mentions, setMentions] = useState<MentionEntry[]>([]);
@@ -487,7 +485,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       try {
         localStorage.setItem(draftKey, JSON.stringify({
           content, contentOverrides, customizePerPlatform, firstComment,
-          platforms, scheduledAt, status, footerIds,
+          platforms, scheduledAt, footerIds,
         }));
       } catch {
         // quota exceeded / private mode — best-effort only
@@ -495,7 +493,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }, 400);
     return () => clearTimeout(id);
   }, [draftKey, content, contentOverrides, customizePerPlatform, firstComment,
-      platforms, scheduledAt, status, footerIds]);
+      platforms, scheduledAt, footerIds]);
 
   useEffect(() => {
     if (!accountsLoaded) return;
@@ -806,25 +804,27 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   // `postNow` bypasses the schedule picker: the post is created as `scheduled`
   // with scheduledAt = now, so the shared scheduler publishes it on its next
   // (≤30s) tick. Used by the mobile create flow's "Post Now" button.
-  const handleSubmit = async (postNow = false) => {
-    if (accountsError) {
-      toast.error('Connected accounts failed to load. Retry before scheduling.');
-      return;
+  const handleSubmit = async (postNow = false, saveAsDraft = false) => {
+    if (!saveAsDraft) {
+      if (accountsError) {
+        toast.error('Connected accounts failed to load. Retry before scheduling.');
+        return;
+      }
+      if (isStory) {
+        if (images.length === 0) { toast.error('A story requires an image or video'); return; }
+      } else if (isReel) {
+        if (images.length === 0) { toast.error('A reel requires a video'); return; }
+      } else if (customizePerPlatform && platforms.length > 1) {
+        const missing = platforms.filter(p => !(contentOverrides[p] || '').trim());
+        if (missing.length > 0) { toast.error(`Content is required for ${missing.join(', ')}`); return; }
+        const over = platforms.find(p => (contentOverrides[p] || '').length > effectiveLimit(p));
+        if (over) { toast.error(`Content for ${over} exceeds ${effectiveLimit(over)} character limit`); return; }
+      } else {
+        if (!content.trim()) { toast.error('Content is required'); return; }
+        if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
+      }
+      if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
     }
-    if (isStory) {
-      if (images.length === 0) { toast.error('A story requires an image or video'); return; }
-    } else if (isReel) {
-      if (images.length === 0) { toast.error('A reel requires a video'); return; }
-    } else if (customizePerPlatform && platforms.length > 1) {
-      const missing = platforms.filter(p => !(contentOverrides[p] || '').trim());
-      if (missing.length > 0) { toast.error(`Content is required for ${missing.join(', ')}`); return; }
-      const over = platforms.find(p => (contentOverrides[p] || '').length > effectiveLimit(p));
-      if (over) { toast.error(`Content for ${over} exceeds ${effectiveLimit(over)} character limit`); return; }
-    } else {
-      if (!content.trim()) { toast.error('Content is required'); return; }
-      if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
-    }
-    if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
 
     const imageUrls = images.filter(i => i.kind === 'url').map(i => (i as { kind: 'url'; url: string }).url);
     const imageFiles = images.filter(i => i.kind === 'file').map(i => (i as { kind: 'file'; file: File }).file);
@@ -850,7 +850,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         scheduledAt: postNow ? new Date().toISOString() : new Date(scheduledAt).toISOString(),
         imageUrls,
         tags,
-        status: postNow ? 'scheduled' : status,
+        status: saveAsDraft ? 'draft' : 'scheduled',
         footerIds: (isStory || isReel) ? {} : footerIds,
         contentOverrides: (isStory || isReel || !customizePerPlatform) ? {} : contentOverrides,
         accountIds,
@@ -865,7 +865,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const isDirty = content !== (post?.content || '')
     || firstComment !== (post?.firstComment || '')
     || scheduledAt !== (post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime)
-    || status !== (post?.status || 'scheduled')
     || JSON.stringify(platforms) !== JSON.stringify(post?.platforms || ['bluesky'])
     || images.length !== (post?.imageUrls || []).length
     || JSON.stringify(footerIds) !== JSON.stringify(post?.footerIds || {})
@@ -1375,14 +1374,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               />
             </div>
 
-            {/* Status */}
-            <div className="form-group">
-              <label><Tag size={14} /> Status</label>
-              <select className="select" value={status} onChange={e => setStatus(e.target.value as any)}>
-                <option value="scheduled">Scheduled</option>
-                <option value="draft">Draft</option>
-              </select>
-            </div>
           </div>
 
           {/* Live preview */}
@@ -1453,6 +1444,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 <Zap size={16} /> Post Now
               </button>
             )}
+            <button
+              className="btn btn-secondary"
+              onClick={() => handleSubmit(false, true)}
+              disabled={saving}
+            >
+              <Save size={16} /> {saving ? 'Saving...' : post?.status === 'draft' ? 'Update Draft' : 'Save as Draft'}
+            </button>
             <button
               className="btn btn-primary"
               onClick={() => handleSubmit()}

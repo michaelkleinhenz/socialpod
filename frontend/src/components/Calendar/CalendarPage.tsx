@@ -12,7 +12,7 @@ import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
 import { DroppableDay } from './DroppableDay';
 import { PlatformIcon } from '../Common/PlatformIcon';
-import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader, CalendarDays } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
@@ -247,38 +247,22 @@ export function CalendarPage() {
         <div className="calendar-actions">
           <div className="view-toggle">
             <button
-              className={`view-toggle-btn ${activeTab === 'calendar' && viewMode === 'month' ? 'active' : ''}`}
+              className={`view-toggle-btn ${viewMode === 'month' ? 'active' : ''}`}
               onClick={() => { setActiveTab('calendar'); setViewMode('month'); }}
             >
               Month
             </button>
             <button
-              className={`view-toggle-btn ${activeTab === 'calendar' && viewMode === '3day' ? 'active' : ''}`}
+              className={`view-toggle-btn ${viewMode === '3day' ? 'active' : ''}`}
               onClick={() => { setActiveTab('calendar'); setViewMode('3day'); }}
             >
               3 Day
             </button>
             <button
-              className={`view-toggle-btn ${activeTab === 'calendar' && viewMode === 'week' ? 'active' : ''}`}
+              className={`view-toggle-btn ${viewMode === 'week' ? 'active' : ''}`}
               onClick={() => { setActiveTab('calendar'); setViewMode('week'); }}
             >
               Week
-            </button>
-            <button
-              className={`view-toggle-btn ${activeTab === 'drafts' ? 'active' : ''}`}
-              onClick={() => setActiveTab('drafts')}
-              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              <FileText size={14} /> Drafts
-              {draftPosts.length > 0 && <span style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                borderRadius: 10,
-                padding: '1px 6px',
-                fontSize: 10,
-                fontWeight: 600,
-                lineHeight: '16px',
-              }}>{draftPosts.length}</span>}
             </button>
           </div>
           <div className="filter-group">
@@ -312,6 +296,55 @@ export function CalendarPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="news-tabs" style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid var(--border)' }}>
+        <button
+          className={`news-tab ${activeTab === 'calendar' ? 'active' : ''}`}
+          onClick={() => setActiveTab('calendar')}
+          style={{
+            padding: '10px 20px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'calendar' ? '2px solid var(--accent)' : '2px solid transparent',
+            color: activeTab === 'calendar' ? 'var(--text)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'calendar' ? 600 : 400,
+            fontSize: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <CalendarDays size={14} /> Calendar
+        </button>
+        <button
+          className={`news-tab ${activeTab === 'drafts' ? 'active' : ''}`}
+          onClick={() => setActiveTab('drafts')}
+          style={{
+            padding: '10px 20px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'drafts' ? '2px solid var(--accent)' : '2px solid transparent',
+            color: activeTab === 'drafts' ? 'var(--text)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'drafts' ? 600 : 400,
+            fontSize: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <FileText size={14} /> Drafts {draftPosts.length > 0 && <span style={{
+            background: 'var(--accent)',
+            color: '#fff',
+            borderRadius: 10,
+            padding: '1px 7px',
+            fontSize: 11,
+            fontWeight: 600,
+          }}>{draftPosts.length}</span>}
+        </button>
       </div>
 
       {/* Drafts Tab */}
