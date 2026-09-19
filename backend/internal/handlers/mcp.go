@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -225,6 +229,8 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 		return h.toolDeleteEpisodeDraft(c, args)
 	case "post_episode_draft":
 		return h.toolPostEpisodeDraft(c, args)
+	case "upload_image":
+		return h.toolUploadImage(c, args)
 	default:
 		return map[string]string{"error": "Unknown tool: " + name}, true
 	}
@@ -381,6 +387,13 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
+	imageURLs := strSliceArg(args, "imageUrls")
+	if uploaded, err := h.processInlineImages(args); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	} else {
+		imageURLs = append(imageURLs, uploaded...)
+	}
+
 	post := models.Post{
 		UserID:           objID,
 		PostType:         postType,
@@ -393,7 +406,7 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 		AccountIDs:       mapStrArg(args, "accountIds"),
 		FooterIDs:        mapStrArg(args, "footerIds"),
 		ContentOverrides: mapStrArg(args, "contentOverrides"),
-		ImageURLs:        strSliceArg(args, "imageUrls"),
+		ImageURLs:        imageURLs,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -473,7 +486,17 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	if overrides := mapStrArg(args, "contentOverrides"); overrides != nil {
 		update["contentOverrides"] = overrides
 	}
-	if imageURLs := strSliceArg(args, "imageUrls"); imageURLs != nil {
+	imageURLs := strSliceArg(args, "imageUrls")
+	if uploaded, err := h.processInlineImages(args); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	} else if len(uploaded) > 0 {
+		if imageURLs == nil {
+			imageURLs = uploaded
+		} else {
+			imageURLs = append(imageURLs, uploaded...)
+		}
+	}
+	if imageURLs != nil {
 		update["imageUrls"] = imageURLs
 	}
 
@@ -970,13 +993,20 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		platModels[i] = models.Platform(p)
 	}
 
+	imageURLs := strSliceArg(args, "imageUrls")
+	if uploaded, err := h.processInlineImages(args); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	} else {
+		imageURLs = append(imageURLs, uploaded...)
+	}
+
 	draft := models.NewsDraft{
 		UserID:           objID,
 		EpisodeNumber:    strArg(args, "episodeNumber"),
 		NewsTagline:      strArg(args, "newsTagline"),
 		ArticleURL:       strArg(args, "articleUrl"),
 		Shownotes:        strArg(args, "shownotes"),
-		ImageURLs:        strSliceArg(args, "imageUrls"),
+		ImageURLs:        imageURLs,
 		AddSocialPosting: boolArg(args, "addSocialPosting"),
 		Content:          strArg(args, "content"),
 		Platforms:        platModels,
@@ -1129,7 +1159,17 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 	if tags := strSliceArg(args, "tags"); tags != nil {
 		update["tags"] = tags
 	}
-	if imageURLs := strSliceArg(args, "imageUrls"); imageURLs != nil {
+	imageURLs := strSliceArg(args, "imageUrls")
+	if uploaded, err := h.processInlineImages(args); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	} else if len(uploaded) > 0 {
+		if imageURLs == nil {
+			imageURLs = uploaded
+		} else {
+			imageURLs = append(imageURLs, uploaded...)
+		}
+	}
+	if imageURLs != nil {
 		update["imageUrls"] = imageURLs
 	}
 	if footerIDs := mapStrArg(args, "footerIds"); footerIDs != nil {
@@ -1285,6 +1325,13 @@ func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any)
 		platModels[i] = models.Platform(p)
 	}
 
+	imageURLs := strSliceArg(args, "imageUrls")
+	if uploaded, err := h.processInlineImages(args); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	} else {
+		imageURLs = append(imageURLs, uploaded...)
+	}
+
 	draft := models.EpisodeDraft{
 		UserID:            objID,
 		EpisodeNumber:     strArg(args, "episodeNumber"),
@@ -1298,7 +1345,7 @@ func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any)
 		Rules:             strArg(args, "rules"),
 		Scene:             strArg(args, "scene"),
 		IntroText:         strArg(args, "introText"),
-		ImageURLs:         strSliceArg(args, "imageUrls"),
+		ImageURLs:         imageURLs,
 		AddSocialPosting:  boolArg(args, "addSocialPosting"),
 		Content:           strArg(args, "content"),
 		Platforms:         platModels,
@@ -1486,7 +1533,17 @@ func (h *MCPHandler) toolUpdateEpisodeDraft(c *gin.Context, args map[string]any)
 	if tags := strSliceArg(args, "tags"); tags != nil {
 		update["tags"] = tags
 	}
-	if imageURLs := strSliceArg(args, "imageUrls"); imageURLs != nil {
+	imageURLs := strSliceArg(args, "imageUrls")
+	if uploaded, err := h.processInlineImages(args); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	} else if len(uploaded) > 0 {
+		if imageURLs == nil {
+			imageURLs = uploaded
+		} else {
+			imageURLs = append(imageURLs, uploaded...)
+		}
+	}
+	if imageURLs != nil {
 		update["imageUrls"] = imageURLs
 	}
 	if footerIDs := mapStrArg(args, "footerIds"); footerIDs != nil {
@@ -1637,6 +1694,97 @@ func (h *MCPHandler) toolPostEpisodeDraft(c *gin.Context, args map[string]any) (
 	return resp, false
 }
 
+// --- Image upload tools ---
+
+var mcpAllowedExtensions = map[string]string{
+	".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+	".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+	".mp4": "video/mp4", ".mov": "video/quicktime",
+}
+
+func (h *MCPHandler) saveBase64Upload(b64Data, filename string) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(b64Data)
+	if err != nil {
+		return "", fmt.Errorf("invalid base64 data: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	ct, ok := mcpAllowedExtensions[ext]
+	if !ok {
+		return "", fmt.Errorf("unsupported file type %s (allowed: jpg, jpeg, png, gif, webp, mp4, mov)", ext)
+	}
+
+	maxSize := int64(10 * 1024 * 1024)
+	if ext == ".mp4" || ext == ".mov" {
+		maxSize = 100 * 1024 * 1024
+	}
+	if int64(len(data)) > maxSize {
+		return "", fmt.Errorf("file too large (max %dMB)", maxSize/(1024*1024))
+	}
+
+	storedName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+
+	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create upload directory: %w", err)
+	}
+	dst := filepath.Join(h.UploadDir, storedName)
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	h.DB.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    storedName,
+		ContentType: ct,
+		Data:        data,
+		Size:        int64(len(data)),
+		CreatedAt:   time.Now(),
+	})
+	return "/api/uploads/" + storedName, nil
+}
+
+func (h *MCPHandler) processInlineImages(args map[string]any) ([]string, error) {
+	v, ok := args["images"]
+	if !ok {
+		return nil, nil
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("images must be an array")
+	}
+	var urls []string
+	for i, item := range arr {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("images[%d] must be an object with data and filename", i)
+		}
+		data, _ := obj["data"].(string)
+		filename, _ := obj["filename"].(string)
+		if data == "" || filename == "" {
+			return nil, fmt.Errorf("images[%d]: both data and filename are required", i)
+		}
+		url, err := h.saveBase64Upload(data, filename)
+		if err != nil {
+			return nil, fmt.Errorf("images[%d]: %w", i, err)
+		}
+		urls = append(urls, url)
+	}
+	return urls, nil
+}
+
+func (h *MCPHandler) toolUploadImage(_ *gin.Context, args map[string]any) (any, bool) {
+	data := strArg(args, "data")
+	filename := strArg(args, "filename")
+	if data == "" || filename == "" {
+		return map[string]string{"error": "data and filename are required"}, true
+	}
+	url, err := h.saveBase64Upload(data, filename)
+	if err != nil {
+		return map[string]string{"error": err.Error()}, true
+	}
+	return map[string]string{"url": url, "filename": filepath.Base(url)}, false
+}
+
 // --- Tool definitions ---
 
 func (h *MCPHandler) toolDefinitions() []mcpTool {
@@ -1679,7 +1827,15 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to specific account ID to use"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to footer ID to append"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to platform-specific content override"},
-					"imageUrls":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs (must already be uploaded via the API)"},
+					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
+					"images": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"data":     map[string]any{"type": "string", "description": "Base64-encoded image data"},
+							"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg)"},
+						},
+						"required": []string{"data", "filename"},
+					}, "description": "Images to upload inline. Each object has base64-encoded data and a filename. Supported types: jpg, jpeg, png, gif, webp, mp4, mov."},
 				},
 				"required": []string{"platforms", "scheduledAt"},
 			},
@@ -1701,7 +1857,15 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
-					"imageUrls":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs"},
+					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
+					"images": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"data":     map[string]any{"type": "string", "description": "Base64-encoded image data"},
+							"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg)"},
+						},
+						"required": []string{"data", "filename"},
+					}, "description": "Images to upload inline. Each object has base64-encoded data and a filename."},
 				},
 				"required": []string{"id"},
 			},
@@ -1850,7 +2014,15 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"newsTagline":      map[string]any{"type": "string", "description": "Short tagline for the news episode"},
 					"articleUrl":       map[string]any{"type": "string", "description": "URL of the news article"},
 					"shownotes":        map[string]any{"type": "string", "description": "Additional show notes"},
-					"imageUrls":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs (must already be uploaded)"},
+					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
+					"images": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"data":     map[string]any{"type": "string", "description": "Base64-encoded image data"},
+							"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg)"},
+						},
+						"required": []string{"data", "filename"},
+					}, "description": "Images to upload inline. Each object has base64-encoded data and a filename."},
 					"addSocialPosting": map[string]any{"type": "boolean", "description": "Whether to create a social media post when the draft is submitted"},
 					"content":          map[string]any{"type": "string", "description": "Social media post content"},
 					"platforms":        map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": []string{"bluesky", "instagram", "twitter", "mastodon", "threads", "linkedin", "youtube"}}, "description": "Target platforms for the social post"},
@@ -1890,7 +2062,15 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"newsTagline":      map[string]any{"type": "string", "description": "News tagline"},
 					"articleUrl":       map[string]any{"type": "string", "description": "Article URL"},
 					"shownotes":        map[string]any{"type": "string", "description": "Show notes"},
-					"imageUrls":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs"},
+					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
+					"images": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"data":     map[string]any{"type": "string", "description": "Base64-encoded image data"},
+							"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg)"},
+						},
+						"required": []string{"data", "filename"},
+					}, "description": "Images to upload inline. Each object has base64-encoded data and a filename."},
 					"addSocialPosting": map[string]any{"type": "boolean", "description": "Whether to include a social media post"},
 					"content":          map[string]any{"type": "string", "description": "Social media post content"},
 					"platforms":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Target platforms"},
@@ -1941,8 +2121,16 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"rules":             map[string]any{"type": "string", "description": "Rules text (review type)"},
 					"scene":             map[string]any{"type": "string", "description": "Scene description (review type)"},
 					"introText":         map[string]any{"type": "string", "description": "Introduction text (review type)"},
-					"imageUrls":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs (must already be uploaded)"},
-					"addSocialPosting":  map[string]any{"type": "boolean", "description": "Whether to create a social media post when the draft is submitted"},
+					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
+					"images": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"data":     map[string]any{"type": "string", "description": "Base64-encoded image data"},
+							"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg)"},
+						},
+						"required": []string{"data", "filename"},
+					}, "description": "Images to upload inline. Each object has base64-encoded data and a filename."},
+					"addSocialPosting": map[string]any{"type": "boolean", "description": "Whether to create a social media post when the draft is submitted"},
 					"content":           map[string]any{"type": "string", "description": "Social media post content"},
 					"platforms":         map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": []string{"bluesky", "instagram", "twitter", "mastodon", "threads", "linkedin", "youtube"}}, "description": "Target platforms for the social post"},
 					"scheduledAt":       map[string]any{"type": "string", "description": "When to publish the social post (RFC3339)"},
@@ -1988,12 +2176,20 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"rules":             map[string]any{"type": "string", "description": "Rules text"},
 					"scene":             map[string]any{"type": "string", "description": "Scene description"},
 					"introText":         map[string]any{"type": "string", "description": "Introduction text"},
-					"imageUrls":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Image URLs"},
-					"addSocialPosting":  map[string]any{"type": "boolean", "description": "Whether to include a social media post"},
-					"content":           map[string]any{"type": "string", "description": "Social media post content"},
-					"platforms":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Target platforms"},
-					"scheduledAt":       map[string]any{"type": "string", "description": "Scheduled time (RFC3339)"},
-					"status":            map[string]any{"type": "string", "enum": []string{"draft", "scheduled"}, "description": "Social post status"},
+					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
+					"images": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"data":     map[string]any{"type": "string", "description": "Base64-encoded image data"},
+							"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg)"},
+						},
+						"required": []string{"data", "filename"},
+					}, "description": "Images to upload inline. Each object has base64-encoded data and a filename."},
+					"addSocialPosting": map[string]any{"type": "boolean", "description": "Whether to include a social media post"},
+					"content":          map[string]any{"type": "string", "description": "Social media post content"},
+					"platforms":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Target platforms"},
+					"scheduledAt":      map[string]any{"type": "string", "description": "Scheduled time (RFC3339)"},
+					"status":           map[string]any{"type": "string", "enum": []string{"draft", "scheduled"}, "description": "Social post status"},
 					"tags":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 					"postType":          map[string]any{"type": "string", "description": "Post type"},
 					"firstComment":      map[string]any{"type": "string", "description": "First comment"},
@@ -2020,6 +2216,18 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},
 				"required":   []string{"id"},
+			},
+		},
+		{
+			Name:        "upload_image",
+			Description: "Upload an image for use in posts or drafts. Returns the image URL to pass in imageUrls when creating or updating posts, news drafts, or episode drafts.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"data":     map[string]any{"type": "string", "description": "Base64-encoded file data"},
+					"filename": map[string]any{"type": "string", "description": "Original filename with extension (e.g. photo.jpg). Supported types: jpg, jpeg, png, gif, webp, mp4, mov."},
+				},
+				"required": []string{"data", "filename"},
 			},
 		},
 	}
