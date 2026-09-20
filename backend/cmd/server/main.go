@@ -220,6 +220,7 @@ func main() {
 
 		// Agent (AI content generation)
 		auth.POST("/agent/generate", agentHandler.Generate)
+		auth.GET("/agent/instructions", agentHandler.GetInstructions)
 
 		// Convention mode
 		// MCP server (Streamable HTTP transport)

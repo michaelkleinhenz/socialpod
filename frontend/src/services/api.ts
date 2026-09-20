@@ -668,6 +668,10 @@ class ApiClient {
     });
   }
 
+  agentGetInstructions() {
+    return this.request<{ instructions: string }>('/agent/instructions');
+  }
+
   updateTeamSettings(data: { bggWatermarkId?: string | null; bggCoverOffsetX?: number; bggCoverOffsetY?: number; episodeNewsUrl?: string; episodeNewsBearerToken?: string; bggHandleLookupEnabled?: boolean; newsCreatorUrl?: string; newsCreatorBearerToken?: string; newsCreatorWatermarkId?: string; episodeCreatorUrl?: string; episodeCreatorBearerToken?: string; episodeCreatorWatermarkId?: string; episodeOverlayNewsId?: string; episodeOverlayNewsOffsetX?: number; episodeOverlayNewsOffsetY?: number; episodeOverlayReviewId?: string; episodeOverlayReviewOffsetX?: number; episodeOverlayReviewOffsetY?: number; episodeOverlaySpecialId?: string; episodeOverlaySpecialOffsetX?: number; episodeOverlaySpecialOffsetY?: number; agentSystemPrompt?: string }) {
     return this.request<{ message: string }>('/team/settings', {
       method: 'PUT',

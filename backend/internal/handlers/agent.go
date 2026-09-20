@@ -33,7 +33,25 @@ type AgentGenerateInput struct {
 	EntityType  string `json:"entityType"`
 }
 
-const defaultAgentSystemPrompt = `You are a content creation assistant for a social media management platform. Given a URL and/or a description, create engaging content suitable for social media posting. All created content will be saved as drafts for human review before publishing.
+var defaultAgentSystemPrompt string
+
+func init() {
+	defaultAgentSystemPrompt = loadAgentInstructions()
+}
+
+func loadAgentInstructions() string {
+	data, err := os.ReadFile("agent-instructions.md")
+	if err != nil {
+		// Try the dist directory (embedded frontend build)
+		data, err = os.ReadFile("dist/agent-instructions.md")
+	}
+	if err == nil && len(data) > 0 {
+		return string(data) + "\n\nReply with ONLY valid JSON, no markdown code fences, no commentary."
+	}
+	return fallbackAgentSystemPrompt
+}
+
+const fallbackAgentSystemPrompt = `You are a content creation assistant for a social media management platform. Given a URL and/or a description, create engaging content suitable for social media posting. All created content will be saved as drafts for human review before publishing.
 
 When given a URL, analyze its content (provided to you as extracted page metadata) and create content based on it.
 
@@ -53,7 +71,13 @@ For "episode":
   "episodeType": "news",
   "summary": "A comprehensive summary",
   "introText": "An introduction for the episode",
-  "content": "Ready-to-post social media text (max 280 characters)"
+  "content": "Ready-to-post social media text (max 280 characters)",
+  "gameNamePublisher": "Game Name (Publisher) - only for review type",
+  "linkPublisher": "Publisher URL - only for review type",
+  "linkBGG": "BoardGameGeek URL - only for review type",
+  "rules": "Game rules overview in German - only for review type",
+  "scene": "Humorous radio play scene with Jutta and Michael - only for review type",
+  "episodeDate": "YYYY-MM-DDTHH:MM format"
 }
 
 For "post":
@@ -63,6 +87,10 @@ For "post":
 
 Always write in a professional but engaging tone. Include relevant context from the source material.
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
+
+func (h *AgentHandler) GetInstructions(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"instructions": defaultAgentSystemPrompt})
+}
 
 func (h *AgentHandler) Generate(c *gin.Context) {
 	var input AgentGenerateInput
@@ -292,11 +320,17 @@ func (h *AgentHandler) createNewsDraft(ctx context.Context, aiContent string, us
 
 func (h *AgentHandler) createEpisodeDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.EpisodeDraft, error) {
 	var parsed struct {
-		EpisodeTitle string `json:"episodeTitle"`
-		EpisodeType  string `json:"episodeType"`
-		Summary      string `json:"summary"`
-		IntroText    string `json:"introText"`
-		Content      string `json:"content"`
+		EpisodeTitle      string `json:"episodeTitle"`
+		EpisodeType       string `json:"episodeType"`
+		Summary           string `json:"summary"`
+		EpisodeDate       string `json:"episodeDate"`
+		IntroText         string `json:"introText"`
+		GameNamePublisher string `json:"gameNamePublisher"`
+		LinkPublisher     string `json:"linkPublisher"`
+		LinkBGG           string `json:"linkBGG"`
+		Rules             string `json:"rules"`
+		Scene             string `json:"scene"`
+		Content           string `json:"content"`
 	}
 	if err := json.Unmarshal([]byte(aiContent), &parsed); err != nil {
 		return nil, fmt.Errorf("failed to parse AI response: %w", err)
@@ -307,16 +341,22 @@ func (h *AgentHandler) createEpisodeDraft(ctx context.Context, aiContent string,
 	}
 
 	draft := models.EpisodeDraft{
-		UserID:       userID,
-		TeamID:       teamID,
-		EpisodeTitle: parsed.EpisodeTitle,
-		EpisodeType:  parsed.EpisodeType,
-		Summary:      parsed.Summary,
-		IntroText:    parsed.IntroText,
-		Content:      parsed.Content,
-		ImageURLs:    imageURLs,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		UserID:            userID,
+		TeamID:            teamID,
+		EpisodeTitle:      parsed.EpisodeTitle,
+		EpisodeType:       parsed.EpisodeType,
+		Summary:           parsed.Summary,
+		EpisodeDate:       parsed.EpisodeDate,
+		IntroText:         parsed.IntroText,
+		GameNamePublisher: parsed.GameNamePublisher,
+		LinkPublisher:     parsed.LinkPublisher,
+		LinkBGG:           parsed.LinkBGG,
+		Rules:             parsed.Rules,
+		Scene:             parsed.Scene,
+		Content:           parsed.Content,
+		ImageURLs:         imageURLs,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	result, err := h.DB.EpisodeDrafts().InsertOne(ctx, draft)
