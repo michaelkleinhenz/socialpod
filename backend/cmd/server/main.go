@@ -113,7 +113,7 @@ func main() {
 	episodeHandler := &handlers.EpisodeHandler{DB: db, UploadDir: cfg.UploadDir}
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
-	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir}
+	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
 	agentHandler := &handlers.AgentHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
 
 	robotsTxt := func(c *gin.Context) {
