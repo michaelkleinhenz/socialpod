@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, EpisodeDraft } from '../../types';
@@ -30,6 +31,7 @@ const EPISODE_TYPES = [
 ];
 
 export function EpisodePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pluginReady, setPluginReady] = useState<boolean | null>(null);
 
   // Episode fields
@@ -520,6 +522,16 @@ export function EpisodePage() {
     setActiveTab('create');
     toast.success('Draft loaded — continue editing');
   };
+
+  useEffect(() => {
+    const editDraftId = searchParams.get('editDraft');
+    if (!editDraftId || !pluginReady) return;
+    searchParams.delete('editDraft');
+    setSearchParams(searchParams, { replace: true });
+    api.getEpisodeDraft(editDraftId).then(loadDraftIntoForm).catch(() => {
+      toast.error('Failed to load draft');
+    });
+  }, [pluginReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildFormData = () => {
     const data: any = {

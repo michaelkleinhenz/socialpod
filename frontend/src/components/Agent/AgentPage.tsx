@@ -1,25 +1,32 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import { Bot, Link, FileText, Send, Loader, CheckCircle, AlertCircle, Newspaper, Mic, MessageSquare } from 'lucide-react';
+import { Bot, Link, FileText, Send, Loader, CheckCircle, AlertCircle, Newspaper, Mic, MessageSquare, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Agent.css';
 
 type EntityType = 'news' | 'episode' | 'post';
 
 interface ImageSourceInfo {
-  source: string;
+  type: string;
   url?: string;
-  suggestion?: string;
+  status?: string;
 }
 
 interface AgentResult {
   entityType: string;
-  draftId: string;
-  message: string;
+  draft: { id: string; [key: string]: any };
   imageSources?: ImageSourceInfo[];
 }
 
+const EDIT_ROUTES: Record<string, string> = {
+  news: '/news',
+  episode: '/episodes',
+  post: '/',
+};
+
 export function AgentPage() {
+  const navigate = useNavigate();
   const [pluginReady, setPluginReady] = useState<boolean | null>(null);
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
@@ -194,7 +201,7 @@ export function AgentPage() {
           <CheckCircle size={20} />
           <div>
             <strong>Draft Created</strong>
-            <p>{result.message}</p>
+            <p>Your {result.entityType} draft has been saved. You can edit it before publishing.</p>
 
             {result.imageSources && result.imageSources.length > 0 && (
               <div className="agent-image-info">
@@ -202,18 +209,29 @@ export function AgentPage() {
                 <ul>
                   {result.imageSources.map((src, i) => (
                     <li key={i}>
-                      <strong>{src.source}</strong>
+                      <strong>{src.type}</strong>
                       {src.url && <span className="agent-image-url"> — {src.url}</span>}
-                      {src.suggestion && <p className="agent-image-suggestion">{src.suggestion}</p>}
+                      {src.status && <span className="agent-image-status"> ({src.status})</span>}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            <button className="btn btn-secondary" onClick={handleReset} style={{ marginTop: 12 }}>
-              Create Another
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const route = EDIT_ROUTES[result.entityType] || '/';
+                  navigate(`${route}?editDraft=${result.draft.id}`);
+                }}
+              >
+                <Edit3 size={16} /> Edit Draft
+              </button>
+              <button className="btn btn-secondary" onClick={handleReset}>
+                Create Another
+              </button>
+            </div>
           </div>
         </div>
       )}
