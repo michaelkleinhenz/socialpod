@@ -232,3 +232,116 @@ func TestExtractJSONLDImage_ImageObject(t *testing.T) {
 		t.Fatalf("expected image from object URL, got %q", got)
 	}
 }
+
+func TestExtractNextDataImages_Basic(t *testing.T) {
+	html := `<html><head><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"product":{"image":{"url":"https://cdn.example.com/product.jpg"}}}}}</script></head></html>`
+	got := extractNextDataImages(html, "https://example.com")
+	if len(got) == 0 {
+		t.Fatal("expected at least one image from __NEXT_DATA__")
+	}
+	found := false
+	for _, u := range got {
+		if u == "https://cdn.example.com/product.jpg" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected product.jpg in candidates, got %v", got)
+	}
+}
+
+func TestExtractNextDataImages_MultipleImages(t *testing.T) {
+	html := `<html><head><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"items":[{"image":"https://cdn.example.com/a.jpg"},{"image":"https://cdn.example.com/b.png"}]}}}</script></head></html>`
+	got := extractNextDataImages(html, "https://example.com")
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 images, got %v", got)
+	}
+}
+
+func TestExtractNextDataImages_NoScript(t *testing.T) {
+	html := `<html><body>no next data here</body></html>`
+	got := extractNextDataImages(html, "https://example.com")
+	if len(got) != 0 {
+		t.Fatalf("expected no results, got %v", got)
+	}
+}
+
+func TestExtractNextDataImages_AsmodeeStyle(t *testing.T) {
+	html := `<html><head><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"news":{"images":[{"url":"https://xr.orbitlabs.de/i/default/SCOD5008/azul-kids.png/resize/3840x/format/webp"}],"external_media_data":[{"file":"https://retail.asmodee.de/media/catalog/product/a/z/azul-kids.jpg"}]}}}}</script></head></html>`
+	got := extractNextDataImages(html, "https://www.asmodee.de/news/test")
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 images from Asmodee-style __NEXT_DATA__, got %v", got)
+	}
+}
+
+func TestExtractSrcsetURLs_Basic(t *testing.T) {
+	html := `<html><body><img src="small.jpg" srcset="https://cdn.example.com/img-350w.jpg 350w, https://cdn.example.com/img-800w.jpg 800w, https://cdn.example.com/img-1200w.jpg 1200w"></body></html>`
+	got := extractSrcsetURLs(html, "https://example.com")
+	if len(got) == 0 {
+		t.Fatal("expected at least one srcset URL")
+	}
+	if got[0] != "https://cdn.example.com/img-1200w.jpg" {
+		t.Fatalf("expected largest srcset image, got %q", got[0])
+	}
+}
+
+func TestExtractSrcsetURLs_NoSrcset(t *testing.T) {
+	html := `<html><body><img src="https://example.com/img.jpg"></body></html>`
+	got := extractSrcsetURLs(html, "https://example.com")
+	if len(got) != 0 {
+		t.Fatalf("expected no results, got %v", got)
+	}
+}
+
+func TestUnwrapNextImageURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"plain URL", "https://example.com/img.jpg", "https://example.com/img.jpg"},
+		{"next/image URL", "https://example.com/_next/image?url=https%3A%2F%2Fcdn.example.com%2Fphoto.jpg&w=1200&q=75", "https://cdn.example.com/photo.jpg"},
+		{"next/image relative", "/_next/image?url=%2Fuploads%2Fphoto.jpg&w=640&q=75", "/uploads/photo.jpg"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := unwrapNextImageURL(tt.input)
+			if got != tt.expected {
+				t.Fatalf("unwrapNextImageURL(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractContentImageCandidates_NextDataFallback(t *testing.T) {
+	html := `<html><head>
+		<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"article":{"image":"https://cdn.example.com/article-hero.jpg"}}}}</script>
+	</head><body>
+		<img src="data:image/svg+xml,%3csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2740%27%20height=%2740%27/%3e">
+	</body></html>`
+	candidates := extractContentImageCandidates(html, "https://example.com/page")
+	if len(candidates) == 0 {
+		t.Fatal("expected __NEXT_DATA__ image as candidate when no og:image")
+	}
+	if candidates[0] != "https://cdn.example.com/article-hero.jpg" {
+		t.Fatalf("expected __NEXT_DATA__ image, got %v", candidates)
+	}
+}
+
+func TestExtractContentImageCandidates_SrcsetFallback(t *testing.T) {
+	html := `<html><body>
+		<img src="data:image/gif;base64,R0lGOD" srcset="https://cdn.example.com/hero-640w.jpg 640w, https://cdn.example.com/hero-1920w.jpg 1920w">
+	</body></html>`
+	candidates := extractContentImageCandidates(html, "https://example.com/page")
+	found := false
+	for _, c := range candidates {
+		if c == "https://cdn.example.com/hero-1920w.jpg" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected largest srcset image in candidates, got %v", candidates)
+	}
+}

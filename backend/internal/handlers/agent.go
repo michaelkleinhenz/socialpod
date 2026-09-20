@@ -629,10 +629,13 @@ func scoreImgTags(html, pageURL string) []imageCandidate {
 		if len(sm) < 2 {
 			continue
 		}
-		imgURL := resolveURL(strings.TrimSpace(sm[1]), pageURL)
+		rawSrc := strings.TrimSpace(sm[1])
+		rawSrc = unwrapNextImageURL(rawSrc)
+		imgURL := resolveURL(rawSrc, pageURL)
 		if imgURL == "" || strings.HasPrefix(imgURL, "data:") {
 			continue
 		}
+		imgURL = unwrapNextImageURL(imgURL)
 		if seen[imgURL] {
 			continue
 		}
@@ -718,13 +721,14 @@ func scoreImgTags(html, pageURL string) []imageCandidate {
 }
 
 // extractContentImageCandidates returns image URLs from the HTML, ordered by
-// quality. It tries og:image, twitter:image, JSON-LD, and scored <img> tags.
+// quality. It tries og:image, twitter:image, JSON-LD, Next.js __NEXT_DATA__,
+// srcset attributes, and scored <img> tags.
 func extractContentImageCandidates(html, pageURL string) []string {
 	var candidates []string
 	seen := make(map[string]bool)
 
 	add := func(u string) {
-		if u != "" && !seen[u] {
+		if u != "" && !seen[u] && !strings.HasPrefix(u, "data:") {
 			seen[u] = true
 			candidates = append(candidates, u)
 		}
@@ -746,6 +750,14 @@ func extractContentImageCandidates(html, pageURL string) []string {
 		add(img)
 	}
 
+	for _, img := range extractNextDataImages(html, pageURL) {
+		add(img)
+	}
+
+	for _, img := range extractSrcsetURLs(html, pageURL) {
+		add(img)
+	}
+
 	scored := scoreImgTags(html, pageURL)
 	for i := range scored {
 		for j := i + 1; j < len(scored); j++ {
@@ -761,6 +773,140 @@ func extractContentImageCandidates(html, pageURL string) []string {
 	}
 
 	return candidates
+}
+
+var nextDataRe = regexp.MustCompile(`(?i)<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)</script>`)
+
+func extractNextDataImages(html, pageURL string) []string {
+	m := nextDataRe.FindStringSubmatch(html)
+	if len(m) < 2 {
+		return nil
+	}
+
+	var data map[string]any
+	if json.Unmarshal([]byte(m[1]), &data) != nil {
+		return nil
+	}
+
+	var urls []string
+	seen := make(map[string]bool)
+	collectImageURLs(data, pageURL, seen, &urls, 0)
+	return urls
+}
+
+func collectImageURLs(v any, pageURL string, seen map[string]bool, out *[]string, depth int) {
+	if depth > 15 || len(*out) >= 20 {
+		return
+	}
+	switch val := v.(type) {
+	case map[string]any:
+		for k, child := range val {
+			lk := strings.ToLower(k)
+			if isImageURLKey(lk) {
+				if s, ok := child.(string); ok && isPlausibleImageURL(s) {
+					resolved := resolveURL(s, pageURL)
+					if !seen[resolved] {
+						seen[resolved] = true
+						*out = append(*out, resolved)
+					}
+				}
+			}
+			collectImageURLs(child, pageURL, seen, out, depth+1)
+		}
+	case []any:
+		for _, item := range val {
+			collectImageURLs(item, pageURL, seen, out, depth+1)
+		}
+	}
+}
+
+var imageURLKeySet = map[string]bool{
+	"url": true, "src": true, "image": true, "imageurl": true,
+	"file": true, "thumbnail": true, "banner": true, "cover": true,
+	"poster": true, "hero": true, "og_image": true, "ogimage": true,
+	"featured_image": true, "featuredimage": true, "photo": true,
+	"picture": true, "media_url": true, "mediaurl": true,
+}
+
+func isImageURLKey(key string) bool {
+	return imageURLKeySet[key]
+}
+
+var imageExtRe = regexp.MustCompile(`(?i)\.(jpe?g|png|gif|webp|bmp|avif|svg)(\?|$)`)
+
+func isPlausibleImageURL(s string) bool {
+	if s == "" || strings.HasPrefix(s, "data:") {
+		return false
+	}
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "//") || strings.HasPrefix(s, "/") {
+		if imageExtRe.MatchString(s) {
+			return true
+		}
+		lowerS := strings.ToLower(s)
+		if strings.Contains(lowerS, "/image") || strings.Contains(lowerS, "/upload") || strings.Contains(lowerS, "/media") || strings.Contains(lowerS, "/photo") || strings.Contains(lowerS, "/asset") {
+			return true
+		}
+		return true
+	}
+	return false
+}
+
+func unwrapNextImageURL(imgURL string) string {
+	if !strings.Contains(imgURL, "/_next/image") {
+		return imgURL
+	}
+	parsed, err := url.Parse(imgURL)
+	if err != nil {
+		return imgURL
+	}
+	if real := parsed.Query().Get("url"); real != "" {
+		decoded, err := url.QueryUnescape(real)
+		if err == nil && decoded != "" {
+			return decoded
+		}
+		return real
+	}
+	return imgURL
+}
+
+var srcsetEntryRe = regexp.MustCompile(`(\S+)\s+(\d+)w`)
+
+func extractSrcsetURLs(html, pageURL string) []string {
+	tags := imgTagRe.FindAllString(html, 100)
+	seen := make(map[string]bool)
+	var results []string
+
+	for _, tag := range tags {
+		sm := imgSrcsetRe.FindStringSubmatch(tag)
+		if len(sm) < 2 {
+			continue
+		}
+		entries := srcsetEntryRe.FindAllStringSubmatch(sm[1], -1)
+		if len(entries) == 0 {
+			continue
+		}
+		bestURL := ""
+		bestW := 0
+		for _, e := range entries {
+			w, _ := strconv.Atoi(e[2])
+			rawURL := unwrapNextImageURL(strings.TrimSpace(e[1]))
+			if strings.HasPrefix(rawURL, "data:") {
+				continue
+			}
+			if w > bestW {
+				bestW = w
+				bestURL = rawURL
+			}
+		}
+		if bestURL != "" {
+			resolved := resolveURL(bestURL, pageURL)
+			if !seen[resolved] {
+				seen[resolved] = true
+				results = append(results, resolved)
+			}
+		}
+	}
+	return results
 }
 
 func fetchPageHTML(ctx context.Context, pageURL string) (string, error) {
@@ -779,7 +925,7 @@ func fetchPageHTML(ctx context.Context, pageURL string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	htmlBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	htmlBytes, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
 	if err != nil {
 		return "", err
 	}
