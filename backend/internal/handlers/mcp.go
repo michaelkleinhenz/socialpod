@@ -26,6 +26,7 @@ import (
 type MCPHandler struct {
 	DB        *database.MongoDB
 	UploadDir string
+	BGG       *BGGHandler
 }
 
 type jsonrpcRequest struct {
@@ -1037,9 +1038,22 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		imageURLs = append(imageURLs, uploaded...)
 	}
 
-	if overlay := h.loadNewsOverlay(c); overlay != nil {
-		log.Printf("[MCP] toolCreateNewsDraft: applying overlay to %d images", len(imageURLs))
-		imageURLs = h.applyOverlayToImages(overlay, imageURLs)
+	autoFetched := false
+	if len(imageURLs) == 0 {
+		if articleURL := strArg(args, "articleUrl"); articleURL != "" {
+			log.Printf("[MCP] toolCreateNewsDraft: no images provided, fetching from articleUrl %s", articleURL)
+			if fetched := h.fetchArticleImage(c, articleURL); len(fetched) > 0 {
+				imageURLs = append(imageURLs, fetched...)
+				autoFetched = true
+			}
+		}
+	}
+
+	if !autoFetched {
+		if overlay := h.loadNewsOverlay(c); overlay != nil {
+			log.Printf("[MCP] toolCreateNewsDraft: applying overlay to %d images", len(imageURLs))
+			imageURLs = h.applyOverlayToImages(overlay, imageURLs)
+		}
 	}
 	log.Printf("[MCP] toolCreateNewsDraft: final imageURLs = %v", imageURLs)
 
@@ -1901,6 +1915,103 @@ func (h *MCPHandler) applyOverlayToSingleImage(overlay image.Image, imgURL strin
 	return "/api/uploads/" + newFilename
 }
 
+// fetchArticleImage fetches the og:image from the given article URL,
+// downloads it, optionally applies the news overlay, and returns the
+// resulting image URLs. For BGG URLs it uses the BGG API to get the image.
+func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []string {
+	if articleURL == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var bggImageURL string
+	var ogImage string
+
+	if m := agentBGGRe.FindStringSubmatch(articleURL); m != nil {
+		var bggToken string
+		var settings models.AppSettings
+		if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err == nil {
+			bggToken = settings.BGGAPIToken
+		}
+		_, bggImageURL = fetchBGGPageInfo(ctx, m[1], articleURL, bggToken)
+	}
+
+	if bggImageURL == "" {
+		_, _, ogImage, _ = fetchPageMetadata(ctx, articleURL)
+	}
+
+	overlay := h.loadNewsOverlay(c)
+
+	if bggImageURL != "" && h.BGG != nil {
+		log.Printf("[MCP] fetchArticleImage: downloading BGG image %s", bggImageURL)
+		imgData, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, "news_entry")
+		if err != nil {
+			log.Printf("[MCP] fetchArticleImage: failed to download/process BGG image: %v", err)
+			return nil
+		}
+		filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+			return nil
+		}
+		dst := filepath.Join(h.UploadDir, filename)
+		if err := os.WriteFile(dst, imgData, 0o644); err != nil {
+			return nil
+		}
+		h.DB.Uploads().InsertOne(ctx, models.Upload{
+			Filename:    filename,
+			ContentType: "image/jpeg",
+			Data:        imgData,
+			Size:        int64(len(imgData)),
+			CreatedAt:   time.Now(),
+		})
+		return []string{"/api/uploads/" + filename}
+	}
+
+	if ogImage != "" && h.BGG != nil && overlay != nil {
+		log.Printf("[MCP] fetchArticleImage: downloading og:image with overlay: %s", ogImage)
+		imgData, err := h.BGG.downloadAndProcessURL(ctx, c, ogImage, "news_entry")
+		if err != nil {
+			log.Printf("[MCP] fetchArticleImage: failed to download/process og:image: %v", err)
+			return nil
+		}
+		filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+			return nil
+		}
+		dst := filepath.Join(h.UploadDir, filename)
+		if err := os.WriteFile(dst, imgData, 0o644); err != nil {
+			return nil
+		}
+		h.DB.Uploads().InsertOne(ctx, models.Upload{
+			Filename:    filename,
+			ContentType: "image/jpeg",
+			Data:        imgData,
+			Size:        int64(len(imgData)),
+			CreatedAt:   time.Now(),
+		})
+		return []string{"/api/uploads/" + filename}
+	}
+
+	if ogImage != "" {
+		log.Printf("[MCP] fetchArticleImage: downloading og:image (no BGG handler): %s", ogImage)
+		saved, err := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
+		if err != nil {
+			log.Printf("[MCP] fetchArticleImage: failed to download og:image: %v", err)
+			return nil
+		}
+		urls := []string{saved}
+		if overlay != nil {
+			urls = h.applyOverlayToImages(overlay, urls)
+		}
+		return urls
+	}
+
+	log.Printf("[MCP] fetchArticleImage: no image found for URL %s", articleURL)
+	return nil
+}
+
 // --- Image upload tools ---
 
 var mcpAllowedExtensions = map[string]string{
@@ -2245,7 +2356,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "create_news_draft",
-			Description: "Create a news draft for later review and posting. Drafts store news data (episode number, tagline, article URL, shownotes) and optionally social media posting settings. The draft can be reviewed and submitted later via post_news_draft. If the team has a news creator watermark configured, it is automatically composited onto uploaded images.",
+			Description: "Create a news draft for later review and posting. Drafts store news data (episode number, tagline, article URL, shownotes) and optionally social media posting settings. The draft can be reviewed and submitted later via post_news_draft. If no images are provided and an articleUrl is given, the og:image is automatically fetched from the article page. If the team has a news creator watermark configured, it is automatically composited onto images.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
