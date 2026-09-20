@@ -1833,7 +1833,31 @@ var mcpAllowedExtensions = map[string]string{
 	".mp4": "video/mp4", ".mov": "video/quicktime",
 }
 
+func cleanBase64(raw string) string {
+	// Strip data URI prefix (e.g. "data:image/jpeg;base64,...")
+	if idx := strings.Index(raw, ";base64,"); idx != -1 {
+		raw = raw[idx+len(";base64,"):]
+	} else if idx := strings.Index(raw, ","); idx != -1 && idx < 64 && strings.HasPrefix(raw, "data:") {
+		raw = raw[idx+1:]
+	}
+	// Remove any whitespace / newlines
+	raw = strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, raw)
+	// Convert URL-safe base64 characters to standard
+	raw = strings.NewReplacer("-", "+", "_", "/").Replace(raw)
+	// Fix missing padding
+	if m := len(raw) % 4; m != 0 {
+		raw += strings.Repeat("=", 4-m)
+	}
+	return raw
+}
+
 func (h *MCPHandler) saveBase64Upload(b64Data, filename string) (string, error) {
+	b64Data = cleanBase64(b64Data)
 	data, err := base64.StdEncoding.DecodeString(b64Data)
 	if err != nil {
 		return "", fmt.Errorf("invalid base64 data: %w", err)
