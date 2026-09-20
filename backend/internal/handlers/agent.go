@@ -243,6 +243,7 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
+	log.Printf("[Agent] Generate: entityType=%s bggImageURL=%q ogImage=%q", input.EntityType, bggImageURL, ogImage)
 	var imageURLs []string
 	if bggImageURL != "" && h.BGG != nil {
 		var episodeType string
@@ -276,14 +277,19 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 			}
 		}
 	} else if ogImage != "" {
+		log.Printf("[Agent] Downloading og:image: %s", ogImage)
 		saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
 		if saveErr != nil {
 			log.Printf("[Agent] Warning: failed to download og:image %s: %v", ogImage, saveErr)
 		} else {
+			log.Printf("[Agent] og:image saved as: %s", saved)
 			imageURLs = append(imageURLs, saved)
 		}
+	} else {
+		log.Printf("[Agent] No image source found (bggImageURL=%q, ogImage=%q)", bggImageURL, ogImage)
 	}
 
+	log.Printf("[Agent] Final imageURLs for draft: %v", imageURLs)
 	switch input.EntityType {
 	case "news":
 		draft, err := h.createNewsDraft(ctx, aiContent, objID, &teamID, input.URL, imageURLs)
@@ -433,6 +439,28 @@ func (h *AgentHandler) createPostDraft(ctx context.Context, aiContent string, us
 	return &post, nil
 }
 
+// extractMetaContent finds a <meta> tag whose property or name attribute
+// matches one of the given names and returns its content attribute value.
+// It handles both attribute orderings (property before content AND content
+// before property), which varies across websites.
+func extractMetaContent(html string, names ...string) string {
+	metaRe := regexp.MustCompile(`(?i)<meta\s[^>]*>`)
+	for _, tag := range metaRe.FindAllString(html, -1) {
+		contentRe := regexp.MustCompile(`(?i)content=["']([^"']+)["']`)
+		cm := contentRe.FindStringSubmatch(tag)
+		if len(cm) < 2 {
+			continue
+		}
+		for _, name := range names {
+			propRe := regexp.MustCompile(`(?i)(?:property|name)=["']` + regexp.QuoteMeta(name) + `["']`)
+			if propRe.MatchString(tag) {
+				return strings.TrimSpace(cm[1])
+			}
+		}
+	}
+	return ""
+}
+
 func fetchPageMetadata(ctx context.Context, pageURL string) (title, description, ogImage, bodyText string) {
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
 	if err != nil {
@@ -459,20 +487,16 @@ func fetchPageMetadata(ctx context.Context, pageURL string) (title, description,
 		title = strings.TrimSpace(m[1])
 	}
 
-	ogTitleRe := regexp.MustCompile(`(?i)<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']`)
-	if m := ogTitleRe.FindStringSubmatch(html); len(m) > 1 {
-		title = strings.TrimSpace(m[1])
+	if v := extractMetaContent(html, "og:title"); v != "" {
+		title = v
 	}
 
-	descRe := regexp.MustCompile(`(?i)<meta[^>]+(?:name=["']description["']|property=["']og:description["'])[^>]+content=["']([^"']+)["']`)
-	if m := descRe.FindStringSubmatch(html); len(m) > 1 {
-		description = strings.TrimSpace(m[1])
+	if v := extractMetaContent(html, "description", "og:description"); v != "" {
+		description = v
 	}
 
-	ogImageRe := regexp.MustCompile(`(?i)<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']`)
-	if m := ogImageRe.FindStringSubmatch(html); len(m) > 1 {
-		ogImage = strings.TrimSpace(m[1])
-	}
+	ogImage = extractMetaContent(html, "og:image")
+	log.Printf("[Agent] fetchPageMetadata: og:image=%q", ogImage)
 
 	tagRe := regexp.MustCompile(`<[^>]+>`)
 	text := tagRe.ReplaceAllString(html, " ")
