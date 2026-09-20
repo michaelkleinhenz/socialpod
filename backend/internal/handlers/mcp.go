@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1000,6 +1002,10 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		imageURLs = append(imageURLs, uploaded...)
 	}
 
+	if overlay := h.loadEpisodeOverlay(c, "news"); overlay != nil {
+		imageURLs = h.applyOverlayToImages(overlay, imageURLs)
+	}
+
 	draft := models.NewsDraft{
 		UserID:           objID,
 		EpisodeNumber:    strArg(args, "episodeNumber"),
@@ -1163,6 +1169,9 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 	if uploaded, err := h.processInlineImages(args); err != nil {
 		return map[string]string{"error": err.Error()}, true
 	} else if len(uploaded) > 0 {
+		if overlay := h.loadEpisodeOverlay(c, "news"); overlay != nil {
+			uploaded = h.applyOverlayToImages(overlay, uploaded)
+		}
 		if imageURLs == nil {
 			imageURLs = uploaded
 		} else {
@@ -1332,11 +1341,16 @@ func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any)
 		imageURLs = append(imageURLs, uploaded...)
 	}
 
+	episodeType := strArg(args, "episodeType")
+	if overlay := h.loadEpisodeOverlay(c, episodeType); overlay != nil {
+		imageURLs = h.applyOverlayToImages(overlay, imageURLs)
+	}
+
 	draft := models.EpisodeDraft{
 		UserID:            objID,
 		EpisodeNumber:     strArg(args, "episodeNumber"),
 		EpisodeTitle:      strArg(args, "episodeTitle"),
-		EpisodeType:       strArg(args, "episodeType"),
+		EpisodeType:       episodeType,
 		Summary:           strArg(args, "summary"),
 		EpisodeDate:       strArg(args, "episodeDate"),
 		GameNamePublisher: strArg(args, "gameNamePublisher"),
@@ -1537,6 +1551,18 @@ func (h *MCPHandler) toolUpdateEpisodeDraft(c *gin.Context, args map[string]any)
 	if uploaded, err := h.processInlineImages(args); err != nil {
 		return map[string]string{"error": err.Error()}, true
 	} else if len(uploaded) > 0 {
+		episodeType := strArg(args, "episodeType")
+		if episodeType == "" {
+			readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer readCancel()
+			var existing models.EpisodeDraft
+			if err := h.DB.EpisodeDrafts().FindOne(readCtx, filter).Decode(&existing); err == nil {
+				episodeType = existing.EpisodeType
+			}
+		}
+		if overlay := h.loadEpisodeOverlay(c, episodeType); overlay != nil {
+			uploaded = h.applyOverlayToImages(overlay, uploaded)
+		}
 		if imageURLs == nil {
 			imageURLs = uploaded
 		} else {
@@ -1692,6 +1718,111 @@ func (h *MCPHandler) toolPostEpisodeDraft(c *gin.Context, args map[string]any) (
 		resp["post"] = post
 	}
 	return resp, false
+}
+
+// --- Episode/news overlay helpers ---
+
+func (h *MCPHandler) loadEpisodeOverlay(c *gin.Context, episodeType string) image.Image {
+	teamIDStr, ok := c.Get("teamId")
+	if !ok || teamIDStr.(string) == "" {
+		return nil
+	}
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
+	if err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		return nil
+	}
+
+	var overlayID *primitive.ObjectID
+	switch episodeType {
+	case "news":
+		overlayID = team.EpisodeOverlayNewsID
+	case "review":
+		overlayID = team.EpisodeOverlayReviewID
+	case "special":
+		overlayID = team.EpisodeOverlaySpecialID
+	}
+	if overlayID == nil {
+		return nil
+	}
+
+	var wm models.Watermark
+	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *overlayID}).Decode(&wm); err != nil {
+		return nil
+	}
+
+	filename := filepath.Base(wm.URL)
+	wmData, err := os.ReadFile(filepath.Join(h.UploadDir, filename))
+	if err != nil {
+		return nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(wmData))
+	if err != nil {
+		return nil
+	}
+	return img
+}
+
+func (h *MCPHandler) applyOverlayToImages(overlay image.Image, imageURLs []string) []string {
+	if overlay == nil || len(imageURLs) == 0 {
+		return imageURLs
+	}
+	result := make([]string, 0, len(imageURLs))
+	for _, imgURL := range imageURLs {
+		result = append(result, h.applyOverlayToSingleImage(overlay, imgURL))
+	}
+	return result
+}
+
+func (h *MCPHandler) applyOverlayToSingleImage(overlay image.Image, imgURL string) string {
+	ext := strings.ToLower(filepath.Ext(imgURL))
+	if ext == ".mp4" || ext == ".mov" {
+		return imgURL
+	}
+
+	filename := filepath.Base(imgURL)
+	fullPath := filepath.Join(h.UploadDir, filename)
+
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		var upload models.Upload
+		if err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload); err != nil || len(upload.Data) == 0 {
+			return imgURL
+		}
+		data = upload.Data
+	}
+
+	overlaid, _ := applyWatermarkOverlay(data, overlay)
+
+	newFilename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+	newPath := filepath.Join(h.UploadDir, newFilename)
+	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		return imgURL
+	}
+	if err := os.WriteFile(newPath, overlaid, 0o644); err != nil {
+		return imgURL
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	h.DB.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    newFilename,
+		ContentType: "image/jpeg",
+		Data:        overlaid,
+		Size:        int64(len(overlaid)),
+		CreatedAt:   time.Now(),
+	})
+
+	return "/api/uploads/" + newFilename
 }
 
 // --- Image upload tools ---
@@ -2006,7 +2137,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "create_news_draft",
-			Description: "Create a news draft for later review and posting. Drafts store news data (episode number, tagline, article URL, shownotes) and optionally social media posting settings. The draft can be reviewed and submitted later via post_news_draft.",
+			Description: "Create a news draft for later review and posting. Drafts store news data (episode number, tagline, article URL, shownotes) and optionally social media posting settings. The draft can be reviewed and submitted later via post_news_draft. If the team has a news episode overlay configured, it is automatically composited onto uploaded images.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -2106,7 +2237,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "create_episode_draft",
-			Description: "Create an episode draft for later review and posting. Drafts store episode data (number, title, type, date, review details) and optionally social media posting settings. The draft can be reviewed and submitted later via post_episode_draft.",
+			Description: "Create an episode draft for later review and posting. Drafts store episode data (number, title, type, date, review details) and optionally social media posting settings. The draft can be reviewed and submitted later via post_episode_draft. If the team has an overlay configured for the given episodeType (news/review/special), it is automatically composited onto uploaded images.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
