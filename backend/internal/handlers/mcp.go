@@ -1037,7 +1037,7 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		imageURLs = append(imageURLs, uploaded...)
 	}
 
-	if overlay := h.loadEpisodeOverlay(c, "news"); overlay != nil {
+	if overlay := h.loadNewsOverlay(c); overlay != nil {
 		log.Printf("[MCP] toolCreateNewsDraft: applying overlay to %d images", len(imageURLs))
 		imageURLs = h.applyOverlayToImages(overlay, imageURLs)
 	}
@@ -1206,7 +1206,7 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 	if uploaded, err := h.processInlineImages(args); err != nil {
 		return map[string]string{"error": err.Error()}, true
 	} else if len(uploaded) > 0 {
-		if overlay := h.loadEpisodeOverlay(c, "news"); overlay != nil {
+		if overlay := h.loadNewsOverlay(c); overlay != nil {
 			uploaded = h.applyOverlayToImages(overlay, uploaded)
 		}
 		if imageURLs == nil {
@@ -1807,6 +1807,45 @@ func (h *MCPHandler) loadEpisodeOverlay(c *gin.Context, episodeType string) imag
 	return img
 }
 
+func (h *MCPHandler) loadNewsOverlay(c *gin.Context) image.Image {
+	teamIDStr, ok := c.Get("teamId")
+	if !ok || teamIDStr.(string) == "" {
+		return nil
+	}
+	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
+	if err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var team models.Team
+	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
+		return nil
+	}
+
+	if team.NewsCreatorWatermarkID == nil {
+		return nil
+	}
+
+	var wm models.Watermark
+	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *team.NewsCreatorWatermarkID}).Decode(&wm); err != nil {
+		return nil
+	}
+
+	filename := filepath.Base(wm.URL)
+	wmData, err := os.ReadFile(filepath.Join(h.UploadDir, filename))
+	if err != nil {
+		return nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(wmData))
+	if err != nil {
+		return nil
+	}
+	return img
+}
+
 func (h *MCPHandler) applyOverlayToImages(overlay image.Image, imageURLs []string) []string {
 	if overlay == nil || len(imageURLs) == 0 {
 		return imageURLs
@@ -2206,7 +2245,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "create_news_draft",
-			Description: "Create a news draft for later review and posting. Drafts store news data (episode number, tagline, article URL, shownotes) and optionally social media posting settings. The draft can be reviewed and submitted later via post_news_draft. If the team has a news episode overlay configured, it is automatically composited onto uploaded images.",
+			Description: "Create a news draft for later review and posting. Drafts store news data (episode number, tagline, article URL, shownotes) and optionally social media posting settings. The draft can be reviewed and submitted later via post_news_draft. If the team has a news creator watermark configured, it is automatically composited onto uploaded images.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
