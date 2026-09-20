@@ -8,9 +8,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +23,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 
 var agentBGGRe = regexp.MustCompile(`boardgamegeek\.com/boardgame[^/]*/(\d+)`)
 
@@ -150,15 +154,19 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 	}
 
 	var pageInfo string
-	var ogImage string
+	var contentImageCandidates []string
 	var bggImageURL string
 	if input.URL != "" {
 		if m := agentBGGRe.FindStringSubmatch(input.URL); m != nil {
 			pageInfo, bggImageURL = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
 		}
 		if pageInfo == "" {
-			title, description, img, body := fetchPageMetadata(ctx, input.URL)
-			ogImage = img
+			html, _ := fetchPageHTML(ctx, input.URL)
+			var title, description, body string
+			if html != "" {
+				title, description, _, body = extractPageMetadata(html)
+				contentImageCandidates = extractContentImageCandidates(html, input.URL)
+			}
 			var parts []string
 			parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
 			if title != "" {
@@ -257,7 +265,7 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 		episodeType = etParsed.EpisodeType
 	}
 
-	log.Printf("[Agent] Generate: entityType=%s episodeType=%s bggImageURL=%q ogImage=%q", input.EntityType, episodeType, bggImageURL, ogImage)
+	log.Printf("[Agent] Generate: entityType=%s episodeType=%s bggImageURL=%q contentImageCandidates=%v", input.EntityType, episodeType, bggImageURL, contentImageCandidates)
 	var imageURLs []string
 	if bggImageURL != "" && h.BGG != nil {
 		imgData, imgErr := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
@@ -279,38 +287,46 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 				}
 			}
 		}
-	} else if ogImage != "" && h.BGG != nil {
-		log.Printf("[Agent] Downloading og:image and applying overlay: %s", ogImage)
-		imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, ogImage, episodeType)
-		if imgErr != nil {
-			log.Printf("[Agent] Warning: failed to download/process og:image %s: %v", ogImage, imgErr)
-		} else {
-			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-			if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
-				dst := filepath.Join(h.UploadDir, filename)
-				if err := os.WriteFile(dst, imgData, 0o644); err == nil {
-					h.DB.Uploads().InsertOne(ctx, models.Upload{
-						Filename:    filename,
-						ContentType: "image/jpeg",
-						Data:        imgData,
-						Size:        int64(len(imgData)),
-						CreatedAt:   time.Now(),
-					})
-					imageURLs = append(imageURLs, "/api/uploads/"+filename)
+	} else if len(contentImageCandidates) > 0 {
+		for _, candidate := range contentImageCandidates {
+			if h.BGG != nil {
+				log.Printf("[Agent] Downloading content image and applying overlay: %s", candidate)
+				imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, candidate, episodeType)
+				if imgErr != nil {
+					log.Printf("[Agent] Warning: failed to download/process content image %s: %v (trying next candidate)", candidate, imgErr)
+					continue
 				}
+				filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+				if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
+					dst := filepath.Join(h.UploadDir, filename)
+					if err := os.WriteFile(dst, imgData, 0o644); err == nil {
+						h.DB.Uploads().InsertOne(ctx, models.Upload{
+							Filename:    filename,
+							ContentType: "image/jpeg",
+							Data:        imgData,
+							Size:        int64(len(imgData)),
+							CreatedAt:   time.Now(),
+						})
+						imageURLs = append(imageURLs, "/api/uploads/"+filename)
+					}
+				}
+				break
 			}
-		}
-	} else if ogImage != "" {
-		log.Printf("[Agent] Downloading og:image (no overlay available): %s", ogImage)
-		saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
-		if saveErr != nil {
-			log.Printf("[Agent] Warning: failed to download og:image %s: %v", ogImage, saveErr)
-		} else {
-			log.Printf("[Agent] og:image saved as: %s", saved)
+			log.Printf("[Agent] Downloading content image (no overlay available): %s", candidate)
+			saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, candidate)
+			if saveErr != nil {
+				log.Printf("[Agent] Warning: failed to download content image %s: %v (trying next candidate)", candidate, saveErr)
+				continue
+			}
+			log.Printf("[Agent] Content image saved as: %s", saved)
 			imageURLs = append(imageURLs, saved)
+			break
+		}
+		if len(imageURLs) == 0 {
+			log.Printf("[Agent] All %d image candidates failed to download", len(contentImageCandidates))
 		}
 	} else {
-		log.Printf("[Agent] No image source found (bggImageURL=%q, ogImage=%q)", bggImageURL, ogImage)
+		log.Printf("[Agent] No image source found (bggImageURL=%q, candidates=%d)", bggImageURL, len(contentImageCandidates))
 	}
 
 	log.Printf("[Agent] Final imageURLs for draft: %v", imageURLs)
@@ -485,27 +501,293 @@ func extractMetaContent(html string, names ...string) string {
 	return ""
 }
 
-func fetchPageMetadata(ctx context.Context, pageURL string) (title, description, ogImage, bodyText string) {
+func resolveURL(rawURL, baseURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		return rawURL
+	}
+	if strings.HasPrefix(rawURL, "//") {
+		return "https:" + rawURL
+	}
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return rawURL
+	}
+	ref, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	return base.ResolveReference(ref).String()
+}
+
+type imageCandidate struct {
+	url   string
+	score int
+}
+
+var (
+	imgTagRe    = regexp.MustCompile(`(?i)<img\s[^>]*>`)
+	imgSrcRe    = regexp.MustCompile(`(?i)(?:src|data-src|data-lazy-src|data-original)=["']([^"']+)["']`)
+	imgWidthRe  = regexp.MustCompile(`(?i)width=["']?(\d+)`)
+	imgHeightRe = regexp.MustCompile(`(?i)height=["']?(\d+)`)
+	imgAltRe    = regexp.MustCompile(`(?i)alt=["']([^"']*?)["']`)
+	imgClassRe  = regexp.MustCompile(`(?i)class=["']([^"']*?)["']`)
+	imgSrcsetRe = regexp.MustCompile(`(?i)srcset=["']([^"']+)["']`)
+
+	negativeImagePatterns = []string{
+		"logo", "icon", "avatar", "sprite", "pixel", "tracking",
+		"button", "arrow", "spinner", "loading", "placeholder",
+		"badge", "flag", "emoji", "social-", "share", "gravatar", "favicon",
+	}
+	positiveImagePatterns = []string{
+		"hero", "featured", "article", "cover", "banner",
+		"product", "content", "thumbnail", "post", "entry", "news",
+		"header-image", "wp-content", "uploads", "produktbanner",
+	}
+)
+
+func extractJSONLDImage(html, pageURL string) string {
+	jsonLDRe := regexp.MustCompile(`(?i)<script[^>]+type=["']application/ld\+json["'][^>]*>([\s\S]*?)</script>`)
+	for _, m := range jsonLDRe.FindAllStringSubmatch(html, 10) {
+		if len(m) < 2 {
+			continue
+		}
+		if img := parseJSONLDImage(m[1]); img != "" {
+			return resolveURL(img, pageURL)
+		}
+	}
+	return ""
+}
+
+func parseJSONLDImage(jsonStr string) string {
+	var data map[string]any
+	if json.Unmarshal([]byte(jsonStr), &data) == nil {
+		if img := jsonLDImageField(data); img != "" {
+			return img
+		}
+		if graph, ok := data["@graph"].([]any); ok {
+			for _, item := range graph {
+				if obj, ok := item.(map[string]any); ok {
+					if img := jsonLDImageField(obj); img != "" {
+						return img
+					}
+				}
+			}
+		}
+	}
+	var arr []map[string]any
+	if json.Unmarshal([]byte(jsonStr), &arr) == nil {
+		for _, data := range arr {
+			if img := jsonLDImageField(data); img != "" {
+				return img
+			}
+		}
+	}
+	return ""
+}
+
+func jsonLDImageField(data map[string]any) string {
+	img, ok := data["image"]
+	if !ok {
+		return ""
+	}
+	switch v := img.(type) {
+	case string:
+		return v
+	case []any:
+		if len(v) > 0 {
+			if s, ok := v[0].(string); ok {
+				return s
+			}
+			if obj, ok := v[0].(map[string]any); ok {
+				if u, ok := obj["url"].(string); ok {
+					return u
+				}
+			}
+		}
+	case map[string]any:
+		if u, ok := v["url"].(string); ok {
+			return u
+		}
+	}
+	return ""
+}
+
+func scoreImgTags(html, pageURL string) []imageCandidate {
+	tags := imgTagRe.FindAllString(html, 100)
+	if len(tags) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var candidates []imageCandidate
+
+	for i, tag := range tags {
+		sm := imgSrcRe.FindStringSubmatch(tag)
+		if len(sm) < 2 {
+			continue
+		}
+		imgURL := resolveURL(strings.TrimSpace(sm[1]), pageURL)
+		if imgURL == "" || strings.HasPrefix(imgURL, "data:") {
+			continue
+		}
+		if seen[imgURL] {
+			continue
+		}
+		seen[imgURL] = true
+
+		score := 10
+
+		if i < 5 {
+			score += 2
+		}
+
+		w, h := 0, 0
+		if wm := imgWidthRe.FindStringSubmatch(tag); len(wm) > 1 {
+			w, _ = strconv.Atoi(wm[1])
+		}
+		if hm := imgHeightRe.FindStringSubmatch(tag); len(hm) > 1 {
+			h, _ = strconv.Atoi(hm[1])
+		}
+
+		if (w > 0 && w < 50) || (h > 0 && h < 50) {
+			score -= 15
+		}
+		if w == 1 || h == 1 {
+			score -= 30
+		}
+		if w >= 200 || h >= 200 {
+			score += 3
+		}
+		if w >= 400 || h >= 400 {
+			score += 5
+		}
+		if w >= 600 {
+			score += 3
+		}
+
+		if am := imgAltRe.FindStringSubmatch(tag); len(am) > 1 {
+			alt := strings.TrimSpace(am[1])
+			if len(alt) > 10 {
+				score += 3
+			} else if len(alt) > 0 {
+				score += 1
+			}
+		}
+
+		lowerTag := strings.ToLower(tag)
+		lowerURL := strings.ToLower(imgURL)
+
+		for _, p := range negativeImagePatterns {
+			if strings.Contains(lowerURL, p) || strings.Contains(lowerTag, p) {
+				score -= 10
+				break
+			}
+		}
+		for _, p := range positiveImagePatterns {
+			if strings.Contains(lowerURL, p) || strings.Contains(lowerTag, p) {
+				score += 3
+				break
+			}
+		}
+
+		if strings.HasSuffix(lowerURL, ".svg") {
+			score -= 5
+		}
+
+		if imgSrcsetRe.MatchString(tag) {
+			score += 3
+		}
+
+		if cm := imgClassRe.FindStringSubmatch(tag); len(cm) > 1 {
+			cls := strings.ToLower(cm[1])
+			for _, p := range positiveImagePatterns {
+				if strings.Contains(cls, p) {
+					score += 3
+					break
+				}
+			}
+		}
+
+		candidates = append(candidates, imageCandidate{url: imgURL, score: score})
+	}
+
+	return candidates
+}
+
+// extractContentImageCandidates returns image URLs from the HTML, ordered by
+// quality. It tries og:image, twitter:image, JSON-LD, and scored <img> tags.
+func extractContentImageCandidates(html, pageURL string) []string {
+	var candidates []string
+	seen := make(map[string]bool)
+
+	add := func(u string) {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			candidates = append(candidates, u)
+		}
+	}
+
+	if img := extractMetaContent(html, "og:image"); img != "" {
+		add(resolveURL(img, pageURL))
+	}
+	if img := extractMetaContent(html, "twitter:image", "twitter:image:src"); img != "" {
+		add(resolveURL(img, pageURL))
+	}
+
+	linkImageRe := regexp.MustCompile(`(?i)<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']`)
+	if m := linkImageRe.FindStringSubmatch(html); len(m) > 1 {
+		add(resolveURL(m[1], pageURL))
+	}
+
+	if img := extractJSONLDImage(html, pageURL); img != "" {
+		add(img)
+	}
+
+	scored := scoreImgTags(html, pageURL)
+	for i := range scored {
+		for j := i + 1; j < len(scored); j++ {
+			if scored[j].score > scored[i].score {
+				scored[i], scored[j] = scored[j], scored[i]
+			}
+		}
+	}
+	for _, c := range scored {
+		if c.score >= 5 {
+			add(c.url)
+		}
+	}
+
+	return candidates
+}
+
+func fetchPageHTML(ctx context.Context, pageURL string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", pageURL, nil)
 	if err != nil {
-		return
+		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
-	req.Header.Set("Accept", "text/html")
+	req.Header.Set("User-Agent", browserUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,de;q=0.8")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return
+		return "", err
 	}
 	defer resp.Body.Close()
 
-	htmlBytes, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
+	htmlBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
-		return
+		return "", err
 	}
-	html := string(htmlBytes)
 
+	return string(htmlBytes), nil
+}
+
+func extractPageMetadata(html string) (title, description, ogImage, bodyText string) {
 	titleRe := regexp.MustCompile(`(?i)<title[^>]*>(.*?)</title>`)
 	if m := titleRe.FindStringSubmatch(html); len(m) > 1 {
 		title = strings.TrimSpace(m[1])
@@ -520,7 +802,7 @@ func fetchPageMetadata(ctx context.Context, pageURL string) (title, description,
 	}
 
 	ogImage = extractMetaContent(html, "og:image")
-	log.Printf("[Agent] fetchPageMetadata: og:image=%q", ogImage)
+	log.Printf("[Agent] extractPageMetadata: og:image=%q", ogImage)
 
 	tagRe := regexp.MustCompile(`<[^>]+>`)
 	text := tagRe.ReplaceAllString(html, " ")
@@ -535,12 +817,20 @@ func fetchPageMetadata(ctx context.Context, pageURL string) (title, description,
 	return
 }
 
+func fetchPageMetadata(ctx context.Context, pageURL string) (title, description, ogImage, bodyText string) {
+	html, err := fetchPageHTML(ctx, pageURL)
+	if err != nil {
+		return
+	}
+	return extractPageMetadata(html)
+}
+
 func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir string, imageURL string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", imageURL, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
+	req.Header.Set("User-Agent", browserUserAgent)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
