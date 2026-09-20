@@ -22,6 +22,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+var agentBGGRe = regexp.MustCompile(`boardgamegeek\.com/boardgame[^/]*/(\d+)`)
+
 type AgentHandler struct {
 	DB        *database.MongoDB
 	UploadDir string
@@ -148,21 +150,27 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 
 	var pageInfo string
 	var ogImage string
+	var bggImageURL string
 	if input.URL != "" {
-		title, description, img, body := fetchPageMetadata(ctx, input.URL)
-		ogImage = img
-		var parts []string
-		parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
-		if title != "" {
-			parts = append(parts, fmt.Sprintf("Page Title: %s", title))
+		if m := agentBGGRe.FindStringSubmatch(input.URL); m != nil {
+			pageInfo, bggImageURL = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
 		}
-		if description != "" {
-			parts = append(parts, fmt.Sprintf("Description: %s", description))
+		if pageInfo == "" {
+			title, description, img, body := fetchPageMetadata(ctx, input.URL)
+			ogImage = img
+			var parts []string
+			parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
+			if title != "" {
+				parts = append(parts, fmt.Sprintf("Page Title: %s", title))
+			}
+			if description != "" {
+				parts = append(parts, fmt.Sprintf("Description: %s", description))
+			}
+			if body != "" {
+				parts = append(parts, fmt.Sprintf("Page Content:\n%s", body))
+			}
+			pageInfo = strings.Join(parts, "\n")
 		}
-		if body != "" {
-			parts = append(parts, fmt.Sprintf("Page Content:\n%s", body))
-		}
-		pageInfo = strings.Join(parts, "\n")
 	}
 
 	var userPrompt string
@@ -235,13 +243,25 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
 	var imageURLs []string
-	if ogImage != "" {
+	if bggImageURL != "" {
+		saved, saveErr := downloadBGGImage(ctx, h.DB, h.UploadDir, bggImageURL)
+		if saveErr != nil {
+			log.Printf("[Agent] Warning: failed to download BGG image %s: %v", bggImageURL, saveErr)
+		} else {
+			imageURLs = append(imageURLs, saved)
+		}
+	} else if ogImage != "" {
 		saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
 		if saveErr != nil {
 			log.Printf("[Agent] Warning: failed to download og:image %s: %v", ogImage, saveErr)
 		} else {
 			imageURLs = append(imageURLs, saved)
 		}
+	}
+
+	imgSourceURL := ogImage
+	if bggImageURL != "" {
+		imgSourceURL = bggImageURL
 	}
 
 	switch input.EntityType {
@@ -254,7 +274,7 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"entityType":   "news",
 			"draft":        draft,
-			"imageSources": describeImageSources(ogImage),
+			"imageSources": describeImageSources(imgSourceURL),
 		})
 
 	case "episode":
@@ -266,7 +286,7 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"entityType":   "episode",
 			"draft":        draft,
-			"imageSources": describeImageSources(ogImage),
+			"imageSources": describeImageSources(imgSourceURL),
 		})
 
 	case "post":
@@ -278,7 +298,7 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"entityType":   "post",
 			"draft":        draft,
-			"imageSources": describeImageSources(ogImage),
+			"imageSources": describeImageSources(imgSourceURL),
 		})
 	}
 }
@@ -516,4 +536,152 @@ func describeImageSources(ogImage string) []map[string]string {
 			"status": "downloaded",
 		},
 	}
+}
+
+func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pageInfo string, imageURL string) {
+	item, err := fetchBGGItem(ctx, gameID, bggToken)
+	if err != nil {
+		log.Printf("[Agent] BGG API fetch failed for game %s: %v", gameID, err)
+		return "", ""
+	}
+
+	title := ""
+	for _, n := range item.Names {
+		if n.Type == "primary" {
+			title = n.Value
+			break
+		}
+	}
+	if title == "" && len(item.Names) > 0 {
+		title = item.Names[0].Value
+	}
+
+	var designers, artists, publishers, categories, mechanics []string
+	for _, link := range item.Links {
+		switch link.Type {
+		case "boardgamedesigner":
+			designers = append(designers, link.Value)
+		case "boardgameartist":
+			artists = append(artists, link.Value)
+		case "boardgamepublisher":
+			publishers = append(publishers, link.Value)
+		case "boardgamecategory":
+			categories = append(categories, link.Value)
+		case "boardgamemechanic":
+			mechanics = append(mechanics, link.Value)
+		}
+	}
+
+	description := cleanBGGText(item.Desc)
+	if len(description) > 2000 {
+		description = description[:2000]
+	}
+
+	var parts []string
+	parts = append(parts, fmt.Sprintf("URL: %s", pageURL))
+	parts = append(parts, fmt.Sprintf("Source: BoardGameGeek (BGG)"))
+	parts = append(parts, fmt.Sprintf("Game Title: %s", title))
+	if item.YearPub.Value != "" {
+		parts = append(parts, fmt.Sprintf("Year Published: %s", item.YearPub.Value))
+	}
+	if len(designers) > 0 {
+		parts = append(parts, fmt.Sprintf("Designers: %s", strings.Join(designers, ", ")))
+	}
+	if len(artists) > 0 {
+		parts = append(parts, fmt.Sprintf("Artists: %s", strings.Join(artists, ", ")))
+	}
+	if len(publishers) > 0 {
+		parts = append(parts, fmt.Sprintf("Publishers: %s", strings.Join(publishers, ", ")))
+	}
+	if len(categories) > 0 {
+		parts = append(parts, fmt.Sprintf("Categories: %s", strings.Join(categories, ", ")))
+	}
+	if len(mechanics) > 0 {
+		parts = append(parts, fmt.Sprintf("Mechanics: %s", strings.Join(mechanics, ", ")))
+	}
+	if item.MinPlayers.Value != "" && item.MaxPlayers.Value != "" {
+		parts = append(parts, fmt.Sprintf("Players: %s–%s", item.MinPlayers.Value, item.MaxPlayers.Value))
+	}
+	if item.MinTime.Value != "" && item.MaxTime.Value != "" {
+		parts = append(parts, fmt.Sprintf("Playtime: %s–%s minutes", item.MinTime.Value, item.MaxTime.Value))
+	}
+	if item.MinAge.Value != "" {
+		parts = append(parts, fmt.Sprintf("Minimum Age: %s+", item.MinAge.Value))
+	}
+	if item.Stats.Ratings.Average.Value != "" {
+		parts = append(parts, fmt.Sprintf("BGG Rating: %s", trimFloat(item.Stats.Ratings.Average.Value)))
+	}
+	if item.Stats.Ratings.Weight.Value != "" {
+		parts = append(parts, fmt.Sprintf("Complexity Weight: %s", trimFloat(item.Stats.Ratings.Weight.Value)))
+	}
+	if description != "" {
+		parts = append(parts, fmt.Sprintf("Description:\n%s", description))
+	}
+
+	imgURL := strings.TrimSpace(item.Image)
+	if imgURL == "" {
+		imgURL = strings.TrimSpace(item.Thumbnail)
+	}
+	if imgURL != "" && strings.HasPrefix(imgURL, "//") {
+		imgURL = "https:" + imgURL
+	}
+
+	return strings.Join(parts, "\n"), imgURL
+}
+
+func downloadBGGImage(ctx context.Context, db *database.MongoDB, uploadDir string, imageURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", imageURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+	req.Header.Set("Referer", "https://boardgamegeek.com/")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d fetching BGG image", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return "", err
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	ext := ".jpg"
+	switch {
+	case strings.Contains(ct, "png"):
+		ext = ".png"
+	case strings.Contains(ct, "gif"):
+		ext = ".gif"
+	case strings.Contains(ct, "webp"):
+		ext = ".webp"
+	}
+
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		return "", err
+	}
+	dst := filepath.Join(uploadDir, filename)
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		return "", err
+	}
+
+	db.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    filename,
+		ContentType: ct,
+		Data:        data,
+		Size:        int64(len(data)),
+		CreatedAt:   time.Now(),
+	})
+
+	return "/api/uploads/" + filename, nil
 }
