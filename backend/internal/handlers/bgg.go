@@ -398,9 +398,13 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 		offsetY: team.BGGCoverOffsetY,
 	}
 
-	// Use episode-type-specific overlay when available, fall back to BGG watermark
+	// Use episode-type-specific overlay when available, fall back to BGG watermark.
+	// "news_entry" is a special value used by the agent to select the news creator
+	// watermark (for individual news articles) instead of the news episode overlay.
 	var overlayID *primitive.ObjectID
 	switch episodeType {
+	case "news_entry":
+		overlayID = team.NewsCreatorWatermarkID
 	case "news":
 		overlayID = team.EpisodeOverlayNewsID
 		if overlayID != nil {
@@ -440,6 +444,62 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 	}
 
 	return cfg
+}
+
+// downloadAndProcessURL downloads an image from any URL (not BGG-specific) and
+// applies the same letterbox + overlay pipeline as downloadAndProcess.
+func (h *BGGHandler) downloadAndProcessURL(ctx context.Context, c *gin.Context, imgURL string, episodeType string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("image download returned %d", resp.StatusCode)
+	}
+
+	imgData, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return nil, err
+	}
+
+	src, _, err := image.Decode(bytes.NewReader(imgData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	cfg := h.loadTeamBGGConfig(ctx, c, episodeType)
+
+	if cfg.isEpisode && cfg.watermark != nil {
+		autoX, autoY := overlayAutoOffset(cfg.watermark, 1080)
+		cfg.offsetX += autoX
+		cfg.offsetY += autoY
+	}
+
+	const size = 1080
+	composed := compositeLetterbox(src, size, cfg.offsetX, cfg.offsetY)
+
+	if cfg.watermark != nil {
+		bounds := composed.Bounds()
+		wmScaled := resizeImage(cfg.watermark, bounds.Dx(), bounds.Dy())
+		dst := image.NewRGBA(bounds)
+		draw.Draw(dst, bounds, composed, bounds.Min, draw.Src)
+		draw.Draw(dst, bounds, wmScaled, image.Point{}, draw.Over)
+		composed = dst
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, composed, &jpeg.Options{Quality: 90}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 type bggLabels struct {

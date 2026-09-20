@@ -243,20 +243,23 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	log.Printf("[Agent] Generate: entityType=%s bggImageURL=%q ogImage=%q", input.EntityType, bggImageURL, ogImage)
+	// Determine the overlay type: news entries use "news_entry" (NewsCreatorWatermarkID),
+	// while episodes use their episodeType (news/review/special episode overlays).
+	var episodeType string
+	switch input.EntityType {
+	case "news":
+		episodeType = "news_entry"
+	case "episode":
+		var etParsed struct {
+			EpisodeType string `json:"episodeType"`
+		}
+		json.Unmarshal([]byte(aiContent), &etParsed)
+		episodeType = etParsed.EpisodeType
+	}
+
+	log.Printf("[Agent] Generate: entityType=%s episodeType=%s bggImageURL=%q ogImage=%q", input.EntityType, episodeType, bggImageURL, ogImage)
 	var imageURLs []string
 	if bggImageURL != "" && h.BGG != nil {
-		var episodeType string
-		switch input.EntityType {
-		case "news":
-			episodeType = "news"
-		case "episode":
-			var etParsed struct {
-				EpisodeType string `json:"episodeType"`
-			}
-			json.Unmarshal([]byte(aiContent), &etParsed)
-			episodeType = etParsed.EpisodeType
-		}
 		imgData, imgErr := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
 		if imgErr != nil {
 			log.Printf("[Agent] Warning: failed to download/process BGG image %s: %v", bggImageURL, imgErr)
@@ -276,8 +279,29 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 				}
 			}
 		}
+	} else if ogImage != "" && h.BGG != nil {
+		log.Printf("[Agent] Downloading og:image and applying overlay: %s", ogImage)
+		imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, ogImage, episodeType)
+		if imgErr != nil {
+			log.Printf("[Agent] Warning: failed to download/process og:image %s: %v", ogImage, imgErr)
+		} else {
+			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+			if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
+				dst := filepath.Join(h.UploadDir, filename)
+				if err := os.WriteFile(dst, imgData, 0o644); err == nil {
+					h.DB.Uploads().InsertOne(ctx, models.Upload{
+						Filename:    filename,
+						ContentType: "image/jpeg",
+						Data:        imgData,
+						Size:        int64(len(imgData)),
+						CreatedAt:   time.Now(),
+					})
+					imageURLs = append(imageURLs, "/api/uploads/"+filename)
+				}
+			}
+		}
 	} else if ogImage != "" {
-		log.Printf("[Agent] Downloading og:image: %s", ogImage)
+		log.Printf("[Agent] Downloading og:image (no overlay available): %s", ogImage)
 		saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
 		if saveErr != nil {
 			log.Printf("[Agent] Warning: failed to download og:image %s: %v", ogImage, saveErr)
