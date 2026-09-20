@@ -506,17 +506,14 @@ func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir s
 }
 
 func describeImageSources(ogImage string) []map[string]string {
-	var sources []map[string]string
-	if ogImage != "" {
-		sources = append(sources, map[string]string{
+	if ogImage == "" {
+		return nil
+	}
+	return []map[string]string{
+		{
 			"type":   "og:image",
 			"url":    ogImage,
 			"status": "downloaded",
-		})
+		},
 	}
-	sources = append(sources, map[string]string{
-		"type":        "suggestion",
-		"description": "For higher quality images, consider taking a screenshot of the source URL using a browser automation tool, or uploading a custom image manually.",
-	})
-	return sources
 }

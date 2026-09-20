@@ -7,9 +7,9 @@ import './Agent.css';
 type EntityType = 'news' | 'episode' | 'post';
 
 interface ImageSourceInfo {
-  source: string;
+  type: string;
   url?: string;
-  suggestion?: string;
+  status?: string;
 }
 
 interface AgentResult {
@@ -202,9 +202,9 @@ export function AgentPage() {
                 <ul>
                   {result.imageSources.map((src, i) => (
                     <li key={i}>
-                      <strong>{src.source}</strong>
+                      <strong>{src.type}</strong>
                       {src.url && <span className="agent-image-url"> — {src.url}</span>}
-                      {src.suggestion && <p className="agent-image-suggestion">{src.suggestion}</p>}
+                      {src.status && <span className="agent-image-status"> ({src.status})</span>}
                     </li>
                   ))}
                 </ul>
