@@ -398,9 +398,13 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 		offsetY: team.BGGCoverOffsetY,
 	}
 
-	// Use episode-type-specific overlay when available, fall back to BGG watermark
+	// Use episode-type-specific overlay when available, fall back to BGG watermark.
+	// "news_entry" is a special value used by the agent to select the news creator
+	// watermark (for individual news articles) instead of the news episode overlay.
 	var overlayID *primitive.ObjectID
 	switch episodeType {
+	case "news_entry":
+		overlayID = team.NewsCreatorWatermarkID
 	case "news":
 		overlayID = team.EpisodeOverlayNewsID
 		if overlayID != nil {

@@ -243,11 +243,12 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	// Determine the episode type for overlay selection (used for both BGG and non-BGG images)
+	// Determine the overlay type: news entries use "news_entry" (NewsCreatorWatermarkID),
+	// while episodes use their episodeType (news/review/special episode overlays).
 	var episodeType string
 	switch input.EntityType {
 	case "news":
-		episodeType = "news"
+		episodeType = "news_entry"
 	case "episode":
 		var etParsed struct {
 			EpisodeType string `json:"episodeType"`
