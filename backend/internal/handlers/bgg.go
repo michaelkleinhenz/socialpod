@@ -453,7 +453,7 @@ func (h *BGGHandler) downloadAndProcessURL(ctx context.Context, c *gin.Context, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; SocialPod/1.0)")
+	req.Header.Set("User-Agent", browserUserAgent)
 	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 
 	resp, err := http.DefaultClient.Do(req)

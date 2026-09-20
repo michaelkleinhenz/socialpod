@@ -1915,9 +1915,11 @@ func (h *MCPHandler) applyOverlayToSingleImage(overlay image.Image, imgURL strin
 	return "/api/uploads/" + newFilename
 }
 
-// fetchArticleImage fetches the og:image from the given article URL,
-// downloads it, optionally applies the news overlay, and returns the
-// resulting image URLs. For BGG URLs it uses the BGG API to get the image.
+// fetchArticleImage fetches the best content image from the given article URL,
+// downloads it, optionally applies the news overlay, and returns the resulting
+// image URLs. For BGG URLs it uses the BGG API. For other URLs it extracts
+// image candidates (og:image, twitter:image, JSON-LD, <img> tag scoring) and
+// tries them in order until one downloads successfully.
 func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []string {
 	if articleURL == "" {
 		return nil
@@ -1926,90 +1928,110 @@ func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []stri
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	var bggImageURL string
-	var ogImage string
-
+	// BGG URLs use the dedicated BGG API
 	if m := agentBGGRe.FindStringSubmatch(articleURL); m != nil {
 		var bggToken string
 		var settings models.AppSettings
 		if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err == nil {
 			bggToken = settings.BGGAPIToken
 		}
-		_, bggImageURL = fetchBGGPageInfo(ctx, m[1], articleURL, bggToken)
+		_, bggImageURL := fetchBGGPageInfo(ctx, m[1], articleURL, bggToken)
+		if bggImageURL != "" && h.BGG != nil {
+			log.Printf("[MCP] fetchArticleImage: downloading BGG image %s", bggImageURL)
+			imgData, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, "news_entry")
+			if err != nil {
+				log.Printf("[MCP] fetchArticleImage: failed to download/process BGG image: %v", err)
+				return nil
+			}
+			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+			if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+				return nil
+			}
+			dst := filepath.Join(h.UploadDir, filename)
+			if err := os.WriteFile(dst, imgData, 0o644); err != nil {
+				return nil
+			}
+			h.DB.Uploads().InsertOne(ctx, models.Upload{
+				Filename:    filename,
+				ContentType: "image/jpeg",
+				Data:        imgData,
+				Size:        int64(len(imgData)),
+				CreatedAt:   time.Now(),
+			})
+			return []string{"/api/uploads/" + filename}
+		}
 	}
 
-	if bggImageURL == "" {
-		_, _, ogImage, _ = fetchPageMetadata(ctx, articleURL)
+	// Non-BGG: fetch the page and extract image candidates
+	html, err := fetchPageHTML(ctx, articleURL)
+	if err != nil {
+		log.Printf("[MCP] fetchArticleImage: failed to fetch page HTML: %v", err)
+		return nil
+	}
+
+	candidates := extractContentImageCandidates(html, articleURL)
+	log.Printf("[MCP] fetchArticleImage: found %d image candidates for %s", len(candidates), articleURL)
+	for i, c := range candidates {
+		if i < 5 {
+			log.Printf("[MCP] fetchArticleImage:   candidate %d: %s", i, c)
+		}
+	}
+
+	if len(candidates) == 0 {
+		log.Printf("[MCP] fetchArticleImage: no image found for URL %s", articleURL)
+		return nil
 	}
 
 	overlay := h.loadNewsOverlay(c)
 
-	if bggImageURL != "" && h.BGG != nil {
-		log.Printf("[MCP] fetchArticleImage: downloading BGG image %s", bggImageURL)
-		imgData, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, "news_entry")
-		if err != nil {
-			log.Printf("[MCP] fetchArticleImage: failed to download/process BGG image: %v", err)
-			return nil
+	// Try each candidate in order until one downloads successfully
+	for _, imageURL := range candidates {
+		if result := h.tryDownloadContentImage(ctx, c, imageURL, overlay); result != nil {
+			return result
 		}
-		filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-			return nil
-		}
-		dst := filepath.Join(h.UploadDir, filename)
-		if err := os.WriteFile(dst, imgData, 0o644); err != nil {
-			return nil
-		}
-		h.DB.Uploads().InsertOne(ctx, models.Upload{
-			Filename:    filename,
-			ContentType: "image/jpeg",
-			Data:        imgData,
-			Size:        int64(len(imgData)),
-			CreatedAt:   time.Now(),
-		})
-		return []string{"/api/uploads/" + filename}
 	}
 
-	if ogImage != "" && h.BGG != nil && overlay != nil {
-		log.Printf("[MCP] fetchArticleImage: downloading og:image with overlay: %s", ogImage)
-		imgData, err := h.BGG.downloadAndProcessURL(ctx, c, ogImage, "news_entry")
-		if err != nil {
-			log.Printf("[MCP] fetchArticleImage: failed to download/process og:image: %v", err)
-			return nil
-		}
-		filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-			return nil
-		}
-		dst := filepath.Join(h.UploadDir, filename)
-		if err := os.WriteFile(dst, imgData, 0o644); err != nil {
-			return nil
-		}
-		h.DB.Uploads().InsertOne(ctx, models.Upload{
-			Filename:    filename,
-			ContentType: "image/jpeg",
-			Data:        imgData,
-			Size:        int64(len(imgData)),
-			CreatedAt:   time.Now(),
-		})
-		return []string{"/api/uploads/" + filename}
-	}
-
-	if ogImage != "" {
-		log.Printf("[MCP] fetchArticleImage: downloading og:image (no BGG handler): %s", ogImage)
-		saved, err := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
-		if err != nil {
-			log.Printf("[MCP] fetchArticleImage: failed to download og:image: %v", err)
-			return nil
-		}
-		urls := []string{saved}
-		if overlay != nil {
-			urls = h.applyOverlayToImages(overlay, urls)
-		}
-		return urls
-	}
-
-	log.Printf("[MCP] fetchArticleImage: no image found for URL %s", articleURL)
+	log.Printf("[MCP] fetchArticleImage: all %d candidates failed to download for %s", len(candidates), articleURL)
 	return nil
+}
+
+func (h *MCPHandler) tryDownloadContentImage(ctx context.Context, c *gin.Context, imageURL string, overlay image.Image) []string {
+	if h.BGG != nil && overlay != nil {
+		log.Printf("[MCP] tryDownloadContentImage: downloading with overlay: %s", imageURL)
+		imgData, err := h.BGG.downloadAndProcessURL(ctx, c, imageURL, "news_entry")
+		if err != nil {
+			log.Printf("[MCP] tryDownloadContentImage: failed with overlay: %v", err)
+			return nil
+		}
+		filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+			return nil
+		}
+		dst := filepath.Join(h.UploadDir, filename)
+		if err := os.WriteFile(dst, imgData, 0o644); err != nil {
+			return nil
+		}
+		h.DB.Uploads().InsertOne(ctx, models.Upload{
+			Filename:    filename,
+			ContentType: "image/jpeg",
+			Data:        imgData,
+			Size:        int64(len(imgData)),
+			CreatedAt:   time.Now(),
+		})
+		return []string{"/api/uploads/" + filename}
+	}
+
+	log.Printf("[MCP] tryDownloadContentImage: downloading plain: %s", imageURL)
+	saved, err := downloadAndSaveImage(ctx, h.DB, h.UploadDir, imageURL)
+	if err != nil {
+		log.Printf("[MCP] tryDownloadContentImage: failed plain download: %v", err)
+		return nil
+	}
+	urls := []string{saved}
+	if overlay != nil {
+		urls = h.applyOverlayToImages(overlay, urls)
+	}
+	return urls
 }
 
 // --- Image upload tools ---
