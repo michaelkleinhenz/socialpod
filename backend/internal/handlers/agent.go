@@ -27,6 +27,7 @@ var agentBGGRe = regexp.MustCompile(`boardgamegeek\.com/boardgame[^/]*/(\d+)`)
 type AgentHandler struct {
 	DB        *database.MongoDB
 	UploadDir string
+	BGG       *BGGHandler
 }
 
 type AgentGenerateInput struct {
@@ -243,12 +244,36 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
 	var imageURLs []string
-	if bggImageURL != "" {
-		saved, saveErr := downloadBGGImage(ctx, h.DB, h.UploadDir, bggImageURL)
-		if saveErr != nil {
-			log.Printf("[Agent] Warning: failed to download BGG image %s: %v", bggImageURL, saveErr)
+	if bggImageURL != "" && h.BGG != nil {
+		var episodeType string
+		switch input.EntityType {
+		case "news":
+			episodeType = "news"
+		case "episode":
+			var etParsed struct {
+				EpisodeType string `json:"episodeType"`
+			}
+			json.Unmarshal([]byte(aiContent), &etParsed)
+			episodeType = etParsed.EpisodeType
+		}
+		imgData, imgErr := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
+		if imgErr != nil {
+			log.Printf("[Agent] Warning: failed to download/process BGG image %s: %v", bggImageURL, imgErr)
 		} else {
-			imageURLs = append(imageURLs, saved)
+			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+			if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
+				dst := filepath.Join(h.UploadDir, filename)
+				if err := os.WriteFile(dst, imgData, 0o644); err == nil {
+					h.DB.Uploads().InsertOne(ctx, models.Upload{
+						Filename:    filename,
+						ContentType: "image/jpeg",
+						Data:        imgData,
+						Size:        int64(len(imgData)),
+						CreatedAt:   time.Now(),
+					})
+					imageURLs = append(imageURLs, "/api/uploads/"+filename)
+				}
+			}
 		}
 	} else if ogImage != "" {
 		saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, ogImage)
@@ -259,11 +284,6 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 		}
 	}
 
-	imgSourceURL := ogImage
-	if bggImageURL != "" {
-		imgSourceURL = bggImageURL
-	}
-
 	switch input.EntityType {
 	case "news":
 		draft, err := h.createNewsDraft(ctx, aiContent, objID, &teamID, input.URL, imageURLs)
@@ -272,9 +292,8 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"entityType":   "news",
-			"draft":        draft,
-			"imageSources": describeImageSources(imgSourceURL),
+			"entityType": "news",
+			"draft":      draft,
 		})
 
 	case "episode":
@@ -284,9 +303,8 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"entityType":   "episode",
-			"draft":        draft,
-			"imageSources": describeImageSources(imgSourceURL),
+			"entityType": "episode",
+			"draft":      draft,
 		})
 
 	case "post":
@@ -296,9 +314,8 @@ func (h *AgentHandler) Generate(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"entityType":   "post",
-			"draft":        draft,
-			"imageSources": describeImageSources(imgSourceURL),
+			"entityType": "post",
+			"draft":      draft,
 		})
 	}
 }
@@ -525,18 +542,6 @@ func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir s
 	return "/api/uploads/" + filename, nil
 }
 
-func describeImageSources(ogImage string) []map[string]string {
-	if ogImage == "" {
-		return nil
-	}
-	return []map[string]string{
-		{
-			"type":   "og:image",
-			"url":    ogImage,
-			"status": "downloaded",
-		},
-	}
-}
 
 func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pageInfo string, imageURL string) {
 	item, err := fetchBGGItem(ctx, gameID, bggToken)
@@ -629,59 +634,3 @@ func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pa
 	return strings.Join(parts, "\n"), imgURL
 }
 
-func downloadBGGImage(ctx context.Context, db *database.MongoDB, uploadDir string, imageURL string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", imageURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-	req.Header.Set("Referer", "https://boardgamegeek.com/")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d fetching BGG image", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-	if err != nil {
-		return "", err
-	}
-
-	ct := resp.Header.Get("Content-Type")
-	ext := ".jpg"
-	switch {
-	case strings.Contains(ct, "png"):
-		ext = ".png"
-	case strings.Contains(ct, "gif"):
-		ext = ".gif"
-	case strings.Contains(ct, "webp"):
-		ext = ".webp"
-	}
-
-	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-
-	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return "", err
-	}
-	dst := filepath.Join(uploadDir, filename)
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return "", err
-	}
-
-	db.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: ct,
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	})
-
-	return "/api/uploads/" + filename, nil
-}

@@ -7,16 +7,9 @@ import './Agent.css';
 
 type EntityType = 'news' | 'episode' | 'post';
 
-interface ImageSourceInfo {
-  type: string;
-  url?: string;
-  status?: string;
-}
-
 interface AgentResult {
   entityType: string;
   draft: { id: string; [key: string]: any };
-  imageSources?: ImageSourceInfo[];
 }
 
 const EDIT_ROUTES: Record<string, string> = {
@@ -202,21 +195,6 @@ export function AgentPage() {
           <div>
             <strong>Draft Created</strong>
             <p>Your {result.entityType} draft has been saved. You can edit it before publishing.</p>
-
-            {result.imageSources && result.imageSources.length > 0 && (
-              <div className="agent-image-info">
-                <h4>Image Sources</h4>
-                <ul>
-                  {result.imageSources.map((src, i) => (
-                    <li key={i}>
-                      <strong>{src.type}</strong>
-                      {src.url && <span className="agent-image-url"> — {src.url}</span>}
-                      {src.status && <span className="agent-image-status"> ({src.status})</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button

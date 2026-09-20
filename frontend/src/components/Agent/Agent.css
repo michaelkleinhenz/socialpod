@@ -162,41 +162,6 @@
   margin-top: 2px;
 }
 
-.agent-image-info {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.agent-image-info h4 {
-  font-size: 13px;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-
-.agent-image-info ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.agent-image-info li {
-  font-size: 12px;
-}
-
-.agent-image-url {
-  color: var(--text-muted);
-  word-break: break-all;
-}
-
-.agent-image-suggestion {
-  color: var(--accent);
-  font-style: italic;
-  margin: 2px 0 0 !important;
-}
 
 .agent-unavailable {
   display: flex;
