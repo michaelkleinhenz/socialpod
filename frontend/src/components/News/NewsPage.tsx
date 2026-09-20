@@ -37,6 +37,7 @@ export function NewsPage() {
   // Single image handling
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Cropping state
@@ -223,6 +224,7 @@ export function NewsPage() {
     if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
     setImageFile(null);
     setImagePreviewUrl(null);
+    setExistingImageUrls([]);
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
     setCroppedSize(null);
@@ -522,15 +524,24 @@ export function NewsPage() {
     setCustomizePerPlatform(Object.keys(draft.contentOverrides || {}).length > 0);
     setEditingDraftId(draft.id);
 
-    // Reset image state — draft images are server-side URLs, not local files
+    // Reset local file/crop state
     if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
     if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
     setImageFile(null);
-    setImagePreviewUrl(null);
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
     setCroppedSize(null);
     setShowCropper(false);
+
+    // Preserve server-side image URLs from agent-created drafts
+    const urls = draft.imageUrls || [];
+    setExistingImageUrls(urls);
+    if (urls.length > 0) {
+      const firstUrl = urls[0].startsWith('http') ? urls[0] : `${apiUrl}${urls[0]}`;
+      setImagePreviewUrl(firstUrl);
+    } else {
+      setImagePreviewUrl(null);
+    }
 
     setActiveTab('create');
     toast.success('Draft loaded — continue editing');
@@ -552,7 +563,7 @@ export function NewsPage() {
       newsTagline: newsTagline.trim(),
       articleUrl: articleUrl.trim(),
       shownotes: shownotes.trim() || undefined,
-      imageUrls: [],
+      imageUrls: existingImageUrls,
     };
 
     data.addSocialPosting = addSocialPost;
@@ -639,7 +650,7 @@ export function NewsPage() {
     if (!episodeNumber.trim()) { toast.error('Episode number is required'); return; }
     if (!newsTagline.trim()) { toast.error('News tagline is required'); return; }
     if (!articleUrl.trim()) { toast.error('Article URL is required'); return; }
-    if (!imageFile) { toast.error('Image is required'); return; }
+    if (!imageFile && existingImageUrls.length === 0) { toast.error('Image is required'); return; }
 
     if (addSocialPost) {
       if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
@@ -961,7 +972,7 @@ export function NewsPage() {
           <div className="form-group">
             <label><Image size={14} /> Image <span style={{ color: 'var(--danger)' }}>*</span></label>
 
-            {!imageFile ? (
+            {!imageFile && existingImageUrls.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div
                   onDragOver={onDragOver}
@@ -1318,7 +1329,7 @@ export function NewsPage() {
             <button
               className="btn btn-primary"
               onClick={handleSubmit}
-              disabled={submitting || overLimit || !episodeNumber.trim() || !newsTagline.trim() || !articleUrl.trim() || !imageFile}
+              disabled={submitting || overLimit || !episodeNumber.trim() || !newsTagline.trim() || !articleUrl.trim() || (!imageFile && existingImageUrls.length === 0)}
             >
               <Send size={16} /> {submitting ? 'Submitting...' : 'Submit News'}
             </button>
