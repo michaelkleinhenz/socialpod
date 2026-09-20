@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -148,6 +149,37 @@ func (h *MCPHandler) handleToolsCall(c *gin.Context, id any, params json.RawMess
 			ID:      id,
 			Error:   &rpcErr{Code: -32602, Message: "Invalid params"},
 		}
+	}
+
+	// Log tool call arguments for debugging image issues
+	if call.Name == "create_news_draft" || call.Name == "update_news_draft" ||
+		call.Name == "create_episode_draft" || call.Name == "update_episode_draft" ||
+		call.Name == "create_post" || call.Name == "update_post" || call.Name == "upload_image" {
+		argKeys := make([]string, 0, len(call.Arguments))
+		for k, v := range call.Arguments {
+			switch k {
+			case "images":
+				if arr, ok := v.([]any); ok {
+					log.Printf("[MCP] tool=%s arg=%s count=%d", call.Name, k, len(arr))
+					for i, item := range arr {
+						if obj, ok := item.(map[string]any); ok {
+							fn, _ := obj["filename"].(string)
+							d, _ := obj["data"].(string)
+							log.Printf("[MCP]   images[%d]: filename=%q dataLen=%d dataPrefix=%.40s", i, fn, len(d), d)
+						} else {
+							log.Printf("[MCP]   images[%d]: unexpected type %T", i, item)
+						}
+					}
+				} else {
+					log.Printf("[MCP] tool=%s arg=%s unexpected type %T", call.Name, k, v)
+				}
+			case "imageUrls":
+				log.Printf("[MCP] tool=%s arg=%s value=%v", call.Name, k, v)
+			default:
+				argKeys = append(argKeys, k)
+			}
+		}
+		log.Printf("[MCP] tool=%s otherArgs=%v", call.Name, argKeys)
 	}
 
 	result, isErr := h.callTool(c, call.Name, call.Arguments)
@@ -996,15 +1028,20 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 	}
 
 	imageURLs := strSliceArg(args, "imageUrls")
+	log.Printf("[MCP] toolCreateNewsDraft: imageUrls from args = %v", imageURLs)
 	if uploaded, err := h.processInlineImages(args); err != nil {
+		log.Printf("[MCP] toolCreateNewsDraft: processInlineImages error: %v", err)
 		return map[string]string{"error": err.Error()}, true
 	} else {
+		log.Printf("[MCP] toolCreateNewsDraft: processInlineImages returned %d urls: %v", len(uploaded), uploaded)
 		imageURLs = append(imageURLs, uploaded...)
 	}
 
 	if overlay := h.loadEpisodeOverlay(c, "news"); overlay != nil {
+		log.Printf("[MCP] toolCreateNewsDraft: applying overlay to %d images", len(imageURLs))
 		imageURLs = h.applyOverlayToImages(overlay, imageURLs)
 	}
+	log.Printf("[MCP] toolCreateNewsDraft: final imageURLs = %v", imageURLs)
 
 	draft := models.NewsDraft{
 		UserID:           objID,
@@ -1901,29 +1938,37 @@ func (h *MCPHandler) saveBase64Upload(b64Data, filename string) (string, error) 
 func (h *MCPHandler) processInlineImages(args map[string]any) ([]string, error) {
 	v, ok := args["images"]
 	if !ok {
+		log.Printf("[MCP] processInlineImages: no 'images' key in args")
 		return nil, nil
 	}
 	arr, ok := v.([]any)
 	if !ok {
+		log.Printf("[MCP] processInlineImages: 'images' is not []any, got %T", v)
 		return nil, fmt.Errorf("images must be an array")
 	}
+	log.Printf("[MCP] processInlineImages: processing %d images", len(arr))
 	var urls []string
 	for i, item := range arr {
 		obj, ok := item.(map[string]any)
 		if !ok {
+			log.Printf("[MCP] processInlineImages: images[%d] is not map[string]any, got %T", i, item)
 			return nil, fmt.Errorf("images[%d] must be an object with data and filename", i)
 		}
 		data, _ := obj["data"].(string)
 		filename, _ := obj["filename"].(string)
+		log.Printf("[MCP] processInlineImages: images[%d] filename=%q dataLen=%d", i, filename, len(data))
 		if data == "" || filename == "" {
 			return nil, fmt.Errorf("images[%d]: both data and filename are required", i)
 		}
 		url, err := h.saveBase64Upload(data, filename)
 		if err != nil {
+			log.Printf("[MCP] processInlineImages: images[%d] saveBase64Upload error: %v", i, err)
 			return nil, fmt.Errorf("images[%d]: %w", i, err)
 		}
+		log.Printf("[MCP] processInlineImages: images[%d] saved as %s", i, url)
 		urls = append(urls, url)
 	}
+	log.Printf("[MCP] processInlineImages: returning %d urls: %v", len(urls), urls)
 	return urls, nil
 }
 
