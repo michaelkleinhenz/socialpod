@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
   format, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
@@ -19,6 +20,7 @@ import './Calendar.css';
 type ViewMode = 'month' | 'week' | '3day';
 
 export function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     window.innerWidth <= 768 ? '3day' : 'month'
@@ -128,6 +130,23 @@ export function CalendarPage() {
     setEditorPostType(post.postType || 'post');
     setEditorOpen(true);
   };
+
+  useEffect(() => {
+    const editDraftId = searchParams.get('editDraft');
+    if (!editDraftId) return;
+    searchParams.delete('editDraft');
+    setSearchParams(searchParams, { replace: true });
+    api.getPosts({ status: 'draft' }).then(drafts => {
+      const draft = drafts.find((p: Post) => p.id === editDraftId);
+      if (draft) {
+        handleEditDraft(draft);
+      } else {
+        toast.error('Draft not found');
+      }
+    }).catch(() => {
+      toast.error('Failed to load draft');
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasAccounts = accounts.length > 0;
 

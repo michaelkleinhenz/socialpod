@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft } from '../../types';
@@ -24,6 +25,7 @@ const LINKEDIN_LIMIT = 3000;
 const DEFAULT_PLATFORMS: Platform[] = ['bluesky', 'instagram'];
 
 export function NewsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pluginReady, setPluginReady] = useState<boolean | null>(null);
 
   // News fields
@@ -533,6 +535,16 @@ export function NewsPage() {
     setActiveTab('create');
     toast.success('Draft loaded — continue editing');
   };
+
+  useEffect(() => {
+    const editDraftId = searchParams.get('editDraft');
+    if (!editDraftId || !pluginReady) return;
+    searchParams.delete('editDraft');
+    setSearchParams(searchParams, { replace: true });
+    api.getNewsDraft(editDraftId).then(loadDraftIntoForm).catch(() => {
+      toast.error('Failed to load draft');
+    });
+  }, [pluginReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildFormData = () => {
     const data: any = {
