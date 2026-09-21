@@ -69,6 +69,26 @@ func mcpScopeFilter(c *gin.Context) bson.M {
 	return bson.M{"userId": uid}
 }
 
+// HandleGet responds to GET /api/mcp. The Streamable HTTP transport uses GET
+// to open an SSE stream for server-initiated messages. This implementation is
+// stateless (no server-to-client notifications), so we accept the connection
+// and close it immediately — enough to satisfy MCP clients that probe the
+// endpoint before sending POST requests.
+func (h *MCPHandler) HandleGet(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	// Send an empty SSE comment as a keepalive, then close.
+	c.Writer.WriteString(": ok\n\n")
+	c.Writer.Flush()
+}
+
+// HandleDelete responds to DELETE /api/mcp. Clients call this to close an MCP
+// session. Since the server is stateless, we simply acknowledge.
+func (h *MCPHandler) HandleDelete(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
 func (h *MCPHandler) Handle(c *gin.Context) {
 	var req jsonrpcRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
