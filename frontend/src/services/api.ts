@@ -594,8 +594,8 @@ class ApiClient {
     return this.request<any>('/news/submit', { method: 'POST', body: form });
   }
 
-  listNewsDrafts() {
-    return this.request<import('../types').NewsDraft[]>('/news/drafts');
+  listNewsDrafts(posted = false) {
+    return this.request<import('../types').NewsDraft[]>(`/news/drafts${posted ? '?posted=true' : ''}`);
   }
 
   getNewsDraft(id: string) {
@@ -631,8 +631,8 @@ class ApiClient {
     return this.request<any>('/episode/submit', { method: 'POST', body: form });
   }
 
-  listEpisodeDrafts() {
-    return this.request<import('../types').EpisodeDraft[]>('/episode/drafts');
+  listEpisodeDrafts(posted = false) {
+    return this.request<import('../types').EpisodeDraft[]>(`/episode/drafts${posted ? '?posted=true' : ''}`);
   }
 
   getEpisodeDraft(id: string) {

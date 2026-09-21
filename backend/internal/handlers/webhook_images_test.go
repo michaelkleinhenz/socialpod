@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"socialmedia/internal/models"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestMergeImageURLs(t *testing.T) {
@@ -106,5 +108,61 @@ func TestSendToWebhookForwardsStoredImageURLs(t *testing.T) {
 	}
 	if len(received) != 1 || received[0] != "cover.png" {
 		t.Fatalf("expected cover.png to be forwarded, got %v", received)
+	}
+}
+
+func TestApplyPostedFilter(t *testing.T) {
+	open := bson.M{"teamId": "t"}
+	applyPostedFilter(open, false)
+	cond, ok := open["posted"].(bson.M)
+	if !ok || cond["$ne"] != true {
+		// Drafts written before posting was tracked carry no "posted" field,
+		// so they must still show up as open drafts.
+		t.Fatalf("expected open drafts to match a missing posted field, got %v", open["posted"])
+	}
+
+	posted := bson.M{"teamId": "t"}
+	applyPostedFilter(posted, true)
+	if posted["posted"] != true {
+		t.Fatalf("expected posted filter, got %v", posted["posted"])
+	}
+
+	if key := postedSort(true)[0].Key; key != "postedAt" {
+		t.Fatalf("expected posted list sorted by postedAt, got %q", key)
+	}
+	if key := postedSort(false)[0].Key; key != "updatedAt" {
+		t.Fatalf("expected draft list sorted by updatedAt, got %q", key)
+	}
+}
+
+// Submitting a draft stores the content it was submitted with, so the Posted
+// tab shows what actually went out rather than the last saved draft.
+func TestDraftFieldsCoverSubmittedContent(t *testing.T) {
+	news := newsDraftFields(&NewsSubmitInput{
+		EpisodeNumber: "42",
+		NewsTagline:   "Edited tagline",
+		ArticleURL:    "https://example.com",
+		Content:       "Edited content",
+	}, []string{"/api/uploads/new.jpg"})
+
+	if news["newsTagline"] != "Edited tagline" || news["content"] != "Edited content" {
+		t.Fatalf("submitted news content not recorded: %v", news)
+	}
+	if urls, _ := news["imageUrls"].([]string); len(urls) != 1 || urls[0] != "/api/uploads/new.jpg" {
+		t.Fatalf("submitted news image not recorded: %v", news["imageUrls"])
+	}
+
+	episode := episodeDraftFields(&EpisodeSubmitInput{
+		EpisodeNumber: "7",
+		EpisodeTitle:  "Edited title",
+		EpisodeType:   "review",
+		EpisodeDate:   "2026-01-01",
+	}, []string{"/api/uploads/cover.png"})
+
+	if episode["episodeTitle"] != "Edited title" || episode["episodeType"] != "review" {
+		t.Fatalf("submitted episode content not recorded: %v", episode)
+	}
+	if urls, _ := episode["imageUrls"].([]string); len(urls) != 1 || urls[0] != "/api/uploads/cover.png" {
+		t.Fatalf("submitted episode image not recorded: %v", episode["imageUrls"])
 	}
 }

@@ -1115,13 +1115,15 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 	return draft, false
 }
 
-func (h *MCPHandler) toolListNewsDrafts(c *gin.Context, _ map[string]any) (any, bool) {
+func (h *MCPHandler) toolListNewsDrafts(c *gin.Context, args map[string]any) (any, bool) {
 	filter := mcpScopeFilter(c)
+	posted, _ := args["posted"].(bool)
+	applyPostedFilter(filter, posted)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	opts := options.Find().SetSort(postedSort(posted))
 	cursor, err := h.DB.NewsDrafts().Find(ctx, filter, opts)
 	if err != nil {
 		return map[string]string{"error": "Failed to fetch drafts"}, true
@@ -1384,7 +1386,9 @@ func (h *MCPHandler) toolPostNewsDraft(c *gin.Context, args map[string]any) (any
 		post = created
 	}
 
-	h.DB.NewsDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+	if err := markDraftPosted(ctx, h.DB.NewsDrafts(), bson.M{"_id": draftID}, nil); err != nil {
+		log.Printf("[NewsCreator] Warning: could not mark draft %s as posted: %v", draftID.Hex(), err)
+	}
 
 	resp := map[string]any{"message": "News submitted successfully"}
 	if post != nil {
@@ -1462,13 +1466,15 @@ func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any)
 	return draft, false
 }
 
-func (h *MCPHandler) toolListEpisodeDrafts(c *gin.Context, _ map[string]any) (any, bool) {
+func (h *MCPHandler) toolListEpisodeDrafts(c *gin.Context, args map[string]any) (any, bool) {
 	filter := mcpScopeFilter(c)
+	posted, _ := args["posted"].(bool)
+	applyPostedFilter(filter, posted)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	opts := options.Find().SetSort(postedSort(posted))
 	cursor, err := h.DB.EpisodeDrafts().Find(ctx, filter, opts)
 	if err != nil {
 		return map[string]string{"error": "Failed to fetch drafts"}, true
@@ -1782,7 +1788,9 @@ func (h *MCPHandler) toolPostEpisodeDraft(c *gin.Context, args map[string]any) (
 		post = created
 	}
 
-	h.DB.EpisodeDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+	if err := markDraftPosted(ctx, h.DB.EpisodeDrafts(), bson.M{"_id": draftID}, nil); err != nil {
+		log.Printf("[EpisodeCreator] Warning: could not mark draft %s as posted: %v", draftID.Hex(), err)
+	}
 
 	resp := map[string]any{"message": "Episode submitted successfully"}
 	if post != nil {
@@ -2434,8 +2442,10 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "list_news_drafts",
-			Description: "List all news drafts, sorted by most recently updated.",
-			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+			Description: "List open news drafts, sorted by most recently updated. Set posted to true to list the drafts that were already submitted instead, newest first.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{
+				"posted": map[string]any{"type": "boolean", "description": "List already-submitted drafts instead of open ones"},
+			}},
 		},
 		{
 			Name:        "get_news_draft",
@@ -2492,7 +2502,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "post_news_draft",
-			Description: "Submit a news draft for publishing. This sends the news to the configured webhook and optionally creates a social media post, then deletes the draft. The draft must have episodeNumber, newsTagline, and articleUrl filled in.",
+			Description: "Submit a news draft for publishing. This sends the news to the configured webhook and optionally creates a social media post, then marks the draft as posted. The draft is kept and can be listed again with list_news_drafts using posted=true. The draft must have episodeNumber, newsTagline, and articleUrl filled in.",
 			InputSchema: map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},
@@ -2541,8 +2551,10 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "list_episode_drafts",
-			Description: "List all episode drafts, sorted by most recently updated.",
-			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+			Description: "List open episode drafts, sorted by most recently updated. Set posted to true to list the drafts that were already submitted instead, newest first.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{
+				"posted": map[string]any{"type": "boolean", "description": "List already-submitted drafts instead of open ones"},
+			}},
 		},
 		{
 			Name:        "get_episode_draft",
@@ -2606,7 +2618,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "post_episode_draft",
-			Description: "Submit an episode draft for publishing. This sends the episode to the configured webhook and optionally creates a social media post, then deletes the draft. The draft must have episodeNumber, episodeTitle, episodeType, and episodeDate filled in.",
+			Description: "Submit an episode draft for publishing. This sends the episode to the configured webhook and optionally creates a social media post, then marks the draft as posted. The draft is kept and can be listed again with list_episode_drafts using posted=true. The draft must have episodeNumber, episodeTitle, episodeType, and episodeDate filled in.",
 			InputSchema: map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},

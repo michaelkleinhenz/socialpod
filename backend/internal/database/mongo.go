@@ -104,11 +104,13 @@ func (m *MongoDB) ensureIndexes() {
 	m.NewsDrafts().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+		{Keys: bson.D{{Key: "posted", Value: 1}, {Key: "updatedAt", Value: -1}}},
 	})
 
 	m.EpisodeDrafts().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+		{Keys: bson.D{{Key: "posted", Value: 1}, {Key: "updatedAt", Value: -1}}},
 	})
 
 	log.Println("MongoDB indexes ensured")
