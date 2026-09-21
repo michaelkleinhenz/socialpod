@@ -57,6 +57,7 @@ export function EpisodePage() {
   // Single image handling
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Cropping state
@@ -290,6 +291,7 @@ export function EpisodePage() {
     if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
     setImageFile(null);
     setImagePreviewUrl(null);
+    setExistingImageUrls([]);
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
     setCroppedSize(null);
@@ -510,14 +512,24 @@ export function EpisodePage() {
     setCustomizePerPlatform(Object.keys(draft.contentOverrides || {}).length > 0);
     setEditingDraftId(draft.id);
 
+    // Reset local file/crop state
     if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
     if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
     setImageFile(null);
-    setImagePreviewUrl(null);
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
     setCroppedSize(null);
     setShowCropper(false);
+
+    // Preserve server-side image URLs from agent-created drafts
+    const urls = draft.imageUrls || [];
+    setExistingImageUrls(urls);
+    if (urls.length > 0) {
+      const firstUrl = urls[0].startsWith('http') ? urls[0] : `${apiUrl}${urls[0]}`;
+      setImagePreviewUrl(firstUrl);
+    } else {
+      setImagePreviewUrl(null);
+    }
 
     setActiveTab('create');
     toast.success('Draft loaded — continue editing');
@@ -540,7 +552,7 @@ export function EpisodePage() {
       episodeType,
       summary: summary.trim() || undefined,
       episodeDate,
-      imageUrls: [],
+      imageUrls: existingImageUrls,
     };
 
     if (episodeType === 'review') {
@@ -724,7 +736,7 @@ export function EpisodePage() {
     if (!episodeNumber.trim()) { toast.error('Episode number is required'); return; }
     if (!episodeTitle.trim()) { toast.error('Episode title is required'); return; }
     if (!episodeDate) { toast.error('Episode date is required'); return; }
-    if (!imageFile) { toast.error('Image is required'); return; }
+    if (!imageFile && existingImageUrls.length === 0) { toast.error('Image is required'); return; }
 
     if (addSocialPost) {
       if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
@@ -749,7 +761,7 @@ export function EpisodePage() {
       episodeType,
       summary: summary.trim() || undefined,
       episodeDate,
-      imageUrls: [],
+      imageUrls: existingImageUrls,
     };
 
     if (episodeType === 'review') {
@@ -1191,7 +1203,7 @@ export function EpisodePage() {
           <div className="form-group">
             <label><Image size={14} /> Image <span style={{ color: 'var(--danger)' }}>*</span></label>
 
-            {!imageFile ? (
+            {!imageFile && existingImageUrls.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div
                   onDragOver={onDragOver}
@@ -1563,7 +1575,7 @@ export function EpisodePage() {
             <button
               className="btn btn-primary"
               onClick={handleSubmit}
-              disabled={submitting || overLimit || !episodeNumber.trim() || !episodeTitle.trim() || !episodeDate || !imageFile}
+              disabled={submitting || overLimit || !episodeNumber.trim() || !episodeTitle.trim() || !episodeDate || (!imageFile && existingImageUrls.length === 0)}
             >
               <Send size={16} /> {submitting ? 'Submitting...' : 'Submit Episode'}
             </button>

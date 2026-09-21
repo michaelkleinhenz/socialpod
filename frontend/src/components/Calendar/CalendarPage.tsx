@@ -418,7 +418,7 @@ export function CalendarPage() {
                           {post.postType || 'post'}
                         </span>
                         <span style={{ display: 'flex', gap: 4 }}>
-                          {post.platforms.map(p => (
+                          {(post.platforms || []).map(p => (
                             <PlatformIcon key={p} platform={p as Platform} size={12} />
                           ))}
                         </span>
