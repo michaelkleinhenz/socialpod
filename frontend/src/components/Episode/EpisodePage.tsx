@@ -554,14 +554,14 @@ export function EpisodePage() {
     });
   }, [pluginReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const buildFormData = () => {
+  const buildFormData = (imageUrls: string[]) => {
     const data: any = {
       episodeNumber: episodeNumber.trim(),
       episodeTitle: episodeTitle.trim(),
       episodeType,
       summary: summary.trim() || undefined,
       episodeDate,
-      imageUrls: existingImageUrls,
+      imageUrls,
     };
 
     if (episodeType === 'review') {
@@ -599,24 +599,48 @@ export function EpisodePage() {
     return data;
   };
 
-  const getFileToSend = () => {
-    if (!imageFile) return undefined;
-    const fileToSend = croppedBlob
-      ? new File([croppedBlob], (imageFile.name || 'cropped').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
-      : imageFile;
-    return fileToSend ? [fileToSend] : undefined;
+  // The form carries a single image, and the backend keeps the imageUrls it is
+  // given alongside whatever files come with them. A local file replaces the
+  // stored image, so its URL must not travel with the upload — including when
+  // the file is a crop of the draft's own stored image, which has no imageFile
+  // behind it and would otherwise be dropped and the original reopened.
+  const buildImagePayload = (): { imageUrls: string[]; files?: File[] } => {
+    if (croppedBlob) {
+      const name = (imageFile?.name || 'cropped').replace(/\.[^.]+$/, '') + '.jpg';
+      return { imageUrls: [], files: [new File([croppedBlob], name, { type: 'image/jpeg' })] };
+    }
+    if (imageFile) return { imageUrls: [], files: [imageFile] };
+    return { imageUrls: existingImageUrls };
+  };
+
+  // Saving uploads the local file and frees the stored image it replaced, so
+  // the form has to follow the draft: without this a second save re-uploads
+  // the same crop, and the cropper reopens on an image the server has already
+  // deleted.
+  const adoptStoredImage = (urls: string[]) => {
+    if (imagePreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl);
+    if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+    setImageFile(null);
+    setCroppedBlob(null);
+    setCroppedPreviewUrl(null);
+    setCroppedSize(null);
+    setExistingImageUrls(urls);
+    setImagePreviewUrl(urls.length > 0 ? (urls[0].startsWith('http') ? urls[0] : `${apiUrl}${urls[0]}`) : null);
   };
 
   const handleSaveDraft = async () => {
     setSavingDraft(true);
     try {
-      const data = buildFormData();
+      const image = buildImagePayload();
+      const data = buildFormData(image.imageUrls);
       if (editingDraftId) {
-        await api.updateEpisodeDraft(editingDraftId, data, getFileToSend());
+        const draft = await api.updateEpisodeDraft(editingDraftId, data, image.files);
+        adoptStoredImage(draft.imageUrls || []);
         toast.success('Draft updated');
       } else {
-        const draft = await api.saveEpisodeDraft(data, getFileToSend());
+        const draft = await api.saveEpisodeDraft(data, image.files);
         setEditingDraftId(draft.id);
+        adoptStoredImage(draft.imageUrls || []);
         toast.success('Draft saved');
       }
     } catch (err: any) {
@@ -780,9 +804,7 @@ export function EpisodePage() {
       }
     }
 
-    const fileToSend = croppedBlob
-      ? new File([croppedBlob], (imageFile?.name || 'cropped').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
-      : imageFile;
+    const image = buildImagePayload();
 
     const data: any = {
       episodeNumber: episodeNumber.trim(),
@@ -790,7 +812,7 @@ export function EpisodePage() {
       episodeType,
       summary: summary.trim() || undefined,
       episodeDate,
-      imageUrls: existingImageUrls,
+      imageUrls: image.imageUrls,
     };
 
     if (episodeType === 'review') {
@@ -831,7 +853,7 @@ export function EpisodePage() {
 
     setSubmitting(true);
     try {
-      await api.submitEpisode(data, fileToSend ? [fileToSend] : undefined);
+      await api.submitEpisode(data, image.files);
       toast.success('Episode submitted successfully');
       setEditingDraftId(null);
       resetForm(true);
