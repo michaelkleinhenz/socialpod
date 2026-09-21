@@ -181,6 +181,8 @@ export interface NewsDraft {
   accountIds?: Record<string, string>;
   firstComment?: string;
   postType?: PostType;
+  posted?: boolean;
+  postedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -211,6 +213,8 @@ export interface EpisodeDraft {
   accountIds?: Record<string, string>;
   firstComment?: string;
   postType?: PostType;
+  posted?: boolean;
+  postedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

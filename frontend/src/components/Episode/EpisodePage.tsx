@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, EpisodeDraft } from '../../types';
-import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Wand2, Dice5, FileText, Trash2, Play, Edit3, Save } from 'lucide-react';
+import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Wand2, Dice5, FileText, Trash2, Play, Edit3, Save, CheckCircle2 } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
@@ -112,8 +112,9 @@ export function EpisodePage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Tabs & Drafts
-  const [activeTab, setActiveTab] = useState<'create' | 'drafts'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'drafts' | 'posted'>('create');
   const [drafts, setDrafts] = useState<EpisodeDraft[]>([]);
+  const [postedDrafts, setPostedDrafts] = useState<EpisodeDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -245,6 +246,7 @@ export function EpisodePage() {
     if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
 
     setImageFile(file);
+    setExistingImageUrls([]);
     setImagePreviewUrl(URL.createObjectURL(file));
     setCroppedBlob(null);
     setCroppedPreviewUrl(null);
@@ -357,6 +359,7 @@ export function EpisodePage() {
                 if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
                 if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
                 setImageFile(file);
+                setExistingImageUrls([]);
                 setImagePreviewUrl(URL.createObjectURL(file));
                 setCroppedBlob(null);
                 setCroppedPreviewUrl(null);
@@ -474,8 +477,9 @@ export function EpisodePage() {
   const loadDrafts = useCallback(async () => {
     setDraftsLoading(true);
     try {
-      const data = await api.listEpisodeDrafts();
-      setDrafts(data);
+      const [open, posted] = await Promise.all([api.listEpisodeDrafts(), api.listEpisodeDrafts(true)]);
+      setDrafts(open);
+      setPostedDrafts(posted);
     } catch {
       toast.error('Failed to load drafts');
     } finally {
@@ -484,7 +488,7 @@ export function EpisodePage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'drafts' && pluginReady) {
+    if ((activeTab === 'drafts' || activeTab === 'posted') && pluginReady) {
       loadDrafts();
     }
   }, [activeTab, pluginReady, loadDrafts]);
@@ -621,6 +625,7 @@ export function EpisodePage() {
     try {
       await api.deleteEpisodeDraft(id);
       setDrafts(prev => prev.filter(d => d.id !== id));
+      setPostedDrafts(prev => prev.filter(d => d.id !== id));
       if (editingDraftId === id) setEditingDraftId(null);
       toast.success('Draft deleted');
     } catch (err: any) {
@@ -632,7 +637,7 @@ export function EpisodePage() {
     setPostingDraftId(id);
     try {
       await api.postEpisodeDraft(id);
-      setDrafts(prev => prev.filter(d => d.id !== id));
+      await loadDrafts();
       if (editingDraftId === id) {
         setEditingDraftId(null);
         resetForm(true);
@@ -717,6 +722,7 @@ export function EpisodePage() {
         if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
         if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
         setImageFile(file);
+        setExistingImageUrls([]);
         setImagePreviewUrl(URL.createObjectURL(file));
         setCroppedBlob(null);
         setCroppedPreviewUrl(null);
@@ -796,12 +802,17 @@ export function EpisodePage() {
       data.postType = 'post';
     }
 
+    // The backend stores this content on the draft and moves it to the
+    // Posted tab, so the entry reflects what actually went out.
+    if (editingDraftId) data.draftId = editingDraftId;
+
     setSubmitting(true);
     try {
       await api.submitEpisode(data, fileToSend ? [fileToSend] : undefined);
       toast.success('Episode submitted successfully');
       setEditingDraftId(null);
       resetForm(true);
+      if (editingDraftId) loadDrafts();
     } catch (err: any) {
       toast.error(err.message || 'Failed to submit episode');
     } finally {
@@ -896,96 +907,132 @@ export function EpisodePage() {
             fontWeight: 600,
           }}>{drafts.length}</span>}
         </button>
+        <button
+          className={`news-tab ${activeTab === 'posted' ? 'active' : ''}`}
+          onClick={() => setActiveTab('posted')}
+          style={{
+            padding: '10px 20px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'posted' ? '2px solid var(--accent)' : '2px solid transparent',
+            color: activeTab === 'posted' ? 'var(--text)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'posted' ? 600 : 400,
+            fontSize: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <CheckCircle2 size={14} /> Posted {postedDrafts.length > 0 && <span style={{
+            background: 'var(--bg-secondary, #1e293b)',
+            color: 'var(--text-muted)',
+            borderRadius: 10,
+            padding: '1px 7px',
+            fontSize: 11,
+            fontWeight: 600,
+          }}>{postedDrafts.length}</span>}
+        </button>
       </div>
 
-      {/* Drafts Tab */}
-      {activeTab === 'drafts' && (
-        <div>
-          {draftsLoading ? (
-            <div className="loading-screen"><div className="spinner" /></div>
-          ) : drafts.length === 0 ? (
+      {/* Drafts + Posted Tabs */}
+      {(activeTab === 'drafts' || activeTab === 'posted') && (() => {
+        const showPosted = activeTab === 'posted';
+        const list = showPosted ? postedDrafts : drafts;
+        if (draftsLoading) return <div className="loading-screen"><div className="spinner" /></div>;
+        if (list.length === 0) {
+          return (
             <div className="empty-state">
-              <FileText size={48} />
-              <p>No drafts yet</p>
+              {showPosted ? <CheckCircle2 size={48} /> : <FileText size={48} />}
+              <p>{showPosted ? 'Nothing posted yet' : 'No drafts yet'}</p>
               <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                Save an episode as a draft to review it later before submitting.
+                {showPosted
+                  ? 'Drafts you submit stay here so you can look up what was sent.'
+                  : 'Save an episode as a draft to review it later before submitting.'}
               </p>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {drafts.map(draft => (
-                <div key={draft.id} className="card" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        {draft.episodeNumber && (
-                          <span style={{
-                            background: 'var(--accent)',
-                            color: '#fff',
-                            borderRadius: 4,
-                            padding: '1px 6px',
-                            fontSize: 11,
-                            fontWeight: 600,
-                          }}>
-                            Ep. {draft.episodeNumber}
-                          </span>
-                        )}
-                        {draft.episodeType && (
-                          <span style={{
-                            background: 'var(--bg-secondary, #1e293b)',
-                            borderRadius: 4,
-                            padding: '1px 6px',
-                            fontSize: 11,
-                            textTransform: 'capitalize',
-                          }}>
-                            {draft.episodeType}
-                          </span>
-                        )}
-                        <span style={{ fontWeight: 600, fontSize: 15 }}>
-                          {draft.episodeTitle || '(No title)'}
+          );
+        }
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {list.map(draft => (
+              <div key={draft.id} className="card" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      {draft.episodeNumber && (
+                        <span style={{
+                          background: 'var(--accent)',
+                          color: '#fff',
+                          borderRadius: 4,
+                          padding: '1px 6px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}>
+                          Ep. {draft.episodeNumber}
                         </span>
-                      </div>
-                      {draft.episodeDate && (
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          Episode date: {format(new Date(draft.episodeDate), 'MMM d, yyyy HH:mm')}
-                        </div>
                       )}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-                        <span>Updated {format(new Date(draft.updatedAt), 'MMM d, yyyy HH:mm')}</span>
-                        {draft.addSocialPosting && (
-                          <span style={{
-                            background: 'var(--bg-secondary, #1e293b)',
-                            borderRadius: 4,
-                            padding: '1px 6px',
-                            fontSize: 11,
-                          }}>
-                            + Social Post
-                          </span>
-                        )}
-                        {draft.platforms && draft.platforms.length > 0 && (
-                          <span style={{ display: 'flex', gap: 4 }}>
-                            {draft.platforms.map(p => (
-                              <PlatformIcon key={p} platform={p as Platform} size={12} />
-                            ))}
-                          </span>
-                        )}
-                      </div>
+                      {draft.episodeType && (
+                        <span style={{
+                          background: 'var(--bg-secondary, #1e293b)',
+                          borderRadius: 4,
+                          padding: '1px 6px',
+                          fontSize: 11,
+                          textTransform: 'capitalize',
+                        }}>
+                          {draft.episodeType}
+                        </span>
+                      )}
+                      <span style={{ fontWeight: 600, fontSize: 15 }}>
+                        {draft.episodeTitle || '(No title)'}
+                      </span>
                     </div>
-                    {draft.imageUrls && draft.imageUrls.length > 0 && (
-                      <img
-                        src={draft.imageUrls[0].startsWith('/') ? apiUrl + draft.imageUrls[0] : draft.imageUrls[0]}
-                        alt=""
-                        style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
-                      />
+                    {draft.episodeDate && (
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        Episode date: {format(new Date(draft.episodeDate), 'MMM d, yyyy HH:mm')}
+                      </div>
                     )}
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => loadDraftIntoForm(draft)}
-                        title="Edit this draft"
-                      >
-                        <Edit3 size={14} /> Edit
-                      </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                      <span>
+                        {showPosted && draft.postedAt
+                          ? `Posted ${format(new Date(draft.postedAt), 'MMM d, yyyy HH:mm')}`
+                          : `Updated ${format(new Date(draft.updatedAt), 'MMM d, yyyy HH:mm')}`}
+                      </span>
+                      {draft.addSocialPosting && (
+                        <span style={{
+                          background: 'var(--bg-secondary, #1e293b)',
+                          borderRadius: 4,
+                          padding: '1px 6px',
+                          fontSize: 11,
+                        }}>
+                          + Social Post
+                        </span>
+                      )}
+                      {draft.platforms && draft.platforms.length > 0 && (
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          {draft.platforms.map(p => (
+                            <PlatformIcon key={p} platform={p as Platform} size={12} />
+                          ))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {draft.imageUrls && draft.imageUrls.length > 0 && (
+                    <img
+                      src={draft.imageUrls[0].startsWith('/') ? apiUrl + draft.imageUrls[0] : draft.imageUrls[0]}
+                      alt=""
+                      style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                    />
+                  )}
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => loadDraftIntoForm(draft)}
+                      title={showPosted ? 'Open this entry in the form' : 'Edit this draft'}
+                    >
+                      <Edit3 size={14} /> {showPosted ? 'Open' : 'Edit'}
+                    </button>
+                    {!showPosted && (
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => handlePostDraft(draft.id)}
@@ -994,22 +1041,22 @@ export function EpisodePage() {
                       >
                         {postingDraftId === draft.id ? <><Loader size={14} className="post-editor-spin" /> Posting...</> : <><Play size={14} /> Post</>}
                       </button>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => handleDeleteDraft(draft.id)}
-                        title="Delete this draft"
-                        style={{ color: 'var(--danger)' }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                    )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleDeleteDraft(draft.id)}
+                      title={showPosted ? 'Delete this entry' : 'Delete this draft'}
+                      style={{ color: 'var(--danger)' }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Create Tab */}
       {activeTab === 'create' && (

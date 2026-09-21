@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -45,6 +46,7 @@ type NewsSubmitInput struct {
 	AccountIDs       map[string]string `json:"accountIds,omitempty"`
 	FirstComment     string            `json:"firstComment,omitempty"`
 	PostType         models.PostType   `json:"postType,omitempty"`
+	DraftID          string            `json:"draftId,omitempty"`
 }
 
 func (h *NewsHandler) Submit(c *gin.Context) {
@@ -145,6 +147,18 @@ func (h *NewsHandler) Submit(c *gin.Context) {
 			return
 		}
 		post = created
+	}
+
+	// A draft submitted from the form keeps the content it was submitted with
+	// and moves to the Posted tab instead of lingering as an open draft.
+	if input.DraftID != "" {
+		if draftID, idErr := primitive.ObjectIDFromHex(input.DraftID); idErr == nil {
+			filter := newsDraftScopeFilter(c)
+			filter["_id"] = draftID
+			if err := markDraftPosted(ctx, h.DB.NewsDrafts(), filter, newsDraftFields(&input, webhookImageURLs)); err != nil {
+				log.Printf("[NewsCreator] Warning: could not mark draft %s as posted: %v", input.DraftID, err)
+			}
+		}
 	}
 
 	resp := gin.H{"message": "News submitted successfully"}
@@ -319,6 +333,62 @@ func (h *NewsHandler) saveUpload(fh *multipart.FileHeader) (string, error) {
 	return "/api/uploads/" + filename, nil
 }
 
+// newsDraftFields maps a submitted news payload onto the stored draft fields,
+// so saving a draft and submitting one record exactly the same content.
+func newsDraftFields(input *NewsSubmitInput, imageURLs []string) bson.M {
+	return bson.M{
+		"episodeNumber":    input.EpisodeNumber,
+		"newsTagline":      input.NewsTagline,
+		"articleUrl":       input.ArticleURL,
+		"shownotes":        input.Shownotes,
+		"imageUrls":        imageURLs,
+		"addSocialPosting": input.AddSocialPosting,
+		"content":          input.Content,
+		"platforms":        input.Platforms,
+		"scheduledAt":      input.ScheduledAt,
+		"tags":             input.Tags,
+		"status":           input.Status,
+		"footerIds":        input.FooterIDs,
+		"contentOverrides": input.ContentOverrides,
+		"accountIds":       input.AccountIDs,
+		"firstComment":     input.FirstComment,
+		"postType":         input.PostType,
+	}
+}
+
+// applyPostedFilter narrows a draft query to either the open drafts or the
+// ones already submitted. Drafts saved before posting was tracked have no
+// "posted" field at all, so they count as open.
+func applyPostedFilter(filter bson.M, posted bool) {
+	if posted {
+		filter["posted"] = true
+	} else {
+		filter["posted"] = bson.M{"$ne": true}
+	}
+}
+
+// postedSort orders posted drafts by when they went out and open drafts by
+// when they were last touched.
+func postedSort(posted bool) bson.D {
+	if posted {
+		return bson.D{{Key: "postedAt", Value: -1}}
+	}
+	return bson.D{{Key: "updatedAt", Value: -1}}
+}
+
+// markDraftPosted flags a submitted draft as posted, optionally storing the
+// content it was submitted with. The draft is kept so it stays reviewable in
+// the UI's Posted tab.
+func markDraftPosted(ctx context.Context, coll *mongo.Collection, filter bson.M, fields bson.M) error {
+	now := time.Now()
+	set := bson.M{"posted": true, "postedAt": now, "updatedAt": now}
+	for k, v := range fields {
+		set[k] = v
+	}
+	_, err := coll.UpdateOne(ctx, filter, bson.M{"$set": set})
+	return err
+}
+
 // mergeImageURLs concatenates previously stored image URLs with freshly saved
 // ones into a new slice, leaving both inputs untouched.
 func mergeImageURLs(existing, saved []string) []string {
@@ -411,11 +481,13 @@ func (h *NewsHandler) SaveDraft(c *gin.Context) {
 
 func (h *NewsHandler) ListDrafts(c *gin.Context) {
 	filter := newsDraftScopeFilter(c)
+	posted := c.Query("posted") == "true"
+	applyPostedFilter(filter, posted)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	opts := options.Find().SetSort(postedSort(posted))
 	cursor, err := h.DB.NewsDrafts().Find(ctx, filter, opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch drafts"})
@@ -488,30 +560,8 @@ func (h *NewsHandler) UpdateDraft(c *gin.Context) {
 
 	allImages := mergeImageURLs(input.ImageURLs, savedImageURLs)
 
-	platModels := make([]models.Platform, len(input.Platforms))
-	for i, p := range input.Platforms {
-		platModels[i] = models.Platform(p)
-	}
-
-	update := bson.M{
-		"episodeNumber":    input.EpisodeNumber,
-		"newsTagline":      input.NewsTagline,
-		"articleUrl":       input.ArticleURL,
-		"shownotes":        input.Shownotes,
-		"imageUrls":        allImages,
-		"addSocialPosting": input.AddSocialPosting,
-		"content":          input.Content,
-		"platforms":        platModels,
-		"scheduledAt":      input.ScheduledAt,
-		"tags":             input.Tags,
-		"status":           input.Status,
-		"footerIds":        input.FooterIDs,
-		"contentOverrides": input.ContentOverrides,
-		"accountIds":       input.AccountIDs,
-		"firstComment":     input.FirstComment,
-		"postType":         input.PostType,
-		"updatedAt":        time.Now(),
-	}
+	update := newsDraftFields(&input, allImages)
+	update["updatedAt"] = time.Now()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -650,7 +700,9 @@ func (h *NewsHandler) PostDraft(c *gin.Context) {
 		post = created
 	}
 
-	h.DB.NewsDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+	if err := markDraftPosted(ctx, h.DB.NewsDrafts(), bson.M{"_id": draftID}, nil); err != nil {
+		log.Printf("[NewsCreator] Warning: could not mark draft %s as posted: %v", draftID.Hex(), err)
+	}
 
 	resp := gin.H{"message": "News submitted successfully"}
 	if post != nil {

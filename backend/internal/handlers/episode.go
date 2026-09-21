@@ -56,6 +56,7 @@ type EpisodeSubmitInput struct {
 	AccountIDs       map[string]string `json:"accountIds,omitempty"`
 	FirstComment     string            `json:"firstComment,omitempty"`
 	PostType         models.PostType   `json:"postType,omitempty"`
+	DraftID          string            `json:"draftId,omitempty"`
 }
 
 func (h *EpisodeHandler) Submit(c *gin.Context) {
@@ -146,7 +147,9 @@ func (h *EpisodeHandler) Submit(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
-	webhookErr := h.sendToWebhook(ctx, &team, &input, mergeImageURLs(input.ImageURLs, savedImageURLs))
+	webhookImageURLs := mergeImageURLs(input.ImageURLs, savedImageURLs)
+
+	webhookErr := h.sendToWebhook(ctx, &team, &input, webhookImageURLs)
 	if webhookErr != nil {
 		log.Printf("[EpisodeCreator] Error sending to webhook: %v", webhookErr)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send episode: " + webhookErr.Error()})
@@ -163,11 +166,53 @@ func (h *EpisodeHandler) Submit(c *gin.Context) {
 		post = created
 	}
 
+	// A draft submitted from the form keeps the content it was submitted with
+	// and moves to the Posted tab instead of lingering as an open draft.
+	if input.DraftID != "" {
+		if draftID, idErr := primitive.ObjectIDFromHex(input.DraftID); idErr == nil {
+			filter := episodeDraftScopeFilter(c)
+			filter["_id"] = draftID
+			if err := markDraftPosted(ctx, h.DB.EpisodeDrafts(), filter, episodeDraftFields(&input, webhookImageURLs)); err != nil {
+				log.Printf("[EpisodeCreator] Warning: could not mark draft %s as posted: %v", input.DraftID, err)
+			}
+		}
+	}
+
 	resp := gin.H{"message": "Episode submitted successfully"}
 	if post != nil {
 		resp["post"] = post
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// episodeDraftFields maps a submitted episode payload onto the stored draft
+// fields, so saving a draft and submitting one record the same content.
+func episodeDraftFields(input *EpisodeSubmitInput, imageURLs []string) bson.M {
+	return bson.M{
+		"episodeNumber":     input.EpisodeNumber,
+		"episodeTitle":      input.EpisodeTitle,
+		"episodeType":       input.EpisodeType,
+		"summary":           input.Summary,
+		"episodeDate":       input.EpisodeDate,
+		"gameNamePublisher": input.GameNamePublisher,
+		"linkPublisher":     input.LinkPublisher,
+		"linkBGG":           input.LinkBGG,
+		"rules":             input.Rules,
+		"scene":             input.Scene,
+		"introText":         input.IntroText,
+		"imageUrls":         imageURLs,
+		"addSocialPosting":  input.AddSocialPosting,
+		"content":           input.Content,
+		"platforms":         input.Platforms,
+		"scheduledAt":       input.ScheduledAt,
+		"tags":              input.Tags,
+		"status":            input.Status,
+		"footerIds":         input.FooterIDs,
+		"contentOverrides":  input.ContentOverrides,
+		"accountIds":        input.AccountIDs,
+		"firstComment":      input.FirstComment,
+		"postType":          input.PostType,
+	}
 }
 
 func (h *EpisodeHandler) sendToWebhook(ctx context.Context, team *models.Team, input *EpisodeSubmitInput, imageURLs []string) error {
@@ -330,11 +375,13 @@ func (h *EpisodeHandler) SaveDraft(c *gin.Context) {
 
 func (h *EpisodeHandler) ListDrafts(c *gin.Context) {
 	filter := episodeDraftScopeFilter(c)
+	posted := c.Query("posted") == "true"
+	applyPostedFilter(filter, posted)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}})
+	opts := options.Find().SetSort(postedSort(posted))
 	cursor, err := h.DB.EpisodeDrafts().Find(ctx, filter, opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch drafts"})
@@ -408,37 +455,8 @@ func (h *EpisodeHandler) UpdateDraft(c *gin.Context) {
 
 	allImages := mergeImageURLs(input.ImageURLs, savedImageURLs)
 
-	platModels := make([]models.Platform, len(input.Platforms))
-	for i, p := range input.Platforms {
-		platModels[i] = models.Platform(p)
-	}
-
-	update := bson.M{
-		"episodeNumber":     input.EpisodeNumber,
-		"episodeTitle":      input.EpisodeTitle,
-		"episodeType":       input.EpisodeType,
-		"summary":           input.Summary,
-		"episodeDate":       input.EpisodeDate,
-		"gameNamePublisher": input.GameNamePublisher,
-		"linkPublisher":     input.LinkPublisher,
-		"linkBGG":           input.LinkBGG,
-		"rules":             input.Rules,
-		"scene":             input.Scene,
-		"introText":         input.IntroText,
-		"imageUrls":         allImages,
-		"addSocialPosting":  input.AddSocialPosting,
-		"content":           input.Content,
-		"platforms":         platModels,
-		"scheduledAt":       input.ScheduledAt,
-		"tags":              input.Tags,
-		"status":            input.Status,
-		"footerIds":         input.FooterIDs,
-		"contentOverrides":  input.ContentOverrides,
-		"accountIds":        input.AccountIDs,
-		"firstComment":      input.FirstComment,
-		"postType":          input.PostType,
-		"updatedAt":         time.Now(),
-	}
+	update := episodeDraftFields(&input, allImages)
+	update["updatedAt"] = time.Now()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -588,7 +606,9 @@ func (h *EpisodeHandler) PostDraft(c *gin.Context) {
 		post = created
 	}
 
-	h.DB.EpisodeDrafts().DeleteOne(ctx, bson.M{"_id": draftID})
+	if err := markDraftPosted(ctx, h.DB.EpisodeDrafts(), bson.M{"_id": draftID}, nil); err != nil {
+		log.Printf("[EpisodeCreator] Warning: could not mark draft %s as posted: %v", draftID.Hex(), err)
+	}
 
 	resp := gin.H{"message": "Episode submitted successfully"}
 	if post != nil {

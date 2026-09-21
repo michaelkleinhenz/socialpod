@@ -33,6 +33,8 @@ type EpisodeDraft struct {
 	AccountIDs        map[string]string   `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
 	FirstComment      string              `bson:"firstComment,omitempty" json:"firstComment,omitempty"`
 	PostType          PostType            `bson:"postType,omitempty" json:"postType,omitempty"`
+	Posted            bool                `bson:"posted" json:"posted"`
+	PostedAt          *time.Time          `bson:"postedAt,omitempty" json:"postedAt,omitempty"`
 	CreatedAt         time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt         time.Time           `bson:"updatedAt" json:"updatedAt"`
 }
