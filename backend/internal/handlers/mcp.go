@@ -1955,7 +1955,7 @@ func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []stri
 		if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err == nil {
 			bggToken = settings.BGGAPIToken
 		}
-		_, bggImageURL := fetchBGGPageInfo(ctx, gameID, articleURL, bggToken)
+		_, bggImageURL, _ := fetchBGGPageInfo(ctx, gameID, articleURL, bggToken)
 		if bggImageURL == "" {
 			bggImageURL = fetchBGGCoverImageURL(ctx, articleURL)
 		}

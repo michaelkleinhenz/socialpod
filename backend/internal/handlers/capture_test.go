@@ -437,3 +437,133 @@ func TestStripBlankLines_Empty(t *testing.T) {
 		t.Fatalf("expected empty string, got %q", got)
 	}
 }
+
+func TestEnforceQuotedGameName_QuotesBareMentions(t *testing.T) {
+	got := enforceQuotedGameName("Wingspan is out. We reviewed Wingspan last week.", "Wingspan")
+	want := `"Wingspan" is out. We reviewed "Wingspan" last week.`
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestEnforceQuotedGameName_LeavesCorrectTextUntouched(t *testing.T) {
+	in := `A review of "Die Burgen von Burgund" is online.`
+	if got := enforceQuotedGameName(in, "Die Burgen von Burgund"); got != in {
+		t.Fatalf("expected unchanged text, got %q", got)
+	}
+}
+
+func TestEnforceQuotedGameName_NormalisesTypographicQuotes(t *testing.T) {
+	// A model writing German reaches for „…“; the house style is the plain
+	// double quote everywhere.
+	got := enforceQuotedGameName("Neu: „Wingspan“ erscheint.", "Wingspan")
+	want := `Neu: "Wingspan" erscheint.`
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestEnforceQuotedGameName_MatchesCaseInsensitivelyKeepingModelCasing(t *testing.T) {
+	got := enforceQuotedGameName("WINGSPAN takes flight.", "Wingspan")
+	want := `"WINGSPAN" takes flight.`
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestEnforceQuotedGameName_SkipsLongerWords(t *testing.T) {
+	in := "Rootless players enjoy Root."
+	want := `Rootless players enjoy "Root".`
+	if got := enforceQuotedGameName(in, "Root"); got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestEnforceQuotedGameName_SkipsURLs(t *testing.T) {
+	in := "More on https://boardgamegeek.com/boardgame/266192/wingspan today."
+	if got := enforceQuotedGameName(in, "wingspan"); got != in {
+		t.Fatalf("expected unchanged URL, got %q", got)
+	}
+}
+
+func TestEnforceQuotedGameName_SkipsSchemelessURLs(t *testing.T) {
+	in := "See boardgamegeek.com/boardgame/266192/wingspan for details."
+	if got := enforceQuotedGameName(in, "wingspan"); got != in {
+		t.Fatalf("expected unchanged URL, got %q", got)
+	}
+}
+
+func TestEnforceQuotedGameName_Idempotent(t *testing.T) {
+	once := enforceQuotedGameName("Wingspan is out.", "Wingspan")
+	twice := enforceQuotedGameName(once, "Wingspan")
+	if once != twice {
+		t.Fatalf("expected idempotent result, got %q then %q", once, twice)
+	}
+}
+
+func TestEnforceQuotedGameName_NoGameNameOrText(t *testing.T) {
+	if got := enforceQuotedGameName("Some text", ""); got != "Some text" {
+		t.Fatalf("expected unchanged text, got %q", got)
+	}
+	if got := enforceQuotedGameName("", "Wingspan"); got != "" {
+		t.Fatalf("expected empty string, got %q", got)
+	}
+}
+
+func TestEnforceQuotedGameName_RegexMetacharactersInTitle(t *testing.T) {
+	got := enforceQuotedGameName("Playing 7 Wonders (Duel) tonight.", "7 Wonders (Duel)")
+	want := `Playing "7 Wonders (Duel)" tonight.`
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestEnforceQuotedGameNameWithin_QuotesWhenItFits(t *testing.T) {
+	got := enforceQuotedGameNameWithin("Wingspan erweitert", "Wingspan", newsTaglineMaxLen)
+	want := `"Wingspan" erweitert`
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestEnforceQuotedGameNameWithin_KeepsHardLengthLimit(t *testing.T) {
+	// 30 characters exactly: quoting would push the podcast chapter title over
+	// the limit, so the tagline stays as the model wrote it.
+	in := "Wingspan bekommt neue Erweiter"
+	if got := enforceQuotedGameNameWithin(in, "Wingspan", newsTaglineMaxLen); got != in {
+		t.Fatalf("expected unchanged tagline, got %q", got)
+	}
+}
+
+func TestBuildSystemPrompt_KeepsQuotingRuleOnTeamOverride(t *testing.T) {
+	// The house style must survive a team replacing the default prompt.
+	prompt := buildSystemPrompt("Custom team prompt.", "")
+	if !strings.Contains(prompt, gameNameQuotingRule) {
+		t.Fatalf("expected the quoting rule in the team prompt, got %q", prompt)
+	}
+	if strings.Contains(prompt, defaultSystemPrompt) {
+		t.Fatal("expected the team prompt to replace the default one")
+	}
+}
+
+func TestBuildSystemPrompt_DefaultPromptCarriesQuotingRuleAndLanguage(t *testing.T) {
+	prompt := buildSystemPrompt("", "German")
+	if !strings.Contains(prompt, defaultSystemPrompt) {
+		t.Fatal("expected the default prompt")
+	}
+	if !strings.Contains(prompt, gameNameQuotingRule) {
+		t.Fatal("expected the quoting rule")
+	}
+	if !strings.Contains(prompt, "Write in German.") {
+		t.Fatal("expected the language instruction")
+	}
+}
+
+func TestEnforceQuotedGameName_LeavesQuotedDialogueAlone(t *testing.T) {
+	// A quote on one side only is the surrounding sentence's, not the title's:
+	// quoting again would produce a "" run in the middle of the line.
+	in := `Jutta: "Wingspan ist grossartig."`
+	if got := enforceQuotedGameName(in, "Wingspan"); got != in {
+		t.Fatalf("expected unchanged dialogue, got %q", got)
+	}
+}
