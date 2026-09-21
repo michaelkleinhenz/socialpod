@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SocialPod Capture",
   "version": "1.1.0",
-  "description": "Capture web pages and create social media drafts in SocialPod. Take a screenshot, extract images, and send them to your SocialPod server as news, episode, or post drafts.",
+  "description": "Capture web pages and create social media drafts in SocialPod with screenshots and extracted images.",
   "homepage_url": "https://github.com/michaelkleinhenz/socialpod",
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": ["https://*/*"],
