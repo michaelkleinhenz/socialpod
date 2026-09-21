@@ -567,13 +567,13 @@ export function NewsPage() {
     });
   }, [pluginReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const buildFormData = () => {
+  const buildFormData = (imageUrls: string[]) => {
     const data: any = {
       episodeNumber: episodeNumber.trim(),
       newsTagline: newsTagline.trim(),
       articleUrl: articleUrl.trim(),
       shownotes: shownotes.trim() || undefined,
-      imageUrls: existingImageUrls,
+      imageUrls,
     };
 
     data.addSocialPosting = addSocialPost;
@@ -601,24 +601,48 @@ export function NewsPage() {
     return data;
   };
 
-  const getFileToSend = () => {
-    if (!imageFile) return undefined;
-    const fileToSend = croppedBlob
-      ? new File([croppedBlob], (imageFile.name || 'cropped').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
-      : imageFile;
-    return fileToSend ? [fileToSend] : undefined;
+  // The form carries a single image, and the backend keeps the imageUrls it is
+  // given alongside whatever files come with them. A local file replaces the
+  // stored image, so its URL must not travel with the upload — including when
+  // the file is a crop of the draft's own stored image, which has no imageFile
+  // behind it and would otherwise be dropped and the original reopened.
+  const buildImagePayload = (): { imageUrls: string[]; files?: File[] } => {
+    if (croppedBlob) {
+      const name = (imageFile?.name || 'cropped').replace(/\.[^.]+$/, '') + '.jpg';
+      return { imageUrls: [], files: [new File([croppedBlob], name, { type: 'image/jpeg' })] };
+    }
+    if (imageFile) return { imageUrls: [], files: [imageFile] };
+    return { imageUrls: existingImageUrls };
+  };
+
+  // Saving uploads the local file and frees the stored image it replaced, so
+  // the form has to follow the draft: without this a second save re-uploads
+  // the same crop, and the cropper reopens on an image the server has already
+  // deleted.
+  const adoptStoredImage = (urls: string[]) => {
+    if (imagePreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(imagePreviewUrl);
+    if (croppedPreviewUrl) URL.revokeObjectURL(croppedPreviewUrl);
+    setImageFile(null);
+    setCroppedBlob(null);
+    setCroppedPreviewUrl(null);
+    setCroppedSize(null);
+    setExistingImageUrls(urls);
+    setImagePreviewUrl(urls.length > 0 ? (urls[0].startsWith('http') ? urls[0] : `${apiUrl}${urls[0]}`) : null);
   };
 
   const handleSaveDraft = async () => {
     setSavingDraft(true);
     try {
-      const data = buildFormData();
+      const image = buildImagePayload();
+      const data = buildFormData(image.imageUrls);
       if (editingDraftId) {
-        await api.updateNewsDraft(editingDraftId, data, getFileToSend());
+        const draft = await api.updateNewsDraft(editingDraftId, data, image.files);
+        adoptStoredImage(draft.imageUrls || []);
         toast.success('Draft updated');
       } else {
-        const draft = await api.saveNewsDraft(data, getFileToSend());
+        const draft = await api.saveNewsDraft(data, image.files);
         setEditingDraftId(draft.id);
+        adoptStoredImage(draft.imageUrls || []);
         toast.success('Draft saved');
       }
     } catch (err: any) {
@@ -696,11 +720,12 @@ export function NewsPage() {
 
     setSubmitting(true);
     try {
-      const data = buildFormData();
+      const image = buildImagePayload();
+      const data = buildFormData(image.imageUrls);
       // The backend stores this content on the draft and moves it to the
       // Posted tab, so the entry reflects what actually went out.
       if (editingDraftId) data.draftId = editingDraftId;
-      await api.submitNews(data, getFileToSend());
+      await api.submitNews(data, image.files);
       toast.success('News submitted successfully');
       setEditingDraftId(null);
       resetForm(true);
