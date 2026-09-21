@@ -99,6 +99,13 @@ Publishing never deletes a draft. It sets `posted: true` and `postedAt`, which m
 ### Post create/update API contract
 Posts are submitted as `multipart/form-data` with two fields: `data` (JSON string of the post object) and `images` (zero or more binary files). This applies to both the REST API and the frontend `ApiClient.createPost`/`updatePost` methods.
 
+### Upload lifecycle
+Every uploaded image is stored twice — on disk in `UPLOAD_DIR` and as bytes in the `uploads` collection — and referenced by URL (`/api/uploads/<file>`) from whichever document owns it.
+
+`handlers/uploads_cleanup.go` frees those files again. Deleting a post, a news or episode draft (single or bulk), a watermark, or a convention queue item or queue removes the images it held; updating one of those documents frees the images the update dropped, as does submitting a draft whose image changed. Nothing is deleted blindly: `cleanupUploads` first checks every collection/field that can hold an upload URL (`uploadReferences`) and keeps any file still pointed at, because the same URL is routinely shared — submitting a draft gives its image to the post it creates, and a consumed convention queue item hands its image to the post it spawns. Cleanup is best-effort and never fails the request it follows; a reference check that errors keeps the files.
+
+**When a new model starts storing image URLs, add it to `uploadReferences`** — otherwise a delete elsewhere will free files that model still needs.
+
 ### Authorization model
 Three roles with distinct Gin context keys:
 - **Global admin** (`isAdmin=true`) — full access to `/api/admin/*`

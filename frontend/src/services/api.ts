@@ -621,7 +621,7 @@ class ApiClient {
   }
 
   deleteAllNewsDrafts(posted = false) {
-    return this.request<{ message: string; deletedCount: number }>(
+    return this.request<{ message: string; deletedCount: number; removedImages: number }>(
       `/news/drafts${posted ? '?posted=true' : ''}`,
       { method: 'DELETE' },
     );
@@ -665,7 +665,7 @@ class ApiClient {
   }
 
   deleteAllEpisodeDrafts(posted = false) {
-    return this.request<{ message: string; deletedCount: number }>(
+    return this.request<{ message: string; deletedCount: number; removedImages: number }>(
       `/episode/drafts${posted ? '?posted=true' : ''}`,
       { method: 'DELETE' },
     );

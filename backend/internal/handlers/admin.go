@@ -3068,10 +3068,11 @@ func (h *AdminHandler) DeleteWatermark(c *gin.Context) {
 
 	filter := watermarkFilter(c)
 	filter["_id"] = id
-	result, err := h.DB.Watermarks().DeleteOne(ctx, filter)
-	if err != nil || result.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.Watermarks(), filter)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Watermark not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	c.JSON(http.StatusOK, gin.H{"message": "Watermark deleted"})
 }

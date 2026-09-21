@@ -155,8 +155,14 @@ func (h *NewsHandler) Submit(c *gin.Context) {
 		if draftID, idErr := primitive.ObjectIDFromHex(input.DraftID); idErr == nil {
 			filter := newsDraftScopeFilter(c)
 			filter["_id"] = draftID
-			if err := markDraftPosted(ctx, h.DB.NewsDrafts(), filter, newsDraftFields(&input, webhookImageURLs)); err != nil {
+			fields := newsDraftFields(&input, webhookImageURLs)
+			previousImages := previousUploadURLs(ctx, h.DB.NewsDrafts(), filter, fields)
+			if err := markDraftPosted(ctx, h.DB.NewsDrafts(), filter, fields); err != nil {
 				log.Printf("[NewsCreator] Warning: could not mark draft %s as posted: %v", input.DraftID, err)
+			} else {
+				// The submitted images replaced the draft's own; free whatever
+				// the submission dropped.
+				cleanupUploads(h.DB, h.UploadDir, previousImages)
 			}
 		}
 	}
@@ -566,11 +572,14 @@ func (h *NewsHandler) UpdateDraft(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	previousImages := previousUploadURLs(ctx, h.DB.NewsDrafts(), filter, update)
+
 	res, err := h.DB.NewsDrafts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || res.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, previousImages)
 
 	var draft models.NewsDraft
 	h.DB.NewsDrafts().FindOne(ctx, bson.M{"_id": draftID}).Decode(&draft)
@@ -590,11 +599,12 @@ func (h *NewsHandler) DeleteDraft(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := h.DB.NewsDrafts().DeleteOne(ctx, filter)
-	if err != nil || res.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.NewsDrafts(), filter)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Draft not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	c.JSON(http.StatusOK, gin.H{"message": "Draft deleted"})
 }
 
@@ -609,12 +619,19 @@ func (h *NewsHandler) DeleteDrafts(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	urls := collectUploadURLs(ctx, h.DB.NewsDrafts(), filter)
+
 	res, err := h.DB.NewsDrafts().DeleteMany(ctx, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete drafts"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Drafts deleted", "deletedCount": res.DeletedCount})
+	removedImages := cleanupUploads(h.DB, h.UploadDir, urls)
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Drafts deleted",
+		"deletedCount":  res.DeletedCount,
+		"removedImages": removedImages,
+	})
 }
 
 func (h *NewsHandler) PostDraft(c *gin.Context) {

@@ -558,10 +558,13 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
+
 	res, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || res.MatchedCount == 0 {
 		return map[string]string{"error": "Post not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, previousImages)
 
 	var post models.Post
 	h.DB.Posts().FindOne(ctx, bson.M{"_id": postID}).Decode(&post)
@@ -584,10 +587,11 @@ func (h *MCPHandler) toolDeletePost(c *gin.Context, args map[string]any) (any, b
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := h.DB.Posts().DeleteOne(ctx, filter)
-	if err != nil || res.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.Posts(), filter)
+	if err != nil {
 		return map[string]string{"error": "Post not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	return map[string]string{"message": "Post deleted"}, false
 }
 
@@ -973,10 +977,11 @@ func (h *MCPHandler) toolDeleteWatermark(c *gin.Context, args map[string]any) (a
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := h.DB.Watermarks().DeleteOne(ctx, filter)
-	if err != nil || res.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.Watermarks(), filter)
+	if err != nil {
 		return map[string]string{"error": "Watermark not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	return map[string]string{"message": "Watermark deleted"}, false
 }
 
@@ -1267,10 +1272,13 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	previousImages := previousUploadURLs(ctx, h.DB.NewsDrafts(), filter, update)
+
 	res, err := h.DB.NewsDrafts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || res.MatchedCount == 0 {
 		return map[string]string{"error": "Draft not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, previousImages)
 
 	var draft models.NewsDraft
 	h.DB.NewsDrafts().FindOne(ctx, bson.M{"_id": draftID}).Decode(&draft)
@@ -1293,10 +1301,11 @@ func (h *MCPHandler) toolDeleteNewsDraft(c *gin.Context, args map[string]any) (a
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := h.DB.NewsDrafts().DeleteOne(ctx, filter)
-	if err != nil || res.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.NewsDrafts(), filter)
+	if err != nil {
 		return map[string]string{"error": "Draft not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	return map[string]string{"message": "Draft deleted"}, false
 }
 
@@ -1662,10 +1671,13 @@ func (h *MCPHandler) toolUpdateEpisodeDraft(c *gin.Context, args map[string]any)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	previousImages := previousUploadURLs(ctx, h.DB.EpisodeDrafts(), filter, update)
+
 	res, err := h.DB.EpisodeDrafts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || res.MatchedCount == 0 {
 		return map[string]string{"error": "Draft not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, previousImages)
 
 	var draft models.EpisodeDraft
 	h.DB.EpisodeDrafts().FindOne(ctx, bson.M{"_id": draftID}).Decode(&draft)
@@ -1688,10 +1700,11 @@ func (h *MCPHandler) toolDeleteEpisodeDraft(c *gin.Context, args map[string]any)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	res, err := h.DB.EpisodeDrafts().DeleteOne(ctx, filter)
-	if err != nil || res.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.EpisodeDrafts(), filter)
+	if err != nil {
 		return map[string]string{"error": "Draft not found"}, true
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	return map[string]string{"message": "Draft deleted"}, false
 }
 

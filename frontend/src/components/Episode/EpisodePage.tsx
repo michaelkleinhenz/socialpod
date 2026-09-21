@@ -747,7 +747,8 @@ export function EpisodePage() {
       const res = await api.deleteAllEpisodeDrafts(true);
       setPostedDrafts([]);
       if (editingDraftId && postedDrafts.some(d => d.id === editingDraftId)) setEditingDraftId(null);
-      toast.success(`Deleted ${res.deletedCount} posted ${res.deletedCount === 1 ? 'entry' : 'entries'}`);
+      const images = res.removedImages ? `, freed ${res.removedImages} image${res.removedImages === 1 ? '' : 's'}` : '';
+      toast.success(`Deleted ${res.deletedCount} posted ${res.deletedCount === 1 ? 'entry' : 'entries'}${images}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete posted entries');
       loadDrafts();

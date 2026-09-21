@@ -372,11 +372,14 @@ func (h *PostHandler) Update(c *gin.Context) {
 		update["contentOverrides"] = input.ContentOverrides
 	}
 
+	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
+
 	result, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, previousImages)
 
 	var post models.Post
 	h.DB.Posts().FindOne(ctx, bson.M{"_id": postID}).Decode(&post)
@@ -396,11 +399,12 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	result, err := h.DB.Posts().DeleteOne(ctx, filter)
-	if err != nil || result.DeletedCount == 0 {
+	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.Posts(), filter)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, urls)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Post deleted"})
 }
