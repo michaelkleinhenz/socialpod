@@ -220,6 +220,7 @@ func main() {
 
 		// Agent (AI content generation)
 		auth.POST("/agent/generate", agentHandler.Generate)
+		auth.POST("/agent/capture", agentHandler.Capture)
 		auth.GET("/agent/instructions", agentHandler.GetInstructions)
 
 		// Convention mode

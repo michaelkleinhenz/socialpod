@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+    }
+    .header {
+      background: #3b82f6;
+      color: #fff;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header img { width: 20px; height: 20px; }
+    .content { padding: 16px; }
+    .settings-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      margin-bottom: 8px;
+      cursor: pointer;
+      color: #6b7280;
+      font-size: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .settings-toggle:hover { color: #3b82f6; }
+    .settings { display: none; margin-bottom: 12px; }
+    .settings.show { display: block; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+      margin-top: 10px;
+    }
+    label:first-child { margin-top: 0; }
+    input, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus { border-color: #3b82f6; }
+    .save-btn {
+      margin-top: 10px;
+      background: #e5e7eb;
+      color: #374151;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .save-btn:hover { background: #d1d5db; }
+    .main-section { margin-top: 4px; }
+    .page-info {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #4b5563;
+      word-break: break-all;
+    }
+    .page-info strong { color: #1a1a1a; display: block; margin-bottom: 2px; }
+    .type-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .type-btn {
+      flex: 1;
+      padding: 7px 0;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: #374151;
+      transition: all 0.15s;
+    }
+    .type-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+    .type-btn.active {
+      background: #3b82f6;
+      color: #fff;
+      border-color: #3b82f6;
+    }
+    .capture-btn {
+      width: 100%;
+      padding: 10px;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .capture-btn:hover { background: #2563eb; }
+    .capture-btn:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    .status.info { display: block; background: #eff6ff; color: #1d4ed8; }
+    .status.success { display: block; background: #f0fdf4; color: #166534; }
+    .status.error { display: block; background: #fef2f2; color: #991b1b; }
+    .needs-setup {
+      text-align: center;
+      padding: 20px 0;
+      color: #6b7280;
+    }
+    .needs-setup p { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon16.png" alt="">
+    SocialPod Capture
+  </div>
+  <div class="content">
+    <div class="settings-toggle" id="settingsToggle">
+      Settings <span id="settingsArrow">&#9654;</span>
+    </div>
+    <div class="settings" id="settingsPanel">
+      <label>SocialPod Server URL</label>
+      <input type="url" id="serverUrl" placeholder="https://your-socialpod.example.com">
+      <label>API Token</label>
+      <input type="password" id="apiToken" placeholder="sm_...">
+      <button class="save-btn" id="saveSettings">Save Settings</button>
+    </div>
+
+    <div class="main-section" id="mainSection">
+      <div class="page-info" id="pageInfo">
+        <strong id="pageTitle">Loading...</strong>
+        <span id="pageUrl"></span>
+      </div>
+
+      <label>Draft Type</label>
+      <div class="type-row">
+        <button class="type-btn active" data-type="news">News</button>
+        <button class="type-btn" data-type="episode">Episode</button>
+        <button class="type-btn" data-type="post">Post</button>
+      </div>
+
+      <label>Description (optional)</label>
+      <input type="text" id="description" placeholder="Additional context for AI..." style="margin-bottom: 12px;">
+
+      <button class="capture-btn" id="captureBtn">Capture & Create Draft</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="needs-setup" id="needsSetup" style="display:none;">
+      <p>Configure your SocialPod server URL and API token to get started.</p>
+      <button class="save-btn" id="openSettings">Open Settings</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
