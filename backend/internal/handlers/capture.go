@@ -42,7 +42,7 @@ Based on the requested entity type, return a JSON object with ONLY the following
 
 For "news":
 {
-  "newsTagline": "A compelling headline/tagline for the news item",
+  "newsTagline": "A very short headline for the news item — MAXIMUM 30 CHARACTERS including spaces",
   "articleUrl": "The source URL",
   "shownotes": "Key points and summary of the article",
   "content": "Ready-to-post social media text (max 280 characters)"
@@ -67,6 +67,11 @@ For "post":
 {
   "content": "Ready-to-post social media text optimized for engagement (max 280 characters)"
 }
+
+The "newsTagline" is reused as a podcast chapter title, which allows at most 30 characters.
+Keep it short and sweet: a maximum of 30 characters including spaces, ideally two to four words.
+Do not add a trailing period, quotes, the publication or site name, or any hashtags.
+Count the characters before answering and shorten the tagline until it fits.
 
 Always write in a professional but engaging tone. Include relevant context from the source material.
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
