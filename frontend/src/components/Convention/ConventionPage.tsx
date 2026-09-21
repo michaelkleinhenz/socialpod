@@ -11,6 +11,18 @@ import './Convention.css';
 
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
 
+/** Order-insensitive compare, for the lists the toggles build up. */
+function sameSet(a: readonly string[], b: readonly string[]) {
+  return a.length === b.length && [...a].sort().join('\u0000') === [...b].sort().join('\u0000');
+}
+
+/** Compare two pick-per-platform maps, treating an empty pick as no pick. */
+function sameMap(a: Record<string, string>, b: Record<string, string>) {
+  const keys = (m: Record<string, string>) => Object.keys(m).filter(k => m[k]);
+  const ka = keys(a);
+  return ka.length === keys(b).length && ka.every(k => a[k] === b[k]);
+}
+
 function QueueFormModal({
   initial,
   accounts,
@@ -22,23 +34,31 @@ function QueueFormModal({
   onSave: (data: any) => Promise<void>;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? '');
-  const [conventionUrl, setConventionUrl] = useState(initial?.conventionUrl ?? '');
+  const initialName = initial?.name ?? '';
+  const initialUrl = initial?.conventionUrl ?? '';
+  const initialHashtags = initial?.hashtags ?? [];
+  const initialStart = initial ? format(parseISO(initial.startDate), "yyyy-MM-dd'T'HH:mm") : '';
+  const initialEnd = initial ? format(parseISO(initial.endDate), "yyyy-MM-dd'T'HH:mm") : '';
+  const initialPostsPerDay = initial?.postsPerDay ?? 2;
+  const initialMinHours = initial?.minHoursBetweenPosts ?? 0;
+  const initialPlatforms = initial?.platforms ?? [];
+  const initialAccountIds = initial?.accountIds ?? {};
+  const initialFooterIds = initial?.footerIds ?? {};
+  const initialWatermarkId = initial?.watermarkId ?? '';
+
+  const [name, setName] = useState(initialName);
+  const [conventionUrl, setConventionUrl] = useState(initialUrl);
   const [hashtagInput, setHashtagInput] = useState('');
-  const [hashtags, setHashtags] = useState<string[]>(initial?.hashtags ?? []);
-  const [startDate, setStartDate] = useState(
-    initial ? format(parseISO(initial.startDate), "yyyy-MM-dd'T'HH:mm") : ''
-  );
-  const [endDate, setEndDate] = useState(
-    initial ? format(parseISO(initial.endDate), "yyyy-MM-dd'T'HH:mm") : ''
-  );
-  const [postsPerDay, setPostsPerDay] = useState(initial?.postsPerDay ?? 2);
-  const [minHoursBetween, setMinHoursBetween] = useState(initial?.minHoursBetweenPosts ?? 0);
-  const [platforms, setPlatforms] = useState<Platform[]>(initial?.platforms ?? []);
-  const [accountIds, setAccountIds] = useState<Record<string, string>>(initial?.accountIds ?? {});
-  const [footerIds, setFooterIds] = useState<Record<string, string>>(initial?.footerIds ?? {});
+  const [hashtags, setHashtags] = useState<string[]>(initialHashtags);
+  const [startDate, setStartDate] = useState(initialStart);
+  const [endDate, setEndDate] = useState(initialEnd);
+  const [postsPerDay, setPostsPerDay] = useState(initialPostsPerDay);
+  const [minHoursBetween, setMinHoursBetween] = useState(initialMinHours);
+  const [platforms, setPlatforms] = useState<Platform[]>(initialPlatforms);
+  const [accountIds, setAccountIds] = useState<Record<string, string>>(initialAccountIds);
+  const [footerIds, setFooterIds] = useState<Record<string, string>>(initialFooterIds);
   const [footers, setFooters] = useState<Footer[]>([]);
-  const [watermarkId, setWatermarkId] = useState(initial?.watermarkId ?? '');
+  const [watermarkId, setWatermarkId] = useState(initialWatermarkId);
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -67,6 +87,25 @@ function QueueFormModal({
       prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
     );
   };
+
+  // The Modal's own unsaved-input watch only sees typing and picking. Half of
+  // this form is buttons — the platform toggles, the hashtag chips — and a
+  // queue built entirely out of those would look untouched and be thrown away
+  // without a word on a stray click outside. So tell the Modal ourselves
+  // whether anything differs from what the form opened with.
+  const isDirty =
+    name !== initialName ||
+    conventionUrl !== initialUrl ||
+    hashtagInput.trim() !== '' ||
+    !sameSet(hashtags, initialHashtags) ||
+    startDate !== initialStart ||
+    endDate !== initialEnd ||
+    postsPerDay !== initialPostsPerDay ||
+    minHoursBetween !== initialMinHours ||
+    !sameSet(platforms, initialPlatforms) ||
+    !sameMap(accountIds, initialAccountIds) ||
+    !sameMap(footerIds, initialFooterIds) ||
+    watermarkId !== initialWatermarkId;
 
   // The minimum delay takes precedence over posts-per-day: at most
   // floor(24 / minHours) posts can go out on any given day.
@@ -103,7 +142,7 @@ function QueueFormModal({
   const platformAccounts = accounts.filter(a => platforms.includes(a.platform));
 
   return (
-    <Modal onClose={onClose} className="conv-modal">
+    <Modal onClose={onClose} dirty={isDirty} className="conv-modal">
       <div className="modal-header">
         <h2>{initial ? 'Edit Queue' : 'New Convention Queue'}</h2>
         <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
