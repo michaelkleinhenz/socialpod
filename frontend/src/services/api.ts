@@ -285,6 +285,20 @@ class ApiClient {
     return this.request<any>('/admin/settings');
   }
 
+  /** Scans for uploads nothing references any more. Deletes nothing. */
+  scanOrphanedUploads(minAgeHours?: number) {
+    const q = minAgeHours === undefined ? '' : `?minAgeHours=${minAgeHours}`;
+    return this.request<import('../types').UploadSweepReport>(`/admin/uploads/orphans${q}`);
+  }
+
+  /** Deletes every upload the scan reports as orphaned. */
+  sweepOrphanedUploads(minAgeHours?: number) {
+    const age = minAgeHours === undefined ? '' : `&minAgeHours=${minAgeHours}`;
+    return this.request<import('../types').UploadSweepReport>(`/admin/uploads/sweep?delete=true${age}`, {
+      method: 'POST',
+    });
+  }
+
   updateSettings(data: any) {
     return this.request<any>('/admin/settings', {
       method: 'PUT',
@@ -620,6 +634,13 @@ class ApiClient {
     return this.request<{ message: string }>(`/news/drafts/${id}`, { method: 'DELETE' });
   }
 
+  deleteAllNewsDrafts(posted = false) {
+    return this.request<{ message: string; deletedCount: number; removedImages: number }>(
+      `/news/drafts${posted ? '?posted=true' : ''}`,
+      { method: 'DELETE' },
+    );
+  }
+
   postNewsDraft(id: string) {
     return this.request<any>(`/news/drafts/${id}/post`, { method: 'POST' });
   }
@@ -655,6 +676,13 @@ class ApiClient {
 
   deleteEpisodeDraft(id: string) {
     return this.request<{ message: string }>(`/episode/drafts/${id}`, { method: 'DELETE' });
+  }
+
+  deleteAllEpisodeDrafts(posted = false) {
+    return this.request<{ message: string; deletedCount: number; removedImages: number }>(
+      `/episode/drafts${posted ? '?posted=true' : ''}`,
+      { method: 'DELETE' },
+    );
   }
 
   postEpisodeDraft(id: string) {

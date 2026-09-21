@@ -89,15 +89,30 @@ Components are organized by feature under `src/components/` (Calendar, PostEdito
 Three draft types exist across the application:
 
 - **Post/Story/Reel drafts** — regular `Post` documents with `status: "draft"`. Created through the PostEditor (Calendar page). The Calendar page has a "Drafts" tab that lists all draft posts across types, with edit/schedule/delete actions. MCP: use `create_post` with `status: "draft"`.
-- **News drafts** — stored in the `news_drafts` collection (`models/news_draft.go`). Managed through the News page's Create/Drafts tabs. REST: `GET/POST /api/news/drafts`, `GET/PUT/DELETE /api/news/drafts/:id`, `POST /api/news/drafts/:id/post`. MCP: `create_news_draft`, `list_news_drafts`, `get_news_draft`, `update_news_draft`, `delete_news_draft`, `post_news_draft`.
-- **Episode drafts** — stored in the `episode_drafts` collection (`models/episode_draft.go`). Managed through the Episodes page's Create/Drafts tabs. REST: `GET/POST /api/episode/drafts`, `GET/PUT/DELETE /api/episode/drafts/:id`, `POST /api/episode/drafts/:id/post`. MCP: `create_episode_draft`, `list_episode_drafts`, `get_episode_draft`, `update_episode_draft`, `delete_episode_draft`, `post_episode_draft`.
+- **News drafts** — stored in the `news_drafts` collection (`models/news_draft.go`). Managed through the News page's Create/Drafts tabs. REST: `GET/POST /api/news/drafts`, `GET/PUT/DELETE /api/news/drafts/:id`, `POST /api/news/drafts/:id/post`, `DELETE /api/news/drafts?posted=true` (bulk). MCP: `create_news_draft`, `list_news_drafts`, `get_news_draft`, `update_news_draft`, `delete_news_draft`, `post_news_draft`.
+- **Episode drafts** — stored in the `episode_drafts` collection (`models/episode_draft.go`). Managed through the Episodes page's Create/Drafts tabs. REST: `GET/POST /api/episode/drafts`, `GET/PUT/DELETE /api/episode/drafts/:id`, `POST /api/episode/drafts/:id/post`, `DELETE /api/episode/drafts?posted=true` (bulk). MCP: `create_episode_draft`, `list_episode_drafts`, `get_episode_draft`, `update_episode_draft`, `delete_episode_draft`, `post_episode_draft`.
 
 News and episode drafts follow the same lifecycle: create → list/browse → edit → publish (sends to webhook + optionally creates a social post + marks the draft `posted`). Drafts are submitted as `multipart/form-data` with `data` (JSON) and optional `images` fields.
 
-Publishing never deletes a draft. It sets `posted: true` and `postedAt`, which moves the entry from the News/Episodes page's Drafts tab to its Posted tab; `GET /api/news/drafts?posted=true` (same for `/episode/`) and the MCP `list_*_drafts` tools with `posted: true` return that list, and every list defaults to open drafts only. Drafts saved before this existed have no `posted` field and count as open. Submitting from the form (`POST /api/news/submit`, `POST /api/episode/submit`) may carry a `draftId`: the submitted content is then written back onto that draft before it is marked posted, so the Posted entry records what actually went out rather than the last saved state. A submit without `draftId` — one that was never a draft — creates no entry.
+Publishing never deletes a draft. It sets `posted: true` and `postedAt`, which moves the entry from the News/Episodes page's Drafts tab to its Posted tab; `GET /api/news/drafts?posted=true` (same for `/episode/`) and the MCP `list_*_drafts` tools with `posted: true` return that list, and every list defaults to open drafts only. Drafts saved before this existed have no `posted` field and count as open. The News and Episodes pages' Posted tabs each have a "Remove All" button that clears that list in one call (`DELETE /api/news/drafts?posted=true`, same for `/episode/`); the same endpoint without `posted=true` clears the open drafts instead. Submitting from the form (`POST /api/news/submit`, `POST /api/episode/submit`) may carry a `draftId`: the submitted content is then written back onto that draft before it is marked posted, so the Posted entry records what actually went out rather than the last saved state. A submit without `draftId` — one that was never a draft — creates no entry.
 
 ### Post create/update API contract
 Posts are submitted as `multipart/form-data` with two fields: `data` (JSON string of the post object) and `images` (zero or more binary files). This applies to both the REST API and the frontend `ApiClient.createPost`/`updatePost` methods.
+
+### Upload lifecycle
+Every uploaded image is stored twice — on disk in `UPLOAD_DIR` and as bytes in the `uploads` collection — and referenced by URL (`/api/uploads/<file>`) from whichever document owns it.
+
+`handlers/uploads_cleanup.go` frees those files again. Deleting a post, a news or episode draft (single or bulk), a watermark, or a convention queue item or queue removes the images it held; updating one of those documents frees the images the update dropped, as does submitting a draft whose image changed. Nothing is deleted blindly: `cleanupUploads` first checks every collection/field that can hold an upload URL (`uploadReferences`) and keeps any file still pointed at, because the same URL is routinely shared — submitting a draft gives its image to the post it creates, and a consumed convention queue item hands its image to the post it spawns. Cleanup is best-effort and never fails the request it follows; a reference check that errors keeps the files.
+
+Automatic cleanup only covers uploads a document owned. Two kinds are left over: the backlog from before cleanup existed, and imports abandoned before anything referenced them (`POST /api/upload`, `/api/upload-from-url` and captures store a file immediately, minutes before the post or draft that will reference it exists). `handlers/uploads_sweep.go` clears both — an admin-only scan/sweep over the whole store, reachable from the Storage card on the admin Settings page:
+
+- `GET /api/admin/uploads/orphans` — scan, delete nothing
+- `POST /api/admin/uploads/sweep` — scan, delete nothing
+- `POST /api/admin/uploads/sweep?delete=true` — delete what it finds
+
+Both take `minAgeHours` (default 24), the age guard that spares uploads an open editor has stored but not yet referenced. The sweep reads both halves of the store — the `uploads` collection and `UPLOAD_DIR` — so a record whose file is missing, or a file with no record, is found too, and reports totals, orphan counts and bytes, and a sample. A failed reference scan aborts it rather than treating everything as unreferenced.
+
+**When a new model starts storing image URLs, add it to `uploadReferences`** — otherwise a delete elsewhere, or a sweep, will free files that model still needs.
 
 ### Authorization model
 Three roles with distinct Gin context keys:

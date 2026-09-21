@@ -84,7 +84,11 @@ export function NewsPage() {
   const [activeTab, setActiveTab] = useState<'create' | 'drafts' | 'posted'>('create');
   const [drafts, setDrafts] = useState<NewsDraft[]>([]);
   const [postedDrafts, setPostedDrafts] = useState<NewsDraft[]>([]);
-  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [removingPosted, setRemovingPosted] = useState(false);
+  // Drafts are refetched on every switch to a draft tab. Once they have
+  // loaded, the refresh happens behind the list already on screen: swapping
+  // in a spinner would resize the panel on every tab switch.
+  const [draftsLoaded, setDraftsLoaded] = useState(false);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [postingDraftId, setPostingDraftId] = useState<string | null>(null);
@@ -495,7 +499,6 @@ export function NewsPage() {
   };
 
   const loadDrafts = useCallback(async () => {
-    setDraftsLoading(true);
     try {
       const [open, posted] = await Promise.all([api.listNewsDrafts(), api.listNewsDrafts(true)]);
       setDrafts(open);
@@ -503,7 +506,9 @@ export function NewsPage() {
     } catch {
       toast.error('Failed to load drafts');
     } finally {
-      setDraftsLoading(false);
+      // Marks the first attempt as done whether it worked or not: a failed
+      // load falls through to the empty state, never a spinner that stays.
+      setDraftsLoaded(true);
     }
   }, []);
 
@@ -649,6 +654,24 @@ export function NewsPage() {
       toast.error(err.message || 'Failed to post draft');
     } finally {
       setPostingDraftId(null);
+    }
+  };
+
+  const handleRemoveAllPosted = async () => {
+    if (postedDrafts.length === 0) return;
+    if (!window.confirm(`Delete all ${postedDrafts.length} posted ${postedDrafts.length === 1 ? 'entry' : 'entries'}? This cannot be undone.`)) return;
+    setRemovingPosted(true);
+    try {
+      const res = await api.deleteAllNewsDrafts(true);
+      setPostedDrafts([]);
+      if (editingDraftId && postedDrafts.some(d => d.id === editingDraftId)) setEditingDraftId(null);
+      const images = res.removedImages ? `, freed ${res.removedImages} image${res.removedImages === 1 ? '' : 's'}` : '';
+      toast.success(`Deleted ${res.deletedCount} posted ${res.deletedCount === 1 ? 'entry' : 'entries'}${images}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete posted entries');
+      loadDrafts();
+    } finally {
+      setRemovingPosted(false);
     }
   };
 
@@ -810,10 +833,16 @@ export function NewsPage() {
       {(activeTab === 'drafts' || activeTab === 'posted') && (() => {
         const showPosted = activeTab === 'posted';
         const list = showPosted ? postedDrafts : drafts;
-        if (draftsLoading) return <div className="loading-screen"><div className="spinner" /></div>;
+        // Until the first load lands there is nothing to say about the list —
+        // showing the empty state here would flash "no drafts" every time.
+        if (!draftsLoaded) {
+          return (
+            <div className="tab-panel panel-loading"><div className="spinner" /></div>
+          );
+        }
         if (list.length === 0) {
           return (
-            <div className="empty-state">
+            <div className="tab-panel empty-state">
               {showPosted ? <CheckCircle2 size={48} /> : <FileText size={48} />}
               <p>{showPosted ? 'Nothing posted yet' : 'No drafts yet'}</p>
               <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
@@ -825,7 +854,22 @@ export function NewsPage() {
           );
         }
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="tab-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {showPosted && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleRemoveAllPosted}
+                  disabled={removingPosted}
+                  title="Delete every entry in this list"
+                  style={{ color: 'var(--danger)' }}
+                >
+                  {removingPosted
+                    ? <><Loader size={14} className="post-editor-spin" /> Removing...</>
+                    : <><Trash2 size={14} /> Remove All</>}
+                </button>
+              </div>
+            )}
             {list.map(draft => (
               <div key={draft.id} className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>

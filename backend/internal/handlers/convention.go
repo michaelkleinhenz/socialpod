@@ -384,7 +384,10 @@ func (h *ConventionHandler) DeleteQueue(c *gin.Context) {
 		return
 	}
 
-	h.DB.ConventionQueueItems().DeleteMany(ctx, bson.M{"queueId": queueID})
+	itemFilter := bson.M{"queueId": queueID}
+	urls := collectUploadURLs(ctx, h.DB.ConventionQueueItems(), itemFilter)
+	h.DB.ConventionQueueItems().DeleteMany(ctx, itemFilter)
+	cleanupUploads(h.DB, h.UploadDir, urls)
 	c.JSON(http.StatusOK, gin.H{"message": "Queue deleted"})
 }
 
@@ -649,6 +652,7 @@ func (h *ConventionHandler) DeleteItem(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, append([]string{item.ImageURL}, item.ImageURLs...))
 
 	c.JSON(http.StatusOK, gin.H{"message": "Item deleted"})
 }

@@ -39,6 +39,9 @@
 
 html {
   overflow-x: hidden;
+  /* Reserve the scrollbar's width even on a short page, so switching between
+     a scrolling tab and a short one does not shift the layout sideways. */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -71,6 +74,22 @@ a:hover { color: var(--accent-hover); }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Loading state for a section inside a page. Unlike .loading-screen, which
+   claims the full viewport, this keeps its own modest height, so swapping it
+   for the loaded content does not resize the page around it. */
+.panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
+/* Body of a tab. The floor keeps the page from jumping as a tab moves between
+   its loading, empty and loaded states, or as you switch between tabs. */
+.tab-panel {
+  min-height: 320px;
+}
 
 /* Buttons */
 .btn {
