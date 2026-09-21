@@ -5,6 +5,7 @@ import type { User, TeamInvite } from '../../types';
 import { Trash2, Plus, Mail, Clock, X } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { Modal } from '../Common/Modal';
 import './Admin.css';
 
 export function TeamInfoPage() {
@@ -228,69 +229,65 @@ export function TeamInfoPage() {
       )}
 
       {showAddForm && (
-        <div className="modal-overlay" onClick={() => setShowAddForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Add Existing User</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowAddForm(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-              Add an existing user to your team by their email address.
-            </p>
-            <div className="form-group">
-              <label>Email</label>
-              <input
-                className="input"
-                type="email"
-                placeholder="user@example.com"
-                value={newEmail}
-                onChange={e => setNewEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addMember()}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addMember} disabled={addingMember}>
-                {addingMember ? 'Adding...' : 'Add Member'}
-              </button>
-            </div>
+        <Modal onClose={() => setShowAddForm(false)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Add Existing User</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowAddForm(false)}>
+              <X size={18} />
+            </button>
           </div>
-        </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+            Add an existing user to your team by their email address.
+          </p>
+          <div className="form-group">
+            <label>Email</label>
+            <input
+              className="input"
+              type="email"
+              placeholder="user@example.com"
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addMember()}
+            />
+          </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={addMember} disabled={addingMember}>
+              {addingMember ? 'Adding...' : 'Add Member'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {showInviteForm && (
-        <div className="modal-overlay" onClick={() => setShowInviteForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Invite by Email</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowInviteForm(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-              Send an invitation email to someone who doesn't have an account yet.
-            </p>
-            <div className="form-group">
-              <label>Email</label>
-              <input
-                className="input"
-                type="email"
-                placeholder="newuser@example.com"
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendInvite()}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowInviteForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={sendInvite} disabled={sendingInvite}>
-                {sendingInvite ? 'Sending...' : 'Send Invitation'}
-              </button>
-            </div>
+        <Modal onClose={() => setShowInviteForm(false)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Invite by Email</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowInviteForm(false)}>
+              <X size={18} />
+            </button>
           </div>
-        </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+            Send an invitation email to someone who doesn't have an account yet.
+          </p>
+          <div className="form-group">
+            <label>Email</label>
+            <input
+              className="input"
+              type="email"
+              placeholder="newuser@example.com"
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendInvite()}
+            />
+          </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowInviteForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={sendInvite} disabled={sendingInvite}>
+              {sendingInvite ? 'Sending...' : 'Send Invitation'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

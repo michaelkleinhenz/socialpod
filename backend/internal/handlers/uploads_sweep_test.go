@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -81,5 +84,38 @@ func TestClassifyUploadsOrdersNewestFirst(t *testing.T) {
 	orphans, _, _, _ := classifyUploads(candidates, nil, now.Add(-24*time.Hour))
 	if len(orphans) != 2 || orphans[0].Filename != "newer.jpg" {
 		t.Fatalf("orphans not sorted newest first: %+v", orphans)
+	}
+}
+
+// A clean store is the common case once the backlog has been swept, and the
+// report still has to be readable: a nil sample marshals to JSON null and
+// breaks a client that reads sample.length.
+func TestSampleOrphansMarshalsAsEmptyArrayWhenNothingIsOrphaned(t *testing.T) {
+	report := UploadSweepReport{DryRun: true, Sample: sampleOrphans(nil)}
+	if report.Sample == nil {
+		t.Fatal("sample is nil, want an empty slice")
+	}
+
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshalling the report: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"sample":[]`) {
+		t.Errorf("report JSON = %s, want an empty sample array", encoded)
+	}
+}
+
+func TestSampleOrphansCapsTheSample(t *testing.T) {
+	orphans := make([]OrphanedUpload, maxSweepSampleFiles+10)
+	for i := range orphans {
+		orphans[i].Filename = fmt.Sprintf("orphan-%d.jpg", i)
+	}
+
+	sample := sampleOrphans(orphans)
+	if len(sample) != maxSweepSampleFiles {
+		t.Fatalf("sample holds %d files, want %d", len(sample), maxSweepSampleFiles)
+	}
+	if sample[0].Filename != "orphan-0.jpg" {
+		t.Errorf("sample starts at %s, want orphan-0.jpg", sample[0].Filename)
 	}
 }

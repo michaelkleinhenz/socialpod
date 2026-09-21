@@ -5,6 +5,7 @@ import { api } from '../../services/api';
 import type { PublicSettings } from '../../types';
 import { Zap, X, Cookie, FileText, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Modal } from '../Common/Modal';
 import './Auth.css';
 
 const COOKIE_CONSENT_KEY = 'cookie_consent';
@@ -143,20 +144,18 @@ export function LoginPage() {
 
       {/* Imprint modal */}
       {imprintOpen && (
-        <div className="modal-overlay" onClick={() => setImprintOpen(false)}>
-          <div className="modal imprint-modal" onClick={e => e.stopPropagation()}>
-            <div className="imprint-header">
-              <h2>Imprint</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setImprintOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
-            <div
-              className="imprint-body"
-              dangerouslySetInnerHTML={{ __html: publicSettings?.imprintHtml || '' }}
-            />
+        <Modal onClose={() => setImprintOpen(false)} className="imprint-modal">
+          <div className="imprint-header">
+            <h2>Imprint</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setImprintOpen(false)}>
+              <X size={18} />
+            </button>
           </div>
-        </div>
+          <div
+            className="imprint-body"
+            dangerouslySetInnerHTML={{ __html: publicSettings?.imprintHtml || '' }}
+          />
+        </Modal>
       )}
     </div>
   );

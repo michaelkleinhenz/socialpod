@@ -6,6 +6,7 @@ import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
+import { Modal } from '../Common/Modal';
 import './Convention.css';
 
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
@@ -102,225 +103,223 @@ function QueueFormModal({
   const platformAccounts = accounts.filter(a => platforms.includes(a.platform));
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal conv-modal">
-        <div className="modal-header">
-          <h2>{initial ? 'Edit Queue' : 'New Convention Queue'}</h2>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+    <Modal onClose={onClose} className="conv-modal">
+      <div className="modal-header">
+        <h2>{initial ? 'Edit Queue' : 'New Convention Queue'}</h2>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+      </div>
+      <form onSubmit={handleSubmit} className="conv-form">
+        <div className="form-group">
+          <label>Convention name *</label>
+          <input
+            className="input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="SPIEL 2026"
+            required
+          />
         </div>
-        <form onSubmit={handleSubmit} className="conv-form">
-          <div className="form-group">
-            <label>Convention name *</label>
+
+        <div className="form-group">
+          <label>Convention URL</label>
+          <input
+            className="input"
+            value={conventionUrl}
+            onChange={e => setConventionUrl(e.target.value)}
+            placeholder="https://spiel.de"
+            type="url"
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Hashtags</label>
+          <div className="hashtag-input-row">
             <input
               className="input"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="SPIEL 2026"
+              value={hashtagInput}
+              onChange={e => setHashtagInput(e.target.value)}
+              onKeyDown={handleHashtagKey}
+              placeholder="#Essen2026 — press Enter to add"
+            />
+            <button type="button" className="btn btn-sm btn-secondary" onClick={addHashtag}>Add</button>
+          </div>
+          {hashtags.length > 0 && (
+            <div className="tag-list">
+              {hashtags.map(tag => (
+                <span key={tag} className="tag">
+                  {tag}
+                  <button type="button" onClick={() => setHashtags(prev => prev.filter(t => t !== tag))}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {watermarks.length > 0 && (
+          <div className="form-group">
+            <label>Overlay watermark</label>
+            <div className="conv-watermark-select">
+              <select
+                className="select"
+                value={watermarkId}
+                onChange={e => setWatermarkId(e.target.value)}
+              >
+                <option value="">None</option>
+                {watermarks.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+              {watermarkId && (() => {
+                const wm = watermarks.find(w => w.id === watermarkId);
+                if (!wm) return null;
+                const base = import.meta.env.VITE_API_URL || '';
+                const src = wm.url.startsWith('/') ? base + wm.url : wm.url;
+                return <img src={src} alt={wm.name} className="conv-watermark-preview" />;
+              })()}
+            </div>
+            <p className="conv-upload-hint">
+              Applied automatically to every image in this convention when scheduled.
+            </p>
+          </div>
+        )}
+
+        <div className="form-row">
+          <div className="form-group">
+            <label>Drip window start *</label>
+            <input
+              className="input"
+              type="datetime-local"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
               required
             />
           </div>
-
           <div className="form-group">
-            <label>Convention URL</label>
+            <label>Drip window end *</label>
             <input
               className="input"
-              value={conventionUrl}
-              onChange={e => setConventionUrl(e.target.value)}
-              placeholder="https://spiel.de"
-              type="url"
+              type="datetime-local"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              required
             />
           </div>
+        </div>
 
+        <div className="form-row">
           <div className="form-group">
-            <label>Hashtags</label>
-            <div className="hashtag-input-row">
-              <input
-                className="input"
-                value={hashtagInput}
-                onChange={e => setHashtagInput(e.target.value)}
-                onKeyDown={handleHashtagKey}
-                placeholder="#Essen2026 — press Enter to add"
-              />
-              <button type="button" className="btn btn-sm btn-secondary" onClick={addHashtag}>Add</button>
-            </div>
-            {hashtags.length > 0 && (
-              <div className="tag-list">
-                {hashtags.map(tag => (
-                  <span key={tag} className="tag">
-                    {tag}
-                    <button type="button" onClick={() => setHashtags(prev => prev.filter(t => t !== tag))}>×</button>
-                  </span>
-                ))}
-              </div>
-            )}
+            <label>Posts per day</label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              step={1}
+              value={postsPerDay}
+              onChange={e => setPostsPerDay(Math.max(1, parseInt(e.target.value, 10) || 1))}
+            />
           </div>
-
-          {watermarks.length > 0 && (
-            <div className="form-group">
-              <label>Overlay watermark</label>
-              <div className="conv-watermark-select">
-                <select
-                  className="select"
-                  value={watermarkId}
-                  onChange={e => setWatermarkId(e.target.value)}
-                >
-                  <option value="">None</option>
-                  {watermarks.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-                {watermarkId && (() => {
-                  const wm = watermarks.find(w => w.id === watermarkId);
-                  if (!wm) return null;
-                  const base = import.meta.env.VITE_API_URL || '';
-                  const src = wm.url.startsWith('/') ? base + wm.url : wm.url;
-                  return <img src={src} alt={wm.name} className="conv-watermark-preview" />;
-                })()}
-              </div>
-              <p className="conv-upload-hint">
-                Applied automatically to every image in this convention when scheduled.
-              </p>
-            </div>
-          )}
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Drip window start *</label>
-              <input
-                className="input"
-                type="datetime-local"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>Drip window end *</label>
-              <input
-                className="input"
-                type="datetime-local"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>Posts per day</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                step={1}
-                value={postsPerDay}
-                onChange={e => setPostsPerDay(Math.max(1, parseInt(e.target.value, 10) || 1))}
-              />
-            </div>
-            <div className="form-group">
-              <label>Min. hours between posts</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                step={0.5}
-                value={minHoursBetween}
-                onChange={e => setMinHoursBetween(Math.max(0, parseFloat(e.target.value) || 0))}
-                placeholder="0 = no minimum"
-              />
-            </div>
-          </div>
-          <p className="conv-schedule-hint">
-            Posts are scattered randomly across each day, with a random gap of the
-            minimum delay ±60 minutes between them. The minimum delay takes
-            precedence: {' '}
-            {minHoursBetween > 0
-              ? <>at most <strong>{effectivePerDay}</strong> post{effectivePerDay !== 1 ? 's' : ''}/day will go out ({minHoursBetween}h apart caps it at {Math.max(1, Math.floor(24 / minHoursBetween))}/day).</>
-              : <>with no minimum set, all <strong>{postsPerDay}</strong> post{postsPerDay !== 1 ? 's' : ''}/day are spread evenly across the day.</>}
-          </p>
-
           <div className="form-group">
-            <label>Platforms *</label>
-            <div className="platform-toggles">
-              {PLATFORM_OPTIONS.map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  className={`platform-toggle ${platforms.includes(p) ? 'active' : ''}`}
-                  onClick={() => togglePlatform(p)}
-                >
-                  <PlatformIcon platform={p} />
-                  <span>{p}</span>
-                </button>
-              ))}
-            </div>
+            <label>Min. hours between posts</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={0.5}
+              value={minHoursBetween}
+              onChange={e => setMinHoursBetween(Math.max(0, parseFloat(e.target.value) || 0))}
+              placeholder="0 = no minimum"
+            />
           </div>
+        </div>
+        <p className="conv-schedule-hint">
+          Posts are scattered randomly across each day, with a random gap of the
+          minimum delay ±60 minutes between them. The minimum delay takes
+          precedence: {' '}
+          {minHoursBetween > 0
+            ? <>at most <strong>{effectivePerDay}</strong> post{effectivePerDay !== 1 ? 's' : ''}/day will go out ({minHoursBetween}h apart caps it at {Math.max(1, Math.floor(24 / minHoursBetween))}/day).</>
+            : <>with no minimum set, all <strong>{postsPerDay}</strong> post{postsPerDay !== 1 ? 's' : ''}/day are spread evenly across the day.</>}
+        </p>
 
-          {platformAccounts.length > 0 && (
-            <div className="form-group">
-              <label>Accounts</label>
-              <div className="account-selects">
-                {platforms.map(p => {
-                  const opts = platformAccounts.filter(a => a.platform === p);
-                  if (opts.length === 0) return null;
-                  return (
-                    <div key={p} className="account-select-row">
-                      <PlatformIcon platform={p} />
-                      <select
-                        className="select"
-                        value={accountIds[p] ?? ''}
-                        onChange={e => setAccountIds(prev => ({ ...prev, [p]: e.target.value }))}
-                      >
-                        <option value="">— select account —</option>
-                        {opts.map(a => (
-                          <option key={a.id} value={a.id}>{a.displayName || a.accountName}</option>
-                        ))}
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        <div className="form-group">
+          <label>Platforms *</label>
+          <div className="platform-toggles">
+            {PLATFORM_OPTIONS.map(p => (
+              <button
+                key={p}
+                type="button"
+                className={`platform-toggle ${platforms.includes(p) ? 'active' : ''}`}
+                onClick={() => togglePlatform(p)}
+              >
+                <PlatformIcon platform={p} />
+                <span>{p}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-          {footers.length > 0 && platforms.length > 0 && (
-            <div className="form-group">
-              <label>Default footers</label>
-              <div className="account-selects">
-                {platforms.map(p => (
+        {platformAccounts.length > 0 && (
+          <div className="form-group">
+            <label>Accounts</label>
+            <div className="account-selects">
+              {platforms.map(p => {
+                const opts = platformAccounts.filter(a => a.platform === p);
+                if (opts.length === 0) return null;
+                return (
                   <div key={p} className="account-select-row">
                     <PlatformIcon platform={p} />
                     <select
                       className="select"
-                      value={footerIds[p] ?? ''}
-                      onChange={e => setFooterIds(prev => {
-                        const next = { ...prev };
-                        if (e.target.value) next[p] = e.target.value;
-                        else delete next[p];
-                        return next;
-                      })}
+                      value={accountIds[p] ?? ''}
+                      onChange={e => setAccountIds(prev => ({ ...prev, [p]: e.target.value }))}
                     >
-                      <option value="">None</option>
-                      {footers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
+                      <option value="">— select account —</option>
+                      {opts.map(a => (
+                        <option key={a.id} value={a.id}>{a.displayName || a.accountName}</option>
                       ))}
                     </select>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          )}
-
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : initial ? 'Save changes' : 'Create queue'}
-            </button>
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+
+        {footers.length > 0 && platforms.length > 0 && (
+          <div className="form-group">
+            <label>Default footers</label>
+            <div className="account-selects">
+              {platforms.map(p => (
+                <div key={p} className="account-select-row">
+                  <PlatformIcon platform={p} />
+                  <select
+                    className="select"
+                    value={footerIds[p] ?? ''}
+                    onChange={e => setFooterIds(prev => {
+                      const next = { ...prev };
+                      if (e.target.value) next[p] = e.target.value;
+                      else delete next[p];
+                      return next;
+                    })}
+                  >
+                    <option value="">None</option>
+                    {footers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : initial ? 'Save changes' : 'Create queue'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

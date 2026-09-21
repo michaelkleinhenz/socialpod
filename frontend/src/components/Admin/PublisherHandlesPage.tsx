@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import type { PublisherHandle } from '../../types';
 import { Trash2, Plus, X, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Modal } from '../Common/Modal';
 import './Admin.css';
 
 const PLATFORMS = ['instagram', 'bluesky', 'threads', 'mastodon', 'twitter'];
@@ -182,39 +183,37 @@ export function PublisherHandlesPage() {
       )}
 
       {showForm && (
-        <div className="modal-overlay" onClick={closeForm}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>{editEntry ? 'Edit Entry' : 'New Publisher Handle'}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={closeForm}><X size={18} /></button>
-            </div>
-
-            <div className="form-group">
-              <label>Name (as it appears on BGG)</label>
-              <input
-                className="input"
-                placeholder="e.g. Lookout Games"
-                value={formName}
-                onChange={e => setFormName(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Social handles</label>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 10px' }}>
-                Leave a platform blank to skip it. The @ is added automatically.
-              </p>
-              <HandleEditor handles={formHandles} onChange={setFormHandles} />
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={closeForm}>Cancel</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
+        <Modal onClose={closeForm}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>{editEntry ? 'Edit Entry' : 'New Publisher Handle'}</h2>
+            <button className="btn btn-ghost btn-sm" onClick={closeForm}><X size={18} /></button>
           </div>
-        </div>
+
+          <div className="form-group">
+            <label>Name (as it appears on BGG)</label>
+            <input
+              className="input"
+              placeholder="e.g. Lookout Games"
+              value={formName}
+              onChange={e => setFormName(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>Social handles</label>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 10px' }}>
+              Leave a platform blank to skip it. The @ is added automatically.
+            </p>
+            <HandleEditor handles={formHandles} onChange={setFormHandles} />
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={closeForm}>Cancel</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
