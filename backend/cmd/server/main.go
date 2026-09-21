@@ -73,18 +73,26 @@ func main() {
 
 	// CORS — restrict to the configured APP_URL; additional origins can be
 	// appended via the CORS_ORIGINS env var (comma-separated).
+	// Browser extensions (chrome-extension://, moz-extension://) are allowed
+	// automatically so the MCP Chrome extension can reach /api/mcp.
 	// AllowCredentials is intentionally omitted: auth is header-based (Bearer
 	// tokens), so cookie-credential sharing is not required.
-	allowedOrigins := []string{cfg.AppURL}
+	allowedOrigins := map[string]bool{cfg.AppURL: true}
 	if extra := os.Getenv("CORS_ORIGINS"); extra != "" {
 		for _, o := range strings.Split(extra, ",") {
 			if o = strings.TrimSpace(o); o != "" {
-				allowedOrigins = append(allowedOrigins, o)
+				allowedOrigins[o] = true
 			}
 		}
 	}
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:  allowedOrigins,
+		AllowOriginFunc: func(origin string) bool {
+			if allowedOrigins[origin] {
+				return true
+			}
+			return strings.HasPrefix(origin, "chrome-extension://") ||
+				strings.HasPrefix(origin, "moz-extension://")
+		},
 		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:  []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders: []string{"Content-Length"},
