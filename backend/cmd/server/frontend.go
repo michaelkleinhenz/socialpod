@@ -19,6 +19,12 @@ func serveFrontend(r *gin.Engine) {
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 
+		// API routes that don't match should return JSON 404, not the SPA.
+		if strings.HasPrefix(path, "/api/") || path == "/api" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+			return
+		}
+
 		// Serve static assets directly
 		if strings.Contains(path, ".") {
 			c.FileFromFS(path, http.FS(distFS))
