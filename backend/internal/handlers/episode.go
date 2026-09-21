@@ -128,7 +128,9 @@ func (h *EpisodeHandler) Submit(c *gin.Context) {
 	if form, err := c.MultipartForm(); err == nil {
 		uploadedImageFiles = form.File["image"]
 	}
-	if len(uploadedImageFiles) == 0 {
+	// A draft loaded back into the form carries its image as a stored URL
+	// instead of a fresh upload, so either source satisfies the requirement.
+	if len(uploadedImageFiles) == 0 && len(input.ImageURLs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "image is required"})
 		return
 	}
@@ -144,7 +146,7 @@ func (h *EpisodeHandler) Submit(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
-	webhookErr := h.sendToWebhook(ctx, &team, &input, savedImageURLs)
+	webhookErr := h.sendToWebhook(ctx, &team, &input, mergeImageURLs(input.ImageURLs, savedImageURLs))
 	if webhookErr != nil {
 		log.Printf("[EpisodeCreator] Error sending to webhook: %v", webhookErr)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send episode: " + webhookErr.Error()})
@@ -273,7 +275,7 @@ func (h *EpisodeHandler) SaveDraft(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
-	allImages := append(input.ImageURLs, savedImageURLs...)
+	allImages := mergeImageURLs(input.ImageURLs, savedImageURLs)
 
 	platModels := make([]models.Platform, len(input.Platforms))
 	for i, p := range input.Platforms {
@@ -404,7 +406,7 @@ func (h *EpisodeHandler) UpdateDraft(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
-	allImages := append(input.ImageURLs, savedImageURLs...)
+	allImages := mergeImageURLs(input.ImageURLs, savedImageURLs)
 
 	platModels := make([]models.Platform, len(input.Platforms))
 	for i, p := range input.Platforms {
@@ -614,7 +616,7 @@ func (h *EpisodeHandler) createPost(ctx context.Context, c *gin.Context, input *
 		postType = models.PostTypePost
 	}
 
-	allImages := append(input.ImageURLs, imageURLs...)
+	allImages := mergeImageURLs(input.ImageURLs, imageURLs)
 
 	post := models.Post{
 		UserID:           objID,
