@@ -1949,7 +1949,7 @@ func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []stri
 	defer cancel()
 
 	// BGG URLs use the dedicated BGG API
-	if m := agentBGGRe.FindStringSubmatch(articleURL); m != nil {
+	if m := bggURLRe.FindStringSubmatch(articleURL); m != nil {
 		var bggToken string
 		var settings models.AppSettings
 		if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err == nil {

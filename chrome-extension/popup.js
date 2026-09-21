@@ -75,41 +75,60 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     captureBtn.disabled = true;
     captureBtn.textContent = "Capturing...";
-    showStatus("Taking screenshot...", "info");
+    showStatus("Capturing page...", "info");
 
     try {
-      const screenshot = await chrome.tabs.captureVisibleTab(null, {
-        format: "jpeg",
-        quality: 85,
-      });
-
-      showStatus("Extracting page images...", "info");
-
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      let pageData = { images: [], ogImage: "", pageTitle: tab.title, url: tab.url };
 
+      // Capture a screenshot of the visible tab
+      let screenshot = null;
       try {
-        const response = await chrome.tabs.sendMessage(tab.id, { action: "extractImages" });
-        if (response) pageData = response;
+        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "jpeg", quality: 80 });
+        if (dataUrl) {
+          const base64 = dataUrl.split(",")[1];
+          if (base64) {
+            screenshot = { data: base64, filename: "screenshot.jpg" };
+          }
+        }
       } catch (e) {
-        // Content script may not be injected on some pages
+        console.warn("Could not capture screenshot:", e);
+      }
+
+      // Extract image URLs from the page DOM
+      showStatus("Extracting page images...", "info");
+      let imageUrls = [];
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: extractPageImages,
+        });
+        if (results && results[0] && results[0].result) {
+          imageUrls = results[0].result;
+        }
+      } catch (e) {
+        console.warn("Could not extract images from page:", e);
+      }
+
+      // Download all candidate images in the browser
+      showStatus("Downloading images...", "info");
+      const images = await downloadAllImages(imageUrls);
+
+      // Add the screenshot last (lowest priority for content, but provides context)
+      if (screenshot) {
+        images.push(screenshot);
       }
 
       showStatus("Sending to SocialPod...", "info");
 
-      const screenshotBase64 = screenshot.replace(/^data:image\/\w+;base64,/, "");
-
       const payload = {
-        url: pageData.url || tab.url,
+        url: tab.url,
         entityType: entityType,
         description: document.getElementById("description").value,
-        screenshot: screenshotBase64,
-        pageTitle: pageData.pageTitle,
-        ogImage: pageData.ogImage,
-        images: pageData.images,
+        pageTitle: tab.title,
+        images: images,
       };
 
-      const resp = await fetch(config.serverUrl + "/api/agent/capture", {
+      const resp = await fetch(config.serverUrl + "/api/capture", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -136,6 +155,115 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
+
+// Runs inside the active tab to extract image URLs from the page DOM.
+function extractPageImages() {
+  const images = [];
+  const seen = new Set();
+
+  function add(url) {
+    if (!url || seen.has(url) || url.startsWith("data:")) return;
+    seen.add(url);
+    images.push(url);
+  }
+
+  // og:image
+  const ogImage = document.querySelector('meta[property="og:image"]');
+  if (ogImage) add(ogImage.content);
+
+  // twitter:image
+  const twImage = document.querySelector('meta[name="twitter:image"], meta[name="twitter:image:src"], meta[property="twitter:image"]');
+  if (twImage) add(twImage.content);
+
+  // link rel=image_src
+  const linkImage = document.querySelector('link[rel="image_src"]');
+  if (linkImage) add(linkImage.href);
+
+  // JSON-LD image
+  try {
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
+      try {
+        const data = JSON.parse(el.textContent);
+        const items = Array.isArray(data) ? data : data["@graph"] ? [data, ...data["@graph"]] : [data];
+        for (const item of items) {
+          if (!item || typeof item !== "object") continue;
+          const img = item.image;
+          if (typeof img === "string") add(img);
+          else if (Array.isArray(img) && img.length > 0) {
+            add(typeof img[0] === "string" ? img[0] : img[0]?.url);
+          } else if (img && typeof img === "object") {
+            add(img.url);
+          }
+        }
+      } catch (_) {}
+    });
+  } catch (_) {}
+
+  // Large <img> elements sorted by size
+  const imgs = Array.from(document.querySelectorAll("img"))
+    .filter((img) => {
+      const src = img.src || img.dataset.src || img.dataset.lazySrc;
+      if (!src || src.startsWith("data:")) return false;
+      const w = img.naturalWidth || parseInt(img.getAttribute("width")) || 0;
+      const h = img.naturalHeight || parseInt(img.getAttribute("height")) || 0;
+      if (w > 0 && w < 100) return false;
+      if (h > 0 && h < 100) return false;
+      const lower = src.toLowerCase();
+      const negatives = ["logo", "icon", "avatar", "sprite", "pixel", "tracking", "badge", "favicon", "spinner"];
+      return !negatives.some((n) => lower.includes(n));
+    })
+    .sort((a, b) => {
+      const aSize = (a.naturalWidth || 0) * (a.naturalHeight || 0);
+      const bSize = (b.naturalWidth || 0) * (b.naturalHeight || 0);
+      return bSize - aSize;
+    })
+    .slice(0, 5);
+
+  for (const img of imgs) {
+    add(img.src || img.dataset.src || img.dataset.lazySrc);
+  }
+
+  return images;
+}
+
+// Downloads all candidate images in the browser and returns them as
+// {data: base64, filename: string} objects. Skips URLs that fail.
+async function downloadAllImages(urls) {
+  const images = [];
+  for (const url of urls) {
+    if (images.length >= 8) break;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+
+      const blob = await resp.blob();
+      if (!blob.type.startsWith("image/")) continue;
+      if (blob.size < 1000) continue;
+
+      const ext = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+      const base64 = await blobToBase64(blob);
+      if (!base64) continue;
+
+      images.push({ data: base64, filename: `image${images.length}.${ext}` });
+    } catch (e) {
+      console.warn("Failed to download image:", url, e);
+    }
+  }
+  return images;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      const base64 = result?.split(",")[1] || null;
+      resolve(base64);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
 
 function showStatus(message, type) {
   const status = document.getElementById("status");

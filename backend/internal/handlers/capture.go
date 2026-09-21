@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,39 +27,16 @@ import (
 
 const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 
-var agentBGGRe = regexp.MustCompile(`boardgamegeek\.com/boardgame[^/]*/(\d+)`)
+var bggURLRe = regexp.MustCompile(`boardgamegeek\.com/boardgame[^/]*/(\d+)`)
 
-type AgentHandler struct {
+// CaptureHandler handles the Chrome extension capture endpoint.
+type CaptureHandler struct {
 	DB        *database.MongoDB
 	UploadDir string
 	BGG       *BGGHandler
 }
 
-type AgentGenerateInput struct {
-	URL         string `json:"url"`
-	Description string `json:"description"`
-	EntityType  string `json:"entityType"`
-}
-
-var defaultAgentSystemPrompt string
-
-func init() {
-	defaultAgentSystemPrompt = loadAgentInstructions()
-}
-
-func loadAgentInstructions() string {
-	data, err := os.ReadFile("agent-instructions.md")
-	if err != nil {
-		// Try the dist directory (embedded frontend build)
-		data, err = os.ReadFile("dist/agent-instructions.md")
-	}
-	if err == nil && len(data) > 0 {
-		return string(data) + "\n\nReply with ONLY valid JSON, no markdown code fences, no commentary."
-	}
-	return fallbackAgentSystemPrompt
-}
-
-const fallbackAgentSystemPrompt = `You are a content creation assistant for a social media management platform. Given a URL and/or a description, create engaging content suitable for social media posting. All created content will be saved as drafts for human review before publishing.
+const defaultSystemPrompt = `You are a content creation assistant for a social media management platform. Given a URL and/or a description, create engaging content suitable for social media posting. All created content will be saved as drafts for human review before publishing.
 
 When given a URL, analyze its content (provided to you as extracted page metadata) and create content based on it.
 
@@ -95,301 +73,21 @@ For "post":
 Always write in a professional but engaging tone. Include relevant context from the source material.
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
 
-func (h *AgentHandler) GetInstructions(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"instructions": defaultAgentSystemPrompt})
+type CaptureImage struct {
+	Data     string `json:"data"`
+	Filename string `json:"filename"`
 }
 
-func (h *AgentHandler) Generate(c *gin.Context) {
-	var input AgentGenerateInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if input.URL == "" && input.Description == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Either url or description is required"})
-		return
-	}
-	if input.EntityType != "news" && input.EntityType != "episode" && input.EntityType != "post" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "entityType must be news, episode, or post"})
-		return
-	}
-
-	teamIDStr, ok := c.Get("teamId")
-	if !ok || teamIDStr.(string) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No team associated with this account"})
-		return
-	}
-	teamID, err := primitive.ObjectIDFromHex(teamIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team ID"})
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	var team models.Team
-	if err := h.DB.Teams().FindOne(ctx, bson.M{"_id": teamID}).Decode(&team); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
-		return
-	}
-
-	pluginEnabled := false
-	for _, p := range team.EnabledPlugins {
-		if p == "agent" {
-			pluginEnabled = true
-			break
-		}
-	}
-	if !pluginEnabled {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Agent plugin is not enabled for this team"})
-		return
-	}
-
-	var settings models.AppSettings
-	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil || settings.OpenRouterAPIKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenRouter is not configured. Ask your admin to set up an OpenRouter API key in Settings."})
-		return
-	}
-
-	var pageInfo string
-	var contentImageCandidates []string
-	var bggImageURL string
-	if input.URL != "" {
-		if m := agentBGGRe.FindStringSubmatch(input.URL); m != nil {
-			pageInfo, bggImageURL = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
-		}
-		if pageInfo == "" {
-			html, _ := fetchPageHTML(ctx, input.URL)
-			var title, description, body string
-			if html != "" {
-				title, description, _, body = extractPageMetadata(html)
-				contentImageCandidates = extractContentImageCandidates(html, input.URL)
-			}
-			var parts []string
-			parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
-			if title != "" {
-				parts = append(parts, fmt.Sprintf("Page Title: %s", title))
-			}
-			if description != "" {
-				parts = append(parts, fmt.Sprintf("Description: %s", description))
-			}
-			if body != "" {
-				parts = append(parts, fmt.Sprintf("Page Content:\n%s", body))
-			}
-			pageInfo = strings.Join(parts, "\n")
-		}
-	}
-
-	var userPrompt string
-	if pageInfo != "" && input.Description != "" {
-		userPrompt = fmt.Sprintf("Source URL metadata:\n%s\n\nAdditional instructions: %s\n\nCreate a %s entity from this.", pageInfo, input.Description, input.EntityType)
-	} else if pageInfo != "" {
-		userPrompt = fmt.Sprintf("Source URL metadata:\n%s\n\nCreate a %s entity from this.", pageInfo, input.EntityType)
-	} else {
-		userPrompt = fmt.Sprintf("Description: %s\n\nCreate a %s entity from this.", input.Description, input.EntityType)
-	}
-
-	systemPrompt := team.AgentSystemPrompt
-	if systemPrompt == "" {
-		systemPrompt = defaultAgentSystemPrompt
-	}
-	if settings.AILanguage != "" {
-		systemPrompt += fmt.Sprintf("\n\nWrite in %s.", settings.AILanguage)
-	}
-
-	model := settings.OpenRouterModel
-	if model == "" {
-		model = "openai/gpt-4o-mini"
-	}
-
-	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": userPrompt},
-		},
-	})
-
-	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
-	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to reach OpenRouter: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("OpenRouter returned %d: %s", resp.StatusCode, string(body))})
-		return
-	}
-
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Invalid response from OpenRouter"})
-		return
-	}
-
-	aiContent := result.Choices[0].Message.Content
-	aiContent = strings.TrimSpace(aiContent)
-	aiContent = strings.TrimPrefix(aiContent, "```json")
-	aiContent = strings.TrimPrefix(aiContent, "```")
-	aiContent = strings.TrimSuffix(aiContent, "```")
-	aiContent = strings.TrimSpace(aiContent)
-
-	userID, _ := c.Get("userId")
-	objID, _ := primitive.ObjectIDFromHex(userID.(string))
-
-	// Determine the overlay type: news entries use "news_entry" (NewsCreatorWatermarkID),
-	// while episodes use their episodeType (news/review/special episode overlays).
-	var episodeType string
-	switch input.EntityType {
-	case "news":
-		episodeType = "news_entry"
-	case "episode":
-		var etParsed struct {
-			EpisodeType string `json:"episodeType"`
-		}
-		json.Unmarshal([]byte(aiContent), &etParsed)
-		episodeType = etParsed.EpisodeType
-	}
-
-	log.Printf("[Agent] Generate: entityType=%s episodeType=%s bggImageURL=%q contentImageCandidates=%v", input.EntityType, episodeType, bggImageURL, contentImageCandidates)
-	var imageURLs []string
-	if bggImageURL != "" && h.BGG != nil {
-		imgData, imgErr := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
-		if imgErr != nil {
-			log.Printf("[Agent] Warning: failed to download/process BGG image %s: %v", bggImageURL, imgErr)
-		} else {
-			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-			if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
-				dst := filepath.Join(h.UploadDir, filename)
-				if err := os.WriteFile(dst, imgData, 0o644); err == nil {
-					h.DB.Uploads().InsertOne(ctx, models.Upload{
-						Filename:    filename,
-						ContentType: "image/jpeg",
-						Data:        imgData,
-						Size:        int64(len(imgData)),
-						CreatedAt:   time.Now(),
-					})
-					imageURLs = append(imageURLs, "/api/uploads/"+filename)
-				}
-			}
-		}
-	} else if len(contentImageCandidates) > 0 {
-		for _, candidate := range contentImageCandidates {
-			if h.BGG != nil {
-				log.Printf("[Agent] Downloading content image and applying overlay: %s", candidate)
-				imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, candidate, episodeType)
-				if imgErr != nil {
-					log.Printf("[Agent] Warning: failed to download/process content image %s: %v (trying next candidate)", candidate, imgErr)
-					continue
-				}
-				filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-				if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
-					dst := filepath.Join(h.UploadDir, filename)
-					if err := os.WriteFile(dst, imgData, 0o644); err == nil {
-						h.DB.Uploads().InsertOne(ctx, models.Upload{
-							Filename:    filename,
-							ContentType: "image/jpeg",
-							Data:        imgData,
-							Size:        int64(len(imgData)),
-							CreatedAt:   time.Now(),
-						})
-						imageURLs = append(imageURLs, "/api/uploads/"+filename)
-					}
-				}
-				break
-			}
-			log.Printf("[Agent] Downloading content image (no overlay available): %s", candidate)
-			saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, candidate)
-			if saveErr != nil {
-				log.Printf("[Agent] Warning: failed to download content image %s: %v (trying next candidate)", candidate, saveErr)
-				continue
-			}
-			log.Printf("[Agent] Content image saved as: %s", saved)
-			imageURLs = append(imageURLs, saved)
-			break
-		}
-		if len(imageURLs) == 0 {
-			log.Printf("[Agent] All %d image candidates failed to download", len(contentImageCandidates))
-		}
-	} else {
-		log.Printf("[Agent] No image source found (bggImageURL=%q, candidates=%d)", bggImageURL, len(contentImageCandidates))
-	}
-
-	log.Printf("[Agent] Final imageURLs for draft: %v", imageURLs)
-	switch input.EntityType {
-	case "news":
-		draft, err := h.createNewsDraft(ctx, aiContent, objID, &teamID, input.URL, imageURLs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "AI generated content but failed to save draft: " + err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"entityType": "news",
-			"draft":      draft,
-		})
-
-	case "episode":
-		draft, err := h.createEpisodeDraft(ctx, aiContent, objID, &teamID, imageURLs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "AI generated content but failed to save draft: " + err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"entityType": "episode",
-			"draft":      draft,
-		})
-
-	case "post":
-		draft, err := h.createPostDraft(ctx, aiContent, objID, &teamID, imageURLs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "AI generated content but failed to save draft: " + err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"entityType": "post",
-			"draft":      draft,
-		})
-	}
+type CaptureInput struct {
+	URL         string         `json:"url"`
+	EntityType  string         `json:"entityType"`
+	Description string         `json:"description"`
+	PageTitle   string         `json:"pageTitle"`
+	Images      []CaptureImage `json:"images"`
 }
 
-type CaptureImageInfo struct {
-	Src          string `json:"src"`
-	NaturalWidth int    `json:"naturalWidth"`
-	NaturalHeight int   `json:"naturalHeight"`
-	DisplayWidth int    `json:"displayWidth"`
-	DisplayHeight int   `json:"displayHeight"`
-	X            int    `json:"x"`
-	Y            int    `json:"y"`
-	Alt          string `json:"alt"`
-	Classes      string `json:"classes"`
-}
-
-type AgentCaptureInput struct {
-	URL         string             `json:"url"`
-	EntityType  string             `json:"entityType"`
-	Description string             `json:"description"`
-	Screenshot  string             `json:"screenshot"`
-	PageTitle   string             `json:"pageTitle"`
-	OGImage     string             `json:"ogImage"`
-	Images      []CaptureImageInfo `json:"images"`
-}
-
-func (h *AgentHandler) Capture(c *gin.Context) {
-	var input AgentCaptureInput
+func (h *CaptureHandler) Capture(c *gin.Context) {
+	var input CaptureInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -427,94 +125,34 @@ func (h *AgentHandler) Capture(c *gin.Context) {
 		return
 	}
 
-	pluginEnabled := false
-	for _, p := range team.EnabledPlugins {
-		if p == "agent" {
-			pluginEnabled = true
-			break
-		}
-	}
-	if !pluginEnabled {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Agent plugin is not enabled for this team"})
-		return
-	}
-
 	var settings models.AppSettings
 	if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err != nil || settings.OpenRouterAPIKey == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "OpenRouter is not configured"})
 		return
 	}
 
-	// Step 1: Use vision model to pick the best image from the screenshot
+	// Step 1: Process images sent by the Chrome extension.
+	// The extension sends all candidate images (og:image, page images) plus a
+	// screenshot, all as base64 data downloaded in the browser. If there are
+	// multiple candidates, use a vision model to pick the best content image.
+	episodeType := "news_entry"
+	if input.EntityType == "episode" {
+		episodeType = "news"
+	}
+
 	var imageURLs []string
-	selectedImageURL := h.selectImageWithVision(ctx, input, settings)
-
-	if selectedImageURL != "" {
-		log.Printf("[Agent/Capture] Vision selected image: %s", selectedImageURL)
-	} else {
-		log.Printf("[Agent/Capture] Vision did not select an image, trying og:image and candidates")
-		if input.OGImage != "" {
-			selectedImageURL = input.OGImage
-		} else {
-			for _, img := range input.Images {
-				if img.NaturalWidth >= 200 && img.NaturalHeight >= 200 {
-					selectedImageURL = img.Src
-					break
-				}
-			}
+	if len(input.Images) > 0 {
+		selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterModel, input.URL)
+		if selected != nil {
+			imageURLs = h.saveImage(ctx, c, selected, episodeType)
 		}
+		log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 	}
 
-	// Step 2: Download and process the selected image
-	if selectedImageURL != "" {
-		episodeType := "news_entry"
-		if input.EntityType == "episode" {
-			episodeType = "news"
-		}
-
-		if h.BGG != nil {
-			log.Printf("[Agent/Capture] Downloading and processing image: %s", selectedImageURL)
-			imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, selectedImageURL, episodeType)
-			if imgErr != nil {
-				log.Printf("[Agent/Capture] Failed to process image: %v, trying raw download", imgErr)
-				saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, selectedImageURL)
-				if saveErr != nil {
-					log.Printf("[Agent/Capture] Raw download also failed: %v", saveErr)
-				} else {
-					imageURLs = append(imageURLs, saved)
-				}
-			} else {
-				filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-				if err := os.MkdirAll(h.UploadDir, 0o755); err == nil {
-					dst := filepath.Join(h.UploadDir, filename)
-					if err := os.WriteFile(dst, imgData, 0o644); err == nil {
-						h.DB.Uploads().InsertOne(ctx, models.Upload{
-							Filename:    filename,
-							ContentType: "image/jpeg",
-							Data:        imgData,
-							Size:        int64(len(imgData)),
-							CreatedAt:   time.Now(),
-						})
-						imageURLs = append(imageURLs, "/api/uploads/"+filename)
-					}
-				}
-			}
-		} else {
-			saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, selectedImageURL)
-			if saveErr != nil {
-				log.Printf("[Agent/Capture] Download failed: %v", saveErr)
-			} else {
-				imageURLs = append(imageURLs, saved)
-			}
-		}
-	}
-
-	log.Printf("[Agent/Capture] Image URLs for draft: %v", imageURLs)
-
-	// Step 3: Generate content with AI (same as Generate handler)
+	// Step 2: Fetch page info for AI content generation
 	var pageInfo string
 	if input.URL != "" {
-		if m := agentBGGRe.FindStringSubmatch(input.URL); m != nil {
+		if m := bggURLRe.FindStringSubmatch(input.URL); m != nil {
 			pageInfo, _ = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
 		}
 		if pageInfo == "" {
@@ -540,6 +178,7 @@ func (h *AgentHandler) Capture(c *gin.Context) {
 		}
 	}
 
+	// Step 3: Generate content with AI
 	var userPrompt string
 	if pageInfo != "" && input.Description != "" {
 		userPrompt = fmt.Sprintf("Source URL metadata:\n%s\n\nAdditional instructions: %s\n\nCreate a %s entity from this.", pageInfo, input.Description, input.EntityType)
@@ -551,7 +190,7 @@ func (h *AgentHandler) Capture(c *gin.Context) {
 
 	systemPrompt := team.AgentSystemPrompt
 	if systemPrompt == "" {
-		systemPrompt = defaultAgentSystemPrompt
+		systemPrompt = defaultSystemPrompt
 	}
 	if settings.AILanguage != "" {
 		systemPrompt += fmt.Sprintf("\n\nWrite in %s.", settings.AILanguage)
@@ -634,90 +273,104 @@ func (h *AgentHandler) Capture(c *gin.Context) {
 	}
 }
 
-func (h *AgentHandler) selectImageWithVision(ctx context.Context, input AgentCaptureInput, settings models.AppSettings) string {
-	if input.Screenshot == "" || len(input.Images) == 0 {
-		return ""
-	}
-
-	// Build a list of candidate images for the vision model
-	var imageList strings.Builder
-	validImages := make([]CaptureImageInfo, 0, len(input.Images))
-	for _, img := range input.Images {
-		if img.Src == "" || strings.HasPrefix(img.Src, "data:") {
+// selectBestImage picks the best content image from the candidates.
+// If there's only one valid image, it's returned directly.
+// If there are multiple, a vision model chooses the best article image.
+func (h *CaptureHandler) selectBestImage(ctx context.Context, images []CaptureImage, apiKey, model, articleURL string) *CaptureImage {
+	// Decode and validate all images first
+	var valid []int
+	for i, img := range images {
+		if img.Data == "" {
 			continue
 		}
-		if img.NaturalWidth > 0 && img.NaturalWidth < 30 {
+		raw, err := base64.StdEncoding.DecodeString(img.Data)
+		if err != nil {
 			continue
 		}
-		if img.NaturalHeight > 0 && img.NaturalHeight < 30 {
+		ct := http.DetectContentType(raw)
+		if !strings.HasPrefix(ct, "image/") {
 			continue
 		}
-		validImages = append(validImages, img)
+		_ = raw
+		valid = append(valid, i)
 	}
 
-	if len(validImages) == 0 {
-		return ""
+	if len(valid) == 0 {
+		return nil
+	}
+	if len(valid) == 1 {
+		return &images[valid[0]]
 	}
 
-	for i, img := range validImages {
-		fmt.Fprintf(&imageList, "[%d] %s (size: %dx%d, alt: %q)\n", i, img.Src, img.NaturalWidth, img.NaturalHeight, img.Alt)
+	// Multiple images: use vision model to pick the best content image
+	idx := h.visionSelectImage(ctx, images, valid, apiKey, model, articleURL)
+	return &images[idx]
+}
+
+// visionSelectImage sends all candidate images to a vision model and asks it
+// to pick the best one for an article/social media post. Returns the index
+// into the original images slice.
+func (h *CaptureHandler) visionSelectImage(ctx context.Context, images []CaptureImage, validIndices []int, apiKey, model, articleURL string) int {
+	if model == "" {
+		model = "openai/gpt-4o-mini"
 	}
 
-	visionPrompt := fmt.Sprintf(`This is a screenshot of a web page at %s.
+	// Build multimodal message content: text prompt + all images
+	var content []map[string]any
+	content = append(content, map[string]any{
+		"type": "text",
+		"text": fmt.Sprintf(
+			"I have %d images from the web page at %s. Pick the ONE image that would work best as the featured image for a social media post about this article. "+
+				"Prefer high-quality photos or illustrations that represent the article content. "+
+				"Avoid screenshots of the full page, navigation elements, ads, logos, or generic stock photos. "+
+				"The last image may be a screenshot of the page — only pick it if no better content image exists. "+
+				"Reply with ONLY the image number (1-%d), nothing else.",
+			len(validIndices), articleURL, len(validIndices)),
+	})
 
-I need to identify the MAIN CONTENT IMAGE — the primary article, product, or hero image that represents this page's content. Ignore logos, icons, avatars, navigation elements, ads, and decorative images.
-
-Here are the images found on the page:
-%s
-Return ONLY the index number (e.g. "0" or "3") of the image that is the main content image. If none of them is a clear content image, return "-1".`, input.URL, imageList.String())
-
-	visionModel := settings.OpenRouterModel
-	if visionModel == "" {
-		visionModel = "openai/gpt-4o-mini"
-	}
-
-	messages := []map[string]any{
-		{
-			"role": "user",
-			"content": []map[string]any{
-				{
-					"type": "image_url",
-					"image_url": map[string]string{
-						"url": "data:image/jpeg;base64," + input.Screenshot,
-					},
-				},
-				{
-					"type": "text",
-					"text": visionPrompt,
-				},
+	for i, idx := range validIndices {
+		ct := "image/jpeg"
+		if raw, err := base64.StdEncoding.DecodeString(images[idx].Data); err == nil {
+			detected := http.DetectContentType(raw)
+			if strings.HasPrefix(detected, "image/") {
+				ct = detected
+			}
+		}
+		content = append(content, map[string]any{
+			"type": "text",
+			"text": fmt.Sprintf("Image %d:", i+1),
+		})
+		content = append(content, map[string]any{
+			"type": "image_url",
+			"image_url": map[string]string{
+				"url": fmt.Sprintf("data:%s;base64,%s", ct, images[idx].Data),
 			},
-		},
+		})
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model":    visionModel,
-		"messages": messages,
+		"model": model,
+		"messages": []map[string]any{
+			{"role": "user", "content": content},
+		},
+		"max_tokens": 10,
 	})
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
-	if err != nil {
-		log.Printf("[Agent/Capture] Failed to create vision request: %v", err)
-		return ""
-	}
-	req.Header.Set("Authorization", "Bearer "+settings.OpenRouterAPIKey)
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("[Agent/Capture] Vision API request failed: %v", err)
-		return ""
+		log.Printf("[Capture] Vision model request failed: %v, using first image", err)
+		return validIndices[0]
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[Agent/Capture] Vision API returned %d: %s", resp.StatusCode, string(body))
-		return ""
+		log.Printf("[Capture] Vision model returned %d: %s, using first image", resp.StatusCode, string(body))
+		return validIndices[0]
 	}
 
 	var result struct {
@@ -728,23 +381,84 @@ Return ONLY the index number (e.g. "0" or "3") of the image that is the main con
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
-		log.Printf("[Agent/Capture] Failed to parse vision response: %v", err)
-		return ""
+		log.Printf("[Capture] Vision model response invalid, using first image")
+		return validIndices[0]
 	}
 
 	answer := strings.TrimSpace(result.Choices[0].Message.Content)
-	log.Printf("[Agent/Capture] Vision model answer: %q", answer)
-
-	idx, err := strconv.Atoi(answer)
-	if err != nil || idx < 0 || idx >= len(validImages) {
-		log.Printf("[Agent/Capture] Vision returned invalid index %q (valid range 0-%d)", answer, len(validImages)-1)
-		return ""
+	// Extract the first number from the response
+	numRe := regexp.MustCompile(`\d+`)
+	numStr := numRe.FindString(answer)
+	if numStr == "" {
+		log.Printf("[Capture] Vision model gave no number (%q), using first image", answer)
+		return validIndices[0]
 	}
 
-	return validImages[idx].Src
+	chosen, _ := strconv.Atoi(numStr)
+	if chosen < 1 || chosen > len(validIndices) {
+		log.Printf("[Capture] Vision model chose out-of-range %d, using first image", chosen)
+		return validIndices[0]
+	}
+
+	log.Printf("[Capture] Vision model chose image %d of %d", chosen, len(validIndices))
+	return validIndices[chosen-1]
 }
 
-func (h *AgentHandler) createNewsDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, sourceURL string, imageURLs []string) (*models.NewsDraft, error) {
+// saveImage decodes a single CaptureImage, applies overlay, and saves it.
+func (h *CaptureHandler) saveImage(ctx context.Context, c *gin.Context, img *CaptureImage, episodeType string) []string {
+	raw, err := base64.StdEncoding.DecodeString(img.Data)
+	if err != nil {
+		log.Printf("[Capture] Failed to decode base64 image: %v", err)
+		return nil
+	}
+
+	ct := http.DetectContentType(raw)
+	if !strings.HasPrefix(ct, "image/") {
+		log.Printf("[Capture] Skipping non-image content type: %s", ct)
+		return nil
+	}
+
+	if h.BGG != nil {
+		processed, procErr := h.BGG.processImageBytes(ctx, c, raw, episodeType)
+		if procErr != nil {
+			log.Printf("[Capture] Overlay processing failed: %v (saving original)", procErr)
+		} else {
+			raw = processed
+			ct = "image/jpeg"
+		}
+	}
+
+	ext := ".jpg"
+	switch {
+	case strings.Contains(ct, "png"):
+		ext = ".png"
+	case strings.Contains(ct, "gif"):
+		ext = ".gif"
+	case strings.Contains(ct, "webp"):
+		ext = ".webp"
+	}
+
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		log.Printf("[Capture] Failed to create upload dir: %v", err)
+		return nil
+	}
+	dst := filepath.Join(h.UploadDir, filename)
+	if err := os.WriteFile(dst, raw, 0o644); err != nil {
+		log.Printf("[Capture] Failed to write image file: %v", err)
+		return nil
+	}
+	h.DB.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    filename,
+		ContentType: ct,
+		Data:        raw,
+		Size:        int64(len(raw)),
+		CreatedAt:   time.Now(),
+	})
+	return []string{"/api/uploads/" + filename}
+}
+
+func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, sourceURL string, imageURLs []string) (*models.NewsDraft, error) {
 	var parsed struct {
 		NewsTagline string `json:"newsTagline"`
 		ArticleURL  string `json:"articleUrl"`
@@ -779,7 +493,7 @@ func (h *AgentHandler) createNewsDraft(ctx context.Context, aiContent string, us
 	return &draft, nil
 }
 
-func (h *AgentHandler) createEpisodeDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.EpisodeDraft, error) {
+func (h *CaptureHandler) createEpisodeDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.EpisodeDraft, error) {
 	var parsed struct {
 		EpisodeTitle      string `json:"episodeTitle"`
 		EpisodeType       string `json:"episodeType"`
@@ -828,7 +542,7 @@ func (h *AgentHandler) createEpisodeDraft(ctx context.Context, aiContent string,
 	return &draft, nil
 }
 
-func (h *AgentHandler) createPostDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.Post, error) {
+func (h *CaptureHandler) createPostDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.Post, error) {
 	var parsed struct {
 		Content string `json:"content"`
 	}
@@ -857,10 +571,10 @@ func (h *AgentHandler) createPostDraft(ctx context.Context, aiContent string, us
 	return &post, nil
 }
 
+// --- Shared utility functions used by capture, MCP, and other handlers ---
+
 // extractMetaContent finds a <meta> tag whose property or name attribute
 // matches one of the given names and returns its content attribute value.
-// It handles both attribute orderings (property before content AND content
-// before property), which varies across websites.
 func extractMetaContent(html string, names ...string) string {
 	metaRe := regexp.MustCompile(`(?i)<meta\s[^>]*>`)
 	for _, tag := range metaRe.FindAllString(html, -1) {
@@ -1326,7 +1040,6 @@ func extractPageMetadata(html string) (title, description, ogImage, bodyText str
 	}
 
 	ogImage = extractMetaContent(html, "og:image")
-	log.Printf("[Agent] extractPageMetadata: og:image=%q", ogImage)
 
 	tagRe := regexp.MustCompile(`<[^>]+>`)
 	text := tagRe.ReplaceAllString(html, " ")
@@ -1339,14 +1052,6 @@ func extractPageMetadata(html string) (title, description, ogImage, bodyText str
 	bodyText = text
 
 	return
-}
-
-func fetchPageMetadata(ctx context.Context, pageURL string) (title, description, ogImage, bodyText string) {
-	html, err := fetchPageHTML(ctx, pageURL)
-	if err != nil {
-		return
-	}
-	return extractPageMetadata(html)
 }
 
 func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir string, imageURL string) (string, error) {
@@ -1404,11 +1109,10 @@ func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir s
 	return "/api/uploads/" + filename, nil
 }
 
-
 func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pageInfo string, imageURL string) {
 	item, err := fetchBGGItem(ctx, gameID, bggToken)
 	if err != nil {
-		log.Printf("[Agent] BGG API fetch failed for game %s: %v", gameID, err)
+		log.Printf("[Capture] BGG API fetch failed for game %s: %v", gameID, err)
 		return "", ""
 	}
 
@@ -1495,4 +1199,3 @@ func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pa
 
 	return strings.Join(parts, "\n"), imgURL
 }
-

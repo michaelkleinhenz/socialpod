@@ -12,7 +12,6 @@ var AvailablePlugins = []string{
 	"episode_news",
 	"news_creator",
 	"episode_creator",
-	"agent",
 }
 
 type Team struct {

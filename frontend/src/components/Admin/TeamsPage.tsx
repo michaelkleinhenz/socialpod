@@ -232,7 +232,6 @@ export function TeamsPage() {
         data.episodeCreatorBearerToken = episodeCreatorBearerToken;
       }
       data.scenePromptTemplate = bggSettings.scenePromptTemplate || '';
-      data.agentSystemPrompt = bggSettings.agentSystemPrompt || '';
       await api.updateAdminTeamBggSettings(bggTeam.id, data);
       toast.success('Team settings saved');
       setBggTeam(null);
@@ -660,27 +659,6 @@ export function TeamsPage() {
               />
               <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
                 Prompt template prepended to the Scene field text when using "Generate with AI" on the episode creator.
-              </span>
-            </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Agent Plugin</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
-              Custom system prompt for the AI agent. When the Agent plugin is enabled, the agent uses this prompt to guide content generation from URLs and descriptions. Leave empty to use the default prompt.
-            </p>
-
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Agent System Prompt</label>
-              <textarea
-                className="input"
-                style={{ minHeight: 120, resize: 'vertical', fontFamily: 'inherit' }}
-                placeholder="Custom system prompt for the AI agent (leave empty for default)..."
-                value={bggSettings.agentSystemPrompt || ''}
-                onChange={e => setBggSettings(s => ({ ...s, agentSystemPrompt: e.target.value }))}
-              />
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                The system prompt instructs the AI how to generate news articles, episode descriptions, or social media posts from a given URL or description.
               </span>
             </div>
 
