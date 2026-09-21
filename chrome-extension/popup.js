@@ -75,41 +75,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     captureBtn.disabled = true;
     captureBtn.textContent = "Capturing...";
-    showStatus("Taking screenshot...", "info");
+    showStatus("Sending to SocialPod...", "info");
 
     try {
-      const screenshot = await chrome.tabs.captureVisibleTab(null, {
-        format: "jpeg",
-        quality: 85,
-      });
-
-      showStatus("Extracting page images...", "info");
-
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      let pageData = { images: [], ogImage: "", pageTitle: tab.title, url: tab.url };
-
-      try {
-        const response = await chrome.tabs.sendMessage(tab.id, { action: "extractImages" });
-        if (response) pageData = response;
-      } catch (e) {
-        // Content script may not be injected on some pages
-      }
-
-      showStatus("Sending to SocialPod...", "info");
-
-      const screenshotBase64 = screenshot.replace(/^data:image\/\w+;base64,/, "");
 
       const payload = {
-        url: pageData.url || tab.url,
+        url: tab.url,
         entityType: entityType,
         description: document.getElementById("description").value,
-        screenshot: screenshotBase64,
-        pageTitle: pageData.pageTitle,
-        ogImage: pageData.ogImage,
-        images: pageData.images,
+        pageTitle: tab.title,
       };
 
-      const resp = await fetch(config.serverUrl + "/api/agent/capture", {
+      const resp = await fetch(config.serverUrl + "/api/capture", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

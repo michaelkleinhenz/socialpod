@@ -122,7 +122,7 @@ func main() {
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
-	agentHandler := &handlers.AgentHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
+	captureHandler := &handlers.CaptureHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -226,10 +226,8 @@ func main() {
 		auth.GET("/mentions/export", mentionHandler.Export)
 		auth.POST("/mentions/import", mentionHandler.Import)
 
-		// Agent (AI content generation)
-		auth.POST("/agent/generate", agentHandler.Generate)
-		auth.POST("/agent/capture", agentHandler.Capture)
-		auth.GET("/agent/instructions", agentHandler.GetInstructions)
+		// Chrome extension capture endpoint
+		auth.POST("/capture", captureHandler.Capture)
 
 		// Convention mode
 		// MCP server (Streamable HTTP transport)
