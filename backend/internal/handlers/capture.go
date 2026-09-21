@@ -131,9 +131,10 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Save images sent by the Chrome extension as base64 data.
-	// The extension downloads images in the browser (avoiding proxy/bot issues)
-	// and sends the raw data here.
+	// Step 1: Process images sent by the Chrome extension.
+	// The extension sends all candidate images (og:image, page images) plus a
+	// screenshot, all as base64 data downloaded in the browser. If there are
+	// multiple candidates, use a vision model to pick the best content image.
 	episodeType := "news_entry"
 	if input.EntityType == "episode" {
 		episodeType = "news"
@@ -141,7 +142,10 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 
 	var imageURLs []string
 	if len(input.Images) > 0 {
-		imageURLs = h.saveClientImages(ctx, c, input.Images, episodeType)
+		selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterModel, input.URL)
+		if selected != nil {
+			imageURLs = h.saveImage(ctx, c, selected, episodeType)
+		}
 		log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 	}
 
@@ -269,68 +273,189 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 	}
 }
 
-// saveClientImages decodes base64 image data sent by the Chrome extension,
-// applies the overlay if configured, and saves the images.
-func (h *CaptureHandler) saveClientImages(ctx context.Context, c *gin.Context, images []CaptureImage, episodeType string) []string {
-	for _, img := range images {
+// selectBestImage picks the best content image from the candidates.
+// If there's only one valid image, it's returned directly.
+// If there are multiple, a vision model chooses the best article image.
+func (h *CaptureHandler) selectBestImage(ctx context.Context, images []CaptureImage, apiKey, model, articleURL string) *CaptureImage {
+	// Decode and validate all images first
+	var valid []int
+	for i, img := range images {
 		if img.Data == "" {
 			continue
 		}
-
 		raw, err := base64.StdEncoding.DecodeString(img.Data)
 		if err != nil {
-			log.Printf("[Capture] Failed to decode base64 image: %v", err)
 			continue
 		}
-
 		ct := http.DetectContentType(raw)
 		if !strings.HasPrefix(ct, "image/") {
-			log.Printf("[Capture] Skipping non-image content type: %s", ct)
 			continue
 		}
-
-		if h.BGG != nil {
-			processed, procErr := h.BGG.processImageBytes(ctx, c, raw, episodeType)
-			if procErr != nil {
-				log.Printf("[Capture] Overlay processing failed: %v (saving original)", procErr)
-			} else {
-				raw = processed
-				ct = "image/jpeg"
-			}
-		}
-
-		ext := ".jpg"
-		switch {
-		case strings.Contains(ct, "png"):
-			ext = ".png"
-		case strings.Contains(ct, "gif"):
-			ext = ".gif"
-		case strings.Contains(ct, "webp"):
-			ext = ".webp"
-		}
-
-		filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-			log.Printf("[Capture] Failed to create upload dir: %v", err)
-			continue
-		}
-		dst := filepath.Join(h.UploadDir, filename)
-		if err := os.WriteFile(dst, raw, 0o644); err != nil {
-			log.Printf("[Capture] Failed to write image file: %v", err)
-			continue
-		}
-		h.DB.Uploads().InsertOne(ctx, models.Upload{
-			Filename:    filename,
-			ContentType: ct,
-			Data:        raw,
-			Size:        int64(len(raw)),
-			CreatedAt:   time.Now(),
-		})
-		return []string{"/api/uploads/" + filename}
+		_ = raw
+		valid = append(valid, i)
 	}
 
-	log.Printf("[Capture] No valid images from %d client-provided entries", len(images))
-	return nil
+	if len(valid) == 0 {
+		return nil
+	}
+	if len(valid) == 1 {
+		return &images[valid[0]]
+	}
+
+	// Multiple images: use vision model to pick the best content image
+	idx := h.visionSelectImage(ctx, images, valid, apiKey, model, articleURL)
+	return &images[idx]
+}
+
+// visionSelectImage sends all candidate images to a vision model and asks it
+// to pick the best one for an article/social media post. Returns the index
+// into the original images slice.
+func (h *CaptureHandler) visionSelectImage(ctx context.Context, images []CaptureImage, validIndices []int, apiKey, model, articleURL string) int {
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	// Build multimodal message content: text prompt + all images
+	var content []map[string]any
+	content = append(content, map[string]any{
+		"type": "text",
+		"text": fmt.Sprintf(
+			"I have %d images from the web page at %s. Pick the ONE image that would work best as the featured image for a social media post about this article. "+
+				"Prefer high-quality photos or illustrations that represent the article content. "+
+				"Avoid screenshots of the full page, navigation elements, ads, logos, or generic stock photos. "+
+				"The last image may be a screenshot of the page — only pick it if no better content image exists. "+
+				"Reply with ONLY the image number (1-%d), nothing else.",
+			len(validIndices), articleURL, len(validIndices)),
+	})
+
+	for i, idx := range validIndices {
+		ct := "image/jpeg"
+		if raw, err := base64.StdEncoding.DecodeString(images[idx].Data); err == nil {
+			detected := http.DetectContentType(raw)
+			if strings.HasPrefix(detected, "image/") {
+				ct = detected
+			}
+		}
+		content = append(content, map[string]any{
+			"type": "text",
+			"text": fmt.Sprintf("Image %d:", i+1),
+		})
+		content = append(content, map[string]any{
+			"type": "image_url",
+			"image_url": map[string]string{
+				"url": fmt.Sprintf("data:%s;base64,%s", ct, images[idx].Data),
+			},
+		})
+	}
+
+	reqBody, _ := json.Marshal(map[string]any{
+		"model": model,
+		"messages": []map[string]any{
+			{"role": "user", "content": content},
+		},
+		"max_tokens": 10,
+	})
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("[Capture] Vision model request failed: %v, using first image", err)
+		return validIndices[0]
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[Capture] Vision model returned %d: %s, using first image", resp.StatusCode, string(body))
+		return validIndices[0]
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || len(result.Choices) == 0 {
+		log.Printf("[Capture] Vision model response invalid, using first image")
+		return validIndices[0]
+	}
+
+	answer := strings.TrimSpace(result.Choices[0].Message.Content)
+	// Extract the first number from the response
+	numRe := regexp.MustCompile(`\d+`)
+	numStr := numRe.FindString(answer)
+	if numStr == "" {
+		log.Printf("[Capture] Vision model gave no number (%q), using first image", answer)
+		return validIndices[0]
+	}
+
+	chosen, _ := strconv.Atoi(numStr)
+	if chosen < 1 || chosen > len(validIndices) {
+		log.Printf("[Capture] Vision model chose out-of-range %d, using first image", chosen)
+		return validIndices[0]
+	}
+
+	log.Printf("[Capture] Vision model chose image %d of %d", chosen, len(validIndices))
+	return validIndices[chosen-1]
+}
+
+// saveImage decodes a single CaptureImage, applies overlay, and saves it.
+func (h *CaptureHandler) saveImage(ctx context.Context, c *gin.Context, img *CaptureImage, episodeType string) []string {
+	raw, err := base64.StdEncoding.DecodeString(img.Data)
+	if err != nil {
+		log.Printf("[Capture] Failed to decode base64 image: %v", err)
+		return nil
+	}
+
+	ct := http.DetectContentType(raw)
+	if !strings.HasPrefix(ct, "image/") {
+		log.Printf("[Capture] Skipping non-image content type: %s", ct)
+		return nil
+	}
+
+	if h.BGG != nil {
+		processed, procErr := h.BGG.processImageBytes(ctx, c, raw, episodeType)
+		if procErr != nil {
+			log.Printf("[Capture] Overlay processing failed: %v (saving original)", procErr)
+		} else {
+			raw = processed
+			ct = "image/jpeg"
+		}
+	}
+
+	ext := ".jpg"
+	switch {
+	case strings.Contains(ct, "png"):
+		ext = ".png"
+	case strings.Contains(ct, "gif"):
+		ext = ".gif"
+	case strings.Contains(ct, "webp"):
+		ext = ".webp"
+	}
+
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		log.Printf("[Capture] Failed to create upload dir: %v", err)
+		return nil
+	}
+	dst := filepath.Join(h.UploadDir, filename)
+	if err := os.WriteFile(dst, raw, 0o644); err != nil {
+		log.Printf("[Capture] Failed to write image file: %v", err)
+		return nil
+	}
+	h.DB.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    filename,
+		ContentType: ct,
+		Data:        raw,
+		Size:        int64(len(raw)),
+		CreatedAt:   time.Now(),
+	})
+	return []string{"/api/uploads/" + filename}
 }
 
 func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, sourceURL string, imageURLs []string) (*models.NewsDraft, error) {

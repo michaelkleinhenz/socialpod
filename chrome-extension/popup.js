@@ -75,12 +75,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     captureBtn.disabled = true;
     captureBtn.textContent = "Capturing...";
-    showStatus("Extracting page images...", "info");
+    showStatus("Capturing page...", "info");
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+      // Capture a screenshot of the visible tab
+      let screenshot = null;
+      try {
+        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "jpeg", quality: 80 });
+        if (dataUrl) {
+          const base64 = dataUrl.split(",")[1];
+          if (base64) {
+            screenshot = { data: base64, filename: "screenshot.jpg" };
+          }
+        }
+      } catch (e) {
+        console.warn("Could not capture screenshot:", e);
+      }
+
       // Extract image URLs from the page DOM
+      showStatus("Extracting page images...", "info");
       let imageUrls = [];
       try {
         const results = await chrome.scripting.executeScript({
@@ -94,14 +109,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.warn("Could not extract images from page:", e);
       }
 
-      // Download the best image in the browser and convert to base64
-      let images = [];
-      if (imageUrls.length > 0) {
-        showStatus("Downloading image...", "info");
-        const imageData = await downloadBestImage(imageUrls);
-        if (imageData) {
-          images.push(imageData);
-        }
+      // Download all candidate images in the browser
+      showStatus("Downloading images...", "info");
+      const images = await downloadAllImages(imageUrls);
+
+      // Add the screenshot last (lowest priority for content, but provides context)
+      if (screenshot) {
+        images.push(screenshot);
       }
 
       showStatus("Sending to SocialPod...", "info");
@@ -212,27 +226,30 @@ function extractPageImages() {
   return images;
 }
 
-// Fetches image URLs in the extension context (browser-side) and returns
-// the first successful one as {data: base64, filename: string}.
-async function downloadBestImage(urls) {
+// Downloads all candidate images in the browser and returns them as
+// {data: base64, filename: string} objects. Skips URLs that fail.
+async function downloadAllImages(urls) {
+  const images = [];
   for (const url of urls) {
+    if (images.length >= 8) break;
     try {
       const resp = await fetch(url);
       if (!resp.ok) continue;
 
       const blob = await resp.blob();
       if (!blob.type.startsWith("image/")) continue;
+      if (blob.size < 1000) continue;
 
       const ext = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
       const base64 = await blobToBase64(blob);
       if (!base64) continue;
 
-      return { data: base64, filename: `captured.${ext}` };
+      images.push({ data: base64, filename: `image${images.length}.${ext}` });
     } catch (e) {
       console.warn("Failed to download image:", url, e);
     }
   }
-  return null;
+  return images;
 }
 
 function blobToBase64(blob) {
@@ -240,7 +257,6 @@ function blobToBase64(blob) {
     const reader = new FileReader();
     reader.onloadend = () => {
       const result = reader.result;
-      // Strip the data:...;base64, prefix
       const base64 = result?.split(",")[1] || null;
       resolve(base64);
     };
