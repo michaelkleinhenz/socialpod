@@ -11,3 +11,4 @@ uploads/
 *.dylib
 __debug_bin*
 .DS_Store
+chrome-extension/*.zip

@@ -39,6 +39,11 @@ npm run lint         # eslint
 npx tsc --noEmit     # type check only
 ```
 
+### Chrome extension
+```bash
+make chrome-extension   # Build socialpod-capture.zip for Chrome Web Store upload
+```
+
 ## Architecture
 
 ### Single-binary deployment
@@ -102,6 +107,9 @@ Posts and footers are scoped: if the user has a `teamId`, queries filter by team
 
 ### Unified token authentication
 A single bearer token (`sm_...` prefix for users, `st_...` for teams) authenticates all external access: REST API calls (`/api/*`) and MCP requests (`/api/mcp`). Tokens are generated on the Profile page and passed as `Authorization: Bearer <token>`. Regenerating a token invalidates the previous one everywhere.
+
+### Chrome extension (`chrome-extension/`)
+A Manifest V3 Chrome extension that captures the current browser tab (screenshot + extracted page images) and sends the data to a SocialPod server's `/api/capture` endpoint to create a draft. Supports news, episode, and post draft types. Users configure their SocialPod server URL and API token in the extension popup. `make chrome-extension` produces a `socialpod-capture.zip` ready for Chrome Web Store upload.
 
 ### n8n integration (`n8n-nodes-socialpod/`)
 A pre-built n8n community node with a `dist/` directory already compiled. Install with `npm install --omit=dev` on the target machine — full `npm install` fails on Node < 22 due to the `isolated-vm` transitive dev dependency.
