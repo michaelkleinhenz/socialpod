@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
@@ -70,8 +72,11 @@ For "post":
 
 The "newsTagline" is reused as a podcast chapter title, which allows at most 30 characters.
 Keep it short and sweet: a maximum of 30 characters including spaces, ideally two to four words.
-Do not add a trailing period, quotes, the publication or site name, or any hashtags.
-Count the characters before answering and shorten the tagline until it fits.
+Do not add a trailing period, the publication or site name, or any hashtags, and do
+not wrap the whole tagline in quotes. Quotes around a game name are not "adding
+quotes": they are house style and stay in, even here.
+Count the characters before answering, the quotes included, and shorten the tagline
+until it fits.
 
 The "shownotes" are fed into a script generator that cannot handle blank lines.
 Never leave an empty line inside the shownotes: separate points with a single
@@ -79,6 +84,21 @@ line break only, and do not pad the text with leading or trailing empty lines.
 
 Always write in a professional but engaging tone. Include relevant context from the source material.
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
+
+// gameNameQuotingRule is appended to whichever system prompt a capture runs
+// with — the team's own agent prompt included. Quoting game titles is house
+// style for every piece of published material, so it must not be something a
+// team drops by overriding the default prompt.
+const gameNameQuotingRule = `House style, no exceptions: every board game title you write must be wrapped in
+plain double quotes, as in "Wingspan" or a review of "Die Burgen von Burgund".
+Use the straight " character on both sides, never typographic or language-specific
+quotes (“ ”, „ “, « »), even when writing in a language that normally uses them.
+
+Quote the title every single time it appears, in every text field: taglines,
+titles, summaries, show notes, intro texts, rules, scenes and social media text
+alike. Do not quote publisher, designer, illustrator or person names, do not put
+quotes inside a URL, and leave the "gameNamePublisher" field unquoted — it is a
+structured field, not prose.`
 
 type CaptureImage struct {
 	Data     string `json:"data"`
@@ -140,6 +160,9 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 
 	var imageURLs []string
 	var pageInfo string
+	// Only a BGG capture knows the exact game title; everything else relies on
+	// the house-style rule in the system prompt alone.
+	var gameName string
 
 	// BoardGameGeek links take a dedicated, AI-free image path: the cover comes
 	// from the BGG API and goes through the very same letterbox + overlay
@@ -149,7 +172,7 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 	// preferable to a model-picked screenshot.
 	if gameID := bggGameIDFromURL(input.URL); gameID != "" {
 		var bggImageURL string
-		pageInfo, bggImageURL = fetchBGGPageInfo(ctx, gameID, input.URL, settings.BGGAPIToken)
+		pageInfo, bggImageURL, gameName = fetchBGGPageInfo(ctx, gameID, input.URL, settings.BGGAPIToken)
 		if bggImageURL == "" {
 			// The XML API is unavailable (rate limiting, Cloudflare). Take the
 			// cover straight off the game page instead of falling back to the
@@ -200,13 +223,7 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		userPrompt = fmt.Sprintf("URL: %s\nPage Title: %s\n\nCreate a %s entity from this.", input.URL, input.PageTitle, input.EntityType)
 	}
 
-	systemPrompt := team.AgentSystemPrompt
-	if systemPrompt == "" {
-		systemPrompt = defaultSystemPrompt
-	}
-	if settings.AILanguage != "" {
-		systemPrompt += fmt.Sprintf("\n\nWrite in %s.", settings.AILanguage)
-	}
+	systemPrompt := buildSystemPrompt(team.AgentSystemPrompt, settings.AILanguage)
 
 	model := settings.OpenRouterModel
 	if model == "" {
@@ -262,27 +279,42 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 
 	switch input.EntityType {
 	case "news":
-		draft, err := h.createNewsDraft(ctx, aiContent, objID, &teamID, input.URL, imageURLs)
+		draft, err := h.createNewsDraft(ctx, aiContent, objID, &teamID, input.URL, imageURLs, gameName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save draft: " + err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"entityType": "news", "draft": draft})
 	case "episode":
-		draft, err := h.createEpisodeDraft(ctx, aiContent, objID, &teamID, imageURLs)
+		draft, err := h.createEpisodeDraft(ctx, aiContent, objID, &teamID, imageURLs, gameName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save draft: " + err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"entityType": "episode", "draft": draft})
 	case "post":
-		draft, err := h.createPostDraft(ctx, aiContent, objID, &teamID, imageURLs)
+		draft, err := h.createPostDraft(ctx, aiContent, objID, &teamID, imageURLs, gameName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save draft: " + err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"entityType": "post", "draft": draft})
 	}
+}
+
+// buildSystemPrompt assembles the system prompt a capture runs with: the
+// team's own agent prompt when it has one, the default otherwise, followed by
+// the rules that hold either way.
+func buildSystemPrompt(teamPrompt, aiLanguage string) string {
+	prompt := teamPrompt
+	if prompt == "" {
+		prompt = defaultSystemPrompt
+	}
+	prompt += "\n\n" + gameNameQuotingRule
+	if aiLanguage != "" {
+		prompt += fmt.Sprintf("\n\nWrite in %s.", aiLanguage)
+	}
+	return prompt
 }
 
 // selectBestImage picks the best content image from the candidates.
@@ -492,6 +524,120 @@ func (h *CaptureHandler) saveProcessedImage(ctx context.Context, raw []byte) []s
 	return []string{"/api/uploads/" + filename}
 }
 
+// newsTaglineMaxLen is the podcast chapter title limit the news tagline has to
+// stay inside; see the tagline instructions in defaultSystemPrompt.
+const newsTaglineMaxLen = 30
+
+// gameNameQuotes are the quote characters a model may wrap a game title in
+// instead of the plain double quote the house style asks for. Any of them
+// counts as an existing pair, so an already-quoted title gets normalised
+// rather than quoted twice.
+const gameNameQuotes = "\"'\u201c\u201d\u201e\u201f\u2018\u2019\u00ab\u00bb\u2039\u203a"
+
+// urlishToken matches a host-and-path fragment such as "boardgamegeek.com/"
+// inside an unspaced token, so a game name that is only part of a link is left
+// alone.
+var urlishToken = regexp.MustCompile(`(?i)[a-z0-9-]+\.[a-z]{2,}/`)
+
+func isGameNameQuote(r rune) bool {
+	return strings.ContainsRune(gameNameQuotes, r)
+}
+
+// enforceQuotedGameName wraps every standalone mention of gameName in text in
+// plain double quotes. The system prompt asks the model for this, but a draft
+// is only worth reviewing if the house style holds every time, so wherever the
+// game name is known for certain — a BoardGameGeek capture — it is applied to
+// the generated text as well. Quotes the model already placed are normalised
+// instead of doubled, mentions inside a longer word or a URL are skipped, and
+// text that is already correct comes back unchanged.
+func enforceQuotedGameName(text, gameName string) string {
+	name := strings.TrimSpace(gameName)
+	if text == "" || name == "" {
+		return text
+	}
+	re, err := regexp.Compile(`(?i)` + regexp.QuoteMeta(name))
+	if err != nil {
+		return text
+	}
+
+	var b strings.Builder
+	last := 0
+	for _, m := range re.FindAllStringIndex(text, -1) {
+		start, end := m[0], m[1]
+		if start < last || !isStandaloneMention(text, start, end) || isURLMention(text, start, end) {
+			continue
+		}
+		before, beforeSize := utf8.DecodeLastRuneInString(text[:start])
+		after, afterSize := utf8.DecodeRuneInString(text[end:])
+		quotedBefore, quotedAfter := isGameNameQuote(before), isGameNameQuote(after)
+		openStart, closeEnd := start, end
+		switch {
+		case quotedBefore && quotedAfter:
+			// Already a quoted pair: normalise it to the plain double quote.
+			openStart, closeEnd = start-beforeSize, end+afterSize
+		case quotedBefore != quotedAfter:
+			// A quote on one side only belongs to the surrounding sentence —
+			// a line of quoted dialogue, say. Adding a second pair inside it
+			// would produce "" runs, so the text is left as the model wrote it.
+			continue
+		}
+		b.WriteString(text[last:openStart])
+		b.WriteString(`"`)
+		b.WriteString(text[start:end])
+		b.WriteString(`"`)
+		last = closeEnd
+	}
+	if last == 0 {
+		return text
+	}
+	b.WriteString(text[last:])
+	return b.String()
+}
+
+// enforceQuotedGameNameWithin quotes the game name only while the result still
+// fits maxRunes. The news tagline doubles as a podcast chapter title with a
+// hard length limit, and overflowing it breaks the downstream generator.
+func enforceQuotedGameNameWithin(text, gameName string, maxRunes int) string {
+	quoted := enforceQuotedGameName(text, gameName)
+	if utf8.RuneCountInString(quoted) > maxRunes {
+		return text
+	}
+	return quoted
+}
+
+// isStandaloneMention reports whether text[start:end] is a whole word rather
+// than a fragment of a longer one, so that a title like "Root" does not get
+// quoted inside "Rootless".
+func isStandaloneMention(text string, start, end int) bool {
+	if start > 0 {
+		before, _ := utf8.DecodeLastRuneInString(text[:start])
+		if unicode.IsLetter(before) || unicode.IsDigit(before) {
+			return false
+		}
+	}
+	if end < len(text) {
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		if unicode.IsLetter(after) || unicode.IsDigit(after) {
+			return false
+		}
+	}
+	return true
+}
+
+// isURLMention reports whether the mention sits inside a link, where quotes
+// would corrupt the address.
+func isURLMention(text string, start, end int) bool {
+	tokenStart := strings.LastIndexAny(text[:start], " \t\n\r")
+	tokenEnd := strings.IndexAny(text[end:], " \t\n\r")
+	if tokenEnd < 0 {
+		tokenEnd = len(text)
+	} else {
+		tokenEnd += end
+	}
+	token := text[tokenStart+1 : tokenEnd]
+	return strings.Contains(token, "://") || strings.HasPrefix(strings.ToLower(token), "www.") || urlishToken.MatchString(token)
+}
+
 // stripBlankLines removes empty lines from AI-generated text. The downstream
 // script generator treats a blank line as a section break, so shownotes are
 // stored as a single run of non-empty lines regardless of how the model
@@ -508,7 +654,7 @@ func stripBlankLines(s string) string {
 	return strings.Join(kept, "\n")
 }
 
-func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, sourceURL string, imageURLs []string) (*models.NewsDraft, error) {
+func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, sourceURL string, imageURLs []string, gameName string) (*models.NewsDraft, error) {
 	var parsed struct {
 		NewsTagline string `json:"newsTagline"`
 		ArticleURL  string `json:"articleUrl"`
@@ -523,13 +669,15 @@ func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, 
 		parsed.ArticleURL = sourceURL
 	}
 
+	// The tagline doubles as a podcast chapter title, so it only gains the
+	// quotes while the result still fits newsTaglineMaxLen.
 	draft := models.NewsDraft{
 		UserID:      userID,
 		TeamID:      teamID,
-		NewsTagline: parsed.NewsTagline,
+		NewsTagline: enforceQuotedGameNameWithin(parsed.NewsTagline, gameName, newsTaglineMaxLen),
 		ArticleURL:  parsed.ArticleURL,
-		Shownotes:   stripBlankLines(parsed.Shownotes),
-		Content:     parsed.Content,
+		Shownotes:   stripBlankLines(enforceQuotedGameName(parsed.Shownotes, gameName)),
+		Content:     enforceQuotedGameName(parsed.Content, gameName),
 		ImageURLs:   imageURLs,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -543,7 +691,7 @@ func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, 
 	return &draft, nil
 }
 
-func (h *CaptureHandler) createEpisodeDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.EpisodeDraft, error) {
+func (h *CaptureHandler) createEpisodeDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string, gameName string) (*models.EpisodeDraft, error) {
 	var parsed struct {
 		EpisodeTitle      string `json:"episodeTitle"`
 		EpisodeType       string `json:"episodeType"`
@@ -565,20 +713,22 @@ func (h *CaptureHandler) createEpisodeDraft(ctx context.Context, aiContent strin
 		parsed.EpisodeType = "news"
 	}
 
+	// gameNamePublisher stays unquoted: it is a structured field the Episode
+	// form fills as "Name (Publisher)", not prose.
 	draft := models.EpisodeDraft{
 		UserID:            userID,
 		TeamID:            teamID,
-		EpisodeTitle:      parsed.EpisodeTitle,
+		EpisodeTitle:      enforceQuotedGameName(parsed.EpisodeTitle, gameName),
 		EpisodeType:       parsed.EpisodeType,
-		Summary:           parsed.Summary,
+		Summary:           enforceQuotedGameName(parsed.Summary, gameName),
 		EpisodeDate:       parsed.EpisodeDate,
-		IntroText:         parsed.IntroText,
+		IntroText:         enforceQuotedGameName(parsed.IntroText, gameName),
 		GameNamePublisher: parsed.GameNamePublisher,
 		LinkPublisher:     parsed.LinkPublisher,
 		LinkBGG:           parsed.LinkBGG,
-		Rules:             parsed.Rules,
-		Scene:             parsed.Scene,
-		Content:           parsed.Content,
+		Rules:             enforceQuotedGameName(parsed.Rules, gameName),
+		Scene:             enforceQuotedGameName(parsed.Scene, gameName),
+		Content:           enforceQuotedGameName(parsed.Content, gameName),
 		ImageURLs:         imageURLs,
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
@@ -592,7 +742,7 @@ func (h *CaptureHandler) createEpisodeDraft(ctx context.Context, aiContent strin
 	return &draft, nil
 }
 
-func (h *CaptureHandler) createPostDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string) (*models.Post, error) {
+func (h *CaptureHandler) createPostDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, imageURLs []string, gameName string) (*models.Post, error) {
 	var parsed struct {
 		Content string `json:"content"`
 	}
@@ -603,7 +753,7 @@ func (h *CaptureHandler) createPostDraft(ctx context.Context, aiContent string, 
 	post := models.Post{
 		UserID:    userID,
 		PostType:  models.PostTypePost,
-		Content:   parsed.Content,
+		Content:   enforceQuotedGameName(parsed.Content, gameName),
 		Status:    models.PostStatusDraft,
 		ImageURLs: imageURLs,
 		CreatedAt: time.Now(),
@@ -1246,11 +1396,11 @@ func scrapePageInfo(ctx context.Context, input CaptureInput) string {
 	return strings.Join(parts, "\n")
 }
 
-func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pageInfo string, imageURL string) {
+func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pageInfo string, imageURL string, gameTitle string) {
 	item, err := fetchBGGItem(ctx, gameID, bggToken)
 	if err != nil {
 		log.Printf("[Capture] BGG API fetch failed for game %s: %v", gameID, err)
-		return "", ""
+		return "", "", ""
 	}
 
 	title := ""
@@ -1334,5 +1484,5 @@ func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pa
 		imgURL = "https:" + imgURL
 	}
 
-	return strings.Join(parts, "\n"), imgURL
+	return strings.Join(parts, "\n"), imgURL, title
 }
