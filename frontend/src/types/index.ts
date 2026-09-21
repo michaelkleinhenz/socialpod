@@ -268,6 +268,7 @@ export interface AppSettings {
   cookieBannerEnabled: boolean;
   cookieBannerText: string;
   openRouterModel: string;
+  openRouterVisionModel: string;
   aiLanguage: string;
   linkedInClientId?: string;
   hasLinkedInClientSecret?: boolean;
