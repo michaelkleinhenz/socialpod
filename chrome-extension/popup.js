@@ -43,8 +43,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.getElementById("saveSettings").addEventListener("click", async () => {
+    const cleanUrl = serverUrl.value
+      .replace(/\/+$/, "")
+      .replace(/\/api(\/mcp)?$/, "");
+    serverUrl.value = cleanUrl;
     await chrome.storage.local.set({
-      serverUrl: serverUrl.value.replace(/\/+$/, ""),
+      serverUrl: cleanUrl,
       apiToken: apiToken.value,
     });
     needsSetup.style.display = "none";

@@ -295,7 +295,8 @@ Die App berechnet automatisch den **Schwerpunkt der nicht-transparenten Pixel** 
 ### Anweisungen für den Agent
 
 - Wenn eine URL mit einem `og:image` bereitgestellt wird, wird das Bild automatisch heruntergeladen
-- Das Overlay wird beim Erstellen über MCP automatisch angewendet
+- Bilder von der Chrome-Extension (Capture) und vom MCP werden identisch verarbeitet: Letterbox mit unscharfem Hintergrund + Overlay
+- Das Overlay wird beim Erstellen über MCP und Chrome-Extension automatisch angewendet
 - Du musst dich NICHT um die Bildpositionierung kümmern – das System berechnet den Versatz automatisch
 - Empfehle dem Nutzer ggf., ein eigenes Bild hochzuladen, wenn das og:image nicht optimal ist
 
