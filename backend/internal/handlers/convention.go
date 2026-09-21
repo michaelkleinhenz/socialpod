@@ -1244,9 +1244,9 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 		return "", fmt.Errorf("OpenRouter is not configured")
 	}
 
-	model := settings.OpenRouterModel
+	model := settings.OpenRouterVisionModel
 	if model == "" {
-		model = "openai/gpt-4o-mini"
+		model = "anthropic/claude-haiku-4-5"
 	}
 
 	imageData, contentType, err := h.readImageData(ctx, imageURL)

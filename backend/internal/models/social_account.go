@@ -67,6 +67,7 @@ type AppSettings struct {
 	CookieBannerText      string             `bson:"cookieBannerText" json:"cookieBannerText"`
 	OpenRouterAPIKey      string             `bson:"openRouterApiKey" json:"-"`
 	OpenRouterModel       string             `bson:"openRouterModel" json:"openRouterModel"`
+	OpenRouterVisionModel string             `bson:"openRouterVisionModel" json:"openRouterVisionModel"`
 	AILanguage            string             `bson:"aiLanguage" json:"aiLanguage"`
 	BGGAPIToken           string             `bson:"bggApiToken" json:"-"`
 	LinkedInClientID      string             `bson:"linkedInClientId" json:"linkedInClientId"`

@@ -510,6 +510,7 @@ type UpdateSettingsInput struct {
 	CookieBannerText      *string `json:"cookieBannerText,omitempty"`
 	OpenRouterAPIKey      *string `json:"openRouterApiKey,omitempty"`
 	OpenRouterModel       *string `json:"openRouterModel,omitempty"`
+	OpenRouterVisionModel *string `json:"openRouterVisionModel,omitempty"`
 	AILanguage            *string `json:"aiLanguage,omitempty"`
 	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
 	LinkedInClientID      *string `json:"linkedInClientId,omitempty"`
@@ -574,6 +575,9 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.OpenRouterModel != nil {
 		update["openRouterModel"] = *input.OpenRouterModel
+	}
+	if input.OpenRouterVisionModel != nil {
+		update["openRouterVisionModel"] = *input.OpenRouterVisionModel
 	}
 	if input.AILanguage != nil {
 		update["aiLanguage"] = *input.AILanguage

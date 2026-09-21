@@ -17,6 +17,7 @@ export function SettingsPage() {
     cookieBannerEnabled: false,
     cookieBannerText: '',
     openRouterModel: '',
+    openRouterVisionModel: '',
     aiLanguage: '',
     promptGameSummary: '',
     promptGameAbstract: '',
@@ -76,6 +77,7 @@ export function SettingsPage() {
       data.mailgunDomain = settings.mailgunDomain || '';
       data.mailgunFromEmail = settings.mailgunFromEmail || '';
       data.openRouterModel = settings.openRouterModel;
+      data.openRouterVisionModel = settings.openRouterVisionModel;
       data.aiLanguage = settings.aiLanguage;
       data.promptGameSummary = settings.promptGameSummary || '';
       data.promptGameAbstract = settings.promptGameAbstract || '';
@@ -313,7 +315,7 @@ export function SettingsPage() {
           </div>
 
           <div className="form-group">
-            <label>Model</label>
+            <label>Text Model</label>
             <input
               className="input"
               placeholder="openai/gpt-4o-mini"
@@ -321,7 +323,20 @@ export function SettingsPage() {
               onChange={e => setSettings(s => ({ ...s, openRouterModel: e.target.value }))}
             />
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              OpenRouter model identifier (e.g. <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-sonnet-4</code>). See <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>available models</a>.
+              Model for text generation (drafts, captions, summaries). See <a href="https://openrouter.ai/models" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>available models</a>.
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Vision Model</label>
+            <input
+              className="input"
+              placeholder="anthropic/claude-haiku-4-5"
+              value={settings.openRouterVisionModel}
+              onChange={e => setSettings(s => ({ ...s, openRouterVisionModel: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Model for image analysis (picking article images, convention photo captions). Must support vision.
             </span>
           </div>
 

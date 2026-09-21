@@ -142,7 +142,7 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 
 	var imageURLs []string
 	if len(input.Images) > 0 {
-		selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterModel, input.URL)
+		selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterVisionModel, input.URL)
 		if selected != nil {
 			imageURLs = h.saveImage(ctx, c, selected, episodeType)
 		}
@@ -312,7 +312,7 @@ func (h *CaptureHandler) selectBestImage(ctx context.Context, images []CaptureIm
 // into the original images slice.
 func (h *CaptureHandler) visionSelectImage(ctx context.Context, images []CaptureImage, validIndices []int, apiKey, model, articleURL string) int {
 	if model == "" {
-		model = "openai/gpt-4o-mini"
+		model = "anthropic/claude-haiku-4-5"
 	}
 
 	// Build multimodal message content: text prompt + all images
