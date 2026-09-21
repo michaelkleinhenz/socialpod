@@ -27,8 +27,6 @@ import (
 
 const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 
-var bggURLRe = regexp.MustCompile(`boardgamegeek\.com/boardgame[^/]*/(\d+)`)
-
 // CaptureHandler handles the Chrome extension capture endpoint.
 type CaptureHandler struct {
 	DB        *database.MongoDB
@@ -131,37 +129,48 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		return
 	}
 
-	episodeType := "news_entry"
-	if input.EntityType == "episode" {
-		episodeType = "news"
-	}
-
 	var imageURLs []string
 	var pageInfo string
 
-	// BGG URL: pull metadata and cover image from the BGG API instead of using
-	// the extension's captured images and the vision model. fetchBGGPageInfo
-	// returns an empty pageInfo only when the API call failed, in which case we
-	// fall back to the generic path below.
-	bggHandled := false
-	if m := bggURLRe.FindStringSubmatch(input.URL); m != nil && h.BGG != nil {
+	// BoardGameGeek links take a dedicated, AI-free image path: the cover comes
+	// from the BGG API and goes through the very same letterbox + overlay
+	// pipeline the UI's "import from BGG" button uses. Neither the extension's
+	// captured images nor the vision model are consulted for a BGG link, even
+	// when parts of the BGG lookup fail — an unbranded or missing cover is
+	// preferable to a model-picked screenshot.
+	if gameID := bggGameIDFromURL(input.URL); gameID != "" {
 		var bggImageURL string
-		pageInfo, bggImageURL = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
-		if pageInfo != "" {
-			bggHandled = true
-			if bggImageURL != "" {
-				processed, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
-				if err != nil {
-					log.Printf("[Capture] BGG image download/process failed: %v", err)
-				} else {
-					imageURLs = h.saveProcessedImage(ctx, processed)
-				}
-			}
-			log.Printf("[Capture] BGG image URLs for draft: %v", imageURLs)
+		pageInfo, bggImageURL = fetchBGGPageInfo(ctx, gameID, input.URL, settings.BGGAPIToken)
+		if bggImageURL == "" {
+			// The XML API is unavailable (rate limiting, Cloudflare). Take the
+			// cover straight off the game page instead of falling back to the
+			// generic, vision-assisted path.
+			bggImageURL = fetchBGGCoverImageURL(ctx, input.URL)
 		}
-	}
-
-	if !bggHandled {
+		switch {
+		case bggImageURL == "":
+			log.Printf("[Capture] No BGG cover image found for %s", input.URL)
+		case h.BGG == nil:
+			log.Printf("[Capture] BGG image pipeline unavailable, skipping cover for %s", input.URL)
+		default:
+			processed, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, bggOverlayType(input.EntityType))
+			if err != nil {
+				log.Printf("[Capture] BGG image download/process failed: %v", err)
+			} else {
+				imageURLs = h.saveProcessedImage(ctx, processed)
+			}
+		}
+		if pageInfo == "" {
+			// Only the draft text falls back to the scraped page; the image
+			// above stays AI-free either way.
+			pageInfo = scrapePageInfo(ctx, input)
+		}
+		log.Printf("[Capture] BGG image URLs for draft: %v", imageURLs)
+	} else {
+		episodeType := "news_entry"
+		if input.EntityType == "episode" {
+			episodeType = "news"
+		}
 		if len(input.Images) > 0 {
 			selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterVisionModel, input.URL)
 			if selected != nil {
@@ -169,28 +178,7 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 			}
 			log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 		}
-
-		if input.URL != "" {
-			var parts []string
-			parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
-			if input.PageTitle != "" {
-				parts = append(parts, fmt.Sprintf("Page Title: %s", input.PageTitle))
-			}
-			if input.Description != "" {
-				parts = append(parts, fmt.Sprintf("Additional context: %s", input.Description))
-			}
-			html, _ := fetchPageHTML(ctx, input.URL)
-			if html != "" {
-				_, description, _, body := extractPageMetadata(html)
-				if description != "" {
-					parts = append(parts, fmt.Sprintf("Description: %s", description))
-				}
-				if body != "" {
-					parts = append(parts, fmt.Sprintf("Page Content:\n%s", body))
-				}
-			}
-			pageInfo = strings.Join(parts, "\n")
-		}
+		pageInfo = scrapePageInfo(ctx, input)
 	}
 
 	// Generate content with AI
@@ -1144,6 +1132,93 @@ func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir s
 	})
 
 	return "/api/uploads/" + filename, nil
+}
+
+// bggGameIDFromURL returns the BoardGameGeek item ID of a BGG game page, or ""
+// when the URL does not point at one. The host is checked separately from the
+// path so the ID pattern shared with the UI import path (bggGameIDRe) cannot
+// match a look-alike path on another site, while any BGG host and any path
+// prefix (/boardgame/, /boardgameexpansion/, a locale segment, ...) still
+// resolves.
+func bggGameIDFromURL(rawURL string) string {
+	raw := strings.TrimSpace(rawURL)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if u.Host == "" {
+		// Scheme-less input such as "boardgamegeek.com/boardgame/1234/x".
+		u, err = url.Parse("https://" + raw)
+		if err != nil {
+			return ""
+		}
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "boardgamegeek.com" && !strings.HasSuffix(host, ".boardgamegeek.com") {
+		return ""
+	}
+	m := bggGameIDRe.FindStringSubmatch(u.Path)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// bggOverlayType returns the episodeType to pass to the BGG image pipeline for
+// a captured entity, mirroring what the matching UI form sends when its
+// "import from BGG" button is used: the News page and the post editor send no
+// episodeType at all (which selects the team's BGG watermark), and the Episode
+// page sends its type selector, which defaults to "news".
+func bggOverlayType(entityType string) string {
+	if entityType == "episode" {
+		return "news"
+	}
+	return ""
+}
+
+// fetchBGGCoverImageURL reads the cover image URL straight off a BGG game page.
+// It is the deterministic fallback for a failed BGG XML API call: a BGG link
+// must never fall back to vision-model image selection, so the page's own
+// og:image stands in for the API's image field.
+func fetchBGGCoverImageURL(ctx context.Context, pageURL string) string {
+	html, err := fetchPageHTML(ctx, pageURL)
+	if err != nil || html == "" {
+		if err != nil {
+			log.Printf("[Capture] BGG page fetch for cover image failed: %v", err)
+		}
+		return ""
+	}
+	return resolveURL(extractMetaContent(html, "og:image", "twitter:image"), pageURL)
+}
+
+// scrapePageInfo builds the page summary handed to the text model from the
+// capture input and, where reachable, the page's own metadata and body text.
+func scrapePageInfo(ctx context.Context, input CaptureInput) string {
+	if input.URL == "" {
+		return ""
+	}
+	var parts []string
+	parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
+	if input.PageTitle != "" {
+		parts = append(parts, fmt.Sprintf("Page Title: %s", input.PageTitle))
+	}
+	if input.Description != "" {
+		parts = append(parts, fmt.Sprintf("Additional context: %s", input.Description))
+	}
+	html, _ := fetchPageHTML(ctx, input.URL)
+	if html != "" {
+		_, description, _, body := extractPageMetadata(html)
+		if description != "" {
+			parts = append(parts, fmt.Sprintf("Description: %s", description))
+		}
+		if body != "" {
+			parts = append(parts, fmt.Sprintf("Page Content:\n%s", body))
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func fetchBGGPageInfo(ctx context.Context, gameID, pageURL, bggToken string) (pageInfo string, imageURL string) {
