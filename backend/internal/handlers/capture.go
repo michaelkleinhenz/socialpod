@@ -42,9 +42,9 @@ Based on the requested entity type, return a JSON object with ONLY the following
 
 For "news":
 {
-  "newsTagline": "A compelling headline/tagline for the news item",
+  "newsTagline": "A very short headline for the news item — MAXIMUM 30 CHARACTERS including spaces",
   "articleUrl": "The source URL",
-  "shownotes": "Key points and summary of the article",
+  "shownotes": "Key points and summary of the article, with no blank lines between them",
   "content": "Ready-to-post social media text (max 280 characters)"
 }
 
@@ -67,6 +67,15 @@ For "post":
 {
   "content": "Ready-to-post social media text optimized for engagement (max 280 characters)"
 }
+
+The "newsTagline" is reused as a podcast chapter title, which allows at most 30 characters.
+Keep it short and sweet: a maximum of 30 characters including spaces, ideally two to four words.
+Do not add a trailing period, quotes, the publication or site name, or any hashtags.
+Count the characters before answering and shorten the tagline until it fits.
+
+The "shownotes" are fed into a script generator that cannot handle blank lines.
+Never leave an empty line inside the shownotes: separate points with a single
+line break only, and do not pad the text with leading or trailing empty lines.
 
 Always write in a professional but engaging tone. Include relevant context from the source material.
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
@@ -483,6 +492,22 @@ func (h *CaptureHandler) saveProcessedImage(ctx context.Context, raw []byte) []s
 	return []string{"/api/uploads/" + filename}
 }
 
+// stripBlankLines removes empty lines from AI-generated text. The downstream
+// script generator treats a blank line as a section break, so shownotes are
+// stored as a single run of non-empty lines regardless of how the model
+// formatted them.
+func stripBlankLines(s string) string {
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		kept = append(kept, strings.TrimRight(line, " \t"))
+	}
+	return strings.Join(kept, "\n")
+}
+
 func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, userID primitive.ObjectID, teamID *primitive.ObjectID, sourceURL string, imageURLs []string) (*models.NewsDraft, error) {
 	var parsed struct {
 		NewsTagline string `json:"newsTagline"`
@@ -503,7 +528,7 @@ func (h *CaptureHandler) createNewsDraft(ctx context.Context, aiContent string, 
 		TeamID:      teamID,
 		NewsTagline: parsed.NewsTagline,
 		ArticleURL:  parsed.ArticleURL,
-		Shownotes:   parsed.Shownotes,
+		Shownotes:   stripBlankLines(parsed.Shownotes),
 		Content:     parsed.Content,
 		ImageURLs:   imageURLs,
 		CreatedAt:   time.Now(),

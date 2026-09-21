@@ -408,3 +408,32 @@ func TestBGGOverlayType_MatchesUIForms(t *testing.T) {
 		t.Errorf("episode: expected \"news\", got %q", got)
 	}
 }
+
+func TestStripBlankLines_RemovesEmptyLines(t *testing.T) {
+	got := stripBlankLines("First point\n\nSecond point\n\n\nThird point")
+	want := "First point\nSecond point\nThird point"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestStripBlankLines_TrimsPaddingAndWhitespaceOnlyLines(t *testing.T) {
+	got := stripBlankLines("\n  \nFirst point   \r\n\t\r\nSecond point\n\n")
+	want := "First point\nSecond point"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestStripBlankLines_LeavesSingleLineUntouched(t *testing.T) {
+	got := stripBlankLines("Just one line")
+	if got != "Just one line" {
+		t.Fatalf("expected unchanged text, got %q", got)
+	}
+}
+
+func TestStripBlankLines_Empty(t *testing.T) {
+	if got := stripBlankLines(""); got != "" {
+		t.Fatalf("expected empty string, got %q", got)
+	}
+}
