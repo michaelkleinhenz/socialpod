@@ -73,11 +73,11 @@ Always write in a professional but engaging tone. Include relevant context from 
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
 
 type CaptureInput struct {
-	URL         string `json:"url"`
-	EntityType  string `json:"entityType"`
-	Description string `json:"description"`
-	PageTitle   string `json:"pageTitle"`
-	OGImage     string `json:"ogImage"`
+	URL         string   `json:"url"`
+	EntityType  string   `json:"entityType"`
+	Description string   `json:"description"`
+	PageTitle   string   `json:"pageTitle"`
+	Images      []string `json:"images"`
 }
 
 func (h *CaptureHandler) Capture(c *gin.Context) {
@@ -125,16 +125,17 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Fetch image using server-side extraction (same as MCP handler).
-	// This is more reliable than the client-side vision model approach.
+	// Step 1: Download images provided by the Chrome extension.
+	// The extension extracts image URLs from the page DOM (og:image, meta tags,
+	// large img elements) and sends them here. We download and save them.
 	episodeType := "news_entry"
 	if input.EntityType == "episode" {
 		episodeType = "news"
 	}
 
 	var imageURLs []string
-	if input.URL != "" {
-		imageURLs = h.fetchArticleImage(ctx, c, input.URL, episodeType, settings.BGGAPIToken)
+	if len(input.Images) > 0 {
+		imageURLs = h.downloadClientImages(ctx, c, input.Images, episodeType)
 		log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 	}
 
@@ -262,59 +263,14 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 	}
 }
 
-// fetchArticleImage fetches the best content image from the given article URL,
-// downloads it, applies the overlay, and returns the resulting image URLs.
-// This uses the same proven server-side extraction as the MCP handler.
-func (h *CaptureHandler) fetchArticleImage(ctx context.Context, c *gin.Context, articleURL string, episodeType string, bggToken string) []string {
-	if articleURL == "" {
-		return nil
-	}
-
-	// BGG URLs use the dedicated BGG API
-	if m := bggURLRe.FindStringSubmatch(articleURL); m != nil {
-		_, bggImageURL := fetchBGGPageInfo(ctx, m[1], articleURL, bggToken)
-		if bggImageURL != "" && h.BGG != nil {
-			log.Printf("[Capture] Downloading BGG image %s", bggImageURL)
-			imgData, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
-			if err != nil {
-				log.Printf("[Capture] Failed to download/process BGG image: %v", err)
-				return nil
-			}
-			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-			if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-				return nil
-			}
-			dst := filepath.Join(h.UploadDir, filename)
-			if err := os.WriteFile(dst, imgData, 0o644); err != nil {
-				return nil
-			}
-			h.DB.Uploads().InsertOne(ctx, models.Upload{
-				Filename:    filename,
-				ContentType: "image/jpeg",
-				Data:        imgData,
-				Size:        int64(len(imgData)),
-				CreatedAt:   time.Now(),
-			})
-			return []string{"/api/uploads/" + filename}
+// downloadClientImages tries each image URL provided by the Chrome extension,
+// downloads the first one that succeeds, applies the overlay if configured,
+// and returns the resulting image URLs.
+func (h *CaptureHandler) downloadClientImages(ctx context.Context, c *gin.Context, candidateURLs []string, episodeType string) []string {
+	for _, candidate := range candidateURLs {
+		if candidate == "" || strings.HasPrefix(candidate, "data:") {
+			continue
 		}
-	}
-
-	// Non-BGG: fetch the page and extract image candidates
-	html, err := fetchPageHTML(ctx, articleURL)
-	if err != nil {
-		log.Printf("[Capture] Failed to fetch page HTML: %v", err)
-		return nil
-	}
-
-	candidates := extractContentImageCandidates(html, articleURL)
-	log.Printf("[Capture] Found %d image candidates for %s", len(candidates), articleURL)
-
-	if len(candidates) == 0 {
-		log.Printf("[Capture] No image found for URL %s", articleURL)
-		return nil
-	}
-
-	for _, candidate := range candidates {
 		if h.BGG != nil {
 			log.Printf("[Capture] Downloading and processing image: %s", candidate)
 			imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, candidate, episodeType)
@@ -347,7 +303,7 @@ func (h *CaptureHandler) fetchArticleImage(ctx context.Context, c *gin.Context, 
 		return []string{saved}
 	}
 
-	log.Printf("[Capture] All %d candidates failed to download for %s", len(candidates), articleURL)
+	log.Printf("[Capture] All %d client-provided images failed to download", len(candidateURLs))
 	return nil
 }
 

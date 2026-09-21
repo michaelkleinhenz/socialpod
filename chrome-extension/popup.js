@@ -75,16 +75,33 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     captureBtn.disabled = true;
     captureBtn.textContent = "Capturing...";
-    showStatus("Sending to SocialPod...", "info");
+    showStatus("Extracting page images...", "info");
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      // Extract images from the page using scripting API
+      let images = [];
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: extractPageImages,
+        });
+        if (results && results[0] && results[0].result) {
+          images = results[0].result;
+        }
+      } catch (e) {
+        console.warn("Could not extract images from page:", e);
+      }
+
+      showStatus("Sending to SocialPod...", "info");
 
       const payload = {
         url: tab.url,
         entityType: entityType,
         description: document.getElementById("description").value,
         pageTitle: tab.title,
+        images: images,
       };
 
       const resp = await fetch(config.serverUrl + "/api/capture", {
@@ -114,6 +131,76 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
+
+// Runs inside the active tab to extract image URLs from the page DOM.
+function extractPageImages() {
+  const images = [];
+  const seen = new Set();
+
+  function add(url) {
+    if (!url || seen.has(url) || url.startsWith("data:")) return;
+    seen.add(url);
+    images.push(url);
+  }
+
+  // og:image
+  const ogImage = document.querySelector('meta[property="og:image"]');
+  if (ogImage) add(ogImage.content);
+
+  // twitter:image
+  const twImage = document.querySelector('meta[name="twitter:image"], meta[name="twitter:image:src"], meta[property="twitter:image"]');
+  if (twImage) add(twImage.content);
+
+  // link rel=image_src
+  const linkImage = document.querySelector('link[rel="image_src"]');
+  if (linkImage) add(linkImage.href);
+
+  // JSON-LD image
+  try {
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
+      try {
+        const data = JSON.parse(el.textContent);
+        const items = Array.isArray(data) ? data : data["@graph"] ? [data, ...data["@graph"]] : [data];
+        for (const item of items) {
+          if (!item || typeof item !== "object") continue;
+          const img = item.image;
+          if (typeof img === "string") add(img);
+          else if (Array.isArray(img) && img.length > 0) {
+            add(typeof img[0] === "string" ? img[0] : img[0]?.url);
+          } else if (img && typeof img === "object") {
+            add(img.url);
+          }
+        }
+      } catch (_) {}
+    });
+  } catch (_) {}
+
+  // Large <img> elements (natural dimensions > 200px)
+  const imgs = Array.from(document.querySelectorAll("img"))
+    .filter((img) => {
+      const src = img.src || img.dataset.src || img.dataset.lazySrc;
+      if (!src || src.startsWith("data:")) return false;
+      const w = img.naturalWidth || parseInt(img.getAttribute("width")) || 0;
+      const h = img.naturalHeight || parseInt(img.getAttribute("height")) || 0;
+      if (w > 0 && w < 100) return false;
+      if (h > 0 && h < 100) return false;
+      const lower = src.toLowerCase();
+      const negatives = ["logo", "icon", "avatar", "sprite", "pixel", "tracking", "badge", "favicon", "spinner"];
+      return !negatives.some((n) => lower.includes(n));
+    })
+    .sort((a, b) => {
+      const aSize = (a.naturalWidth || 0) * (a.naturalHeight || 0);
+      const bSize = (b.naturalWidth || 0) * (b.naturalHeight || 0);
+      return bSize - aSize;
+    })
+    .slice(0, 5);
+
+  for (const img of imgs) {
+    add(img.src || img.dataset.src || img.dataset.lazySrc);
+  }
+
+  return images;
+}
 
 function showStatus(message, type) {
   const status = document.getElementById("status");
