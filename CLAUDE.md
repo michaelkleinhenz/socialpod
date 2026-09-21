@@ -111,6 +111,8 @@ A single bearer token (`sm_...` prefix for users, `st_...` for teams) authentica
 ### Chrome extension (`chrome-extension/`)
 A Manifest V3 Chrome extension that captures the current browser tab (screenshot + extracted page images) and sends the data to a SocialPod server's `/api/capture` endpoint to create a draft. Supports news, episode, and post draft types. Users configure their SocialPod server URL and API token in the extension popup. `make chrome-extension` produces a `socialpod-capture.zip` ready for Chrome Web Store upload.
 
+Captured images are normally narrowed down by a vision model (`selectBestImage`), but BoardGameGeek links bypass that entirely: a BGG game URL (`bggGameIDFromURL`) takes the cover from the BGG XML API — or, if that API is unavailable, from the game page's `og:image` — and runs it through `BGGHandler.downloadAndProcess`, the same letterbox + overlay pipeline as the UI's "import from BGG" button. The overlay matches what the corresponding form would use (`bggOverlayType`): the team's BGG watermark for news and post captures, the news episode overlay for episode captures. A BGG capture never falls back to the vision model for its image; if no cover can be fetched, the draft is created without one.
+
 ### n8n integration (`n8n-nodes-socialpod/`)
 A pre-built n8n community node with a `dist/` directory already compiled. Install with `npm install --omit=dev` on the target machine — full `npm install` fails on Node < 22 due to the `isolated-vm` transitive dev dependency.
 

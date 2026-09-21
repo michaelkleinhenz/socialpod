@@ -345,3 +345,66 @@ func TestExtractContentImageCandidates_SrcsetFallback(t *testing.T) {
 		t.Fatalf("expected largest srcset image in candidates, got %v", candidates)
 	}
 }
+
+func TestBGGGameIDFromURL_GamePage(t *testing.T) {
+	if got := bggGameIDFromURL("https://boardgamegeek.com/boardgame/224517/brass-birmingham"); got != "224517" {
+		t.Errorf("expected 224517, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_WWWAndExpansion(t *testing.T) {
+	if got := bggGameIDFromURL("https://www.boardgamegeek.com/boardgameexpansion/161936/pandemic-legacy-season-1"); got != "161936" {
+		t.Errorf("expected 161936, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_ExtraPathSegments(t *testing.T) {
+	if got := bggGameIDFromURL("https://boardgamegeek.com/de/boardgame/13/catan?foo=bar#comments"); got != "13" {
+		t.Errorf("expected 13, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_SchemeLess(t *testing.T) {
+	if got := bggGameIDFromURL("boardgamegeek.com/boardgame/13/catan"); got != "13" {
+		t.Errorf("expected 13, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_OtherHostWithBGGLikePath(t *testing.T) {
+	if got := bggGameIDFromURL("https://example.com/boardgame/224517/brass-birmingham"); got != "" {
+		t.Errorf("expected no match for non-BGG host, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_LookalikeHost(t *testing.T) {
+	if got := bggGameIDFromURL("https://notboardgamegeek.com/boardgame/224517/x"); got != "" {
+		t.Errorf("expected no match for look-alike host, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_NonGamePage(t *testing.T) {
+	if got := bggGameIDFromURL("https://boardgamegeek.com/thread/123456/some-thread"); got != "" {
+		t.Errorf("expected no match for non-game page, got %q", got)
+	}
+}
+
+func TestBGGGameIDFromURL_Empty(t *testing.T) {
+	if got := bggGameIDFromURL(""); got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+func TestBGGOverlayType_MatchesUIForms(t *testing.T) {
+	// News page and post editor call /bgg/fetch without an episodeType, which
+	// selects the team's BGG watermark; the Episode page sends its type
+	// selector, which defaults to "news".
+	if got := bggOverlayType("news"); got != "" {
+		t.Errorf("news: expected empty episodeType, got %q", got)
+	}
+	if got := bggOverlayType("post"); got != "" {
+		t.Errorf("post: expected empty episodeType, got %q", got)
+	}
+	if got := bggOverlayType("episode"); got != "news" {
+		t.Errorf("episode: expected \"news\", got %q", got)
+	}
+}

@@ -1949,13 +1949,16 @@ func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []stri
 	defer cancel()
 
 	// BGG URLs use the dedicated BGG API
-	if m := bggURLRe.FindStringSubmatch(articleURL); m != nil {
+	if gameID := bggGameIDFromURL(articleURL); gameID != "" {
 		var bggToken string
 		var settings models.AppSettings
 		if err := h.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings); err == nil {
 			bggToken = settings.BGGAPIToken
 		}
-		_, bggImageURL := fetchBGGPageInfo(ctx, m[1], articleURL, bggToken)
+		_, bggImageURL := fetchBGGPageInfo(ctx, gameID, articleURL, bggToken)
+		if bggImageURL == "" {
+			bggImageURL = fetchBGGCoverImageURL(ctx, articleURL)
+		}
 		if bggImageURL != "" && h.BGG != nil {
 			log.Printf("[MCP] fetchArticleImage: downloading BGG image %s", bggImageURL)
 			imgData, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, "news_entry")
