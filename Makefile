@@ -1,4 +1,4 @@
-.PHONY: up down restart build logs clean frontend backend dev mongo status
+.PHONY: up down restart build logs clean frontend backend dev mongo status chrome-extension
 
 # Docker Compose targets
 up:
@@ -41,3 +41,7 @@ dev: frontend
 
 dev-frontend:
 	cd frontend && npm run dev
+
+# Chrome extension
+chrome-extension:
+	cd chrome-extension && zip -r socialpod-capture.zip manifest.json popup.html popup.js icons/
