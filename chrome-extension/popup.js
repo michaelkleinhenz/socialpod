@@ -47,6 +47,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       .replace(/\/+$/, "")
       .replace(/\/api(\/mcp)?$/, "");
     serverUrl.value = cleanUrl;
+
+    if (cleanUrl) {
+      try {
+        const origin = new URL(cleanUrl).origin + "/*";
+        const granted = await chrome.permissions.request({ origins: [origin] });
+        if (!granted) {
+          showStatus("Permission for server URL was denied.", "error");
+          return;
+        }
+      } catch (e) {
+        showStatus("Invalid server URL.", "error");
+        return;
+      }
+    }
+
     await chrome.storage.local.set({
       serverUrl: cleanUrl,
       apiToken: apiToken.value,
@@ -73,6 +88,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    try {
+      const origin = new URL(config.serverUrl).origin + "/*";
+      const hasPermission = await chrome.permissions.contains({ origins: [origin] });
+      if (!hasPermission) {
+        const granted = await chrome.permissions.request({ origins: [origin] });
+        if (!granted) {
+          showStatus("Permission for server URL was denied.", "error");
+          return;
+        }
+      }
+    } catch (e) {
+      showStatus("Invalid server URL in settings.", "error");
+      return;
+    }
+
     captureBtn.disabled = true;
     captureBtn.textContent = "Capturing...";
     showStatus("Capturing page...", "info");
@@ -80,7 +110,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      // Capture a screenshot of the visible tab
       let screenshot = null;
       try {
         const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "jpeg", quality: 80 });
@@ -94,26 +123,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.warn("Could not capture screenshot:", e);
       }
 
-      // Extract image URLs from the page DOM
       showStatus("Extracting page images...", "info");
-      let imageUrls = [];
+      let images = [];
       try {
         const results = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          func: extractPageImages,
+          world: "MAIN",
+          func: extractAndDownloadPageImages,
         });
         if (results && results[0] && results[0].result) {
-          imageUrls = results[0].result;
+          images = results[0].result;
         }
       } catch (e) {
         console.warn("Could not extract images from page:", e);
       }
 
-      // Download all candidate images in the browser
-      showStatus("Downloading images...", "info");
-      const images = await downloadAllImages(imageUrls);
-
-      // Add the screenshot last (lowest priority for content, but provides context)
       if (screenshot) {
         images.push(screenshot);
       }
@@ -156,30 +180,28 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 
-// Runs inside the active tab to extract image URLs from the page DOM.
-function extractPageImages() {
-  const images = [];
+// Runs inside the active tab (MAIN world) to extract image URLs and download
+// them as base64. Running in the page's fetch context avoids CORS issues for
+// same-origin images, eliminating the need for broad host_permissions.
+async function extractAndDownloadPageImages() {
+  const urls = [];
   const seen = new Set();
 
   function add(url) {
     if (!url || seen.has(url) || url.startsWith("data:")) return;
     seen.add(url);
-    images.push(url);
+    urls.push(url);
   }
 
-  // og:image
   const ogImage = document.querySelector('meta[property="og:image"]');
   if (ogImage) add(ogImage.content);
 
-  // twitter:image
   const twImage = document.querySelector('meta[name="twitter:image"], meta[name="twitter:image:src"], meta[property="twitter:image"]');
   if (twImage) add(twImage.content);
 
-  // link rel=image_src
   const linkImage = document.querySelector('link[rel="image_src"]');
   if (linkImage) add(linkImage.href);
 
-  // JSON-LD image
   try {
     document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => {
       try {
@@ -199,7 +221,6 @@ function extractPageImages() {
     });
   } catch (_) {}
 
-  // Large <img> elements sorted by size
   const imgs = Array.from(document.querySelectorAll("img"))
     .filter((img) => {
       const src = img.src || img.dataset.src || img.dataset.lazySrc;
@@ -223,46 +244,27 @@ function extractPageImages() {
     add(img.src || img.dataset.src || img.dataset.lazySrc);
   }
 
-  return images;
-}
-
-// Downloads all candidate images in the browser and returns them as
-// {data: base64, filename: string} objects. Skips URLs that fail.
-async function downloadAllImages(urls) {
   const images = [];
   for (const url of urls) {
     if (images.length >= 8) break;
     try {
       const resp = await fetch(url);
       if (!resp.ok) continue;
-
       const blob = await resp.blob();
       if (!blob.type.startsWith("image/")) continue;
       if (blob.size < 1000) continue;
-
       const ext = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
-      const base64 = await blobToBase64(blob);
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result?.split(",")[1] || null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
       if (!base64) continue;
-
       images.push({ data: base64, filename: `image${images.length}.${ext}` });
-    } catch (e) {
-      console.warn("Failed to download image:", url, e);
-    }
+    } catch (e) {}
   }
   return images;
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      const base64 = result?.split(",")[1] || null;
-      resolve(base64);
-    };
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(blob);
-  });
 }
 
 function showStatus(message, type) {
