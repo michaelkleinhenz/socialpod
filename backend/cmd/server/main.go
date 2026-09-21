@@ -233,7 +233,9 @@ func main() {
 
 		// Convention mode
 		// MCP server (Streamable HTTP transport)
+		auth.GET("/mcp", mcpHandler.HandleGet)
 		auth.POST("/mcp", mcpHandler.Handle)
+		auth.DELETE("/mcp", mcpHandler.HandleDelete)
 
 		auth.GET("/convention/queues", conventionHandler.ListQueues)
 		auth.POST("/convention/queues", conventionHandler.CreateQueue)
