@@ -4,7 +4,7 @@ import { useCallback, useRef, type CSSProperties, type ReactNode } from 'react';
  * What the guard asks before throwing away a half-filled form. Kept generic so
  * every modal sounds the same.
  */
-const DISCARD_PROMPT = 'Discard your changes? What you entered in this dialog will be lost.';
+export const DISCARD_PROMPT = 'Discard your changes? What you entered in this dialog will be lost.';
 
 interface ModalProps {
   /** Closes the modal. Only called once the dismissal is allowed to go through. */
