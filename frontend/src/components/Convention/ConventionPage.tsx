@@ -6,7 +6,7 @@ import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
-import { Modal } from '../Common/Modal';
+import { Modal, DISCARD_PROMPT } from '../Common/Modal';
 import './Convention.css';
 
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
@@ -88,10 +88,12 @@ function QueueFormModal({
     );
   };
 
-  // The Modal's own unsaved-input watch only sees typing and picking. Half of
-  // this form is buttons — the platform toggles, the hashtag chips — and a
-  // queue built entirely out of those would look untouched and be thrown away
-  // without a word on a stray click outside. So tell the Modal ourselves
+  // A whole convention queue is too much work to lose to a slip, so this form
+  // is one of the dialogs that only its own buttons can dismiss: a click
+  // outside does nothing at all (closeOnBackdrop below). Cancel and the X then
+  // still ask before throwing away a filled-in form. The Modal's own
+  // unsaved-input watch would not see most of this form — the platform
+  // toggles and hashtag chips are buttons, not inputs — so work out here
   // whether anything differs from what the form opened with.
   const isDirty =
     name !== initialName ||
@@ -106,6 +108,11 @@ function QueueFormModal({
     !sameMap(accountIds, initialAccountIds) ||
     !sameMap(footerIds, initialFooterIds) ||
     watermarkId !== initialWatermarkId;
+
+  const handleClose = () => {
+    if (isDirty && !window.confirm(DISCARD_PROMPT)) return;
+    onClose();
+  };
 
   // The minimum delay takes precedence over posts-per-day: at most
   // floor(24 / minHours) posts can go out on any given day.
@@ -142,10 +149,10 @@ function QueueFormModal({
   const platformAccounts = accounts.filter(a => platforms.includes(a.platform));
 
   return (
-    <Modal onClose={onClose} dirty={isDirty} className="conv-modal">
+    <Modal onClose={handleClose} closeOnBackdrop={false} className="conv-modal">
       <div className="modal-header">
         <h2>{initial ? 'Edit Queue' : 'New Convention Queue'}</h2>
-        <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+        <button className="btn btn-ghost btn-sm" onClick={handleClose}><X size={18} /></button>
       </div>
       <form onSubmit={handleSubmit} className="conv-form">
         <div className="form-group">
@@ -352,7 +359,7 @@ function QueueFormModal({
         )}
 
         <div className="modal-footer">
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-secondary" onClick={handleClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
             {saving ? 'Saving…' : initial ? 'Save changes' : 'Create queue'}
           </button>
