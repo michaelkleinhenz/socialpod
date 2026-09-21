@@ -80,18 +80,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      // Extract images from the page using scripting API
-      let images = [];
+      // Extract image URLs from the page DOM
+      let imageUrls = [];
       try {
         const results = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: extractPageImages,
         });
         if (results && results[0] && results[0].result) {
-          images = results[0].result;
+          imageUrls = results[0].result;
         }
       } catch (e) {
         console.warn("Could not extract images from page:", e);
+      }
+
+      // Download the best image in the browser and convert to base64
+      let images = [];
+      if (imageUrls.length > 0) {
+        showStatus("Downloading image...", "info");
+        const imageData = await downloadBestImage(imageUrls);
+        if (imageData) {
+          images.push(imageData);
+        }
       }
 
       showStatus("Sending to SocialPod...", "info");
@@ -175,7 +185,7 @@ function extractPageImages() {
     });
   } catch (_) {}
 
-  // Large <img> elements (natural dimensions > 200px)
+  // Large <img> elements sorted by size
   const imgs = Array.from(document.querySelectorAll("img"))
     .filter((img) => {
       const src = img.src || img.dataset.src || img.dataset.lazySrc;
@@ -200,6 +210,43 @@ function extractPageImages() {
   }
 
   return images;
+}
+
+// Fetches image URLs in the extension context (browser-side) and returns
+// the first successful one as {data: base64, filename: string}.
+async function downloadBestImage(urls) {
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+
+      const blob = await resp.blob();
+      if (!blob.type.startsWith("image/")) continue;
+
+      const ext = blob.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+      const base64 = await blobToBase64(blob);
+      if (!base64) continue;
+
+      return { data: base64, filename: `captured.${ext}` };
+    } catch (e) {
+      console.warn("Failed to download image:", url, e);
+    }
+  }
+  return null;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      // Strip the data:...;base64, prefix
+      const base64 = result?.split(",")[1] || null;
+      resolve(base64);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function showStatus(message, type) {

@@ -502,6 +502,41 @@ func (h *BGGHandler) downloadAndProcessURL(ctx context.Context, c *gin.Context, 
 	return buf.Bytes(), nil
 }
 
+// processImageBytes applies the letterbox + overlay pipeline to raw image bytes
+// (no download needed — the caller already has the data).
+func (h *BGGHandler) processImageBytes(ctx context.Context, c *gin.Context, imgData []byte, episodeType string) ([]byte, error) {
+	src, _, err := image.Decode(bytes.NewReader(imgData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	cfg := h.loadTeamBGGConfig(ctx, c, episodeType)
+
+	if cfg.isEpisode && cfg.watermark != nil {
+		autoX, autoY := overlayAutoOffset(cfg.watermark, 1080)
+		cfg.offsetX += autoX
+		cfg.offsetY += autoY
+	}
+
+	const size = 1080
+	composed := compositeLetterbox(src, size, cfg.offsetX, cfg.offsetY)
+
+	if cfg.watermark != nil {
+		bounds := composed.Bounds()
+		wmScaled := resizeImage(cfg.watermark, bounds.Dx(), bounds.Dy())
+		dst := image.NewRGBA(bounds)
+		draw.Draw(dst, bounds, composed, bounds.Min, draw.Src)
+		draw.Draw(dst, bounds, wmScaled, image.Point{}, draw.Over)
+		composed = dst
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, composed, &jpeg.Options{Quality: 90}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 type bggLabels struct {
 	Players                string
 	Time                   string

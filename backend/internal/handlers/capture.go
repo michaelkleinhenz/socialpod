@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -72,12 +73,17 @@ For "post":
 Always write in a professional but engaging tone. Include relevant context from the source material.
 Reply with ONLY valid JSON, no markdown code fences, no commentary.`
 
+type CaptureImage struct {
+	Data     string `json:"data"`
+	Filename string `json:"filename"`
+}
+
 type CaptureInput struct {
-	URL         string   `json:"url"`
-	EntityType  string   `json:"entityType"`
-	Description string   `json:"description"`
-	PageTitle   string   `json:"pageTitle"`
-	Images      []string `json:"images"`
+	URL         string         `json:"url"`
+	EntityType  string         `json:"entityType"`
+	Description string         `json:"description"`
+	PageTitle   string         `json:"pageTitle"`
+	Images      []CaptureImage `json:"images"`
 }
 
 func (h *CaptureHandler) Capture(c *gin.Context) {
@@ -125,9 +131,9 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Download images provided by the Chrome extension.
-	// The extension extracts image URLs from the page DOM (og:image, meta tags,
-	// large img elements) and sends them here. We download and save them.
+	// Step 1: Save images sent by the Chrome extension as base64 data.
+	// The extension downloads images in the browser (avoiding proxy/bot issues)
+	// and sends the raw data here.
 	episodeType := "news_entry"
 	if input.EntityType == "episode" {
 		episodeType = "news"
@@ -135,7 +141,7 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 
 	var imageURLs []string
 	if len(input.Images) > 0 {
-		imageURLs = h.downloadClientImages(ctx, c, input.Images, episodeType)
+		imageURLs = h.saveClientImages(ctx, c, input.Images, episodeType)
 		log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 	}
 
@@ -263,47 +269,67 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 	}
 }
 
-// downloadClientImages tries each image URL provided by the Chrome extension,
-// downloads the first one that succeeds, applies the overlay if configured,
-// and returns the resulting image URLs.
-func (h *CaptureHandler) downloadClientImages(ctx context.Context, c *gin.Context, candidateURLs []string, episodeType string) []string {
-	for _, candidate := range candidateURLs {
-		if candidate == "" || strings.HasPrefix(candidate, "data:") {
+// saveClientImages decodes base64 image data sent by the Chrome extension,
+// applies the overlay if configured, and saves the images.
+func (h *CaptureHandler) saveClientImages(ctx context.Context, c *gin.Context, images []CaptureImage, episodeType string) []string {
+	for _, img := range images {
+		if img.Data == "" {
 			continue
 		}
+
+		raw, err := base64.StdEncoding.DecodeString(img.Data)
+		if err != nil {
+			log.Printf("[Capture] Failed to decode base64 image: %v", err)
+			continue
+		}
+
+		ct := http.DetectContentType(raw)
+		if !strings.HasPrefix(ct, "image/") {
+			log.Printf("[Capture] Skipping non-image content type: %s", ct)
+			continue
+		}
+
 		if h.BGG != nil {
-			log.Printf("[Capture] Downloading and processing image: %s", candidate)
-			imgData, imgErr := h.BGG.downloadAndProcessURL(ctx, c, candidate, episodeType)
-			if imgErr != nil {
-				log.Printf("[Capture] Failed to process image %s: %v (trying next)", candidate, imgErr)
-				continue
+			processed, procErr := h.BGG.processImageBytes(ctx, c, raw, episodeType)
+			if procErr != nil {
+				log.Printf("[Capture] Overlay processing failed: %v (saving original)", procErr)
+			} else {
+				raw = processed
+				ct = "image/jpeg"
 			}
-			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-			if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-				continue
-			}
-			dst := filepath.Join(h.UploadDir, filename)
-			if err := os.WriteFile(dst, imgData, 0o644); err != nil {
-				continue
-			}
-			h.DB.Uploads().InsertOne(ctx, models.Upload{
-				Filename:    filename,
-				ContentType: "image/jpeg",
-				Data:        imgData,
-				Size:        int64(len(imgData)),
-				CreatedAt:   time.Now(),
-			})
-			return []string{"/api/uploads/" + filename}
 		}
-		saved, saveErr := downloadAndSaveImage(ctx, h.DB, h.UploadDir, candidate)
-		if saveErr != nil {
-			log.Printf("[Capture] Failed to download image %s: %v (trying next)", candidate, saveErr)
+
+		ext := ".jpg"
+		switch {
+		case strings.Contains(ct, "png"):
+			ext = ".png"
+		case strings.Contains(ct, "gif"):
+			ext = ".gif"
+		case strings.Contains(ct, "webp"):
+			ext = ".webp"
+		}
+
+		filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+			log.Printf("[Capture] Failed to create upload dir: %v", err)
 			continue
 		}
-		return []string{saved}
+		dst := filepath.Join(h.UploadDir, filename)
+		if err := os.WriteFile(dst, raw, 0o644); err != nil {
+			log.Printf("[Capture] Failed to write image file: %v", err)
+			continue
+		}
+		h.DB.Uploads().InsertOne(ctx, models.Upload{
+			Filename:    filename,
+			ContentType: ct,
+			Data:        raw,
+			Size:        int64(len(raw)),
+			CreatedAt:   time.Now(),
+		})
+		return []string{"/api/uploads/" + filename}
 	}
 
-	log.Printf("[Capture] All %d client-provided images failed to download", len(candidateURLs))
+	log.Printf("[Capture] No valid images from %d client-provided entries", len(images))
 	return nil
 }
 
