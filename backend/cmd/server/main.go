@@ -296,6 +296,11 @@ func main() {
 		admin.DELETE("/teams/:id/invites/:inviteId", inviteHandler.DeleteInvite)
 
 		// Publisher handle catalog (global, admin-managed)
+		// Storage maintenance: scan for uploads nothing references any more,
+		// and delete them when asked explicitly.
+		admin.GET("/uploads/orphans", adminHandler.SweepUploads)
+		admin.POST("/uploads/sweep", adminHandler.SweepUploads)
+
 		admin.GET("/publisher-handles", publisherHandleHandler.List)
 		admin.POST("/publisher-handles", publisherHandleHandler.Create)
 		admin.PUT("/publisher-handles/:id", publisherHandleHandler.Update)

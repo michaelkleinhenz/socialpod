@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { AppSettings } from '../../types';
-import { Save, Copy, Check, Smartphone } from 'lucide-react';
+import type { AppSettings, UploadSweepReport } from '../../types';
+import { Save, Copy, Check, Smartphone, HardDrive, Search, Trash2, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Admin.css';
 
@@ -35,6 +35,12 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Storage maintenance
+  const [sweepMinAgeHours, setSweepMinAgeHours] = useState('24');
+  const [sweepReport, setSweepReport] = useState<UploadSweepReport | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
+
   const mobileCreateUrl = `${(settings.appUrl || window.location.origin).replace(/\/+$/, '')}/m/create`;
 
   const copyMobileCreateLink = async () => {
@@ -50,6 +56,45 @@ export function SettingsPage() {
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => {});
   }, []);
+
+  const minAgeHours = () => {
+    const parsed = parseInt(sweepMinAgeHours, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 24;
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const scanStorage = async () => {
+    setScanning(true);
+    try {
+      setSweepReport(await api.scanOrphanedUploads(minAgeHours()));
+    } catch (err: any) {
+      toast.error(err.message || 'Scan failed');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const sweepStorage = async () => {
+    if (!sweepReport || sweepReport.orphanedFiles === 0) return;
+    const what = `${sweepReport.orphanedFiles} file${sweepReport.orphanedFiles === 1 ? '' : 's'} (${formatBytes(sweepReport.orphanedBytes)})`;
+    if (!window.confirm(`Permanently delete ${what}? This cannot be undone.`)) return;
+    setSweeping(true);
+    try {
+      const report = await api.sweepOrphanedUploads(minAgeHours());
+      setSweepReport(report);
+      toast.success(`Deleted ${report.deletedFiles} file${report.deletedFiles === 1 ? '' : 's'}, freed ${formatBytes(report.deletedBytes)}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Sweep failed');
+    } finally {
+      setSweeping(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -592,6 +637,93 @@ export function SettingsPage() {
             <Save size={16} /> {saving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
+      </div>
+
+      <div className="card settings-card">
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <HardDrive size={16} /> Storage
+        </h3>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 0 }}>
+          Uploaded images are freed automatically when the post, draft, watermark or queue item
+          holding them is deleted. This sweep clears what is left over: images from entries deleted
+          before that existed, images replaced while editing, and imports abandoned before anything
+          referenced them. An image any entry still uses is never touched.
+        </p>
+
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 16 }}>
+          <div className="form-group" style={{ maxWidth: 220 }}>
+            <label>Keep uploads newer than</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={sweepMinAgeHours}
+                onChange={e => setSweepMinAgeHours(e.target.value)}
+                style={{ width: 90 }}
+              />
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>hours</span>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Protects images an editor that is still open has uploaded but not saved yet.
+            </span>
+          </div>
+
+          <button className="btn btn-secondary" onClick={scanStorage} disabled={scanning || sweeping} style={{ marginBottom: 20 }}>
+            {scanning ? <><Loader size={14} className="admin-spin" /> Scanning...</> : <><Search size={14} /> Scan</>}
+          </button>
+
+          {sweepReport && sweepReport.orphanedFiles > 0 && (
+            <button className="btn btn-danger" onClick={sweepStorage} disabled={scanning || sweeping} style={{ marginBottom: 20 }}>
+              {sweeping
+                ? <><Loader size={14} className="admin-spin" /> Deleting...</>
+                : <><Trash2 size={14} /> Delete {sweepReport.orphanedFiles} orphaned file{sweepReport.orphanedFiles === 1 ? '' : 's'} ({formatBytes(sweepReport.orphanedBytes)})</>}
+            </button>
+          )}
+        </div>
+
+        {sweepReport && (
+          <div style={{ marginTop: 8, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div>
+              <strong>{sweepReport.totalFiles}</strong> uploads stored ({formatBytes(sweepReport.totalBytes)}) —{' '}
+              <strong>{sweepReport.orphanedFiles}</strong> orphaned ({formatBytes(sweepReport.orphanedBytes)})
+              {sweepReport.skippedTooRecent > 0 && (
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {' '}· {sweepReport.skippedTooRecent} unreferenced but too recent to sweep
+                </span>
+              )}
+            </div>
+            {!sweepReport.dryRun && (
+              <div style={{ color: 'var(--success, #22c55e)' }}>
+                Deleted {sweepReport.deletedFiles} file{sweepReport.deletedFiles === 1 ? '' : 's'}, freed {formatBytes(sweepReport.deletedBytes)}.
+              </div>
+            )}
+            {sweepReport.dryRun && sweepReport.orphanedFiles === 0 && (
+              <div style={{ color: 'var(--text-muted)' }}>Nothing to clean up.</div>
+            )}
+            {sweepReport.sample.length > 0 && (
+              <details>
+                <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+                  Sample of {sweepReport.sample.length} orphaned file{sweepReport.sample.length === 1 ? '' : 's'} (newest first)
+                </summary>
+                <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: 'var(--text-muted)', fontSize: 12, maxHeight: 220, overflowY: 'auto' }}>
+                  {sweepReport.sample.map(f => (
+                    <li key={f.filename}>
+                      {f.filename} — {formatBytes(f.size)}, {new Date(f.createdAt).toLocaleDateString()}
+                      {!f.inDatabase && ' (file only, no database record)'}
+                      {!f.onDisk && ' (database record only, file missing)'}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {sweepReport.errors && sweepReport.errors.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--danger)', fontSize: 12 }}>
+                {sweepReport.errors.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

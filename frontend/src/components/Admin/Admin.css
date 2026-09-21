@@ -601,3 +601,13 @@
 .btn-danger-text {
   color: var(--danger) !important;
 }
+
+/* Spinner for inline button labels (scan/sweep in progress). */
+.admin-spin {
+  animation: admin-spin 0.8s linear infinite;
+}
+
+@keyframes admin-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

@@ -285,6 +285,20 @@ class ApiClient {
     return this.request<any>('/admin/settings');
   }
 
+  /** Scans for uploads nothing references any more. Deletes nothing. */
+  scanOrphanedUploads(minAgeHours?: number) {
+    const q = minAgeHours === undefined ? '' : `?minAgeHours=${minAgeHours}`;
+    return this.request<import('../types').UploadSweepReport>(`/admin/uploads/orphans${q}`);
+  }
+
+  /** Deletes every upload the scan reports as orphaned. */
+  sweepOrphanedUploads(minAgeHours?: number) {
+    const age = minAgeHours === undefined ? '' : `&minAgeHours=${minAgeHours}`;
+    return this.request<import('../types').UploadSweepReport>(`/admin/uploads/sweep?delete=true${age}`, {
+      method: 'POST',
+    });
+  }
+
   updateSettings(data: any) {
     return this.request<any>('/admin/settings', {
       method: 'PUT',

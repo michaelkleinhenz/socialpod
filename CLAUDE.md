@@ -104,7 +104,15 @@ Every uploaded image is stored twice — on disk in `UPLOAD_DIR` and as bytes in
 
 `handlers/uploads_cleanup.go` frees those files again. Deleting a post, a news or episode draft (single or bulk), a watermark, or a convention queue item or queue removes the images it held; updating one of those documents frees the images the update dropped, as does submitting a draft whose image changed. Nothing is deleted blindly: `cleanupUploads` first checks every collection/field that can hold an upload URL (`uploadReferences`) and keeps any file still pointed at, because the same URL is routinely shared — submitting a draft gives its image to the post it creates, and a consumed convention queue item hands its image to the post it spawns. Cleanup is best-effort and never fails the request it follows; a reference check that errors keeps the files.
 
-**When a new model starts storing image URLs, add it to `uploadReferences`** — otherwise a delete elsewhere will free files that model still needs.
+Automatic cleanup only covers uploads a document owned. Two kinds are left over: the backlog from before cleanup existed, and imports abandoned before anything referenced them (`POST /api/upload`, `/api/upload-from-url` and captures store a file immediately, minutes before the post or draft that will reference it exists). `handlers/uploads_sweep.go` clears both — an admin-only scan/sweep over the whole store, reachable from the Storage card on the admin Settings page:
+
+- `GET /api/admin/uploads/orphans` — scan, delete nothing
+- `POST /api/admin/uploads/sweep` — scan, delete nothing
+- `POST /api/admin/uploads/sweep?delete=true` — delete what it finds
+
+Both take `minAgeHours` (default 24), the age guard that spares uploads an open editor has stored but not yet referenced. The sweep reads both halves of the store — the `uploads` collection and `UPLOAD_DIR` — so a record whose file is missing, or a file with no record, is found too, and reports totals, orphan counts and bytes, and a sample. A failed reference scan aborts it rather than treating everything as unreferenced.
+
+**When a new model starts storing image URLs, add it to `uploadReferences`** — otherwise a delete elsewhere, or a sweep, will free files that model still needs.
 
 ### Authorization model
 Three roles with distinct Gin context keys:

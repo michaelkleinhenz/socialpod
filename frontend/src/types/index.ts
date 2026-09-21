@@ -387,3 +387,33 @@ export interface SchedulePreview {
   /** Time the next automatic post is due, or null before the first post. */
   nextPostAt: string | null;
 }
+
+/** One upload no document references any more. */
+export interface OrphanedUpload {
+  filename: string;
+  size: number;
+  createdAt: string;
+  /** Where the orphan still exists — normally both. */
+  onDisk: boolean;
+  inDatabase: boolean;
+}
+
+/** Result of an admin storage scan or sweep. */
+export interface UploadSweepReport {
+  /** True when nothing was deleted. */
+  dryRun: boolean;
+  /** Age guard the run used: uploads newer than this were left alone. */
+  minAgeHours: number;
+  totalFiles: number;
+  totalBytes: number;
+  orphanedFiles: number;
+  orphanedBytes: number;
+  /** Unreferenced uploads the age guard spared. */
+  skippedTooRecent: number;
+  /** Zero on a dry run. */
+  deletedFiles: number;
+  deletedBytes: number;
+  /** Up to 50 of the orphans, newest first. */
+  sample: OrphanedUpload[];
+  errors?: string[];
+}
