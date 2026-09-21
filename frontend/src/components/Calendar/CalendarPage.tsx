@@ -37,7 +37,10 @@ export function CalendarPage() {
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [activeTab, setActiveTab] = useState<'calendar' | 'drafts'>('calendar');
   const [draftPosts, setDraftPosts] = useState<Post[]>([]);
-  const [draftsLoading, setDraftsLoading] = useState(false);
+  // Drafts are refetched on every switch to the Drafts tab. Once they have
+  // loaded, the refresh happens behind the list already on screen: swapping
+  // in a spinner would resize the panel on every tab switch.
+  const [draftsLoaded, setDraftsLoaded] = useState(false);
   const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -84,14 +87,15 @@ export function CalendarPage() {
   useEffect(() => { api.getActiveAccounts().then(setAccounts).catch(() => {}); }, []);
 
   const fetchDrafts = useCallback(async () => {
-    setDraftsLoading(true);
     try {
       const data = await api.getPosts({ status: 'draft' });
       setDraftPosts(data);
     } catch {
       toast.error('Failed to load drafts');
     } finally {
-      setDraftsLoading(false);
+      // Marks the first attempt as done whether it worked or not: a failed
+      // load falls through to the empty state, never a spinner that stays.
+      setDraftsLoaded(true);
     }
   }, []);
 
@@ -368,9 +372,11 @@ export function CalendarPage() {
 
       {/* Drafts Tab */}
       {activeTab === 'drafts' && (
-        <div style={{ padding: '0 0 24px' }}>
-          {draftsLoading ? (
-            <div className="loading-screen"><div className="spinner" /></div>
+        <div className="tab-panel" style={{ padding: '0 0 24px' }}>
+          {/* Until the first load lands there is nothing to say about the
+              list — showing the empty state would flash "no drafts". */}
+          {!draftsLoaded ? (
+            <div className="panel-loading"><div className="spinner" /></div>
           ) : draftPosts.length === 0 ? (
             <div className="empty-state">
               <FileText size={48} />
