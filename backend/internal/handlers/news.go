@@ -123,8 +123,13 @@ func (h *NewsHandler) Submit(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
+	// Images the form already carries (a draft loaded back for editing, or a
+	// capture-created draft) are stored URLs rather than fresh uploads, so the
+	// webhook needs both sets or it receives no image at all.
+	webhookImageURLs := mergeImageURLs(input.ImageURLs, savedImageURLs)
+
 	// Send news data to n8n webhook.
-	newsErr := h.sendToN8N(ctx, &team, &input, savedImageURLs)
+	newsErr := h.sendToN8N(ctx, &team, &input, webhookImageURLs)
 	if newsErr != nil {
 		log.Printf("[NewsCreator] Error sending to n8n: %v", newsErr)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send news: " + newsErr.Error()})
@@ -229,7 +234,7 @@ func (h *NewsHandler) createPost(ctx context.Context, c *gin.Context, input *New
 	}
 
 	// Merge any pre-existing imageUrls from the input with saved uploads.
-	allImages := append(input.ImageURLs, imageURLs...)
+	allImages := mergeImageURLs(input.ImageURLs, imageURLs)
 
 	post := models.Post{
 		UserID:           objID,
@@ -314,6 +319,15 @@ func (h *NewsHandler) saveUpload(fh *multipart.FileHeader) (string, error) {
 	return "/api/uploads/" + filename, nil
 }
 
+// mergeImageURLs concatenates previously stored image URLs with freshly saved
+// ones into a new slice, leaving both inputs untouched.
+func mergeImageURLs(existing, saved []string) []string {
+	merged := make([]string, 0, len(existing)+len(saved))
+	merged = append(merged, existing...)
+	merged = append(merged, saved...)
+	return merged
+}
+
 func newsDraftScopeFilter(c *gin.Context) bson.M {
 	if teamID, ok := c.Get("teamId"); ok {
 		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
@@ -349,7 +363,7 @@ func (h *NewsHandler) SaveDraft(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
-	allImages := append(input.ImageURLs, savedImageURLs...)
+	allImages := mergeImageURLs(input.ImageURLs, savedImageURLs)
 
 	platModels := make([]models.Platform, len(input.Platforms))
 	for i, p := range input.Platforms {
@@ -472,7 +486,7 @@ func (h *NewsHandler) UpdateDraft(c *gin.Context) {
 		savedImageURLs = append(savedImageURLs, url)
 	}
 
-	allImages := append(input.ImageURLs, savedImageURLs...)
+	allImages := mergeImageURLs(input.ImageURLs, savedImageURLs)
 
 	platModels := make([]models.Platform, len(input.Platforms))
 	for i, p := range input.Platforms {
