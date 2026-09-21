@@ -131,31 +131,46 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Process images sent by the Chrome extension.
-	// The extension sends all candidate images (og:image, page images) plus a
-	// screenshot, all as base64 data downloaded in the browser. If there are
-	// multiple candidates, use a vision model to pick the best content image.
 	episodeType := "news_entry"
 	if input.EntityType == "episode" {
 		episodeType = "news"
 	}
 
 	var imageURLs []string
-	if len(input.Images) > 0 {
-		selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterVisionModel, input.URL)
-		if selected != nil {
-			imageURLs = h.saveImage(ctx, c, selected, episodeType)
+	var pageInfo string
+
+	// BGG URL: pull metadata and cover image from the BGG API instead of using
+	// the extension's captured images and the vision model. fetchBGGPageInfo
+	// returns an empty pageInfo only when the API call failed, in which case we
+	// fall back to the generic path below.
+	bggHandled := false
+	if m := bggURLRe.FindStringSubmatch(input.URL); m != nil && h.BGG != nil {
+		var bggImageURL string
+		pageInfo, bggImageURL = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
+		if pageInfo != "" {
+			bggHandled = true
+			if bggImageURL != "" {
+				processed, err := h.BGG.downloadAndProcess(ctx, c, bggImageURL, episodeType)
+				if err != nil {
+					log.Printf("[Capture] BGG image download/process failed: %v", err)
+				} else {
+					imageURLs = h.saveProcessedImage(ctx, processed)
+				}
+			}
+			log.Printf("[Capture] BGG image URLs for draft: %v", imageURLs)
 		}
-		log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 	}
 
-	// Step 2: Fetch page info for AI content generation
-	var pageInfo string
-	if input.URL != "" {
-		if m := bggURLRe.FindStringSubmatch(input.URL); m != nil {
-			pageInfo, _ = fetchBGGPageInfo(ctx, m[1], input.URL, settings.BGGAPIToken)
+	if !bggHandled {
+		if len(input.Images) > 0 {
+			selected := h.selectBestImage(ctx, input.Images, settings.OpenRouterAPIKey, settings.OpenRouterVisionModel, input.URL)
+			if selected != nil {
+				imageURLs = h.saveImage(ctx, c, selected, episodeType)
+			}
+			log.Printf("[Capture] Image URLs for draft: %v", imageURLs)
 		}
-		if pageInfo == "" {
+
+		if input.URL != "" {
 			var parts []string
 			parts = append(parts, fmt.Sprintf("URL: %s", input.URL))
 			if input.PageTitle != "" {
@@ -178,7 +193,7 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 		}
 	}
 
-	// Step 3: Generate content with AI
+	// Generate content with AI
 	var userPrompt string
 	if pageInfo != "" && input.Description != "" {
 		userPrompt = fmt.Sprintf("Source URL metadata:\n%s\n\nAdditional instructions: %s\n\nCreate a %s entity from this.", pageInfo, input.Description, input.EntityType)
@@ -451,6 +466,28 @@ func (h *CaptureHandler) saveImage(ctx context.Context, c *gin.Context, img *Cap
 	h.DB.Uploads().InsertOne(ctx, models.Upload{
 		Filename:    filename,
 		ContentType: ct,
+		Data:        raw,
+		Size:        int64(len(raw)),
+		CreatedAt:   time.Now(),
+	})
+	return []string{"/api/uploads/" + filename}
+}
+
+// saveProcessedImage stores image bytes that already went through the BGG
+// letterbox + overlay pipeline, which always encodes JPEG.
+func (h *CaptureHandler) saveProcessedImage(ctx context.Context, raw []byte) []string {
+	filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
+	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		log.Printf("[Capture] Failed to create upload dir: %v", err)
+		return nil
+	}
+	if err := os.WriteFile(filepath.Join(h.UploadDir, filename), raw, 0o644); err != nil {
+		log.Printf("[Capture] Failed to write image file: %v", err)
+		return nil
+	}
+	h.DB.Uploads().InsertOne(ctx, models.Upload{
+		Filename:    filename,
+		ContentType: "image/jpeg",
 		Data:        raw,
 		Size:        int64(len(raw)),
 		CreatedAt:   time.Now(),
