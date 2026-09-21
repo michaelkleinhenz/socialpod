@@ -5,7 +5,7 @@
   "description": "Capture web pages and create social media drafts in SocialPod with screenshots and extracted images.",
   "homepage_url": "https://github.com/michaelkleinhenz/socialpod",
   "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["https://*/*"],
+  "optional_host_permissions": ["https://*/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
