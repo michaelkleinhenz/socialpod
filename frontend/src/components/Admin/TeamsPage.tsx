@@ -5,6 +5,7 @@ import { AVAILABLE_PLUGINS } from '../../types';
 import { Trash2, Plus, X, Key, Copy, RefreshCw, Settings, Puzzle, Mail, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { Modal } from '../Common/Modal';
 import './Admin.css';
 
 export function TeamsPage() {
@@ -353,503 +354,495 @@ export function TeamsPage() {
 
       {/* Create Team Modal */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>New Team</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="form-group">
-              <label>Team Name</label>
-              <input
-                className="input"
-                placeholder="e.g. Marketing"
-                value={teamName}
-                onChange={e => setTeamName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && createTeam()}
-              />
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createTeam} disabled={creating}>
-                {creating ? 'Creating...' : 'Create Team'}
-              </button>
-            </div>
+        <Modal onClose={() => setShowForm(false)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>New Team</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>
+              <X size={18} />
+            </button>
           </div>
-        </div>
+
+          <div className="form-group">
+            <label>Team Name</label>
+            <input
+              className="input"
+              placeholder="e.g. Marketing"
+              value={teamName}
+              onChange={e => setTeamName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && createTeam()}
+            />
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={createTeam} disabled={creating}>
+              {creating ? 'Creating...' : 'Create Team'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* Team Settings Modal */}
       {bggTeam && (
-        <div className="modal-overlay" onClick={() => setBggTeam(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Team Settings: {bggTeam.name}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setBggTeam(null)}>
-                <X size={18} />
-              </button>
-            </div>
+        <Modal onClose={() => setBggTeam(null)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Team Settings: {bggTeam.name}</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setBggTeam(null)}>
+              <X size={18} />
+            </button>
+          </div>
 
-            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>BoardGameGeek Integration</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
-              When importing a game from BGG, the cover is scaled to fit within a 1080x1080 square. The optional overlay is applied on top at full frame.
+          <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>BoardGameGeek Integration</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+            When importing a game from BGG, the cover is scaled to fit within a 1080x1080 square. The optional overlay is applied on top at full frame.
+          </p>
+
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>BGG Overlay</label>
+            <select
+              className="select"
+              value={bggSettings.bggWatermarkId || ''}
+              onChange={e => setBggSettings(s => ({ ...s, bggWatermarkId: e.target.value }))}
+            >
+              <option value="">None (no overlay)</option>
+              {watermarks.map(wm => (
+                <option key={wm.id} value={wm.id}>{wm.name}</option>
+              ))}
+            </select>
+            {watermarks.length === 0 && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                No watermarks uploaded yet. Add watermarks on the Watermarks page first.
+              </span>
+            )}
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: 14 }}>Cover position offset</label>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 10, marginTop: 0 }}>
+              Shift the scaled cover within the canvas. Use a negative X offset to push the cover away from a left sidebar overlay, for example.
             </p>
-
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>BGG Overlay</label>
-              <select
-                className="select"
-                value={bggSettings.bggWatermarkId || ''}
-                onChange={e => setBggSettings(s => ({ ...s, bggWatermarkId: e.target.value }))}
-              >
-                <option value="">None (no overlay)</option>
-                {watermarks.map(wm => (
-                  <option key={wm.id} value={wm.id}>{wm.name}</option>
-                ))}
-              </select>
-              {watermarks.length === 0 && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                  No watermarks uploaded yet. Add watermarks on the Watermarks page first.
-                </span>
-              )}
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: 14 }}>Cover position offset</label>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 10, marginTop: 0 }}>
-                Shift the scaled cover within the canvas. Use a negative X offset to push the cover away from a left sidebar overlay, for example.
-              </p>
-              <div style={{ display: 'flex', gap: 16 }}>
-                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label style={{ fontSize: 13 }}>Horizontal offset (px)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={bggSettings.bggCoverOffsetX ?? 0}
-                    onChange={e => setBggSettings(s => ({ ...s, bggCoverOffsetX: parseInt(e.target.value, 10) || 0 }))}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label style={{ fontSize: 13 }}>Vertical offset (px)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={bggSettings.bggCoverOffsetY ?? 0}
-                    onChange={e => setBggSettings(s => ({ ...s, bggCoverOffsetY: parseInt(e.target.value, 10) || 0 }))}
-                    placeholder="0"
-                  />
-                </div>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>Horizontal offset (px)</label>
+                <input
+                  type="number"
+                  className="input"
+                  value={bggSettings.bggCoverOffsetX ?? 0}
+                  onChange={e => setBggSettings(s => ({ ...s, bggCoverOffsetX: parseInt(e.target.value, 10) || 0 }))}
+                  placeholder="0"
+                />
+              </div>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                <label style={{ fontSize: 13 }}>Vertical offset (px)</label>
+                <input
+                  type="number"
+                  className="input"
+                  value={bggSettings.bggCoverOffsetY ?? 0}
+                  onChange={e => setBggSettings(s => ({ ...s, bggCoverOffsetY: parseInt(e.target.value, 10) || 0 }))}
+                  placeholder="0"
+                />
               </div>
             </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={bggSettings.bggHandleLookupEnabled ?? true}
-                  onChange={e => setBggSettings(s => ({ ...s, bggHandleLookupEnabled: e.target.checked }))}
-                />
-                <span>Enable AI handle lookup for BGG imports</span>
-              </label>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0 22px' }}>
-                When enabled and an OpenRouter API key is configured, publisher and designer handles are
-                automatically resolved during BGG imports. Requires a catalog entry or AI lookup per
-                platform (Instagram, Bluesky, etc.).
-              </p>
-            </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Episode News Integration</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
-              When configured, an "Add News" option appears in the post editor. Submitting a post with news enabled sends episode details to this URL.
-            </p>
-
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>News Endpoint URL</label>
-              <input
-                type="url"
-                className="input"
-                value={bggSettings.episodeNewsUrl || ''}
-                onChange={e => setBggSettings(s => ({ ...s, episodeNewsUrl: e.target.value }))}
-                placeholder="https://example.com/api/episode-news"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Bearer Token</label>
-              <input
-                type="password"
-                className="input"
-                value={episodeNewsBearerToken}
-                onChange={e => setEpisodeNewsBearerToken(e.target.value)}
-                placeholder={bggSettings.hasEpisodeNewsBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
-              />
-              {bggSettings.hasEpisodeNewsBearerToken && !episodeNewsBearerToken && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                  A bearer token is already configured. Enter a new value to replace it.
-                </span>
-              )}
-            </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>News Creator Integration</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
-              Configure the n8n webhook URL and bearer token for the News Creator plugin.
-            </p>
-
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>News Creator URL</label>
-              <input
-                type="url"
-                className="input"
-                value={newsCreatorUrl}
-                onChange={e => setNewsCreatorUrl(e.target.value)}
-                placeholder="https://n8n.example.com/webhook/..."
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>News Watermark</label>
-              <select
-                className="select"
-                value={newsCreatorWatermarkId}
-                onChange={e => setNewsCreatorWatermarkId(e.target.value)}
-              >
-                <option value="">None (no overlay)</option>
-                {watermarks.map(wm => (
-                  <option key={wm.id} value={wm.id}>{wm.name}</option>
-                ))}
-              </select>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                Watermark to overlay on cropped news images.
-              </span>
-            </div>
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Bearer Token</label>
-              <input
-                type="password"
-                className="input"
-                value={newsCreatorBearerToken}
-                onChange={e => setNewsCreatorBearerToken(e.target.value)}
-                placeholder={bggSettings.hasNewsCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
-              />
-              {bggSettings.hasNewsCreatorBearerToken && !newsCreatorBearerToken && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                  A bearer token is already configured. Enter a new value to replace it.
-                </span>
-              )}
-            </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-            <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Episode Creator Integration</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
-              Configure the webhook URL and bearer token for the Episode Creator plugin.
-            </p>
-
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>Episode Creator URL</label>
-              <input
-                type="url"
-                className="input"
-                value={episodeCreatorUrl}
-                onChange={e => setEpisodeCreatorUrl(e.target.value)}
-                placeholder="https://n8n.example.com/webhook/..."
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 16 }}>
-              <label>Default Episode Watermark</label>
-              <select
-                className="select"
-                value={episodeCreatorWatermarkId}
-                onChange={e => setEpisodeCreatorWatermarkId(e.target.value)}
-              >
-                <option value="">None (no overlay)</option>
-                {watermarks.map(wm => (
-                  <option key={wm.id} value={wm.id}>{wm.name}</option>
-                ))}
-              </select>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                Fallback watermark when no type-specific overlay is configured.
-              </span>
-            </div>
-
-            <div style={{ padding: 12, background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
-              <span style={{ fontSize: 13, fontWeight: 500 }}>Per-Type Overlays</span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -8 }}>
-                Optionally set a different overlay image for each episode type. Falls back to the default above if not set.
-              </span>
-              {[
-                { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId, offsetX: episodeOverlayNewsOffsetX, setOffsetX: setEpisodeOverlayNewsOffsetX, offsetY: episodeOverlayNewsOffsetY, setOffsetY: setEpisodeOverlayNewsOffsetY },
-                { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId, offsetX: episodeOverlayReviewOffsetX, setOffsetX: setEpisodeOverlayReviewOffsetX, offsetY: episodeOverlayReviewOffsetY, setOffsetY: setEpisodeOverlayReviewOffsetY },
-                { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId, offsetX: episodeOverlaySpecialOffsetX, setOffsetX: setEpisodeOverlaySpecialOffsetX, offsetY: episodeOverlaySpecialOffsetY, setOffsetY: setEpisodeOverlaySpecialOffsetY },
-              ].map(item => (
-                <div key={item.label} style={{ marginBottom: 0 }}>
-                  <div className="form-group" style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 13 }}>{item.label}</label>
-                    <select
-                      className="select"
-                      value={item.value}
-                      onChange={e => item.setter(e.target.value)}
-                    >
-                      <option value="">Use default</option>
-                      {watermarks.map(wm => (
-                        <option key={wm.id} value={wm.id}>{wm.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {item.value && (
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 4 }}>
-                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                        <label style={{ fontSize: 12 }}>Offset X (px)</label>
-                        <input
-                          type="number"
-                          className="input"
-                          value={item.offsetX}
-                          onChange={e => item.setOffsetX(parseInt(e.target.value, 10) || 0)}
-                          placeholder="0"
-                        />
-                      </div>
-                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                        <label style={{ fontSize: 12 }}>Offset Y (px)</label>
-                        <input
-                          type="number"
-                          className="input"
-                          value={item.offsetY}
-                          onChange={e => item.setOffsetY(parseInt(e.target.value, 10) || 0)}
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Bearer Token</label>
-              <input
-                type="password"
-                className="input"
-                value={episodeCreatorBearerToken}
-                onChange={e => setEpisodeCreatorBearerToken(e.target.value)}
-                placeholder={bggSettings.hasEpisodeCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
-              />
-              {bggSettings.hasEpisodeCreatorBearerToken && !episodeCreatorBearerToken && (
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                  A bearer token is already configured. Enter a new value to replace it.
-                </span>
-              )}
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label>Scene Prompt Template</label>
-              <textarea
-                className="input"
-                style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
-                placeholder="e.g. Write a vivid scene description for a board game review podcast episode about the following game:"
-                value={bggSettings.scenePromptTemplate || ''}
-                onChange={e => setBggSettings(s => ({ ...s, scenePromptTemplate: e.target.value }))}
-              />
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                Prompt template prepended to the Scene field text when using "Generate with AI" on the episode creator.
-              </span>
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setBggTeam(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveBggSettings} disabled={savingBgg}>
-                {savingBgg ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
           </div>
-        </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={bggSettings.bggHandleLookupEnabled ?? true}
+                onChange={e => setBggSettings(s => ({ ...s, bggHandleLookupEnabled: e.target.checked }))}
+              />
+              <span>Enable AI handle lookup for BGG imports</span>
+            </label>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0 22px' }}>
+              When enabled and an OpenRouter API key is configured, publisher and designer handles are
+              automatically resolved during BGG imports. Requires a catalog entry or AI lookup per
+              platform (Instagram, Bluesky, etc.).
+            </p>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+          <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Episode News Integration</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+            When configured, an "Add News" option appears in the post editor. Submitting a post with news enabled sends episode details to this URL.
+          </p>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>News Endpoint URL</label>
+            <input
+              type="url"
+              className="input"
+              value={bggSettings.episodeNewsUrl || ''}
+              onChange={e => setBggSettings(s => ({ ...s, episodeNewsUrl: e.target.value }))}
+              placeholder="https://example.com/api/episode-news"
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>Bearer Token</label>
+            <input
+              type="password"
+              className="input"
+              value={episodeNewsBearerToken}
+              onChange={e => setEpisodeNewsBearerToken(e.target.value)}
+              placeholder={bggSettings.hasEpisodeNewsBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+            />
+            {bggSettings.hasEpisodeNewsBearerToken && !episodeNewsBearerToken && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                A bearer token is already configured. Enter a new value to replace it.
+              </span>
+            )}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+          <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>News Creator Integration</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+            Configure the n8n webhook URL and bearer token for the News Creator plugin.
+          </p>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>News Creator URL</label>
+            <input
+              type="url"
+              className="input"
+              value={newsCreatorUrl}
+              onChange={e => setNewsCreatorUrl(e.target.value)}
+              placeholder="https://n8n.example.com/webhook/..."
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>News Watermark</label>
+            <select
+              className="select"
+              value={newsCreatorWatermarkId}
+              onChange={e => setNewsCreatorWatermarkId(e.target.value)}
+            >
+              <option value="">None (no overlay)</option>
+              {watermarks.map(wm => (
+                <option key={wm.id} value={wm.id}>{wm.name}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+              Watermark to overlay on cropped news images.
+            </span>
+          </div>
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>Bearer Token</label>
+            <input
+              type="password"
+              className="input"
+              value={newsCreatorBearerToken}
+              onChange={e => setNewsCreatorBearerToken(e.target.value)}
+              placeholder={bggSettings.hasNewsCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+            />
+            {bggSettings.hasNewsCreatorBearerToken && !newsCreatorBearerToken && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                A bearer token is already configured. Enter a new value to replace it.
+              </span>
+            )}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+          <h3 style={{ fontSize: 14, marginBottom: 8, marginTop: 0 }}>Episode Creator Integration</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: 0 }}>
+            Configure the webhook URL and bearer token for the Episode Creator plugin.
+          </p>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Episode Creator URL</label>
+            <input
+              type="url"
+              className="input"
+              value={episodeCreatorUrl}
+              onChange={e => setEpisodeCreatorUrl(e.target.value)}
+              placeholder="https://n8n.example.com/webhook/..."
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Default Episode Watermark</label>
+            <select
+              className="select"
+              value={episodeCreatorWatermarkId}
+              onChange={e => setEpisodeCreatorWatermarkId(e.target.value)}
+            >
+              <option value="">None (no overlay)</option>
+              {watermarks.map(wm => (
+                <option key={wm.id} value={wm.id}>{wm.name}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+              Fallback watermark when no type-specific overlay is configured.
+            </span>
+          </div>
+
+          <div style={{ padding: 12, background: 'var(--bg-secondary, #1e293b)', borderRadius: 8, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>Per-Type Overlays</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: -8 }}>
+              Optionally set a different overlay image for each episode type. Falls back to the default above if not set.
+            </span>
+            {[
+              { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId, offsetX: episodeOverlayNewsOffsetX, setOffsetX: setEpisodeOverlayNewsOffsetX, offsetY: episodeOverlayNewsOffsetY, setOffsetY: setEpisodeOverlayNewsOffsetY },
+              { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId, offsetX: episodeOverlayReviewOffsetX, setOffsetX: setEpisodeOverlayReviewOffsetX, offsetY: episodeOverlayReviewOffsetY, setOffsetY: setEpisodeOverlayReviewOffsetY },
+              { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId, offsetX: episodeOverlaySpecialOffsetX, setOffsetX: setEpisodeOverlaySpecialOffsetX, offsetY: episodeOverlaySpecialOffsetY, setOffsetY: setEpisodeOverlaySpecialOffsetY },
+            ].map(item => (
+              <div key={item.label} style={{ marginBottom: 0 }}>
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: 13 }}>{item.label}</label>
+                  <select
+                    className="select"
+                    value={item.value}
+                    onChange={e => item.setter(e.target.value)}
+                  >
+                    <option value="">Use default</option>
+                    {watermarks.map(wm => (
+                      <option key={wm.id} value={wm.id}>{wm.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {item.value && (
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 4 }}>
+                    <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>Offset X (px)</label>
+                      <input
+                        type="number"
+                        className="input"
+                        value={item.offsetX}
+                        onChange={e => item.setOffsetX(parseInt(e.target.value, 10) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>Offset Y (px)</label>
+                      <input
+                        type="number"
+                        className="input"
+                        value={item.offsetY}
+                        onChange={e => item.setOffsetY(parseInt(e.target.value, 10) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>Bearer Token</label>
+            <input
+              type="password"
+              className="input"
+              value={episodeCreatorBearerToken}
+              onChange={e => setEpisodeCreatorBearerToken(e.target.value)}
+              placeholder={bggSettings.hasEpisodeCreatorBearerToken ? '••••••••  (unchanged — enter new value to replace)' : 'Enter bearer token'}
+            />
+            {bggSettings.hasEpisodeCreatorBearerToken && !episodeCreatorBearerToken && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                A bearer token is already configured. Enter a new value to replace it.
+              </span>
+            )}
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 20 }}>
+            <label>Scene Prompt Template</label>
+            <textarea
+              className="input"
+              style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
+              placeholder="e.g. Write a vivid scene description for a board game review podcast episode about the following game:"
+              value={bggSettings.scenePromptTemplate || ''}
+              onChange={e => setBggSettings(s => ({ ...s, scenePromptTemplate: e.target.value }))}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+              Prompt template prepended to the Scene field text when using "Generate with AI" on the episode creator.
+            </span>
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setBggTeam(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveBggSettings} disabled={savingBgg}>
+              {savingBgg ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* Plugins Modal */}
       {pluginsTeam && (
-        <div className="modal-overlay" onClick={() => setPluginsTeam(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Plugins: {pluginsTeam.name}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setPluginsTeam(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
-              Enable or disable optional plugins for this team. Disabled plugins are hidden from all team members.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {AVAILABLE_PLUGINS.map(plugin => (
-                <label
-                  key={plugin.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    padding: '12px 14px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: enabledPlugins.includes(plugin.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={enabledPlugins.includes(plugin.id)}
-                    onChange={() => togglePlugin(plugin.id)}
-                    style={{ marginTop: 2, flexShrink: 0 }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{plugin.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{plugin.description}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setPluginsTeam(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={savePlugins} disabled={savingPlugins}>
-                {savingPlugins ? 'Saving...' : 'Save Plugins'}
-              </button>
-            </div>
+        <Modal onClose={() => setPluginsTeam(null)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Plugins: {pluginsTeam.name}</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPluginsTeam(null)}>
+              <X size={18} />
+            </button>
           </div>
-        </div>
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, marginTop: 0 }}>
+            Enable or disable optional plugins for this team. Disabled plugins are hidden from all team members.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {AVAILABLE_PLUGINS.map(plugin => (
+              <label
+                key={plugin.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: enabledPlugins.includes(plugin.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={enabledPlugins.includes(plugin.id)}
+                  onChange={() => togglePlugin(plugin.id)}
+                  style={{ marginTop: 2, flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: 14 }}>{plugin.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{plugin.description}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setPluginsTeam(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={savePlugins} disabled={savingPlugins}>
+              {savingPlugins ? 'Saving...' : 'Save Plugins'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* Manage Members Modal */}
       {editTeam && (
-        <div className="modal-overlay" onClick={() => setEditTeam(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Members: {editTeam.name}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditTeam(null)}>
-                <X size={18} />
+        <Modal onClose={() => setEditTeam(null)} style={{ maxWidth: 560 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Members: {editTeam.name}</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditTeam(null)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+            Select users to add to this team. Team members share a calendar and API token.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflow: 'auto' }}>
+            {users.map(u => (
+              <label
+                key={u.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: selectedUserIds.includes(u.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedUserIds.includes(u.id)}
+                  onChange={() => toggleUser(u.id)}
+                />
+                <div>
+                  <div style={{ fontWeight: 500 }}>{u.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{u.email}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setEditTeam(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveMembers} disabled={savingMembers}>
+              {savingMembers ? 'Saving...' : 'Save Members'}
+            </button>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>Invite by Email</h3>
+            {!showInviteForm && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowInviteForm(true)}>
+                <Mail size={14} /> Invite
+              </button>
+            )}
+          </div>
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 12px' }}>
+            Send an invitation email to someone who doesn't have an account yet.
+          </p>
+
+          {showInviteForm && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <input
+                className="input"
+                type="email"
+                placeholder="newuser@example.com"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                style={{ flex: 1 }}
+              />
+              <button className="btn btn-primary btn-sm" onClick={sendInvite} disabled={sendingInvite}>
+                {sendingInvite ? 'Sending...' : 'Send'}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setShowInviteForm(false); setInviteEmail(''); }}>
+                Cancel
               </button>
             </div>
+          )}
 
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-              Select users to add to this team. Team members share a calendar and API token.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflow: 'auto' }}>
-              {users.map(u => (
-                <label
-                  key={u.id}
+          {invites.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {invites.map(invite => (
+                <div
+                  key={invite.id}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
+                    justifyContent: 'space-between',
                     padding: '8px 12px',
                     borderRadius: 'var(--radius-sm)',
-                    background: selectedUserIds.includes(u.id) ? 'var(--accent-muted)' : 'var(--bg-primary)',
                     border: '1px solid var(--border)',
-                    cursor: 'pointer',
+                    background: 'var(--bg-primary)',
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedUserIds.includes(u.id)}
-                    onChange={() => toggleUser(u.id)}
-                  />
                   <div>
-                    <div style={{ fontWeight: 500 }}>{u.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{u.email}</div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{invite.email}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Expires {format(new Date(invite.expiresAt), 'MMM d, yyyy')}
+                    </div>
                   </div>
-                </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {invite.status === 'pending' && new Date(invite.expiresAt) > new Date() ? (
+                      <span className="badge badge-scheduled"><Clock size={12} style={{ marginRight: 4 }} />Pending</span>
+                    ) : invite.status === 'accepted' ? (
+                      <span className="badge badge-published">Accepted</span>
+                    ) : (
+                      <span className="badge badge-failed">Expired</span>
+                    )}
+                    <button className="btn btn-ghost btn-sm" onClick={() => deleteInvite(invite.id)}>
+                      <Trash2 size={14} color="var(--danger)" />
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setEditTeam(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveMembers} disabled={savingMembers}>
-                {savingMembers ? 'Saving...' : 'Save Members'}
-              </button>
-            </div>
-
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Invite by Email</h3>
-              {!showInviteForm && (
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowInviteForm(true)}>
-                  <Mail size={14} /> Invite
-                </button>
-              )}
-            </div>
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: '0 0 12px' }}>
-              Send an invitation email to someone who doesn't have an account yet.
-            </p>
-
-            {showInviteForm && (
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <input
-                  className="input"
-                  type="email"
-                  placeholder="newuser@example.com"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendInvite()}
-                  style={{ flex: 1 }}
-                />
-                <button className="btn btn-primary btn-sm" onClick={sendInvite} disabled={sendingInvite}>
-                  {sendingInvite ? 'Sending...' : 'Send'}
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => { setShowInviteForm(false); setInviteEmail(''); }}>
-                  Cancel
-                </button>
-              </div>
-            )}
-
-            {invites.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {invites.map(invite => (
-                  <div
-                    key={invite.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 12px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border)',
-                      background: 'var(--bg-primary)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 500, fontSize: 14 }}>{invite.email}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        Expires {format(new Date(invite.expiresAt), 'MMM d, yyyy')}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {invite.status === 'pending' && new Date(invite.expiresAt) > new Date() ? (
-                        <span className="badge badge-scheduled"><Clock size={12} style={{ marginRight: 4 }} />Pending</span>
-                      ) : invite.status === 'accepted' ? (
-                        <span className="badge badge-published">Accepted</span>
-                      ) : (
-                        <span className="badge badge-failed">Expired</span>
-                      )}
-                      <button className="btn btn-ghost btn-sm" onClick={() => deleteInvite(invite.id)}>
-                        <Trash2 size={14} color="var(--danger)" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          )}
+        </Modal>
       )}
     </div>
   );

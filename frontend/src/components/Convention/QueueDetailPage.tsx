@@ -36,6 +36,7 @@ import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { QueueFormModal } from './ConventionPage';
+import { Modal } from '../Common/Modal';
 import './Convention.css';
 
 // Per-platform character limits — mirror the PostEditor logic so captions are
@@ -449,58 +450,56 @@ function SchedulePreviewModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal conv-preview-modal">
-        <div className="modal-header">
-          <h2>Upcoming schedule</h2>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
-        </div>
+    <Modal onClose={onClose} className="conv-preview-modal">
+      <div className="modal-header">
+        <h2>Upcoming schedule</h2>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+      </div>
 
-        <div className="conv-preview-body">
-          <p className="conv-preview-summary">
-            {preview.approvedCount} approved photo{preview.approvedCount !== 1 ? 's' : ''} in the queue.
-            About {preview.postsPerDay} post{preview.postsPerDay !== 1 ? 's' : ''}/day go out until{' '}
-            {format(parseISO(preview.windowEnd), 'EEE, MMM d, yyyy')}. At each time below a
-            <strong> random approved photo</strong> is picked and posted — keep the queue topped up and
-            it keeps posting.
-          </p>
+      <div className="conv-preview-body">
+        <p className="conv-preview-summary">
+          {preview.approvedCount} approved photo{preview.approvedCount !== 1 ? 's' : ''} in the queue.
+          About {preview.postsPerDay} post{preview.postsPerDay !== 1 ? 's' : ''}/day go out until{' '}
+          {format(parseISO(preview.windowEnd), 'EEE, MMM d, yyyy')}. At each time below a
+          <strong> random approved photo</strong> is picked and posted — keep the queue topped up and
+          it keeps posting.
+        </p>
 
-          {preview.approvedCount === 0 && (
-            <div className="conv-preview-warning">
-              <AlertTriangle size={14} />
-              No approved photos yet — approve some photos so the queue has something to post.
-            </div>
-          )}
+        {preview.approvedCount === 0 && (
+          <div className="conv-preview-warning">
+            <AlertTriangle size={14} />
+            No approved photos yet — approve some photos so the queue has something to post.
+          </div>
+        )}
 
-          <div className="conv-preview-list">
-            {preview.slots.map((slot, i) => (
-              <div key={i} className="conv-preview-row">
-                <div className="conv-preview-info">
-                  <div className="conv-preview-time">
-                    {format(parseISO(slot.scheduledAt), 'EEE, MMM d, yyyy — HH:mm')} UTC
-                    {i === 0 && <span className="conv-override-badge"> next</span>}
-                  </div>
+        <div className="conv-preview-list">
+          {preview.slots.map((slot, i) => (
+            <div key={i} className="conv-preview-row">
+              <div className="conv-preview-info">
+                <div className="conv-preview-time">
+                  {format(parseISO(slot.scheduledAt), 'EEE, MMM d, yyyy — HH:mm')} UTC
+                  {i === 0 && <span className="conv-override-badge"> next</span>}
                 </div>
               </div>
-            ))}
-          </div>
-          <p className="conv-upload-hint">
-            Times are approximate — each gap carries a small random jitter.
-          </p>
+            </div>
+          ))}
         </div>
-
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Close</button>
-          <button
-            className="btn btn-primary"
-            onClick={handlePostNow}
-            disabled={posting || preview.approvedCount === 0}
-          >
-            {posting ? 'Posting…' : 'Post one now'}
-          </button>
-        </div>
+        <p className="conv-upload-hint">
+          Times are approximate — each gap carries a small random jitter.
+        </p>
       </div>
-    </div>
+
+      <div className="modal-footer">
+        <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        <button
+          className="btn btn-primary"
+          onClick={handlePostNow}
+          disabled={posting || preview.approvedCount === 0}
+        >
+          {posting ? 'Posting…' : 'Post one now'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

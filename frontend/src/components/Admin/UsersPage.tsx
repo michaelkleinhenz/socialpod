@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Trash2, Shield, Plus, X, Star, KeyRound, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { Modal } from '../Common/Modal';
 import './Admin.css';
 
 export function UsersPage() {
@@ -164,86 +165,82 @@ export function UsersPage() {
       </div>
 
       {resetPassword && (
-        <div className="modal-overlay" onClick={() => setResetPassword(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Password Reset</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setResetPassword(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-              The password has been reset. Copy it now and send it to the user — it will not be shown again.
-            </p>
-
-            <div style={{
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '12px 16px',
-              marginBottom: 20,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              fontFamily: 'monospace',
-              fontSize: 15,
-            }}>
-              <span style={{ flex: 1 }}>{resetPassword.password}</span>
-              <button className="btn btn-ghost btn-sm" onClick={copyResetPassword} title="Copy">
-                <Copy size={14} />
-              </button>
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-primary" onClick={() => setResetPassword(null)}>Done</button>
-            </div>
+        <Modal onClose={() => setResetPassword(null)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Password Reset</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setResetPassword(null)}>
+              <X size={18} />
+            </button>
           </div>
-        </div>
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+            The password has been reset. Copy it now and send it to the user — it will not be shown again.
+          </p>
+
+          <div style={{
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '12px 16px',
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontFamily: 'monospace',
+            fontSize: 15,
+          }}>
+            <span style={{ flex: 1 }}>{resetPassword.password}</span>
+            <button className="btn btn-ghost btn-sm" onClick={copyResetPassword} title="Copy">
+              <Copy size={14} />
+            </button>
+          </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-primary" onClick={() => setResetPassword(null)}>Done</button>
+          </div>
+        </Modal>
       )}
 
       {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2>Add User</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>
-                <X size={18} />
-              </button>
+        <Modal onClose={() => setShowForm(false)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <h2>Add User</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="form-group">
+              <label>Name</label>
+              <input className="input" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="form-group">
-                <label>Name</label>
-                <input className="input" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label>Email</label>
-                <input className="input" type="email" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label>Password</label>
-                <input className="input" type="password" placeholder="Min 8 characters" value={password} onChange={e => setPassword(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} />
-                  Admin privileges
-                </label>
-              </div>
+            <div className="form-group">
+              <label>Email</label>
+              <input className="input" type="email" placeholder="user@example.com" value={email} onChange={e => setEmail(e.target.value)} />
             </div>
 
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={createUser} disabled={creating}>
-                {creating ? 'Creating...' : 'Create User'}
-              </button>
+            <div className="form-group">
+              <label>Password</label>
+              <input className="input" type="password" placeholder="Min 8 characters" value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} />
+                Admin privileges
+              </label>
             </div>
           </div>
-        </div>
+
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={createUser} disabled={creating}>
+              {creating ? 'Creating...' : 'Create User'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

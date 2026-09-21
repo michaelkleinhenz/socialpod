@@ -5,6 +5,7 @@ import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Clock, AlertTriang
 import { PlatformIcon } from '../Common/PlatformIcon';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import { Modal } from '../Common/Modal';
 import './Admin.css';
 
 function TokenExpiryBadge({ tokenExpiry, platform }: { tokenExpiry?: string; platform?: string }) {
@@ -422,143 +423,135 @@ export function TeamAccountsPage() {
       )}
 
       {showTwitterForm && (
-        <div className="modal-overlay" onClick={() => setShowTwitterForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Add X/Twitter Account</h2>
-            <div style={{ background: 'var(--warning-bg, #fff8e1)', border: '1px solid var(--warning-border, #f9a825)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--warning-text, #7a5c00)', marginBottom: 8 }}>
-              Your X Developer App must have <strong>Read and Write</strong> permissions. After changing app permissions in the X Developer Portal, you must regenerate your Access Token and Secret for the new permissions to take effect.
+        <Modal onClose={() => setShowTwitterForm(false)}>
+          <h2>Add X/Twitter Account</h2>
+          <div style={{ background: 'var(--warning-bg, #fff8e1)', border: '1px solid var(--warning-border, #f9a825)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--warning-text, #7a5c00)', marginBottom: 8 }}>
+            Your X Developer App must have <strong>Read and Write</strong> permissions. After changing app permissions in the X Developer Portal, you must regenerate your Access Token and Secret for the new permissions to take effect.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="form-group">
+              <label>API Key (Consumer Key)</label>
+              <input className="input" type="password" placeholder="API Key" value={twConsumerKey} onChange={e => setTwConsumerKey(e.target.value)} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="form-group">
-                <label>API Key (Consumer Key)</label>
-                <input className="input" type="password" placeholder="API Key" value={twConsumerKey} onChange={e => setTwConsumerKey(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>API Key Secret (Consumer Secret)</label>
-                <input className="input" type="password" placeholder="API Key Secret" value={twConsumerSecret} onChange={e => setTwConsumerSecret(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Access Token</label>
-                <input className="input" type="password" placeholder="Access Token" value={twAccessToken} onChange={e => setTwAccessToken(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Access Token Secret</label>
-                <input className="input" type="password" placeholder="Access Token Secret" value={twAccessTokenSecret} onChange={e => setTwAccessTokenSecret(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Get these from the X Developer Portal under your app's Keys and Tokens tab.
-                </span>
-              </div>
+            <div className="form-group">
+              <label>API Key Secret (Consumer Secret)</label>
+              <input className="input" type="password" placeholder="API Key Secret" value={twConsumerSecret} onChange={e => setTwConsumerSecret(e.target.value)} />
             </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowTwitterForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addTwitter} disabled={addingTwitter}>
-                {addingTwitter ? 'Adding...' : 'Add Account'}
-              </button>
+            <div className="form-group">
+              <label>Access Token</label>
+              <input className="input" type="password" placeholder="Access Token" value={twAccessToken} onChange={e => setTwAccessToken(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Access Token Secret</label>
+              <input className="input" type="password" placeholder="Access Token Secret" value={twAccessTokenSecret} onChange={e => setTwAccessTokenSecret(e.target.value)} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Get these from the X Developer Portal under your app's Keys and Tokens tab.
+              </span>
             </div>
           </div>
-        </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowTwitterForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={addTwitter} disabled={addingTwitter}>
+              {addingTwitter ? 'Adding...' : 'Add Account'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {showMastodonForm && (
-        <div className="modal-overlay" onClick={() => setShowMastodonForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Add Mastodon Account</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="form-group">
-                <label>Instance URL</label>
-                <input className="input" placeholder="mastodon.social" value={mastodonInstance} onChange={e => setMastodonInstance(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Your Mastodon server, e.g. mastodon.social or fosstodon.org
-                </span>
-              </div>
-              <button className="btn btn-primary" onClick={connectMastodonOAuth} disabled={addingMastodon} style={{ borderColor: 'var(--mastodon)', backgroundColor: 'var(--mastodon)', color: '#fff' }}>
-                {addingMastodon ? 'Redirecting…' : 'Connect via OAuth'}
-              </button>
-              <details style={{ marginTop: 8 }}>
-                <summary style={{ fontSize: 13, cursor: 'pointer', color: 'var(--text-muted)' }}>
-                  Or enter an access token manually
-                </summary>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
-                  <div className="form-group">
-                    <label>Access Token</label>
-                    <input className="input" type="password" placeholder="Access token" value={mastodonAccessToken} onChange={e => setMastodonAccessToken(e.target.value)} />
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      Generate at your instance under Settings &gt; Development &gt; New application. Required scopes: <code>read write</code>.
-                    </span>
-                  </div>
-                  <button className="btn btn-secondary" onClick={addMastodon} disabled={addingMastodon}>
-                    {addingMastodon ? 'Adding…' : 'Add with Token'}
-                  </button>
+        <Modal onClose={() => setShowMastodonForm(false)}>
+          <h2>Add Mastodon Account</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="form-group">
+              <label>Instance URL</label>
+              <input className="input" placeholder="mastodon.social" value={mastodonInstance} onChange={e => setMastodonInstance(e.target.value)} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Your Mastodon server, e.g. mastodon.social or fosstodon.org
+              </span>
+            </div>
+            <button className="btn btn-primary" onClick={connectMastodonOAuth} disabled={addingMastodon} style={{ borderColor: 'var(--mastodon)', backgroundColor: 'var(--mastodon)', color: '#fff' }}>
+              {addingMastodon ? 'Redirecting…' : 'Connect via OAuth'}
+            </button>
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ fontSize: 13, cursor: 'pointer', color: 'var(--text-muted)' }}>
+                Or enter an access token manually
+              </summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+                <div className="form-group">
+                  <label>Access Token</label>
+                  <input className="input" type="password" placeholder="Access token" value={mastodonAccessToken} onChange={e => setMastodonAccessToken(e.target.value)} />
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Generate at your instance under Settings &gt; Development &gt; New application. Required scopes: <code>read write</code>.
+                  </span>
                 </div>
-              </details>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowMastodonForm(false)}>Cancel</button>
-            </div>
+                <button className="btn btn-secondary" onClick={addMastodon} disabled={addingMastodon}>
+                  {addingMastodon ? 'Adding…' : 'Add with Token'}
+                </button>
+              </div>
+            </details>
           </div>
-        </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowMastodonForm(false)}>Cancel</button>
+          </div>
+        </Modal>
       )}
 
       {showThreadsForm && (
-        <div className="modal-overlay" onClick={() => setShowThreadsForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Add Threads Account</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="form-group">
-                <label>Access Token</label>
-                <input className="input" type="password" placeholder="Long-lived user access token" value={threadsAccessToken} onChange={e => setThreadsAccessToken(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Obtain a long-lived token via the Meta for Developers Threads API (threads.net).
-                </span>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowThreadsForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addThreads} disabled={addingThreads}>
-                {addingThreads ? 'Adding...' : 'Add Account'}
-              </button>
+        <Modal onClose={() => setShowThreadsForm(false)}>
+          <h2>Add Threads Account</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="form-group">
+              <label>Access Token</label>
+              <input className="input" type="password" placeholder="Long-lived user access token" value={threadsAccessToken} onChange={e => setThreadsAccessToken(e.target.value)} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Obtain a long-lived token via the Meta for Developers Threads API (threads.net).
+              </span>
             </div>
           </div>
-        </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowThreadsForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={addThreads} disabled={addingThreads}>
+              {addingThreads ? 'Adding...' : 'Add Account'}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {showBlueskyForm && (
-        <div className="modal-overlay" onClick={() => setShowBlueskyForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Add Bluesky Account</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="form-group">
-                <label>Handle</label>
-                <input className="input" placeholder="user.bsky.social" value={handle} onChange={e => setHandle(e.target.value.replace(/^@+/, ''))} />
-              </div>
-              <div className="form-group">
-                <label>App Password</label>
-                <input className="input" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" value={appPassword} onChange={e => setAppPassword(e.target.value)} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Generate at Settings &gt; App Passwords on bsky.app
-                </span>
-              </div>
-              <div className="form-group">
-                <label>PDS Host (optional)</label>
-                <input className="input" placeholder="https://bsky.social" value={pdsHost} onChange={e => { setPdsHost(e.target.value); setPdsHostConfirmed(false); }} />
-                {pdsHost && (
-                  <div style={{ marginTop: 8, background: 'var(--warning-bg, #fff8e1)', border: '1px solid var(--warning-border, #f9a825)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--warning-text, #7a5c00)' }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontWeight: 'normal' }}>
-                      <input type="checkbox" checked={pdsHostConfirmed} onChange={e => setPdsHostConfirmed(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
-                      <span>Normal Bluesky accounts (bsky.social) do not need a custom PDS host. Only check this if you are connecting a self-hosted PDS account.</span>
-                    </label>
-                  </div>
-                )}
-              </div>
+        <Modal onClose={() => setShowBlueskyForm(false)}>
+          <h2>Add Bluesky Account</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="form-group">
+              <label>Handle</label>
+              <input className="input" placeholder="user.bsky.social" value={handle} onChange={e => setHandle(e.target.value.replace(/^@+/, ''))} />
             </div>
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowBlueskyForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addBluesky} disabled={adding}>
-                {adding ? 'Adding...' : 'Add Account'}
-              </button>
+            <div className="form-group">
+              <label>App Password</label>
+              <input className="input" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" value={appPassword} onChange={e => setAppPassword(e.target.value)} />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Generate at Settings &gt; App Passwords on bsky.app
+              </span>
+            </div>
+            <div className="form-group">
+              <label>PDS Host (optional)</label>
+              <input className="input" placeholder="https://bsky.social" value={pdsHost} onChange={e => { setPdsHost(e.target.value); setPdsHostConfirmed(false); }} />
+              {pdsHost && (
+                <div style={{ marginTop: 8, background: 'var(--warning-bg, #fff8e1)', border: '1px solid var(--warning-border, #f9a825)', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: 'var(--warning-text, #7a5c00)' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontWeight: 'normal' }}>
+                    <input type="checkbox" checked={pdsHostConfirmed} onChange={e => setPdsHostConfirmed(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+                    <span>Normal Bluesky accounts (bsky.social) do not need a custom PDS host. Only check this if you are connecting a self-hosted PDS account.</span>
+                  </label>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowBlueskyForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={addBluesky} disabled={adding}>
+              {adding ? 'Adding...' : 'Add Account'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

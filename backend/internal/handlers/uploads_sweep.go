@@ -130,6 +130,18 @@ func classifyUploads(candidates []uploadCandidate, referenced map[string]bool, c
 	return orphans, totalFiles, totalBytes, skippedTooRecent
 }
 
+// sampleOrphans takes the first maxSweepSampleFiles orphans for the report.
+//
+// The result is always a slice, never nil, even when nothing is orphaned: the
+// report is read by a browser, and a nil slice marshals to JSON null, which a
+// client reading sample.length would choke on.
+func sampleOrphans(orphans []OrphanedUpload) []OrphanedUpload {
+	if len(orphans) > maxSweepSampleFiles {
+		orphans = orphans[:maxSweepSampleFiles]
+	}
+	return append(make([]OrphanedUpload, 0, len(orphans)), orphans...)
+}
+
 // collectUploadCandidates reads both halves of the upload store: the records
 // in the uploads collection and the files in uploadDir. The two can drift
 // apart — a file written before its record was inserted, a record whose file
@@ -238,10 +250,7 @@ func sweepOrphanedUploads(ctx context.Context, db *database.MongoDB, uploadDir s
 		report.OrphanedFiles++
 		report.OrphanedBytes += orphan.Size
 	}
-	report.Sample = orphans
-	if len(report.Sample) > maxSweepSampleFiles {
-		report.Sample = report.Sample[:maxSweepSampleFiles]
-	}
+	report.Sample = sampleOrphans(orphans)
 
 	if dryRun {
 		return report, nil

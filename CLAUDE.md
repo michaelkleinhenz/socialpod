@@ -82,6 +82,8 @@ React 19 + TypeScript + Vite. No state management library — auth state lives i
 - `src/contexts/AuthContext.tsx` — global auth state (`user`, `loading`, `login`, `logout`, `refreshUser`)
 - `src/types/index.ts` — all shared TypeScript types (`Post`, `User`, `Team`, `SocialAccount`, etc.)
 - `src/App.tsx` — route definitions; `ProtectedRoute` enforces `adminOnly`/`teamAdminOnly` flags
+- `src/components/Common/Modal.tsx` — the shared overlay + panel every dialog renders through; write a new dialog with this, not a hand-rolled `.modal-overlay`. It owns backdrop dismissal: a click on the backdrop asks before discarding whenever the user has entered something, so an accidental click outside cannot wipe a half-filled form. Dirtiness comes from native input/change events inside the panel, which fire only for real typing and picking — React's own state updates never trip it, so a dialog whose fields are filled in asynchronously does not look edited. Pass `dirty` to override that for a dialog holding state the DOM does not show, or `closeOnBackdrop={false}` to require its own buttons. The PostEditor is the one dialog that still builds its own overlay: that overlay also hosts the image editor and cropper as siblings of the panel, which `Modal` has no place for, and it tracks `isDirty` and confirms in `handleClose` itself.
+- `src/components/Common/ErrorBoundary.tsx` — wraps the routed content in `App.tsx`. Without it React unmounts the whole tree on any render error and leaves a blank page with nothing to act on.
 
 Components are organized by feature under `src/components/` (Calendar, PostEditor, Admin, Inbox, Footers, News, Episode, etc.).
 
