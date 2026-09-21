@@ -620,6 +620,13 @@ class ApiClient {
     return this.request<{ message: string }>(`/news/drafts/${id}`, { method: 'DELETE' });
   }
 
+  deleteAllNewsDrafts(posted = false) {
+    return this.request<{ message: string; deletedCount: number }>(
+      `/news/drafts${posted ? '?posted=true' : ''}`,
+      { method: 'DELETE' },
+    );
+  }
+
   postNewsDraft(id: string) {
     return this.request<any>(`/news/drafts/${id}/post`, { method: 'POST' });
   }
@@ -655,6 +662,13 @@ class ApiClient {
 
   deleteEpisodeDraft(id: string) {
     return this.request<{ message: string }>(`/episode/drafts/${id}`, { method: 'DELETE' });
+  }
+
+  deleteAllEpisodeDrafts(posted = false) {
+    return this.request<{ message: string; deletedCount: number }>(
+      `/episode/drafts${posted ? '?posted=true' : ''}`,
+      { method: 'DELETE' },
+    );
   }
 
   postEpisodeDraft(id: string) {

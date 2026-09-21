@@ -598,6 +598,25 @@ func (h *NewsHandler) DeleteDraft(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Draft deleted"})
 }
 
+// DeleteDrafts removes every draft in the caller's scope on one side of the
+// posted split: "?posted=true" clears the Posted tab, anything else the open
+// drafts. It is the bulk counterpart of DeleteDraft.
+func (h *NewsHandler) DeleteDrafts(c *gin.Context) {
+	filter := newsDraftScopeFilter(c)
+	posted := c.Query("posted") == "true"
+	applyPostedFilter(filter, posted)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	res, err := h.DB.NewsDrafts().DeleteMany(ctx, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete drafts"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Drafts deleted", "deletedCount": res.DeletedCount})
+}
+
 func (h *NewsHandler) PostDraft(c *gin.Context) {
 	draftID, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {

@@ -186,6 +186,7 @@ func main() {
 		auth.POST("/news/drafts", newsHandler.SaveDraft)
 		auth.GET("/news/drafts/:id", newsHandler.GetDraft)
 		auth.PUT("/news/drafts/:id", newsHandler.UpdateDraft)
+		auth.DELETE("/news/drafts", newsHandler.DeleteDrafts)
 		auth.DELETE("/news/drafts/:id", newsHandler.DeleteDraft)
 		auth.POST("/news/drafts/:id/post", newsHandler.PostDraft)
 		auth.POST("/episode/submit", episodeHandler.Submit)
@@ -193,6 +194,7 @@ func main() {
 		auth.POST("/episode/drafts", episodeHandler.SaveDraft)
 		auth.GET("/episode/drafts/:id", episodeHandler.GetDraft)
 		auth.PUT("/episode/drafts/:id", episodeHandler.UpdateDraft)
+		auth.DELETE("/episode/drafts", episodeHandler.DeleteDrafts)
 		auth.DELETE("/episode/drafts/:id", episodeHandler.DeleteDraft)
 		auth.POST("/episode/drafts/:id/post", episodeHandler.PostDraft)
 

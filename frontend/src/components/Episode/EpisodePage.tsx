@@ -116,6 +116,7 @@ export function EpisodePage() {
   const [drafts, setDrafts] = useState<EpisodeDraft[]>([]);
   const [postedDrafts, setPostedDrafts] = useState<EpisodeDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [removingPosted, setRemovingPosted] = useState(false);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [postingDraftId, setPostingDraftId] = useState<string | null>(null);
@@ -738,6 +739,23 @@ export function EpisodePage() {
     }
   };
 
+  const handleRemoveAllPosted = async () => {
+    if (postedDrafts.length === 0) return;
+    if (!window.confirm(`Delete all ${postedDrafts.length} posted ${postedDrafts.length === 1 ? 'entry' : 'entries'}? This cannot be undone.`)) return;
+    setRemovingPosted(true);
+    try {
+      const res = await api.deleteAllEpisodeDrafts(true);
+      setPostedDrafts([]);
+      if (editingDraftId && postedDrafts.some(d => d.id === editingDraftId)) setEditingDraftId(null);
+      toast.success(`Deleted ${res.deletedCount} posted ${res.deletedCount === 1 ? 'entry' : 'entries'}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete posted entries');
+      loadDrafts();
+    } finally {
+      setRemovingPosted(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!episodeNumber.trim()) { toast.error('Episode number is required'); return; }
     if (!episodeTitle.trim()) { toast.error('Episode title is required'); return; }
@@ -955,6 +973,21 @@ export function EpisodePage() {
         }
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {showPosted && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleRemoveAllPosted}
+                  disabled={removingPosted}
+                  title="Delete every entry in this list"
+                  style={{ color: 'var(--danger)' }}
+                >
+                  {removingPosted
+                    ? <><Loader size={14} className="post-editor-spin" /> Removing...</>
+                    : <><Trash2 size={14} /> Remove All</>}
+                </button>
+              </div>
+            )}
             {list.map(draft => (
               <div key={draft.id} className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
