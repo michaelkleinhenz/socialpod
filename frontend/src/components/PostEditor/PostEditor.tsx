@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry } from '../../types';
+import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
 import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
@@ -442,6 +442,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const [croppingImageIdx, setCroppingImageIdx] = useState<number | null>(null);
   const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
+  // Overlay picked inside the cropper. Starts empty on every open — a post
+  // image gets a watermark only when someone asks for one.
+  const [watermarks, setWatermarks] = useState<Watermark[]>([]);
+  const [cropWatermarkId, setCropWatermarkId] = useState('');
+  const [cropWatermarkImg, setCropWatermarkImg] = useState<HTMLImageElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -463,7 +468,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     api.getFooters().then(setFooters).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
     loadAccounts();
-    api.getWatermarks().then((wms: any[]) => {
+    api.getWatermarks().then((wms: Watermark[]) => {
+      setWatermarks(wms);
       const base = import.meta.env.VITE_API_URL || '';
       setWatermarkGallery(wms.map(w => {
         const src = w.url.startsWith('/') ? base + w.url : w.url;
@@ -814,6 +820,24 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
   }, [addFiles, acceptsType, editingImageIdx, croppingImageIdx, adobeActive]);
+
+  // The cropper's overlay: reset whenever it opens, so an overlay is always a
+  // deliberate pick, and load the picked watermark for the live preview and the
+  // baked output.
+  useEffect(() => {
+    if (croppingImageIdx === null) setCropWatermarkId('');
+  }, [croppingImageIdx]);
+
+  useEffect(() => {
+    if (!cropWatermarkId) { setCropWatermarkImg(null); return; }
+    const wm = watermarks.find(w => w.id === cropWatermarkId);
+    if (!wm) { setCropWatermarkImg(null); return; }
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => setCropWatermarkImg(img);
+    img.onerror = () => { setCropWatermarkImg(null); toast.error('Failed to load that overlay'); };
+    img.src = wm.url.startsWith('/') ? apiUrl + wm.url : wm.url;
+  }, [cropWatermarkId, watermarks, apiUrl]);
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1730,7 +1754,26 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             setCroppingImageIdx(null);
           }}
           onCancel={() => setCroppingImageIdx(null)}
-        />
+          watermarkImg={cropWatermarkImg}
+          watermarkName={watermarks.find(w => w.id === cropWatermarkId)?.name}
+        >
+          {watermarks.length > 0 && (
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 13, whiteSpace: 'nowrap' }}>Overlay:</label>
+              <select
+                className="select"
+                value={cropWatermarkId}
+                onChange={e => setCropWatermarkId(e.target.value)}
+                style={{ maxWidth: 240, fontSize: 13 }}
+              >
+                <option value="">None</option>
+                {watermarks.map(w => (
+                  <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </ImageCropper>
       )}
     </div>
   );
