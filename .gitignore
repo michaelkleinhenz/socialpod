@@ -12,3 +12,4 @@ uploads/
 __debug_bin*
 .DS_Store
 chrome-extension/*.zip
+SECURITY-FIXES-REPORT.html
