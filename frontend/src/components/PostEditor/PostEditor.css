@@ -90,6 +90,37 @@
   margin-top: -8px;
 }
 
+/* Empty image area: drop target, file picker and paste hint in one, matching
+   the News form's upload area. */
+.image-dropzone {
+  margin-top: 8px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm, 8px);
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  transition: all 0.15s;
+}
+
+.image-dropzone svg {
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+
+.image-dropzone.dragover {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+/* Outline, not border: the grid keeps its layout while a file hovers over it. */
+.image-preview-grid.dragover {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm, 8px);
+}
+
 /* Platform selector in editor */
 .post-editor-modal .platform-selector {
   margin-bottom: 0;

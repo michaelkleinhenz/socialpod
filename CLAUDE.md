@@ -103,6 +103,8 @@ The News and Episode forms hold a single image, and the backend keeps the `image
 ### Post create/update API contract
 Posts are submitted as `multipart/form-data` with two fields: `data` (JSON string of the post object) and `images` (zero or more binary files). This applies to both the REST API and the frontend `ApiClient.createPost`/`updatePost` methods.
 
+The PostEditor takes images three ways — the file picker, a drop on the image area, and a clipboard paste — all funnelled through `addFiles`, which drops whatever the post type can't use (a post takes images, a story either, a reel video). Like the News form, the empty image area is itself the drop target and says so. A pasted or dropped image opens the cropper right away; a picked one only when it isn't square already. The cropper here is given no `watermarkImg`, unlike the News form's, which bakes in the team's news watermark — an overlay on a post image stays an explicit choice through the image editor's Watermark tab.
+
 ### Upload lifecycle
 Every uploaded image is stored twice — on disk in `UPLOAD_DIR` and as bytes in the `uploads` collection — and referenced by URL (`/api/uploads/<file>`) from whichever document owns it.
 

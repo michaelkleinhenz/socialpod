@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import toast from 'react-hot-toast';
@@ -442,6 +442,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const [croppingImageIdx, setCroppingImageIdx] = useState<number | null>(null);
   const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
+  const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -738,28 +739,94 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     : charCount > charLimit;
   const charClass = charCount > charLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
-  const handleImageUpload = (files: FileList | null) => {
-    if (!files) return;
-    const items = Array.from(files).map(file => ({ kind: 'file' as const, file }));
+  // Files reach the post from three places now — the file picker, a drop on the
+  // image area, and a clipboard paste — so they all funnel through here. A post
+  // takes images only; a story takes either; a reel takes video.
+  const acceptsType = useCallback((type: string) =>
+    isReel ? type.startsWith('video/')
+      : isStory ? (type.startsWith('image/') || type.startsWith('video/'))
+      : type.startsWith('image/'),
+  [isStory, isReel]);
+
+  const addFiles = useCallback((files: File[], opts?: { alwaysCrop?: boolean }) => {
+    if (files.length === 0) return;
+    const accepted = files.filter(file => acceptsType(file.type));
+    if (accepted.length === 0) {
+      toast.error(isReel ? 'A reel needs a video file'
+        : isStory ? 'A story needs an image or a video'
+        : 'Please select an image file');
+      return;
+    }
+    const items = accepted.map(file => ({ kind: 'file' as const, file }));
     if (isStory || isReel) {
       setImages(items.slice(0, 1));
-    } else {
-      const startIdx = images.length;
-      setImages(prev => [...prev, ...items]);
-      const firstImageItem = items.find(item => !item.file.type.startsWith('video/'));
-      if (firstImageItem) {
-        const idx = startIdx + items.indexOf(firstImageItem);
-        const img = new window.Image();
-        const checkUrl = URL.createObjectURL(firstImageItem.file);
-        img.onload = () => {
-          URL.revokeObjectURL(checkUrl);
-          if (img.naturalWidth !== img.naturalHeight) {
-            setCroppingImageIdx(idx);
-          }
-        };
-        img.src = checkUrl;
-      }
+      return;
     }
+    const startIdx = images.length;
+    setImages(prev => [...prev, ...items]);
+    const firstImageItem = items.find(item => !item.file.type.startsWith('video/'));
+    if (!firstImageItem) return;
+    const idx = startIdx + items.indexOf(firstImageItem);
+    // Pasted and dropped images go straight to the cropper; a picked file only
+    // does when it isn't square already.
+    if (opts?.alwaysCrop) {
+      setCroppingImageIdx(idx);
+      return;
+    }
+    const img = new window.Image();
+    const checkUrl = URL.createObjectURL(firstImageItem.file);
+    img.onload = () => {
+      URL.revokeObjectURL(checkUrl);
+      if (img.naturalWidth !== img.naturalHeight) {
+        setCroppingImageIdx(idx);
+      }
+    };
+    img.src = checkUrl;
+  }, [images.length, isStory, isReel, acceptsType]);
+
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files) return;
+    addFiles(Array.from(files));
+  };
+
+  // Paste an image into the editor the way the News form takes one. The
+  // cropper opens on it — with no watermark overlay, unlike News, where the
+  // team's news watermark is baked in; the image editor's Watermark tab is
+  // still there for anyone who wants one.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      // The image editor, the cropper and Adobe Express own the clipboard while
+      // they're up.
+      if (editingImageIdx !== null || croppingImageIdx !== null || adobeActive) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        // Leave a paste this post type can't use alone — it may well be text
+        // headed for the textarea.
+        if (item.kind !== 'file' || !acceptsType(item.type)) continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        addFiles([file], { alwaysCrop: true });
+        return;
+      }
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [addFiles, acceptsType, editingImageIdx, croppingImageIdx, adobeActive]);
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    addFiles(Array.from(e.dataTransfer.files), { alwaysCrop: true });
   };
 
   const removeImage = (idx: number) => {
@@ -1328,8 +1395,31 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
             {/* Images */}
             <div className="editor-images">
+              {images.length === 0 && (
+                <div
+                  className={`image-dropzone${dragOver ? ' dragover' : ''}`}
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload size={28} />
+                  <div>
+                    {isReel
+                      ? 'Drop a video here, click to browse, or paste from clipboard'
+                      : isStory
+                      ? 'Drop an image or video here, click to browse, or paste from clipboard'
+                      : 'Drop an image here, click to browse, or paste from clipboard'}
+                  </div>
+                </div>
+              )}
               {images.length > 0 && (
-                <div className="image-preview-grid">
+                <div
+                  className={`image-preview-grid${dragOver ? ' dragover' : ''}`}
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                >
                   {images.map((item, i) => {
                     const isVid = isVideoItem(item);
                     return (
