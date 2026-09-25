@@ -31,12 +31,15 @@ import {
   Check,
   Send,
   Images,
+  Crop,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { QueueFormModal } from './ConventionPage';
 import { Modal } from '../Common/Modal';
+import { ImageCropper } from '../Common/ImageCropper';
+import '../PostEditor/PostEditor.css';
 import './Convention.css';
 
 // Per-platform character limits — mirror the PostEditor logic so captions are
@@ -74,6 +77,7 @@ function QueueItemCard({
   onDelete,
   onAnalyze,
   onEditImage,
+  onCropImage,
   onPostNow,
 }: {
   item: ConventionQueueItem;
@@ -86,7 +90,8 @@ function QueueItemCard({
   onUpdate: (item: ConventionQueueItem) => void;
   onDelete: () => void;
   onAnalyze: () => Promise<void>;
-  onEditImage: () => void;
+  onEditImage: (imageIndex: number) => void;
+  onCropImage: (imageIndex: number) => void;
   onPostNow: () => Promise<void>;
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
@@ -312,13 +317,22 @@ function QueueItemCard({
           </>
         )}
         {!isLocked && (
-          <button
-            className="conv-item-edit-btn"
-            onClick={e => { e.stopPropagation(); onEditImage(); }}
-            title="Edit image"
-          >
-            <Pencil size={12} />
-          </button>
+          <>
+            <button
+              className="conv-item-edit-btn conv-item-crop-btn"
+              onClick={e => { e.stopPropagation(); onCropImage(isGallery ? galleryIndex : 0); }}
+              title="Crop image"
+            >
+              <Crop size={12} />
+            </button>
+            <button
+              className="conv-item-edit-btn"
+              onClick={e => { e.stopPropagation(); onEditImage(isGallery ? galleryIndex : 0); }}
+              title="Edit image"
+            >
+              <Pencil size={12} />
+            </button>
+          </>
         )}
       </div>
 
@@ -429,6 +443,17 @@ function QueueItemCard({
   );
 }
 
+interface ItemImage {
+  item: ConventionQueueItem;
+  index: number;
+}
+
+// The URL of one image of an item: an entry of a gallery's imageUrls, or the
+// plain item's only image.
+function itemImageUrl({ item, index }: ItemImage) {
+  return item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls[index] ?? item.imageUrl : item.imageUrl;
+}
+
 function SchedulePreviewModal({
   preview,
   onPostNow,
@@ -535,7 +560,11 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [filterPending, setFilterPending] = useState(false);
-  const [editingImageItem, setEditingImageItem] = useState<ConventionQueueItem | null>(null);
+  // The image being edited or cropped: an item plus which of its images, since
+  // a gallery item carries several.
+  const [editingImage, setEditingImage] = useState<ItemImage | null>(null);
+  const [croppingImage, setCroppingImage] = useState<ItemImage | null>(null);
+  const [overlayImg, setOverlayImg] = useState<HTMLImageElement | null>(null);
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -572,13 +601,26 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     return { url: src, previewUrl: src };
   });
 
-  // The overlay URL for the queue's selected watermark, rendered on top of each
-  // preview image so the user sees the overlay before scheduling.
-  const overlayUrl = (() => {
-    if (!queue?.watermarkId) return undefined;
-    const wm = watermarks.find(w => w.id === queue.watermarkId);
-    return wm ? resolveWatermarkUrl(wm.url) : undefined;
-  })();
+  // The queue's selected watermark. Its overlay is rendered on top of each
+  // preview image, and over the crop area, so the user sees the overlay before
+  // scheduling; the backend composites it when the item is posted.
+  const queueWatermark = queue?.watermarkId
+    ? watermarks.find(w => w.id === queue.watermarkId)
+    : undefined;
+  const overlayUrl = queueWatermark ? resolveWatermarkUrl(queueWatermark.url) : undefined;
+
+  useEffect(() => {
+    if (!overlayUrl) {
+      setOverlayImg(null);
+      return;
+    }
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => { if (!cancelled) setOverlayImg(img); };
+    img.onerror = () => { if (!cancelled) setOverlayImg(null); };
+    img.src = overlayUrl;
+    return () => { cancelled = true; };
+  }, [overlayUrl]);
 
   useEffect(() => {
     const hasPending = items.some(i => i.status === 'pending' && !i.aiError && !i.caption);
@@ -757,32 +799,49 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   };
 
   const handleImageEditSave = (savedImageData: any) => {
-    if (!id || !editingImageItem) return;
+    if (!id || !editingImage) return;
     const canvas = savedImageData.imageCanvas as HTMLCanvasElement | undefined;
     const base64 = savedImageData.imageBase64 as string | undefined;
     const src = base64 || canvas?.toDataURL('image/png');
     if (!src) {
       toast.error('Failed to get edited image');
-      setEditingImageItem(null);
+      setEditingImage(null);
       return;
     }
-    const itemId = editingImageItem.id;
+    const { item, index } = editingImage;
     fetch(src)
       .then(res => res.blob())
       .then(blob => {
         const ext = savedImageData.extension || 'png';
         const file = new File([blob], `edited.${ext}`, { type: savedImageData.mimeType || 'image/png' });
-        return api.replaceConventionItemImage(id!, itemId, file);
+        return api.replaceConventionItemImage(id!, item.id, file, index);
       })
       .then(updated => {
-        setItems(prev => prev.map(i => (i.id === itemId ? updated : i)));
-        setEditingImageItem(null);
+        setItems(prev => prev.map(i => (i.id === item.id ? updated : i)));
+        setEditingImage(null);
         toast.success('Image updated');
       })
       .catch(() => {
         toast.error('Failed to upload edited image');
-        setEditingImageItem(null);
+        setEditingImage(null);
       });
+  };
+
+  // The crop is uploaded without the overlay: the backend stamps the queue's
+  // watermark onto the image when it posts it, so baking it in here would
+  // apply it twice.
+  const handleCropApply = async (blob: Blob) => {
+    if (!id || !croppingImage) return;
+    const { item, index } = croppingImage;
+    setCroppingImage(null);
+    const file = new File([blob], 'cropped.jpg', { type: 'image/jpeg' });
+    try {
+      const updated = await api.replaceConventionItemImage(id, item.id, file, index);
+      setItems(prev => prev.map(i => (i.id === item.id ? updated : i)));
+      toast.success('Image cropped');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload cropped image');
+    }
   };
 
   const rootClass = mobile ? 'conv-mobile-page' : 'page conv-detail-page';
@@ -982,7 +1041,8 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
               onUpdate={handleUpdateItem}
               onDelete={() => handleDeleteItem(item)}
               onAnalyze={() => handleAnalyzeItem(item)}
-              onEditImage={() => setEditingImageItem(item)}
+              onEditImage={index => setEditingImage({ item, index })}
+              onCropImage={index => setCroppingImage({ item, index })}
               onPostNow={() => handlePostItemNow(item)}
             />
           ))}
@@ -1034,10 +1094,21 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         />
       )}
 
-      {editingImageItem && (
+      {croppingImage && (
+        <ImageCropper
+          imageUrl={itemImageUrl(croppingImage)}
+          onApply={handleCropApply}
+          onCancel={() => setCroppingImage(null)}
+          watermarkImg={overlayImg}
+          watermarkName={overlayImg ? queueWatermark?.name : undefined}
+          bakeWatermark={false}
+        />
+      )}
+
+      {editingImage && (
         <div className="image-editor-overlay">
           <FilerobotImageEditor
-            source={editingImageItem.imageUrl}
+            source={itemImageUrl(editingImage)}
             tabsIds={[TABS.ADJUST, TABS.ANNOTATE, TABS.WATERMARK, TABS.FILTERS, TABS.FINETUNE, TABS.RESIZE]}
             defaultTabId={TABS.ANNOTATE}
             savingPixelRatio={2}
@@ -1144,7 +1215,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
             }}
             onBeforeSave={() => false}
             onSave={handleImageEditSave}
-            onClose={() => setEditingImageItem(null)}
+            onClose={() => setEditingImage(null)}
           />
         </div>
       )}

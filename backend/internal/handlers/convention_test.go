@@ -6,8 +6,11 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"reflect"
 	"testing"
 	"time"
+
+	"socialmedia/internal/models"
 )
 
 func TestEffectivePostsPerDay_DelayTakesPrecedence(t *testing.T) {
@@ -253,5 +256,60 @@ func TestStripHashtags(t *testing.T) {
 				t.Fatalf("stripHashtags(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestReplaceItemImageAt_PlainItem(t *testing.T) {
+	item := models.ConventionQueueItem{ImageURL: "/api/uploads/a.jpg"}
+
+	set, previous, ok := replaceItemImageAt(item, 0, "/api/uploads/b.jpg")
+	if !ok {
+		t.Fatal("index 0 of a plain item should be replaceable")
+	}
+	if previous != "/api/uploads/a.jpg" {
+		t.Errorf("previous = %q, want the old image", previous)
+	}
+	if set["imageUrl"] != "/api/uploads/b.jpg" {
+		t.Errorf("imageUrl = %v, want the new image", set["imageUrl"])
+	}
+	if _, has := set["imageUrls"]; has {
+		t.Error("a plain item must not grow an imageUrls list")
+	}
+
+	if _, _, ok := replaceItemImageAt(item, 1, "/api/uploads/b.jpg"); ok {
+		t.Error("a plain item has no image at index 1")
+	}
+}
+
+func TestReplaceItemImageAt_Gallery(t *testing.T) {
+	item := models.ConventionQueueItem{
+		ImageURL:  "/api/uploads/a.jpg",
+		ImageURLs: []string{"/api/uploads/a.jpg", "/api/uploads/b.jpg", "/api/uploads/c.jpg"},
+	}
+
+	set, previous, ok := replaceItemImageAt(item, 1, "/api/uploads/new.jpg")
+	if !ok || previous != "/api/uploads/b.jpg" {
+		t.Fatalf("replace index 1: ok=%v previous=%q", ok, previous)
+	}
+	want := []string{"/api/uploads/a.jpg", "/api/uploads/new.jpg", "/api/uploads/c.jpg"}
+	if !reflect.DeepEqual(set["imageUrls"], want) {
+		t.Errorf("imageUrls = %v, want %v", set["imageUrls"], want)
+	}
+	if _, has := set["imageUrl"]; has {
+		t.Error("replacing a later image must leave the primary imageUrl alone")
+	}
+	if item.ImageURLs[1] != "/api/uploads/b.jpg" {
+		t.Error("the item's own slice must not be modified")
+	}
+
+	set, _, _ = replaceItemImageAt(item, 0, "/api/uploads/first.jpg")
+	if set["imageUrl"] != "/api/uploads/first.jpg" {
+		t.Errorf("replacing index 0 should keep imageUrl mirroring it, got %v", set["imageUrl"])
+	}
+
+	for _, idx := range []int{-1, 3} {
+		if _, _, ok := replaceItemImageAt(item, idx, "/api/uploads/x.jpg"); ok {
+			t.Errorf("index %d should be out of range", idx)
+		}
 	}
 }

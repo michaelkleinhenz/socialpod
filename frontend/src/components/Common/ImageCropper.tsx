@@ -13,13 +13,17 @@ interface Props {
   onCancel: () => void;
   watermarkImg?: HTMLImageElement | null;
   watermarkName?: string;
+  // false shows the watermark over the crop area without drawing it into the
+  // output, for images whose overlay is composited later (convention queues
+  // stamp theirs when the item is posted).
+  bakeWatermark?: boolean;
   maxBytes?: number;
   children?: ReactNode;
 }
 
 const DEFAULT_MAX_BYTES = 1_000_000;
 
-export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, watermarkName, maxBytes = DEFAULT_MAX_BYTES, children }: Props) {
+export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, watermarkName, bakeWatermark = true, maxBytes = DEFAULT_MAX_BYTES, children }: Props) {
   const [cropRect, setCropRect] = useState<CropRect | null>(null);
   const [imgNaturalSize, setImgNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [dragging, setDragging] = useState<{ startX: number; startY: number; origRect: CropRect } | null>(null);
@@ -198,7 +202,7 @@ export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, waterm
 
     ctx.drawImage(img, cropRect!.x, cropRect!.y, cropRect!.size, cropRect!.size, 0, 0, outputSize, outputSize);
 
-    if (watermarkImg) {
+    if (watermarkImg && bakeWatermark) {
       ctx.drawImage(watermarkImg, 0, 0, outputSize, outputSize);
     }
 
@@ -302,7 +306,7 @@ export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, waterm
               ({cropRect.size} × {cropRect.size} px)
             </span>}
             {watermarkName && <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-              · watermark: {watermarkName}
+              · {bakeWatermark ? `watermark: ${watermarkName}` : `overlay: ${watermarkName}, added when posted`}
             </span>}
           </h3>
           <button className="btn btn-ghost btn-sm" onClick={onCancel}>
@@ -345,7 +349,7 @@ export function ImageCropper({ imageUrl, onApply, onCancel, watermarkImg, waterm
             Cancel
           </button>
           <button className="btn btn-primary" onClick={applyCrop} disabled={!cropRect}>
-            <Crop size={14} /> Apply Crop{watermarkName ? ' & Watermark' : ''}
+            <Crop size={14} /> Apply Crop{watermarkName && bakeWatermark ? ' & Watermark' : ''}
           </button>
         </div>
       </div>
