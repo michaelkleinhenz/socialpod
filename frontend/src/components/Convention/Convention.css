@@ -434,8 +434,17 @@
   transition: opacity 0.15s, background 0.15s;
 }
 
-.conv-item-thumb-wrap:hover .conv-item-edit-btn {
+.conv-item-thumb-wrap:hover .conv-item-edit-btn,
+.conv-item-edit-btn:focus-visible {
   opacity: 1;
+}
+
+/* Touch screens have no hover to reveal the buttons: a first tap would only
+   make them appear, so show them permanently there. */
+@media (hover: none) {
+  .conv-item-edit-btn {
+    opacity: 1;
+  }
 }
 
 .conv-item-edit-btn:hover {
