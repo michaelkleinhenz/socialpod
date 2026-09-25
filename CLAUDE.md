@@ -66,6 +66,8 @@ The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts wh
 
 Convention queues have their own 30-second background loop (`ConventionHandler.StartAutoPoster` in `handlers/convention.go`). Approved queue items are a *set*, not pre-scheduled: whenever a queue is active and inside its date window and its `nextPostAt` is due, the loop picks one approved item at random, creates a `scheduled` post for it (which the shared scheduler then publishes), marks the item consumed, and rolls `nextPostAt` forward by the schedule gap. `POST /convention/queues/:id/schedule` is a manual "post one random item now" trigger.
 
+A queue's watermark (`watermarkId`) is composited onto each image by `postItem` at post time, never stored on the item. The queue page's crop button (next to the edit pencil on each item card) therefore opens the shared `ImageCropper` with `bakeWatermark={false}`: the overlay is drawn over the crop area so the framing can be judged, but the uploaded crop is clean, or the overlay would be stamped twice. Crop and edit both act on the gallery image currently shown; `PUT /convention/queues/:id/items/:iid/image` takes an `index` form field for that, keeps `imageUrl` mirroring `imageUrls[0]`, refuses scheduled items, and frees the replaced upload.
+
 ### MCP server (`handlers/mcp.go`)
 An MCP (Model Context Protocol) server is available at `POST /api/mcp` using the Streamable HTTP transport. It exposes all user-level operations as MCP tools: posts CRUD, footers, mentions, watermarks, accounts, profile, news drafts, and episode drafts. Authentication uses the same bearer token (`sm_...`) as the REST API — one token works for both interfaces.
 

@@ -442,6 +442,11 @@
   background: var(--accent);
 }
 
+/* Sits left of the edit button, sharing its look */
+.conv-item-crop-btn {
+  right: 34px;
+}
+
 .conv-item-thumb {
   width: 100%;
   height: 100%;

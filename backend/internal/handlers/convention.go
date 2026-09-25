@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -598,6 +599,28 @@ func (h *ConventionHandler) ReplaceItemImage(c *gin.Context) {
 		return
 	}
 
+	// index picks which image of a gallery item is replaced; it defaults to the
+	// first, which is also the only image of a plain item.
+	index := 0
+	if s := c.Request.FormValue("index"); s != "" {
+		if index, err = strconv.Atoi(s); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid image index"})
+			return
+		}
+	}
+
+	var item models.ConventionQueueItem
+	if err := h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID, "queueId": queueID}).Decode(&item); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+	// A scheduled item's post already carries its image, so a replacement
+	// would never go out.
+	if item.Status == models.ConventionQueueItemStatusScheduled {
+		c.JSON(http.StatusConflict, gin.H{"error": "Item is already scheduled"})
+		return
+	}
+
 	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
 	imageURL, err := ph.saveUpload(ctx, fh)
 	if err != nil {
@@ -605,18 +628,51 @@ func (h *ConventionHandler) ReplaceItemImage(c *gin.Context) {
 		return
 	}
 
+	set, previous, ok := replaceItemImageAt(item, index, imageURL)
+	if !ok {
+		cleanupUploads(h.DB, h.UploadDir, []string{imageURL})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Image index out of range"})
+		return
+	}
+	set["updatedAt"] = time.Now()
+
 	result, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
 		bson.M{"_id": itemID, "queueId": queueID},
-		bson.M{"$set": bson.M{"imageUrl": imageURL, "updatedAt": time.Now()}},
+		bson.M{"$set": set},
 	)
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
 		return
 	}
+	cleanupUploads(h.DB, h.UploadDir, []string{previous})
 
-	var item models.ConventionQueueItem
 	h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID}).Decode(&item)
 	c.JSON(http.StatusOK, item)
+}
+
+// replaceItemImageAt works out the update that swaps image index of item for
+// imageURL. A gallery item keeps its images in ImageURLs, with ImageURL
+// mirroring the first; a plain item has only ImageURL, index 0. It returns the
+// $set fields, the URL being replaced, and false for an index the item does
+// not have.
+func replaceItemImageAt(item models.ConventionQueueItem, index int, imageURL string) (bson.M, string, bool) {
+	if len(item.ImageURLs) == 0 {
+		if index != 0 {
+			return nil, "", false
+		}
+		return bson.M{"imageUrl": imageURL}, item.ImageURL, true
+	}
+	if index < 0 || index >= len(item.ImageURLs) {
+		return nil, "", false
+	}
+	urls := append([]string(nil), item.ImageURLs...)
+	previous := urls[index]
+	urls[index] = imageURL
+	set := bson.M{"imageUrls": urls}
+	if index == 0 {
+		set["imageUrl"] = imageURL
+	}
+	return set, previous, true
 }
 
 func (h *ConventionHandler) DeleteItem(c *gin.Context) {
