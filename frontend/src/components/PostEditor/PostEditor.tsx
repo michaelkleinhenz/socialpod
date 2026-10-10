@@ -143,7 +143,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
             <div className="preview-platform-badge bluesky">Bluesky</div>
           </div>
           <div className="preview-content">
-            {content
+            {bskyBase
               ? <p className="preview-text">{renderWithHashtags(bskyContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
@@ -189,7 +189,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
             </div>
           )}
           <div className="preview-content preview-ig-caption">
-            {content
+            {igBase
               ? <p className="preview-text"><strong className="preview-display-name">{igHandle}</strong>{' '}{renderWithHashtags(igContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
@@ -210,7 +210,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
             <div className="preview-platform-badge twitter">X / Twitter</div>
           </div>
           <div className="preview-content">
-            {content
+            {twBase
               ? <p className="preview-text">{renderWithHashtags(twContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
@@ -244,7 +244,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
             <div className="preview-platform-badge mastodon">Mastodon</div>
           </div>
           <div className="preview-content">
-            {content
+            {mstBase
               ? <p className="preview-text">{renderWithHashtags(mstContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
@@ -277,7 +277,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
             <div className="preview-platform-badge linkedin">LinkedIn</div>
           </div>
           <div className="preview-content">
-            {content
+            {liBase
               ? <p className="preview-text">{renderWithHashtags(liContent)}</p>
               : <p className="preview-placeholder">Start typing to see a preview…</p>
             }
