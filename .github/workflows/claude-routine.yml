@@ -1,0 +1,47 @@
+# Wakes the Claude issue-worker routine (claude.ai/code/routines) when an issue is opened or
+# gets a human comment, instead of waiting for its schedule: a question the routine asked
+# gets picked up again as soon as it's answered. The routine's API trigger is fired with the
+# issue number; the routine still decides whether the issue is eligible.
+# Needs the secret CLAUDE_ROUTINE_TOKEN (the routine's API token) and the variable
+# CLAUDE_ROUTINE_ID (its trig_… ID).
+name: Wake Claude routine
+
+on:
+  issues:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created]
+
+# One pending fire per issue: a newer event cancels the one still waiting, so a burst of
+# comments starts a single run.
+concurrency:
+  group: claude-routine-issue-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  fire:
+    # Not for pull requests, closed issues, or the routine's own comments: it posts with the
+    # owner's account, so they're told apart by its hidden marker.
+    if: >-
+      !github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      !contains(github.event.comment.body || '', '<!-- claude-routine:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for more comments
+        run: sleep 60
+      - name: Fire the routine
+        env:
+          TOKEN: ${{ secrets.CLAUDE_ROUTINE_TOKEN }}
+          ROUTINE: ${{ vars.CLAUDE_ROUTINE_ID }}
+          TEXT: "${{ github.repository }} issue #${{ github.event.issue.number }} (${{ github.event_name }})"
+        run: |
+          jq -n --arg text "$TEXT" '{text: $text}' |
+            curl -fsS -X POST "https://api.anthropic.com/v1/claude_code/routines/$ROUTINE/fire" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "Content-Type: application/json" \
+              --data-binary @-
