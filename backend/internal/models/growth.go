@@ -50,7 +50,10 @@ type WeeklyPlanSlot struct {
 
 // RadarSettings shape the "Radar der Woche" carousel. Cover and closing
 // slides are uploaded images; without one the generator draws a plain slide
-// with the title (cover) or the closing text instead.
+// with the title (cover) or the closing text instead. FontURL is an uploaded
+// TrueType/OpenType font every slide text is drawn with (FontName is its
+// original file name, for display); without one the built-in Go fonts are
+// used.
 type RadarSettings struct {
 	Title           string `bson:"title,omitempty" json:"title,omitempty"`
 	BadgeQuestion   string `bson:"badgeQuestion,omitempty" json:"badgeQuestion,omitempty"`
@@ -60,6 +63,8 @@ type RadarSettings struct {
 	CaptionIntro    string `bson:"captionIntro,omitempty" json:"captionIntro,omitempty"`
 	CaptionOutro    string `bson:"captionOutro,omitempty" json:"captionOutro,omitempty"`
 	AccentColor     string `bson:"accentColor,omitempty" json:"accentColor,omitempty"`
+	FontURL         string `bson:"fontUrl,omitempty" json:"fontUrl,omitempty"`
+	FontName        string `bson:"fontName,omitempty" json:"fontName,omitempty"`
 }
 
 // FollowerSnapshot is one day's follower count of an Instagram account. The

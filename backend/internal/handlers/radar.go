@@ -245,11 +245,12 @@ func (h *RadarHandler) Generate(c *gin.Context) {
 // render draws and stores the slides and composes the caption.
 func (h *RadarHandler) render(ctx context.Context, drafts []models.NewsDraft, radar models.RadarSettings, now time.Time) (*RadarContent, error) {
 	accent := services.ParseHexColor(radar.AccentColor)
+	fonts := h.loadFont(ctx, radar.FontURL)
 	var slides [][]byte
 
 	_, week := now.ISOWeek()
 	subtitle := fmt.Sprintf("KW %d · %d %s", week, len(drafts), pluralDE(len(drafts), "Ankündigung", "Ankündigungen"))
-	cover, err := services.RenderRadarCover(h.loadImage(ctx, radar.CoverImageURL), radar.Title, subtitle, accent)
+	cover, err := services.RenderRadarCover(h.loadImage(ctx, radar.CoverImageURL), radar.Title, subtitle, accent, fonts)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +267,7 @@ func (h *RadarHandler) render(ctx context.Context, drafts []models.NewsDraft, ra
 			Title:         radarItemTitle(d),
 			Image:         img,
 			GermanRelease: d.GermanRelease,
-		}, radar.Title, radar.BadgeQuestion, accent)
+		}, radar.Title, radar.BadgeQuestion, accent, fonts)
 		if err != nil {
 			return nil, err
 		}
@@ -277,7 +278,7 @@ func (h *RadarHandler) render(ctx context.Context, drafts []models.NewsDraft, ra
 	if closingText == "" {
 		closingText = defaultRadarClosingText
 	}
-	closing, err := services.RenderRadarClosing(h.loadImage(ctx, radar.ClosingImageURL), closingText, accent)
+	closing, err := services.RenderRadarClosing(h.loadImage(ctx, radar.ClosingImageURL), closingText, accent, fonts)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +431,25 @@ func (h *RadarHandler) loadImage(ctx context.Context, url string) image.Image {
 		img = services.ApplyOrientation(img, o)
 	}
 	return img
+}
+
+// loadFont reads the team's uploaded Radar font. Any failure yields the
+// built-in fonts, so a broken upload never stops a Radar from being built.
+func (h *RadarHandler) loadFont(ctx context.Context, url string) services.RadarFonts {
+	if url == "" {
+		return services.RadarFonts{}
+	}
+	data, err := readImageBytes(ctx, h.DB, h.UploadDir, url)
+	if err != nil {
+		log.Printf("Radar: could not load font %s: %v", url, err)
+		return services.RadarFonts{}
+	}
+	fonts, err := services.ParseRadarFont(data)
+	if err != nil {
+		log.Printf("Radar: could not parse font %s: %v", url, err)
+		return services.RadarFonts{}
+	}
+	return fonts
 }
 
 func readImageBytes(ctx context.Context, db *database.MongoDB, uploadDir, url string) ([]byte, error) {

@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -173,6 +175,12 @@ func validateGrowthSettings(g *models.TeamGrowthSettings) error {
 				return fmt.Errorf("radar slide images must be uploaded images")
 			}
 		}
+		if r.FontURL != "" && uploadFilename(r.FontURL) == "" {
+			return fmt.Errorf("the radar font must be an uploaded font file")
+		}
+		if r.FontURL == "" {
+			r.FontName = ""
+		}
 	}
 	return nil
 }
@@ -216,6 +224,9 @@ func (h *GrowthHandler) UpdateSettings(c *gin.Context) {
 		if old.Radar.ClosingImageURL != "" && old.Radar.ClosingImageURL != newRadar.ClosingImageURL {
 			dropped = append(dropped, old.Radar.ClosingImageURL)
 		}
+		if old.Radar.FontURL != "" && old.Radar.FontURL != newRadar.FontURL {
+			dropped = append(dropped, old.Radar.FontURL)
+		}
 	}
 
 	if _, err := h.DB.Teams().UpdateOne(ctx, bson.M{"_id": teamID}, bson.M{"$set": bson.M{
@@ -227,6 +238,68 @@ func (h *GrowthHandler) UpdateSettings(c *gin.Context) {
 	}
 	cleanupUploads(h.DB, h.UploadDir, dropped)
 	c.JSON(http.StatusOK, defaultGrowthSettings(&input))
+}
+
+// maxRadarFontSize caps an uploaded Radar font; real-world TTF/OTF files of a
+// single style stay well below it.
+const maxRadarFontSize = 10 << 20
+
+// UploadRadarFont stores a TrueType or OpenType font for the Radar slides
+// (team admin). It only stores the file and returns its URL and name; the
+// settings reference it once they are saved, like the slide images.
+// POST /api/team/growth/font (multipart, field "font")
+func (h *GrowthHandler) UploadRadarFont(c *gin.Context) {
+	file, header, err := c.Request.FormFile("font")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No font file provided"})
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxRadarFontSize+1))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read the font file"})
+		return
+	}
+	ext, contentType, err := checkRadarFont(header.Filename, data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	filename := fmt.Sprintf("radar-font-%d%s", time.Now().UnixNano(), ext)
+	url, err := storeUploadBytes(ctx, h.DB, h.UploadDir, filename, contentType, data)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store the font"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": url, "name": filepath.Base(header.Filename)})
+}
+
+// checkRadarFont accepts a TrueType (.ttf) or OpenType (.otf) font the slide
+// renderer can draw German text with, and returns the extension and content
+// type to store it under. Those follow the file's contents rather than its
+// name, since .otf files often hold TrueType outlines and vice versa.
+func checkRadarFont(filename string, data []byte) (ext, contentType string, err error) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".ttf", ".otf":
+	default:
+		return "", "", fmt.Errorf("upload a .ttf or .otf font file")
+	}
+	if len(data) > maxRadarFontSize {
+		return "", "", fmt.Errorf("the font file is larger than 10 MB")
+	}
+	if len(data) >= 4 && string(data[:4]) == "ttcf" {
+		return "", "", fmt.Errorf("this is a font collection; upload a single .ttf or .otf font")
+	}
+	if _, err := services.ParseRadarFont(data); err != nil {
+		return "", "", fmt.Errorf("unusable font: %v", err)
+	}
+	if string(data[:4]) == "OTTO" {
+		return ".otf", "font/otf", nil
+	}
+	return ".ttf", "font/ttf", nil
 }
 
 // teamInstagramAccounts lists the team's active Instagram accounts.

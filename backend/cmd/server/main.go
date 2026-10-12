@@ -384,6 +384,7 @@ func main() {
 		teamAdmin.PUT("/settings", bggHandler.UpdateTeamSettings)
 		// Instagram growth settings: goal, weekly plan, caption tone, Radar
 		teamAdmin.PUT("/growth", growthHandler.UpdateSettings)
+		teamAdmin.POST("/growth/font", growthHandler.UploadRadarFont)
 	}
 
 	// Serve embedded frontend (SPA with index.html fallback)

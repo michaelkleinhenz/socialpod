@@ -75,6 +75,70 @@ function SlideImagePicker({ label, url, onChange }: { label: string; url?: strin
   );
 }
 
+// Extensions plus every MIME type TrueType/OpenType files are reported under,
+// so pickers that filter by type (iOS among them) don't grey the fonts out.
+const FONT_ACCEPT = '.ttf,.otf,font/ttf,font/otf,font/sfnt,application/x-font-ttf,application/x-font-truetype,application/x-font-otf,application/x-font-opentype,application/font-sfnt,application/vnd.ms-opentype';
+
+// RadarFontPicker uploads the TrueType/OpenType font the Radar slides are
+// drawn with and previews it with the Radar title.
+function RadarFontPicker({ url, name, sample, onChange }: {
+  url?: string; name?: string; sample: string; onChange: (font: { url: string; name: string } | null) => void;
+}) {
+  const apiUrl = import.meta.env.VITE_API_URL || '';
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [family, setFamily] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFamily(null);
+    if (!url) return;
+    let cancelled = false;
+    const fam = `radar-font-${url.replace(/[^a-z0-9]/gi, '')}`;
+    const face = new FontFace(fam, `url(${url.startsWith('/') ? apiUrl + url : url})`);
+    face.load().then(loaded => {
+      if (cancelled) return;
+      document.fonts.add(loaded);
+      setFamily(fam);
+    }).catch(() => { /* the preview falls back to the page font */ });
+    return () => { cancelled = true; };
+  }, [url, apiUrl]);
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      onChange(await api.uploadRadarFont(file));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+  return (
+    <div className="form-group">
+      <label>Font</label>
+      <div className="slide-picker">
+        <div className="font-preview" style={family ? { fontFamily: `"${family}"` } : { color: 'var(--text-muted)', fontSize: 13, fontWeight: 400 }}>
+          {url ? sample : 'built-in font (Go)'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <Upload size={14} /> {uploading ? 'Uploading…' : url ? 'Replace' : 'Upload'}
+          </button>
+          {url && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(null)}><X size={14} /> Remove</button>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept={FONT_ACCEPT} style={{ display: 'none' }}
+          onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        {name ? `${name}: ` : ''}a .ttf or .otf file, used for all slide text. Pick the bold cut for a punchy title.
+      </span>
+    </div>
+  );
+}
+
 export function GrowthSettingsPage() {
   const [settings, setSettings] = useState<GrowthSettings | null>(null);
   const [goalEnabled, setGoalEnabled] = useState(false);
@@ -248,6 +312,8 @@ export function GrowthSettingsPage() {
           <SlideImagePicker label="Opening slide" url={radar.coverImageUrl} onChange={url => setRadar({ coverImageUrl: url || undefined })} />
           <SlideImagePicker label="Closing slide" url={radar.closingImageUrl} onChange={url => setRadar({ closingImageUrl: url || undefined })} />
         </div>
+        <RadarFontPicker url={radar.fontUrl} name={radar.fontName} sample={radar.title || 'Radar der Woche'}
+          onChange={font => setRadar({ fontUrl: font?.url, fontName: font?.name })} />
         {!radar.closingImageUrl && (
           <div className="form-group">
             <label>Closing slide text (when there is no closing image)</label>

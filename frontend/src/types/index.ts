@@ -502,6 +502,8 @@ export interface RadarSettings {
   captionIntro?: string;
   captionOutro?: string;
   accentColor?: string;
+  fontUrl?: string;
+  fontName?: string;
 }
 
 export interface GrowthSettings {
