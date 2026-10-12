@@ -7,6 +7,8 @@ import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loa
 import { ImageCropper } from '../Common/ImageCropper';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
+import { CaptionChecker, RewriteInstagramButton } from '../PostEditor/InstagramTools';
+import { extractHandles } from '../../services/instagramGrowth';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
 import './News.css';
@@ -109,6 +111,7 @@ export function NewsPage() {
   // AI generation
   const [aiEnabled, setAiEnabled] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
@@ -373,6 +376,36 @@ export function NewsPage() {
 
   const effectiveLimit = (platform: Platform) =>
     platformLimit(platform) - footerLen(platform);
+
+  // The Instagram caption as it will go out: the Instagram text (its own
+  // override when texts are per platform) plus the Instagram footer.
+  const perPlatform = customizePerPlatform && platforms.length > 1;
+  const igSelected = platforms.includes('instagram');
+  const igText = perPlatform ? (contentOverrides['instagram'] ?? '') : content;
+  const igFooter = footers.find(f => f.id === footerIds['instagram'])?.content ?? '';
+  const igCaption = igFooter ? `${igText}\n${igFooter}` : igText;
+  const blueskyText = platforms.includes('bluesky')
+    ? (perPlatform ? (contentOverrides['bluesky'] ?? '') : content)
+    : undefined;
+  // News posts carry no separate image tags: the @mentions are the tags.
+  const igTaggedCount = extractHandles(igCaption).length;
+
+  // Only offered per platform: the Bluesky text is the short one written
+  // first, and the rewrite turns it into the Instagram caption.
+  const rewriteForInstagram = async () => {
+    const source = igText.trim() || (contentOverrides['bluesky'] ?? '').trim();
+    if (!source) { toast.error('Write a text first'); return; }
+    setRewriting(true);
+    try {
+      const { text } = await api.rewriteForInstagram(source);
+      setContentOverrides(prev => ({ ...prev, instagram: text }));
+      toast.success('Instagram caption rewritten');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Rewrite failed');
+    } finally {
+      setRewriting(false);
+    }
+  };
 
   const charLimit = platforms.length === 0 ? effectiveLimit('instagram') : Math.min(
     ...(platforms.includes('bluesky') ? [effectiveLimit('bluesky')] : []),
@@ -1528,6 +1561,14 @@ export function NewsPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                             <PlatformIcon platform={platform} size={12} />
                             <span style={{ fontSize: '0.8rem', textTransform: 'capitalize' }}>{platform}</span>
+                            {platform === 'instagram' && aiEnabled && (
+                              <RewriteInstagramButton
+                                style={{ margin: 0, padding: '2px 8px' }}
+                                rewriting={rewriting}
+                                disabled={!igText.trim() && !(contentOverrides['bluesky'] ?? '').trim()}
+                                onRewrite={rewriteForInstagram}
+                              />
+                            )}
                           </div>
                           <MentionTextarea
                             className="textarea post-textarea"
@@ -1539,6 +1580,16 @@ export function NewsPage() {
                             rows={4}
                           />
                           <div className={`char-counter ${cls}`} style={{ textAlign: 'right' }}>{count} / {limit}</div>
+                          {platform === 'instagram' && (
+                            <CaptionChecker
+                              text={igCaption}
+                              blueskyText={blueskyText}
+                              taggedCount={igTaggedCount}
+                              aiEnabled={false}
+                              rewriting={rewriting}
+                              onRewrite={rewriteForInstagram}
+                            />
+                          )}
                         </div>
                       );
                     })}
@@ -1556,6 +1607,16 @@ export function NewsPage() {
                     <div className={`char-counter ${charClass}`} style={{ textAlign: 'right' }}>
                       {charCount} / {charLimit}
                     </div>
+                    {igSelected && (
+                      <CaptionChecker
+                        text={igCaption}
+                        blueskyText={blueskyText}
+                        taggedCount={igTaggedCount}
+                        aiEnabled={false}
+                        rewriting={rewriting}
+                        onRewrite={rewriteForInstagram}
+                      />
+                    )}
                   </>
                 )}
 

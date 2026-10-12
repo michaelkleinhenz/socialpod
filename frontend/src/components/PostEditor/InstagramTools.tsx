@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { CheckCircle2, AlertTriangle, Circle, X, Users, AtSign, Wand2, Loader, RefreshCw, Radar, ExternalLink, Megaphone } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -86,6 +86,20 @@ export function InstagramPeople({ collaborators, onCollaborators, tags, onTags, 
   );
 }
 
+/** Rewrites the Instagram text with the team's "Rewrite for Instagram" prompt. */
+export function RewriteInstagramButton({ rewriting, disabled, onRewrite, style }: {
+  rewriting: boolean;
+  disabled?: boolean;
+  onRewrite: () => void;
+  style?: CSSProperties;
+}) {
+  return (
+    <button type="button" className="btn btn-ghost btn-sm" style={style} onClick={onRewrite} disabled={rewriting || disabled} title="Rewrites the Instagram text in the team's tone and caption rules">
+      {rewriting ? <><Loader size={14} className="post-editor-spin" /> Rewriting…</> : <><Wand2 size={14} /> Rewrite for Instagram</>}
+    </button>
+  );
+}
+
 /** Live caption checks plus the "Rewrite for Instagram" button. */
 export function CaptionChecker({ text, blueskyText, taggedCount, aiEnabled, rewriting, onRewrite }: {
   text: string;
@@ -101,11 +115,7 @@ export function CaptionChecker({ text, blueskyText, taggedCount, aiEnabled, rewr
     <div className="caption-checker">
       <div className="caption-checker-header">
         <span>Instagram caption check · {passed}/{checks.length}</span>
-        {aiEnabled && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onRewrite} disabled={rewriting || !text.trim()} title="Rewrites the Instagram text in the team's tone and caption rules">
-            {rewriting ? <><Loader size={14} className="post-editor-spin" /> Rewriting…</> : <><Wand2 size={14} /> Rewrite for Instagram</>}
-          </button>
-        )}
+        {aiEnabled && <RewriteInstagramButton rewriting={rewriting} disabled={!text.trim()} onRewrite={onRewrite} />}
       </div>
       <ul>
         {checks.map(c => (
