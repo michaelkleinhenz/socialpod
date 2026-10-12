@@ -980,3 +980,6 @@
 .radar-badge.ja { background: #16a34a; }
 .radar-badge.nein { background: #dc2626; }
 .radar-badge.offen { background: #d97706; }
+.radar-badge.none { background: var(--text-muted); }
+.radar-badge-toggle { border: none; font: inherit; font-weight: 600; cursor: pointer; }
+.radar-badge-toggle:hover { filter: brightness(1.15); }

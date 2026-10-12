@@ -153,6 +153,43 @@ func (h *RadarHandler) Remove(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Removed from the Radar"})
 }
 
+// SetRelease sets a queued draft's "Kommt es auf Deutsch?" badge. Slides
+// already rendered into a Radar post keep the badge they were made with.
+// PUT /api/radar/queue/:id {"germanRelease": "ja"|"nein"|"offen"}
+func (h *RadarHandler) SetRelease(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+	var input struct {
+		GermanRelease string `json:"germanRelease"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	release := normalizeGermanRelease(input.GermanRelease)
+	if release == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "germanRelease must be ja, nein or offen"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	filter := radarQueueFilter(c)
+	filter["_id"] = id
+	res, err := h.DB.NewsDrafts().UpdateOne(ctx, filter, bson.M{"$set": bson.M{"germanRelease": release, "updatedAt": time.Now()}})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update the news"})
+		return
+	}
+	if res.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "News draft not found on the Radar"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"germanRelease": release})
+}
+
 // RadarContent is a generated Radar carousel, ready to drop into a post.
 type RadarContent struct {
 	ImageURLs []string `json:"imageUrls"`
