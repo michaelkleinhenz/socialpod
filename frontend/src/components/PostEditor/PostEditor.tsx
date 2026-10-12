@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark, RadarContent } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, Radar } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, Radar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CaptionChecker, InsightsStrip, InstagramPeople, RadarPicker } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -66,6 +66,81 @@ function renderWithHashtags(text: string) {
     part.startsWith('#')
       ? <span key={i} className="preview-hashtag">{part}</span>
       : <span key={i}>{part}</span>
+  );
+}
+
+// Instagram shows a feed post (and every slide of a carousel) at the first
+// item's aspect ratio, clamped between 4:5 portrait and 1.91:1 landscape.
+const IG_MIN_RATIO = 4 / 5;
+const IG_MAX_RATIO = 1.91;
+
+function InstagramCarousel({ urls, apiUrl }: { urls: string[]; apiUrl: string }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [scrollIndex, setIndex] = useState(0);
+  // The measured ratio belongs to the first item it was read from, so a new
+  // first image starts over at 1:1 until it has loaded.
+  const [measured, setMeasured] = useState<{ url: string; ratio: number } | null>(null);
+
+  const firstUrl = urls[0];
+  const ratio = measured?.url === firstUrl ? measured.ratio : 1;
+  const index = Math.min(scrollIndex, urls.length - 1);
+
+  const takeRatio = (w: number, h: number) => {
+    if (w > 0 && h > 0) setMeasured({ url: firstUrl, ratio: Math.min(IG_MAX_RATIO, Math.max(IG_MIN_RATIO, w / h)) });
+  };
+
+  const onScroll = () => {
+    const el = trackRef.current;
+    if (!el || el.clientWidth === 0) return;
+    setIndex(Math.round(el.scrollLeft / el.clientWidth));
+  };
+
+  const goTo = (i: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="preview-ig-carousel">
+      <div
+        ref={trackRef}
+        className="preview-ig-track"
+        style={{ aspectRatio: String(ratio) }}
+        onScroll={onScroll}
+      >
+        {urls.map((url, i) => {
+          const src = url.startsWith('/') ? apiUrl + url : url;
+          return (
+            <div key={i} className="preview-ig-slide">
+              {/\.(mp4|mov)$/i.test(url)
+                ? <video src={src} muted playsInline
+                    onLoadedMetadata={i === 0 ? e => takeRatio(e.currentTarget.videoWidth, e.currentTarget.videoHeight) : undefined} />
+                : <img src={src} alt="" draggable={false}
+                    onLoad={i === 0 ? e => takeRatio(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight) : undefined} />}
+            </div>
+          );
+        })}
+      </div>
+      {urls.length > 1 && (
+        <>
+          <span className="preview-ig-counter">{index + 1}/{urls.length}</span>
+          {index > 0 && (
+            <button type="button" className="preview-ig-nav prev" onClick={() => goTo(index - 1)} aria-label="Previous image">
+              <ChevronLeft size={16} />
+            </button>
+          )}
+          {index < urls.length - 1 && (
+            <button type="button" className="preview-ig-nav next" onClick={() => goTo(index + 1)} aria-label="Next image">
+              <ChevronRight size={16} />
+            </button>
+          )}
+          <div className="preview-ig-dots">
+            {urls.map((_, i) => <span key={i} className={i === index ? 'active' : ''} />)}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -181,9 +256,7 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
             <div className="preview-platform-badge instagram">Instagram</div>
           </div>
           {imageUrls.length > 0 ? (
-            <div className="preview-ig-image">
-              <img src={imageUrls[0].startsWith('/') ? apiUrl + imageUrls[0] : imageUrls[0]} alt="" />
-            </div>
+            <InstagramCarousel urls={imageUrls} apiUrl={apiUrl} />
           ) : (
             <div className="preview-ig-image-placeholder">
               <Image size={32} />
