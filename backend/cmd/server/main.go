@@ -235,6 +235,7 @@ func main() {
 		auth.POST("/posts/:id/insights", growthHandler.RefreshPostInsights)
 		auth.GET("/radar/queue", radarHandler.Queue)
 		auth.POST("/radar/generate", radarHandler.Generate)
+		auth.DELETE("/radar/queue/:id", radarHandler.Remove)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 
 		// Feed

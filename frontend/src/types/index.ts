@@ -217,6 +217,11 @@ export interface NewsDraft {
   updatedAt: string;
 }
 
+/** A news draft marked for the Radar, with the unpublished post that already carries its slide. */
+export interface RadarQueueEntry extends NewsDraft {
+  radarPost?: { id: string; status: PostStatus; scheduledAt: string };
+}
+
 export interface EpisodeDraft {
   id: string;
   userId: string;

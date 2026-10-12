@@ -31,8 +31,9 @@ type NewsDraft struct {
 	// "ja", "nein" or "offen".
 	Radar         bool                `bson:"radar,omitempty" json:"radar,omitempty"`
 	GermanRelease string              `bson:"germanRelease,omitempty" json:"germanRelease,omitempty"`
-	// RadarPostID is the post that carries this draft's Radar slide; set, it
-	// takes the draft out of the Radar queue.
+	// RadarPostID is the post that carries this draft's Radar slide. While
+	// that post has not gone out the draft stays in the Radar queue, marked as
+	// scheduled; once it is published the draft was used and leaves the queue.
 	RadarPostID   *primitive.ObjectID `bson:"radarPostId,omitempty" json:"radarPostId,omitempty"`
 	Posted           bool                `bson:"posted" json:"posted"`
 	PostedAt         *time.Time          `bson:"postedAt,omitempty" json:"postedAt,omitempty"`

@@ -972,6 +972,10 @@
 .radar-item-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .radar-item-text > span { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
 
+.radar-item-text { flex: 1; }
+.radar-remove { margin-left: auto; color: var(--danger); flex-shrink: 0; }
+.radar-scheduled { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 8px; font-weight: 600; color: var(--accent-hover); background: var(--accent-muted); white-space: nowrap; }
+
 .radar-badge { padding: 0 6px; border-radius: 8px; font-weight: 600; color: #fff; }
 .radar-badge.ja { background: #16a34a; }
 .radar-badge.nein { background: #dc2626; }
