@@ -2,13 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft, GermanRelease, Post } from '../../types';
+import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft, GermanRelease, RadarQueueEntry } from '../../types';
 import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Radar, GalleryHorizontal } from 'lucide-react';
 import { ImageCropper } from '../Common/ImageCropper';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
-import { CaptionChecker, RewriteInstagramButton } from '../PostEditor/InstagramTools';
-import { extractHandles } from '../../services/instagramGrowth';
+import { CaptionChecker, RewriteInstagramButton, RadarScheduledMark } from '../PostEditor/InstagramTools';
+import { confirmRadarRemove, extractHandles, radarReleaseLabels } from '../../services/instagramGrowth';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
 import './News.css';
@@ -99,10 +99,11 @@ export function NewsPage() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [postingDraftId, setPostingDraftId] = useState<string | null>(null);
 
-  // Scheduled Radar carousels: scheduled posts carrying Radar slides.
-  const [carousels, setCarousels] = useState<Post[]>([]);
-  const [carouselsLoaded, setCarouselsLoaded] = useState(false);
-  const [removingCarouselId, setRemovingCarouselId] = useState<string | null>(null);
+  // The Radar queue: news marked "Radar Post?" that have not gone out in a
+  // Radar post yet, marked when an unpublished one already carries them.
+  const [radarQueue, setRadarQueue] = useState<RadarQueueEntry[]>([]);
+  const [radarQueueLoaded, setRadarQueueLoaded] = useState(false);
+  const [removingRadarId, setRemovingRadarId] = useState<string | null>(null);
 
   // Adobe Express
   const [adobeClientId, setAdobeClientId] = useState('');
@@ -562,38 +563,39 @@ export function NewsPage() {
     }
   }, [activeTab, pluginReady, loadDrafts]);
 
-  const loadCarousels = useCallback(async () => {
+  const loadRadarQueue = useCallback(async () => {
     try {
-      const posts: Post[] = await api.getPosts({ status: 'scheduled' });
-      setCarousels(posts.filter(p => (p.radarDraftIds?.length ?? 0) > 0));
+      setRadarQueue(await api.getRadarQueue());
     } catch {
-      toast.error('Failed to load scheduled carousels');
+      toast.error('Failed to load the Radar queue');
     } finally {
-      setCarouselsLoaded(true);
+      setRadarQueueLoaded(true);
     }
   }, []);
 
   useEffect(() => {
     if (activeTab === 'carousels' && pluginReady) {
-      // The news titles of each carousel come from the drafts lists.
-      loadDrafts();
-      loadCarousels();
+      loadRadarQueue();
     }
-  }, [activeTab, pluginReady, loadDrafts, loadCarousels]);
+  }, [activeTab, pluginReady, loadRadarQueue]);
 
-  // Deleting the post puts its news back in the Radar queue (backend).
-  const handleRemoveCarousel = async (post: Post) => {
-    if (!window.confirm('Remove this scheduled carousel? Its news go back to the Radar queue.')) return;
-    setRemovingCarouselId(post.id);
+  // Clears the draft's "Radar Post?" mark; the news itself stays.
+  const handleRemoveFromRadar = async (entry: RadarQueueEntry) => {
+    if (!confirmRadarRemove(entry)) return;
+    setRemovingRadarId(entry.id);
     try {
-      await api.deletePost(post.id);
-      setCarousels(prev => prev.filter(p => p.id !== post.id));
-      toast.success('Carousel removed');
-      loadDrafts();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to remove carousel');
+      await api.removeFromRadar(entry.id);
+      setRadarQueue(prev => prev.filter(d => d.id !== entry.id));
+      // Keep the loaded lists in step, or loading the draft into the form
+      // and saving it would tick "Radar Post?" again.
+      const unmark = (list: NewsDraft[]) => list.map(d => d.id === entry.id ? { ...d, radar: false } : d);
+      setDrafts(unmark);
+      setPostedDrafts(unmark);
+      toast.success('Removed from the Radar');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove from the Radar');
     } finally {
-      setRemovingCarouselId(null);
+      setRemovingRadarId(null);
     }
   };
 
@@ -952,83 +954,66 @@ export function NewsPage() {
             gap: 6,
           }}
         >
-          <GalleryHorizontal size={14} /> Carousels {carousels.length > 0 && <span style={{
+          <GalleryHorizontal size={14} /> Carousels {radarQueue.length > 0 && <span style={{
             background: 'var(--bg-secondary, #1e293b)',
             color: 'var(--text-muted)',
             borderRadius: 10,
             padding: '1px 7px',
             fontSize: 11,
             fontWeight: 600,
-          }}>{carousels.length}</span>}
+          }}>{radarQueue.length}</span>}
         </button>
       </div>
 
-      {/* Scheduled Radar carousels */}
+      {/* Radar queue */}
       {activeTab === 'carousels' && (() => {
-        if (!carouselsLoaded) {
+        if (!radarQueueLoaded) {
           return <div className="tab-panel panel-loading"><div className="spinner" /></div>;
         }
-        if (carousels.length === 0) {
+        if (radarQueue.length === 0) {
           return (
             <div className="tab-panel empty-state">
               <GalleryHorizontal size={48} />
-              <p>No scheduled carousels</p>
+              <p>No news for the Radar</p>
               <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                Radar carousels scheduled in the post editor show up here until they go out.
+                Tick “Radar Post?” on a news item to queue it for the weekly carousel.
               </p>
             </div>
           );
         }
-        const titles = new Map([...drafts, ...postedDrafts].map(d => [d.id, d.newsTagline || '(No tagline)']));
         return (
           <div className="tab-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {carousels.map(post => {
-              const slides = post.imageUrls || [];
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>
+              News marked “Radar Post?” that have not gone out in a Radar carousel yet.
+              Build the carousel with “Radar Content” in the post editor.
+            </p>
+            {radarQueue.map(entry => {
+              const img = entry.imageUrls?.[0];
               return (
-                <div key={post.id} className="card" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600, fontSize: 15 }}>
-                          <Clock size={14} style={{ verticalAlign: -2 }} /> {format(new Date(post.scheduledAt), 'EEE, MMM d, yyyy HH:mm')}
-                        </span>
-                        <span style={{ display: 'flex', gap: 4 }}>
-                          {post.platforms.map(p => <PlatformIcon key={p} platform={p} size={12} />)}
-                        </span>
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          {slides.length} slide{slides.length === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                      {slides.length > 0 && (
-                        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8 }}>
-                          {slides.map((u, i) => (
-                            <img
-                              key={i}
-                              src={u.startsWith('http') ? u : `${apiUrl}${u}`}
-                              alt={`Slide ${i + 1}`}
-                              style={{ width: 64, height: 80, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--text-muted)' }}>
-                        {(post.radarDraftIds || []).map(id => (
-                          <li key={id}>{titles.get(id) ?? '(Deleted news)'}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => handleRemoveCarousel(post)}
-                      disabled={removingCarouselId === post.id}
-                      title="Remove this scheduled carousel"
-                      style={{ color: 'var(--danger)', flexShrink: 0 }}
-                    >
-                      {removingCarouselId === post.id
-                        ? <Loader size={14} className="post-editor-spin" />
-                        : <Trash2 size={14} />}
-                    </button>
+                <div key={entry.id} className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {img
+                    ? <img src={img.startsWith('/') ? `${apiUrl}${img}` : img} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                    : <span className="radar-noimg" style={{ width: 56, height: 56 }} />}
+                  <div className="radar-item-text" style={{ fontSize: 14 }}>
+                    <strong>{entry.newsTagline || '(No tagline)'}</strong>
+                    <span>
+                      {entry.germanRelease && <span className={`radar-badge ${entry.germanRelease}`}>{radarReleaseLabels[entry.germanRelease]}</span>}
+                      {format(new Date(entry.createdAt), 'MMM d, yyyy')}
+                      {entry.posted ? ' · posted' : ' · draft'}
+                      <RadarScheduledMark entry={entry} />
+                    </span>
                   </div>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleRemoveFromRadar(entry)}
+                    disabled={removingRadarId === entry.id}
+                    title="Remove from the Radar"
+                    style={{ color: 'var(--danger)', flexShrink: 0, marginLeft: 'auto' }}
+                  >
+                    {removingRadarId === entry.id
+                      ? <Loader size={14} className="post-editor-spin" />
+                      : <Trash2 size={14} />}
+                  </button>
                 </div>
               );
             })}

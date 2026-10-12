@@ -1,6 +1,6 @@
 // Helpers for the Instagram growth features: caption checks, post formats and
 // matching posts against the team's weekly content plan.
-import type { Post, SlotFormat, WeeklyPlanSlot } from '../types';
+import type { Post, RadarQueueEntry, SlotFormat, WeeklyPlanSlot } from '../types';
 
 // @usernames, not the "@" inside an e-mail address. A trailing full stop
 // belongs to the sentence.
@@ -241,4 +241,14 @@ export function weekMix(posts: Post[], slots: WeeklyPlanSlot[], maxImages: numbe
 
 export function percent(v: number, digits = 1): string {
   return `${(v * 100).toFixed(digits)}%`;
+}
+
+export const radarReleaseLabels: Record<string, string> = { ja: 'Ja', nein: 'Nein', offen: 'Offen' };
+
+/** Asks before taking a news item off the Radar; says so when a post already carries it. */
+export function confirmRadarRemove(entry: RadarQueueEntry): boolean {
+  const title = entry.newsTagline || '(No tagline)';
+  return window.confirm(entry.radarPost
+    ? `Remove “${title}” from the Radar? The Radar post that already carries its slide keeps it.`
+    : `Remove “${title}” from the Radar? The news itself stays.`);
 }

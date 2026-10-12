@@ -1752,7 +1752,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         </div>
       </div>
 
-      {radarOpen && <RadarPicker onClose={() => setRadarOpen(false)} onApply={applyRadar} />}
+      {radarOpen && <RadarPicker postId={post?.id} onClose={() => setRadarOpen(false)} onApply={applyRadar} />}
 
       {editingImageIdx !== null && (
         <div className="image-editor-overlay">

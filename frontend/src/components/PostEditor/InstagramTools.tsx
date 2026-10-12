@@ -1,11 +1,11 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { CheckCircle2, AlertTriangle, Circle, X, Users, AtSign, Wand2, Loader, RefreshCw, Radar, ExternalLink, Megaphone } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Circle, X, Users, AtSign, Wand2, Loader, RefreshCw, Radar, ExternalLink, Megaphone, Trash2, CalendarClock } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import { Modal } from '../Common/Modal';
-import { checkCaption, IG_USERNAME_RE, normalizeHandle, percent } from '../../services/instagramGrowth';
-import type { NewsDraft, Post, RadarContent } from '../../types';
+import { checkCaption, confirmRadarRemove, IG_USERNAME_RE, normalizeHandle, percent, radarReleaseLabels } from '../../services/instagramGrowth';
+import type { Post, RadarContent, RadarQueueEntry } from '../../types';
 
 /** A list of Instagram usernames edited as chips. */
 export function HandleChips({ values, onChange, max, placeholder, onRemove }: {
@@ -181,26 +181,56 @@ export function InsightsStrip({ post, onUpdated }: { post: Post; onUpdated: (p: 
   );
 }
 
-const releaseLabel: Record<string, string> = { ja: 'Ja', nein: 'Nein', offen: 'Offen' };
+/** Where a queued news item's Radar slide already is, or nothing while it is free. */
+export function RadarScheduledMark({ entry, postId }: { entry: RadarQueueEntry; postId?: string }) {
+  const rp = entry.radarPost;
+  if (!rp) return null;
+  const label = rp.id === postId ? 'In this post'
+    : rp.status === 'draft' ? 'In a draft Radar post'
+    : rp.status === 'failed' ? 'In a failed Radar post'
+    : `Scheduled ${format(parseISO(rp.scheduledAt), 'MMM d, HH:mm')}`;
+  return <span className="radar-scheduled" title="A Radar post that has not gone out yet already carries this news"><CalendarClock size={11} /> {label}</span>;
+}
 
 /** Picks news from the Radar queue and builds the carousel. */
-export function RadarPicker({ onClose, onApply }: { onClose: () => void; onApply: (content: RadarContent) => void }) {
+export function RadarPicker({ postId, onClose, onApply }: { postId?: string; onClose: () => void; onApply: (content: RadarContent) => void }) {
   const apiUrl = import.meta.env.VITE_API_URL || '';
-  const [queue, setQueue] = useState<NewsDraft[] | null>(null);
+  const [queue, setQueue] = useState<RadarQueueEntry[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [building, setBuilding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     api.getRadarQueue()
-      .then(q => { setQueue(q); setPicked(q.slice(0, 5).map(d => d.id)); })
+      .then(q => {
+        setQueue(q);
+        // Pre-pick this post's own news, or else the first five no post carries yet.
+        const own = postId ? q.filter(d => d.radarPost?.id === postId) : [];
+        setPicked((own.length > 0 ? own : q.filter(d => !d.radarPost).slice(0, 5)).map(d => d.id));
+      })
       .catch(err => { toast.error(err.message || 'Failed to load the Radar queue'); setQueue([]); });
-  }, []);
+  }, [postId]);
 
   const toggle = (id: string) => setPicked(prev => {
     if (prev.includes(id)) return prev.filter(x => x !== id);
     if (prev.length >= 8) { toast.error('A Radar holds at most 8 news items'); return prev; }
     return [...prev, id];
   });
+
+  const remove = async (entry: RadarQueueEntry) => {
+    if (!confirmRadarRemove(entry)) return;
+    setRemovingId(entry.id);
+    try {
+      await api.removeFromRadar(entry.id);
+      setQueue(prev => prev?.filter(d => d.id !== entry.id) ?? prev);
+      setPicked(prev => prev.filter(x => x !== entry.id));
+      toast.success('Removed from the Radar');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove from the Radar');
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   const build = async () => {
     setBuilding(true);
@@ -221,7 +251,7 @@ export function RadarPicker({ onClose, onApply }: { onClose: () => void; onApply
       </div>
       <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>
         Pick the news for this week's carousel, in slide order. The slides, caption and tags replace this post's text and images.
-        The news leave the Radar queue once the post is saved.
+        News already in another Radar post that has not gone out are marked; picking one moves it to this post.
       </p>
       {queue === null ? (
         <div className="panel-loading"><div className="spinner" /></div>
@@ -244,10 +274,20 @@ export function RadarPicker({ onClose, onApply }: { onClose: () => void; onApply
                 <span className="radar-item-text">
                   <strong>{d.newsTagline || d.content?.split('\n')[0] || '(No tagline)'}</strong>
                   <span>
-                    {d.germanRelease && <span className={`radar-badge ${d.germanRelease}`}>{releaseLabel[d.germanRelease]}</span>}
+                    {d.germanRelease && <span className={`radar-badge ${d.germanRelease}`}>{radarReleaseLabels[d.germanRelease]}</span>}
                     {format(parseISO(d.createdAt), 'MMM d')}
+                    <RadarScheduledMark entry={d} postId={postId} />
                   </span>
                 </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm radar-remove"
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); remove(d); }}
+                  disabled={removingId === d.id}
+                  title="Remove from the Radar"
+                >
+                  {removingId === d.id ? <Loader size={14} className="post-editor-spin" /> : <Trash2 size={14} />}
+                </button>
               </label>
             );
           })}

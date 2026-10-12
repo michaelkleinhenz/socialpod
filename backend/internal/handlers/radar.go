@@ -41,17 +41,52 @@ const (
 	defaultRadarClosingText  = "Welche Neuheit interessiert euch am meisten? Schreibt es in die Kommentare!"
 )
 
-// radarQueueFilter selects the drafts waiting for a Radar post: marked for
-// the Radar and not yet carried by a post. Posted and open drafts both count —
-// the Radar sums up news that usually went out on its own already.
+// radarQueueFilter selects the drafts marked for the Radar. Posted and open
+// drafts both count — the Radar sums up news that usually went out on its own
+// already. Whether a draft is still available depends on its Radar post, which
+// radarQueueEntries decides.
 func radarQueueFilter(c *gin.Context) bson.M {
 	filter := newsDraftScopeFilter(c)
 	filter["radar"] = true
-	filter["radarPostId"] = bson.M{"$exists": false}
 	return filter
 }
 
-// Queue lists the news drafts waiting for the next Radar post, oldest first.
+// RadarPostRef is the post that carries a queued draft's Radar slide.
+type RadarPostRef struct {
+	ID          string            `json:"id"`
+	Status      models.PostStatus `json:"status"`
+	ScheduledAt time.Time         `json:"scheduledAt"`
+}
+
+// RadarQueueEntry is a news draft marked for the Radar, with the post that
+// already carries its slide, if any.
+type RadarQueueEntry struct {
+	models.NewsDraft
+	RadarPost *RadarPostRef `json:"radarPost,omitempty"`
+}
+
+// radarQueueEntries keeps the drafts that are still available for a Radar:
+// those no post carries yet, and those whose post has not gone out (marked
+// with that post). A draft whose post was published — or that post is gone,
+// which only happens to published posts — was used and is left out.
+func radarQueueEntries(drafts []models.NewsDraft, posts map[primitive.ObjectID]models.Post) []RadarQueueEntry {
+	out := make([]RadarQueueEntry, 0, len(drafts))
+	for _, d := range drafts {
+		if d.RadarPostID == nil {
+			out = append(out, RadarQueueEntry{NewsDraft: d})
+			continue
+		}
+		p, ok := posts[*d.RadarPostID]
+		if !ok || p.Status == models.PostStatusPublished {
+			continue
+		}
+		out = append(out, RadarQueueEntry{NewsDraft: d, RadarPost: &RadarPostRef{ID: p.ID.Hex(), Status: p.Status, ScheduledAt: p.ScheduledAt}})
+	}
+	return out
+}
+
+// Queue lists the news drafts available for a Radar post, oldest first,
+// including those already in a Radar post that has not gone out yet.
 // GET /api/radar/queue
 func (h *RadarHandler) Queue(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -66,10 +101,56 @@ func (h *RadarHandler) Queue(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode the Radar queue"})
 		return
 	}
-	if drafts == nil {
-		drafts = []models.NewsDraft{}
+
+	postIDs := []primitive.ObjectID{}
+	for _, d := range drafts {
+		if d.RadarPostID != nil {
+			postIDs = append(postIDs, *d.RadarPostID)
+		}
 	}
-	c.JSON(http.StatusOK, drafts)
+	posts := map[primitive.ObjectID]models.Post{}
+	if len(postIDs) > 0 {
+		pc, err := h.DB.Posts().Find(ctx, bson.M{"_id": bson.M{"$in": postIDs}},
+			options.Find().SetProjection(bson.M{"status": 1, "scheduledAt": 1}))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load the Radar posts"})
+			return
+		}
+		var found []models.Post
+		if err := pc.All(ctx, &found); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode the Radar posts"})
+			return
+		}
+		for _, p := range found {
+			posts[p.ID] = p
+		}
+	}
+	c.JSON(http.StatusOK, radarQueueEntries(drafts, posts))
+}
+
+// Remove takes a news draft off the Radar by clearing its "Radar Post?" mark.
+// The draft itself stays; a Radar post that already carries its slide keeps it.
+// DELETE /api/radar/queue/:id
+func (h *RadarHandler) Remove(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid draft ID"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	filter := newsDraftScopeFilter(c)
+	filter["_id"] = id
+	res, err := h.DB.NewsDrafts().UpdateOne(ctx, filter, bson.M{"$set": bson.M{"radar": false}})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove the news from the Radar"})
+		return
+	}
+	if res.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "News draft not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Removed from the Radar"})
 }
 
 // RadarContent is a generated Radar carousel, ready to drop into a post.

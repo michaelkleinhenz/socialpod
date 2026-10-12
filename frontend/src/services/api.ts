@@ -734,7 +734,11 @@ class ApiClient {
   }
 
   getRadarQueue() {
-    return this.request<import('../types').NewsDraft[]>('/radar/queue');
+    return this.request<import('../types').RadarQueueEntry[]>('/radar/queue');
+  }
+
+  removeFromRadar(draftId: string) {
+    return this.request<{ message: string }>(`/radar/queue/${draftId}`, { method: 'DELETE' });
   }
 
   generateRadar(draftIds: string[]) {
