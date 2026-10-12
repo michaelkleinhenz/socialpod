@@ -702,11 +702,8 @@ func (h *BGGHandler) generateGameSummary(ctx context.Context, description, title
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]any{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": fmt.Sprintf("Board game: %s\n\nDescription: %s\n\nWrite one sentence.", title, desc)},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, fmt.Sprintf("Board game: %s\n\nDescription: %s\n\nWrite one sentence.", title, desc)),
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
@@ -796,11 +793,8 @@ func (h *BGGHandler) generateGameAbstract(ctx context.Context, title, descriptio
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]any{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": strings.Join(inputParts, "\n")},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, strings.Join(inputParts, "\n")),
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
@@ -869,11 +863,8 @@ Rules:
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": strings.Join(inputParts, "\n")},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, strings.Join(inputParts, "\n")),
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
@@ -1049,11 +1040,8 @@ Example output format:
 	userMsg := fmt.Sprintf("Find social media handles for these names: %s", string(namesJSON))
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]any{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": userMsg},
-		},
+		"model":           model,
+		"messages":        chatMessages(systemPrompt, userMsg),
 		"response_format": map[string]string{"type": "json_object"},
 	})
 

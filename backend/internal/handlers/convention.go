@@ -1347,7 +1347,7 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 		}
 		contextLines = append(contextLines, fmt.Sprintf("Character limit: %d characters maximum.", limit))
 	}
-	contextLines = append(contextLines, "\nWrite an engaging, descriptive social media caption for this convention photo. Reply with ONLY the descriptive caption text. Do NOT include any hashtags, @mentions, URLs, website addresses, or handles — plain descriptive text only.")
+	contextLines = append(contextLines, "\nWrite an engaging, descriptive social media caption for this convention photo. Reply with ONLY the descriptive caption text. Do NOT include any hashtags, @mentions, URLs, website addresses, or handles: plain descriptive text only.")
 
 	imgB64 := base64.StdEncoding.EncodeToString(imageData)
 	userContent := []map[string]any{
@@ -1360,17 +1360,14 @@ func (h *ConventionHandler) generateCaption(ctx context.Context, imageURL string
 		{"type": "text", "text": strings.Join(contextLines, "\n")},
 	}
 
-	systemPrompt := "You are a board game convention social media expert. Look at photos from game conventions (Essen, Gen Con, SPIEL, etc.) and write engaging descriptive captions. Describe what you see — publisher booths, games on tables, prototypes, crowds — with enthusiasm. Write descriptive prose ONLY: never include hashtags, @mentions, URLs, website addresses, or social handles. Reply with ONLY the caption text, no quotes, no commentary."
+	systemPrompt := "You are a board game convention social media expert. Look at photos from game conventions (Essen, Gen Con, SPIEL, etc.) and write engaging descriptive captions. Describe what you see (publisher booths, games on tables, prototypes, crowds) with enthusiasm. Write descriptive prose ONLY: never include hashtags, @mentions, URLs, website addresses, or social handles. Reply with ONLY the caption text, no quotes, no commentary."
 	if settings.AILanguage != "" {
 		systemPrompt += fmt.Sprintf(" Write in %s.", settings.AILanguage)
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]any{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": userContent},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, userContent),
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))

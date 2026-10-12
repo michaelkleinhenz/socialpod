@@ -68,6 +68,9 @@ Convention queues have their own 30-second background loop (`ConventionHandler.S
 
 A queue's watermark (`watermarkId`) is composited onto each image by `postItem` at post time, never stored on the item. The queue page's crop button (next to the edit pencil on each item card) therefore opens the shared `ImageCropper` with `bakeWatermark={false}`: the overlay is drawn over the crop area so the framing can be judged, but the uploaded crop is clean, or the overlay would be stamped twice. Crop and edit both act on the gallery image currently shown; `PUT /convention/queues/:id/items/:iid/image` takes an `index` form field for that, keeps `imageUrl` mirroring `imageUrls[0]`, refuses scheduled items, and frees the replaced upload.
 
+### AI requests (`handlers/ai_prompt.go`)
+Every AI call (all go to OpenRouter's chat completions) builds its `messages` with `chatMessages(system, user)`, which appends `noDashRule` to the system prompt: the em dash is banned in all generated text, whatever prompt an admin or team configured. A new AI call must use `chatMessages` too; `TestEveryAIRequestUsesChatMessages` fails otherwise. Keep em dashes out of the built-in prompt texts as well, since they prime the model to use them.
+
 ### Instagram growth (`handlers/growth*.go`, `handlers/radar.go`, `services/growth_jobs.go`)
 Tools for growing an Instagram account against a follower goal. The Instagram login asks for `instagram_business_manage_insights` (`instagramAuthURL` in `admin.go`); accounts connected before that need a reconnect for Insights.
 
