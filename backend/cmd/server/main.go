@@ -95,7 +95,7 @@ func main() {
 		},
 		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:  []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders: []string{"Content-Length"},
+		ExposeHeaders: []string{"Content-Length", "WWW-Authenticate"},
 	}))
 
 	// Handlers
@@ -123,6 +123,7 @@ func main() {
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
 	captureHandler := &handlers.CaptureHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
+	oauthHandler := handlers.NewOAuthHandler(db, cfg.AppURL)
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -137,6 +138,16 @@ func main() {
 	// endpoint serves a real, fetchable manifest whose start_url is taken from
 	// the ?start_url= query param, letting a page point the manifest at itself.
 	r.GET("/manifest.webmanifest", dynamicManifest)
+
+	// OAuth 2.1 / OpenID Connect discovery for remote MCP clients (Claude.ai
+	// connectors, ChatGPT, Claude Code). Each document is also served under the
+	// path-suffixed form (…/api/mcp) that clients derive from the MCP URL.
+	r.GET("/.well-known/oauth-protected-resource", oauthHandler.ProtectedResourceMetadata)
+	r.GET("/.well-known/oauth-protected-resource/api/mcp", oauthHandler.ProtectedResourceMetadata)
+	for _, base := range []string{"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"} {
+		r.GET(base, oauthHandler.AuthorizationServerMetadata)
+		r.GET(base+"/api/mcp", oauthHandler.AuthorizationServerMetadata)
+	}
 
 	// Public routes
 	api := r.Group("/api")
@@ -158,6 +169,15 @@ func main() {
 		api.GET("/settings/public", adminHandler.GetPublicSettings)
 		api.GET("/invites/info", inviteHandler.GetInviteInfo)
 		api.POST("/invites/accept", inviteHandler.AcceptInvite)
+
+		// OAuth server endpoints called by MCP clients. The authorization
+		// endpoint itself is the SPA page /oauth/authorize.
+		api.POST("/oauth/register", oauthHandler.Register)
+		api.POST("/oauth/token", oauthHandler.Token)
+		api.POST("/oauth/revoke", oauthHandler.Revoke)
+		api.GET("/oauth/userinfo", oauthHandler.UserInfo)
+		api.POST("/oauth/userinfo", oauthHandler.UserInfo)
+		api.GET("/oauth/jwks", oauthHandler.JWKS)
 	}
 
 	// Authenticated routes
@@ -231,12 +251,14 @@ func main() {
 		// Chrome extension capture endpoint
 		auth.POST("/capture", captureHandler.Capture)
 
-		// Convention mode
-		// MCP server (Streamable HTTP transport)
-		auth.GET("/mcp", mcpHandler.HandleGet)
-		auth.POST("/mcp", mcpHandler.Handle)
-		auth.DELETE("/mcp", mcpHandler.HandleDelete)
+		// OAuth consent (called by the /oauth/authorize page) and the
+		// Profile page's list of connected apps.
+		auth.GET("/oauth/authorize", oauthHandler.AuthorizeInfo)
+		auth.POST("/oauth/authorize", oauthHandler.AuthorizeDecision)
+		auth.GET("/oauth/grants", oauthHandler.ListGrants)
+		auth.DELETE("/oauth/grants/:clientId", oauthHandler.RevokeGrant)
 
+		// Convention mode
 		auth.GET("/convention/queues", conventionHandler.ListQueues)
 		auth.POST("/convention/queues", conventionHandler.CreateQueue)
 		auth.GET("/convention/queues/:id", conventionHandler.GetQueue)
@@ -253,6 +275,16 @@ func main() {
 		auth.POST("/convention/queues/:id/analyze-all", conventionHandler.AnalyzeAll)
 		auth.GET("/convention/queues/:id/preview", conventionHandler.PreviewSchedule)
 		auth.POST("/convention/queues/:id/schedule", conventionHandler.ScheduleItems)
+	}
+
+	// MCP server (Streamable HTTP transport). It has its own auth: besides
+	// JWTs and API tokens it accepts OAuth access tokens, and it exposes user
+	// features only — admin rights are dropped even for an admin.
+	mcp := api.Group("/mcp", middleware.MCPAuthRequired(cfg.JWTSecret, db, oauthHandler.ResourceMetadataURL()))
+	{
+		mcp.GET("", mcpHandler.HandleGet)
+		mcp.POST("", mcpHandler.Handle)
+		mcp.DELETE("", mcpHandler.HandleDelete)
 	}
 
 	// Admin routes (global admin only)

@@ -420,3 +420,21 @@ export interface UploadSweepReport {
   sample: OrphanedUpload[];
   errors?: string[];
 }
+
+// An authorization request from an MCP client, as shown on the consent page.
+// When the request is invalid in a way the client should hear about, only
+// redirectUrl is set and the page sends the browser straight back.
+export interface OAuthAuthorization {
+  client?: { name: string; uri: string; logoUri: string };
+  redirectHost?: string;
+  scopes?: string[];
+  user?: { name: string; email: string };
+  redirectUrl?: string;
+}
+
+// An app the user has connected to the MCP server through OAuth.
+export interface OAuthGrant {
+  clientId: string;
+  clientName: string;
+  lastUsedAt: string;
+}

@@ -787,6 +787,27 @@ class ApiClient {
       body: JSON.stringify({ token, name, password }),
     });
   }
+
+  // OAuth consent for MCP clients (Claude.ai, ChatGPT, ...). `params` is the
+  // query string of the authorization request, passed through unchanged.
+  getOAuthAuthorization(params: string) {
+    return this.request<import('../types').OAuthAuthorization>(`/oauth/authorize?${params}`);
+  }
+
+  decideOAuthAuthorization(params: Record<string, string>, approve: boolean) {
+    return this.request<{ redirectUrl: string }>('/oauth/authorize', {
+      method: 'POST',
+      body: JSON.stringify({ ...params, approve }),
+    });
+  }
+
+  getOAuthGrants() {
+    return this.request<import('../types').OAuthGrant[]>('/oauth/grants');
+  }
+
+  revokeOAuthGrant(clientId: string) {
+    return this.request<{ message: string }>(`/oauth/grants/${encodeURIComponent(clientId)}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient();

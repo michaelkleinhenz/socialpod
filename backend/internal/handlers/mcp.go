@@ -116,7 +116,7 @@ func (h *MCPHandler) Handle(c *gin.Context) {
 	var resp jsonrpcResponse
 	switch req.Method {
 	case "initialize":
-		resp = h.handleInitialize(req.ID)
+		resp = h.handleInitialize(req.ID, req.Params)
 	case "ping":
 		resp = jsonrpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}}
 	case "tools/list":
@@ -134,12 +134,32 @@ func (h *MCPHandler) Handle(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *MCPHandler) handleInitialize(id any) jsonrpcResponse {
+// mcpProtocolVersions are the MCP revisions this stateless JSON-only server
+// speaks, newest first. All of them work the same way here: no sessions, no
+// server-initiated messages, one JSON response per request.
+var mcpProtocolVersions = []string{"2025-06-18", "2025-03-26", "2024-11-05"}
+
+// negotiateProtocolVersion answers with the client's requested revision when
+// supported, else the newest one; the client then decides whether to proceed.
+func negotiateProtocolVersion(params json.RawMessage) string {
+	var p struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	_ = json.Unmarshal(params, &p)
+	for _, v := range mcpProtocolVersions {
+		if v == p.ProtocolVersion {
+			return v
+		}
+	}
+	return mcpProtocolVersions[0]
+}
+
+func (h *MCPHandler) handleInitialize(id any, params json.RawMessage) jsonrpcResponse {
 	return jsonrpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result: map[string]any{
-			"protocolVersion": "2025-03-26",
+			"protocolVersion": negotiateProtocolVersion(params),
 			"capabilities": map[string]any{
 				"tools": map[string]any{},
 			},
@@ -1013,12 +1033,14 @@ func (h *MCPHandler) toolGetProfile(c *gin.Context, _ map[string]any) (any, bool
 		return map[string]string{"error": "User not found"}, true
 	}
 
+	// The MCP server exposes user features only, so the session is never an
+	// admin one here, whatever the account's role in the web app.
 	profile := map[string]any{
 		"id":          user.ID,
 		"email":       user.Email,
 		"name":        user.Name,
-		"isAdmin":     user.IsAdmin,
-		"isTeamAdmin": user.IsTeamAdmin,
+		"isAdmin":     false,
+		"isTeamAdmin": false,
 		"teamId":      user.TeamID,
 		"createdAt":   user.CreatedAt,
 		"updatedAt":   user.UpdatedAt,
