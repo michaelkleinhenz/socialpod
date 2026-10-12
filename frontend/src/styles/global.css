@@ -223,6 +223,17 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 .page-header h1 { font-size: 28px; font-weight: 700; }
 
+/* Tab bar shared by the News, Episodes and Calendar pages: on a narrow
+   screen the tabs scroll sideways instead of being cut off. */
+.news-tabs {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.news-tabs::-webkit-scrollbar { display: none; }
+.news-tabs > * { flex-shrink: 0; white-space: nowrap; }
+
 /* Modal */
 .modal-overlay {
   position: fixed;
