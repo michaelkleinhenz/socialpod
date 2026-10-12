@@ -106,6 +106,22 @@
   margin-bottom: 6px;
 }
 
+.day-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.week-number {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border-radius: 4px;
+  padding: 1px 4px;
+  letter-spacing: 0.3px;
+}
+
 .day-number {
   font-size: 13px;
   font-weight: 500;

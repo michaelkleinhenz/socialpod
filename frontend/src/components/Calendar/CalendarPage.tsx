@@ -219,11 +219,17 @@ export function CalendarPage() {
     else setCurrentDate(addWeeks(currentDate, 1));
   };
 
+  // ISO week numbers, as the Growth page's goal tracker counts them.
+  const weekLabel = (from: Date, to: Date) => {
+    const a = getISOWeek(from), b = getISOWeek(to);
+    return a === b ? `Week ${a}` : `Weeks ${a}–${b}`;
+  };
+
   const navTitle = viewMode === 'month'
     ? format(currentDate, 'MMMM yyyy')
     : viewMode === '3day'
-    ? `${format(threeDayStart, 'MMM d')} – ${format(threeDayEnd, 'MMM d, yyyy')}`
-    : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
+    ? `${weekLabel(threeDayStart, threeDayEnd)} · ${format(threeDayStart, 'MMM d')} – ${format(threeDayEnd, 'MMM d, yyyy')}`
+    : `Week ${getISOWeek(weekStart)} · ${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -634,8 +640,13 @@ export function CalendarPage() {
                       onDoubleClick={() => handleCreatePost(day)}
                     >
                       <div className="day-header">
-                        <span className={`day-number ${isToday(day) ? 'today-badge' : ''}`}>
-                          {format(day, 'd')}
+                        <span className="day-header-left">
+                          <span className={`day-number ${isToday(day) ? 'today-badge' : ''}`}>
+                            {format(day, 'd')}
+                          </span>
+                          {day.getDay() === 1 && (
+                            <span className="week-number" title={`Week ${getISOWeek(day)}`}>W{getISOWeek(day)}</span>
+                          )}
                         </span>
                         {isSameMonth(day, currentDate) && (
                           <button className="add-post-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }} disabled={!hasAccounts}>
