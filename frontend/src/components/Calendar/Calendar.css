@@ -325,7 +325,7 @@
 
 .week-body {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   min-height: 480px;
 }
 
@@ -401,11 +401,11 @@
 
 /* 3-Day View Grid */
 .three-day-grid .calendar-header-row {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .three-day-grid .week-body {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* New Post Actions Group */
@@ -506,7 +506,8 @@
 
 .plan-slot {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  min-width: 0;
   gap: 4px;
   width: 100%;
   padding: 3px 8px;
@@ -526,13 +527,22 @@
   color: var(--accent-hover);
 }
 
-.plan-slot-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.plan-slot > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
-.plan-slot-time { font-variant-numeric: tabular-nums; }
+/* Labels wrap rather than widen the day column, which on a phone pushed the
+   last column of the 3-day view off-screen. */
+.plan-slot-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plan-slot-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
 
 .plan-slot-row {
   display: flex;
