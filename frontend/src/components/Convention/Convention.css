@@ -741,7 +741,7 @@
 .conv-schedule-bar {
   position: fixed;
   bottom: 0;
-  left: 220px; /* sidebar width */
+  left: 240px; /* sidebar width */
   right: 0;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
@@ -751,6 +751,13 @@
   justify-content: space-between;
   gap: 16px;
   z-index: 50;
+}
+
+/* On phones the sidebar is an off-canvas drawer and takes no width. */
+@media (max-width: 768px) {
+  .conv-schedule-bar {
+    left: 0;
+  }
 }
 
 .conv-schedule-info {

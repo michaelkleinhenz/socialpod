@@ -153,72 +153,127 @@ body.adobe-express-open .sidebar {
   display: none;
 }
 
+/* Mobile top bar and drawer pieces stay hidden on wider screens. */
+.mobile-topbar,
+.sidebar-close-btn,
+.sidebar-backdrop {
+  display: none;
+}
+
+body.adobe-express-open .mobile-topbar {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  .sidebar {
-    width: 64px;
-  }
-  .sidebar .logo-text,
-  .sidebar .nav-item span {
-    display: none;
-  }
-  .main-content {
-    margin-left: 64px;
-    width: calc(100vw - 64px);
-    max-width: calc(100vw - 64px);
-  }
-  .nav-item {
-    justify-content: center;
-    padding: 12px;
-  }
-  /* On mobile show only the group icon, hide expanded children */
-  .nav-group-header {
+  /* The sidebar becomes an off-canvas drawer, so the page gets the full
+     width; a slim top bar carries the hamburger that opens it. */
+  .mobile-topbar {
     display: flex;
-    justify-content: center;
-  }
-  .nav-group-chevron {
-    display: none;
-  }
-  .nav-group-children {
-    display: none !important;
+    align-items: center;
+    gap: 10px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(48px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0 4px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    z-index: 50;
   }
 
-  .mobile-flyout-backdrop {
+  .mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .mobile-menu-btn:hover {
+    background: var(--bg-hover);
+  }
+
+  .mobile-topbar-logo {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+  }
+
+  .mobile-topbar-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar {
+    width: min(280px, 85vw);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 150;
+    box-shadow: none;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 12px 12px 20px;
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .sidebar-close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .sidebar-backdrop {
+    display: block;
     position: fixed;
     inset: 0;
-    z-index: 99;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 140;
   }
 
-  .mobile-flyout {
-    position: fixed;
-    left: 64px;
-    z-index: 100;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 4px;
-    min-width: 180px;
-    box-shadow: 4px 4px 16px rgba(0, 0, 0, 0.3);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  /* Larger touch targets in the drawer. */
+  .sidebar .nav-item {
+    padding: 12px 14px;
   }
 
-  .mobile-flyout-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 6px 14px 4px;
+  .sidebar .nav-child {
+    padding-left: 38px;
   }
 
-  .nav-flyout-item {
-    justify-content: flex-start !important;
-    padding: 10px 14px !important;
-    width: 100%;
-  }
-
-  .nav-flyout-item span {
-    display: inline !important;
+  .main-content {
+    margin-left: 0;
+    padding-top: calc(48px + env(safe-area-inset-top));
+    width: 100vw;
+    max-width: 100vw;
   }
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
@@ -6,7 +6,7 @@ import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
   ScrollText, UsersRound, Signature, Image, LayoutGrid,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
-  Newspaper, Mic, TrendingUp, Target,
+  Newspaper, Mic, TrendingUp, Target, Menu, X,
 } from 'lucide-react';
 import './Layout.css';
 
@@ -84,10 +84,19 @@ export function Layout({ children }: { children: ReactNode }) {
     }] : []),
   ], [user?.isAdmin, user?.isTeamAdmin, user?.teamId, newsPluginEnabled, episodePluginEnabled]);
 
-  const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
-  const groupButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // On phones the sidebar is an off-canvas drawer behind a hamburger in a
+  // slim top bar, so it takes no width from the page while closed. It
+  // remembers the path it was opened on, so navigating closes it.
+  const [drawerPath, setDrawerPath] = useState<string | null>(null);
+  const drawerOpen = drawerPath === location.pathname;
+  const closeDrawer = () => setDrawerPath(null);
 
-  useEffect(() => { setMobileOpenGroup(null); }, [location.pathname]);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerPath(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const initial = new Set<string>(['content']);
@@ -99,14 +108,15 @@ export function Layout({ children }: { children: ReactNode }) {
     return initial;
   });
 
-  useEffect(() => {
-    for (const entry of navEntries) {
-      if (entry.kind === 'group' && entry.children.some(c => c.path === location.pathname)) {
-        setOpenGroups(prev => prev.has(entry.id) ? prev : new Set([...prev, entry.id]));
-        break;
-      }
+  // Expand the group holding the current page whenever the page changes.
+  const [groupsPath, setGroupsPath] = useState(location.pathname);
+  if (groupsPath !== location.pathname) {
+    setGroupsPath(location.pathname);
+    const active = navEntries.find(e => e.kind === 'group' && e.children.some(c => c.path === location.pathname));
+    if (active && active.kind === 'group' && !openGroups.has(active.id)) {
+      setOpenGroups(new Set([...openGroups, active.id]));
     }
-  }, [location.pathname, navEntries]);
+  }
 
   const toggleGroup = (id: string) => {
     setOpenGroups(prev => {
@@ -118,17 +128,39 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const handleGroupHeaderClick = (entry: NavGroup) => {
-    if (window.innerWidth <= 768) {
-      setMobileOpenGroup(prev => prev === entry.id ? null : entry.id);
-    } else {
-      toggleGroup(entry.id);
+  const currentLabel = useMemo(() => {
+    for (const entry of navEntries) {
+      if (entry.kind === 'leaf' && entry.path === location.pathname) return entry.label;
+      if (entry.kind === 'group') {
+        const child = entry.children.find(c => c.path === location.pathname);
+        if (child) return child.label;
+      }
     }
-  };
+    return location.pathname === '/profile' ? 'Profile' : '';
+  }, [navEntries, location.pathname]);
 
   return (
     <div className="layout">
-      <aside className="sidebar">
+      <header className="mobile-topbar">
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setDrawerPath(location.pathname)}
+          aria-label="Open menu"
+          aria-expanded={drawerOpen}
+        >
+          <Menu size={22} />
+        </button>
+        <div className="logo-icon mobile-topbar-logo">
+          <Zap size={16} />
+        </div>
+        <span className="mobile-topbar-title">{currentLabel || 'SocialPod'}</span>
+      </header>
+
+      {drawerOpen && (
+        <div className="sidebar-backdrop" onClick={() => closeDrawer()} />
+      )}
+
+      <aside className={`sidebar${drawerOpen ? ' open' : ''}`}>
         <div className="sidebar-header">
           <div className="logo">
             <div className="logo-icon">
@@ -136,6 +168,13 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
             <span className="logo-text">SocialPod</span>
           </div>
+          <button
+            className="sidebar-close-btn"
+            onClick={() => closeDrawer()}
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -156,16 +195,11 @@ export function Layout({ children }: { children: ReactNode }) {
             const isOpen = openGroups.has(entry.id);
             const hasActive = entry.children.some(c => isActive(c.path));
 
-            const isMobileFlyoutOpen = mobileOpenGroup === entry.id;
-            const buttonEl = groupButtonRefs.current[entry.id];
-            const flyoutTop = buttonEl ? buttonEl.getBoundingClientRect().top : 0;
-
             return (
               <div key={entry.id} className="nav-group">
                 <button
-                  ref={el => { groupButtonRefs.current[entry.id] = el; }}
                   className={`nav-item nav-group-header ${hasActive ? 'active' : ''}`}
-                  onClick={() => handleGroupHeaderClick(entry)}
+                  onClick={() => toggleGroup(entry.id)}
                 >
                   <entry.icon size={18} />
                   <span>{entry.label}</span>
@@ -183,30 +217,10 @@ export function Layout({ children }: { children: ReactNode }) {
                       </Link>
                     ))}
                   </div>
-                {isMobileFlyoutOpen && (
-                  <div className="mobile-flyout" style={{ top: flyoutTop }}>
-                    <div className="mobile-flyout-label">{entry.label}</div>
-                    {entry.children.map(child => (
-                      <Link
-                        key={child.path}
-                        to={child.path}
-                        className={`nav-item nav-flyout-item ${isActive(child.path) ? 'active' : ''}`}
-                        onClick={() => setMobileOpenGroup(null)}
-                      >
-                        <child.icon size={16} />
-                        <span>{child.label}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
         </nav>
-
-        {mobileOpenGroup && (
-          <div className="mobile-flyout-backdrop" onClick={() => setMobileOpenGroup(null)} />
-        )}
 
         <div className="sidebar-footer">
           <Link to="/profile" className="nav-item user-item">
