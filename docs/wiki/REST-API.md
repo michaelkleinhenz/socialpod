@@ -245,7 +245,7 @@ curl -X POST http://localhost:8080/api/news/submit \
 
 ## Episode Creator
 
-Episode Creator is a team plugin for podcast episode creation. Supports three episode types (`news`, `review`, `special`). Review-type episodes include additional game metadata fields.
+Episode Creator is a team plugin for podcast episode creation. Supports four episode types (`news`, `review`, `special`, `tatort` — Tatort Spieltisch). Review-type episodes include additional game metadata fields.
 
 ```bash
 curl -X POST http://localhost:8080/api/episode/submit \

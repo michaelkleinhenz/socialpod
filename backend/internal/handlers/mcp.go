@@ -1840,6 +1840,8 @@ func (h *MCPHandler) loadEpisodeOverlay(c *gin.Context, episodeType string) imag
 		overlayID = team.EpisodeOverlayReviewID
 	case "special":
 		overlayID = team.EpisodeOverlaySpecialID
+	case "tatort":
+		overlayID = team.EpisodeOverlayTatortID
 	}
 	if overlayID == nil {
 		return nil
@@ -2524,13 +2526,13 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "create_episode_draft",
-			Description: "Create an episode draft for later review and posting. Drafts store episode data (number, title, type, date, review details) and optionally social media posting settings. The draft can be reviewed and submitted later via post_episode_draft. If the team has an overlay configured for the given episodeType (news/review/special), it is automatically composited onto uploaded images.",
+			Description: "Create an episode draft for later review and posting. Drafts store episode data (number, title, type, date, review details) and optionally social media posting settings. The draft can be reviewed and submitted later via post_episode_draft. If the team has an overlay configured for the given episodeType (news/review/special/tatort), it is automatically composited onto uploaded images.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"episodeNumber":     map[string]any{"type": "string", "description": "Episode number"},
 					"episodeTitle":      map[string]any{"type": "string", "description": "Episode title"},
-					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special"}, "description": "Episode type"},
+					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special", "tatort"}, "description": "Episode type"},
 					"summary":           map[string]any{"type": "string", "description": "Episode summary"},
 					"episodeDate":       map[string]any{"type": "string", "description": "Episode date (ISO datetime)"},
 					"gameNamePublisher": map[string]any{"type": "string", "description": "Game name and publisher (review type)"},
@@ -2587,7 +2589,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"id":                map[string]any{"type": "string", "description": "Draft ID"},
 					"episodeNumber":     map[string]any{"type": "string", "description": "Episode number"},
 					"episodeTitle":      map[string]any{"type": "string", "description": "Episode title"},
-					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special"}, "description": "Episode type"},
+					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special", "tatort"}, "description": "Episode type"},
 					"summary":           map[string]any{"type": "string", "description": "Episode summary"},
 					"episodeDate":       map[string]any{"type": "string", "description": "Episode date"},
 					"gameNamePublisher": map[string]any{"type": "string", "description": "Game name and publisher"},
