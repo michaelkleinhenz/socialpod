@@ -7,8 +7,8 @@ import { CaptionChecker, InsightsStrip, InstagramPeople, RadarPicker } from './I
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
+import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import toast from 'react-hot-toast';
-import FilerobotImageEditor, { TABS } from 'react-filerobot-image-editor';
 import { MentionTextarea } from './MentionTextarea';
 import './PostEditor.css';
 
@@ -516,7 +516,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [preparingPlatforms, setPreparingPlatforms] = useState(false);
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const [croppingImageIdx, setCroppingImageIdx] = useState<number | null>(null);
-  const [watermarkGallery, setWatermarkGallery] = useState<{ url: string; previewUrl: string }[]>([]);
   // Overlay picked inside the cropper. Starts empty on every open — a post
   // image gets a watermark only when someone asks for one.
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -560,14 +559,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     api.getFooters().then(setFooters).catch(() => {});
     api.getMentions().then(setMentions).catch(() => {});
     loadAccounts();
-    api.getWatermarks().then((wms: Watermark[]) => {
-      setWatermarks(wms);
-      const base = import.meta.env.VITE_API_URL || '';
-      setWatermarkGallery(wms.map(w => {
-        const src = w.url.startsWith('/') ? base + w.url : w.url;
-        return { url: src, previewUrl: src };
-      }));
-    }).catch(() => {});
+    api.getWatermarks().then(setWatermarks).catch(() => {});
     return () => {
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
@@ -1827,163 +1819,26 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
       {radarOpen && <RadarPicker postId={post?.id} onClose={() => setRadarOpen(false)} onApply={applyRadar} />}
 
-      {editingImageIdx !== null && (
-        <div className="image-editor-overlay">
-          <FilerobotImageEditor
-            source={previewUrl(images[editingImageIdx])}
-            tabsIds={[TABS.ADJUST, TABS.ANNOTATE, TABS.WATERMARK, TABS.FILTERS, TABS.FINETUNE, TABS.RESIZE]}
-            defaultTabId={TABS.ANNOTATE}
-            savingPixelRatio={2}
-            previewPixelRatio={2}
-            defaultSavedImageType="png"
-            theme={{
-              palette: {
-                'bg-secondary': '#1e293b',
-                'bg-primary': '#0f172a',
-                'bg-primary-active': '#334155',
-                'bg-primary-hover': '#263348',
-                'bg-primary-light': '#1e293b',
-                'bg-primary-stateless': '#334155',
-                'bg-primary-0-5-opacity': 'rgba(30, 41, 59, 0.5)',
-                'bg-stateless': '#1e293b',
-                'bg-hover': '#263348',
-                'bg-active': '#334155',
-                'bg-grey': '#334155',
-                'bg-tooltip': '#475569',
-                'txt-primary': '#f1f5f9',
-                'txt-secondary': '#94a3b8',
-                'txt-secondary-invert': '#f1f5f9',
-                'txt-placeholder': '#64748b',
-                'accent-primary': '#818cf8',
-                'accent-primary-hover': '#a5b4fc',
-                'accent-primary-active': '#6366f1',
-                'accent-stateless': '#818cf8',
-                'accent-stateless_0_4_opacity': 'rgba(129, 140, 248, 0.4)',
-                'accent_0_5_opacity': 'rgba(129, 140, 248, 0.05)',
-                'accent_1_2_opacity': 'rgba(129, 140, 248, 0.12)',
-                'accent_1_8_opacity': 'rgba(129, 140, 248, 0.18)',
-                'accent_2_8_opacity': 'rgba(129, 140, 248, 0.28)',
-                'accent_4_0_opacity': 'rgba(129, 140, 248, 0.4)',
-                'accent-primary-disabled': '#334155',
-                'accent-secondary-disabled': '#1e293b',
-                'icon-primary': '#cbd5e1',
-                'icons-primary-opacity-0-6': 'rgba(203, 213, 225, 0.6)',
-                'icons-secondary': '#94a3b8',
-                'icons-secondary-hover': '#cbd5e1',
-                'icons-primary-hover': '#f1f5f9',
-                'icons-invert': '#f1f5f9',
-                'icons-placeholder': '#475569',
-                'icons-muted': '#64748b',
-                'borders-primary': '#334155',
-                'borders-primary-hover': '#64748b',
-                'borders-secondary': '#1e293b',
-                'borders-strong': '#475569',
-                'borders-invert': '#1e293b',
-                'borders-item': '#334155',
-                'borders-button': '#64748b',
-                'borders-disabled': 'rgba(99, 102, 241, 0.3)',
-                'border-primary-stateless': '#334155',
-                'border-hover-bottom': 'rgba(129, 140, 248, 0.18)',
-                'border-active-bottom': '#818cf8',
-                'btn-primary-text': '#ffffff',
-                'btn-primary-text-0-6': 'rgba(255, 255, 255, 0.6)',
-                'btn-primary-text-0-4': 'rgba(255, 255, 255, 0.4)',
-                'btn-secondary-text': '#f1f5f9',
-                'btn-disabled-text': '#64748b',
-                'link-primary': '#94a3b8',
-                'link-hover': '#f1f5f9',
-                'link-active': '#f1f5f9',
-                'link-stateless': '#94a3b8',
-                'link-pressed': '#818cf8',
-                'link-muted': '#64748b',
-                'active-secondary': '#1e293b',
-                'active-secondary-hover': 'rgba(99, 102, 241, 0.15)',
-                'error': '#ef4444',
-                'error-hover': '#dc2626',
-                'error-active': '#b91c1c',
-                'success': '#22c55e',
-                'success-hover': '#16a34a',
-                'warning': '#f59e0b',
-                'warning-hover': '#d97706',
-                'info': '#3b82f6',
-                'tag': '#94a3b8',
-                'bg-base-light': '#1e293b',
-                'bg-base-medium': '#334155',
-                'borders-base-light': '#334155',
-                'borders-base-medium': '#475569',
-                'extra-0-3-overlay': 'rgba(15, 23, 42, 0.3)',
-                'extra-0-5-overlay': 'rgba(15, 23, 42, 0.5)',
-                'extra-0-7-overlay': 'rgba(15, 23, 42, 0.7)',
-                'extra-0-9-overlay': 'rgba(15, 23, 42, 0.9)',
-                'white-0-7-8-overlay': 'rgba(15, 23, 42, 0.78)',
-                'gradient-right': 'linear-gradient(270deg, #0f172a 1.56%, rgba(15,23,42,0.89) 52.4%, rgba(15,23,42,0.53) 76.04%, rgba(15,23,42,0) 100%)',
-                'gradient-right-active': 'linear-gradient(270deg, #1e293b 1.56%, #1e293b 52.4%, rgba(30,41,59,0.53) 76.04%, rgba(30,41,59,0) 100%)',
-                'gradient-right-hover': 'linear-gradient(270deg, #263348 1.56%, #263348 52.4%, rgba(38,51,72,0.53) 76.04%, rgba(38,51,72,0) 100%)',
-              },
-              typography: {
-                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-              },
-            }}
-            Text={{
-              fonts: [
-                'Arial',
-                'Helvetica',
-                'Times New Roman',
-                'Georgia',
-                'Verdana',
-                'Courier New',
-                'Trebuchet MS',
-                'Impact',
-                'Comic Sans MS',
-                { label: 'Rockwell', value: 'Rockwell, "Rockwell Nova", "Roboto Slab", "DejaVu Serif", "Sitka Small", serif' },
-              ],
-            }}
-            Watermark={{
-              gallery: watermarkGallery,
-            }}
-            Crop={{
-              presetsItems: [
-                { titleKey: 'Square (1:1)', ratio: 1 },
-                { titleKey: 'Story (9:16)', ratio: 9 / 16 },
-                { titleKey: 'Landscape (16:9)', ratio: 16 / 9 },
-                { titleKey: 'Portrait (4:5)', ratio: 4 / 5 },
-              ],
-            }}
-            onBeforeSave={() => false}
-            onSave={(savedImageData: any) => {
-              const canvas = savedImageData.imageCanvas as HTMLCanvasElement | undefined;
-              const base64 = savedImageData.imageBase64 as string | undefined;
-              const src = base64 || canvas?.toDataURL('image/png');
-              if (!src) {
-                toast.error('Failed to get edited image');
-                setEditingImageIdx(null);
-                return;
-              }
-              fetch(src)
-                .then(res => res.blob())
-                .then(blob => {
-                  const ext = savedImageData.extension || 'png';
-                  const file = new File([blob], `edited.${ext}`, { type: savedImageData.mimeType || 'image/png' });
-                  const idx = editingImageIdx!;
-                  const oldItem = images[idx];
-                  if (oldItem.kind === 'file') {
-                    const cached = objUrlCache.current.get(oldItem.file);
-                    if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
-                  }
-                  setImages(prev => prev.map((item, i) =>
-                    i === idx ? { kind: 'file' as const, file } : item
-                  ));
-                  setEditingImageIdx(null);
-                  toast.success('Image updated');
-                })
-                .catch(() => {
-                  toast.error('Failed to process edited image');
-                  setEditingImageIdx(null);
-                });
-            }}
-            onClose={() => setEditingImageIdx(null)}
-          />
-        </div>
+      {editingImageIdx !== null && images[editingImageIdx] && (
+        <ImageEditor
+          imageUrl={previewUrl(images[editingImageIdx])}
+          watermarks={watermarks}
+          onCancel={() => setEditingImageIdx(null)}
+          onSave={blob => {
+            const idx = editingImageIdx;
+            const file = new File([blob], 'edited.jpg', { type: 'image/jpeg' });
+            const oldItem = images[idx];
+            if (oldItem.kind === 'file') {
+              const cached = objUrlCache.current.get(oldItem.file);
+              if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
+            }
+            setImages(prev => prev.map((item, i) =>
+              i === idx ? { kind: 'file' as const, file } : item
+            ));
+            setEditingImageIdx(null);
+            toast.success('Image updated');
+          }}
+        />
       )}
 
       {croppingImageIdx !== null && images[croppingImageIdx] && (

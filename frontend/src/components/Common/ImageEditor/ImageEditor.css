@@ -1,0 +1,292 @@
+/* Full-screen image editor. One layout for every width: picture on top,
+   the current tool's controls under it, the tool tabs at the bottom where a
+   thumb reaches them. */
+.ie-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  /* The browser must not scroll or zoom the page while handles are dragged. */
+  touch-action: none;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.ie-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.ie-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.ie-save {
+  min-width: 88px;
+  justify-content: center;
+}
+
+.ie-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ie-icon-btn:hover:not(:disabled) {
+  border-color: var(--border-light);
+}
+
+.ie-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  /* A checkerboard shows through transparent parts of the picture. */
+  background:
+    repeating-conic-gradient(#111827 0% 25%, #0b1220 0% 50%) 50% / 24px 24px;
+}
+
+.ie-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.ie-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  max-height: 42vh;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.ie-panel > * {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ie-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Long rows scroll sideways on a phone instead of wrapping into a wall. */
+.ie-scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.ie-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ie-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ie-chip:hover {
+  border-color: var(--border-light);
+}
+
+.ie-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.ie-chip.danger {
+  color: var(--danger);
+}
+
+.ie-slider {
+  display: grid;
+  grid-template-columns: 84px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ie-slider input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 28px;
+}
+
+.ie-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ie-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  width: 84px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ie-thumb img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: repeating-conic-gradient(#475569 0% 25%, #334155 0% 50%) 50% / 12px 12px;
+  border-radius: 4px;
+}
+
+.ie-thumb span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ie-thumb:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ie-thumb:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.ie-textarea {
+  resize: none;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  /* 16px keeps iOS from zooming into the field. */
+  font-size: 16px;
+}
+
+.ie-select {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.ie-swatch {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border-light);
+  cursor: pointer;
+}
+
+.ie-swatch.active {
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.ie-color {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.ie-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ie-tabs {
+  display: flex;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.ie-tabs button {
+  flex: 1;
+  max-width: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px 10px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ie-tabs button.active {
+  color: var(--accent-hover);
+}
+
+.ie-spin {
+  animation: ie-spin 0.8s linear infinite;
+}
+
+@keyframes ie-spin {
+  to { transform: rotate(360deg); }
+}
