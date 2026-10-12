@@ -79,6 +79,9 @@ export function TeamManagePage() {
   const [episodeOverlaySpecialId, setEpisodeOverlaySpecialId] = useState('');
   const [episodeOverlaySpecialOffsetX, setEpisodeOverlaySpecialOffsetX] = useState(0);
   const [episodeOverlaySpecialOffsetY, setEpisodeOverlaySpecialOffsetY] = useState(0);
+  const [episodeOverlayTatortId, setEpisodeOverlayTatortId] = useState('');
+  const [episodeOverlayTatortOffsetX, setEpisodeOverlayTatortOffsetX] = useState(0);
+  const [episodeOverlayTatortOffsetY, setEpisodeOverlayTatortOffsetY] = useState(0);
 
   // Team self-creation state (when team admin has no team yet)
   const [newTeamName, setNewTeamName] = useState('');
@@ -105,6 +108,9 @@ export function TeamManagePage() {
       if (s.episodeOverlaySpecialId) setEpisodeOverlaySpecialId(s.episodeOverlaySpecialId);
       setEpisodeOverlaySpecialOffsetX(s.episodeOverlaySpecialOffsetX ?? 0);
       setEpisodeOverlaySpecialOffsetY(s.episodeOverlaySpecialOffsetY ?? 0);
+      if (s.episodeOverlayTatortId) setEpisodeOverlayTatortId(s.episodeOverlayTatortId);
+      setEpisodeOverlayTatortOffsetX(s.episodeOverlayTatortOffsetX ?? 0);
+      setEpisodeOverlayTatortOffsetY(s.episodeOverlayTatortOffsetY ?? 0);
     }).catch(() => {});
     api.getWatermarks().then(setWatermarks).catch(() => {});
     if (searchParams.get('instagram') === 'connected') {
@@ -382,6 +388,9 @@ export function TeamManagePage() {
       payload.episodeOverlaySpecialId = episodeOverlaySpecialId || '';
       payload.episodeOverlaySpecialOffsetX = episodeOverlaySpecialOffsetX;
       payload.episodeOverlaySpecialOffsetY = episodeOverlaySpecialOffsetY;
+      payload.episodeOverlayTatortId = episodeOverlayTatortId || '';
+      payload.episodeOverlayTatortOffsetX = episodeOverlayTatortOffsetX;
+      payload.episodeOverlayTatortOffsetY = episodeOverlayTatortOffsetY;
       payload.scenePromptTemplate = teamSettings.scenePromptTemplate || '';
       await api.updateTeamSettings(payload);
       if (newsCreatorBearerToken) {
@@ -1018,6 +1027,7 @@ export function TeamManagePage() {
                     { label: 'News Overlay', value: episodeOverlayNewsId, setter: setEpisodeOverlayNewsId, offsetX: episodeOverlayNewsOffsetX, setOffsetX: setEpisodeOverlayNewsOffsetX, offsetY: episodeOverlayNewsOffsetY, setOffsetY: setEpisodeOverlayNewsOffsetY },
                     { label: 'Review Overlay', value: episodeOverlayReviewId, setter: setEpisodeOverlayReviewId, offsetX: episodeOverlayReviewOffsetX, setOffsetX: setEpisodeOverlayReviewOffsetX, offsetY: episodeOverlayReviewOffsetY, setOffsetY: setEpisodeOverlayReviewOffsetY },
                     { label: 'Special Overlay', value: episodeOverlaySpecialId, setter: setEpisodeOverlaySpecialId, offsetX: episodeOverlaySpecialOffsetX, setOffsetX: setEpisodeOverlaySpecialOffsetX, offsetY: episodeOverlaySpecialOffsetY, setOffsetY: setEpisodeOverlaySpecialOffsetY },
+                    { label: 'Tatort Spieltisch Overlay', value: episodeOverlayTatortId, setter: setEpisodeOverlayTatortId, offsetX: episodeOverlayTatortOffsetX, setOffsetX: setEpisodeOverlayTatortOffsetX, offsetY: episodeOverlayTatortOffsetY, setOffsetY: setEpisodeOverlayTatortOffsetY },
                   ].map(item => (
                     <div key={item.label} style={{ marginBottom: 0 }}>
                       <div className="form-group" style={{ marginBottom: 8 }}>

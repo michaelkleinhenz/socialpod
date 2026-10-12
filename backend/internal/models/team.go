@@ -38,6 +38,9 @@ type Team struct {
 	EpisodeOverlaySpecialID      *primitive.ObjectID `bson:"episodeOverlaySpecialId,omitempty" json:"episodeOverlaySpecialId,omitempty"`
 	EpisodeOverlaySpecialOffsetX int                 `bson:"episodeOverlaySpecialOffsetX,omitempty" json:"episodeOverlaySpecialOffsetX,omitempty"`
 	EpisodeOverlaySpecialOffsetY int                 `bson:"episodeOverlaySpecialOffsetY,omitempty" json:"episodeOverlaySpecialOffsetY,omitempty"`
+	EpisodeOverlayTatortID       *primitive.ObjectID `bson:"episodeOverlayTatortId,omitempty" json:"episodeOverlayTatortId,omitempty"`
+	EpisodeOverlayTatortOffsetX  int                 `bson:"episodeOverlayTatortOffsetX,omitempty" json:"episodeOverlayTatortOffsetX,omitempty"`
+	EpisodeOverlayTatortOffsetY  int                 `bson:"episodeOverlayTatortOffsetY,omitempty" json:"episodeOverlayTatortOffsetY,omitempty"`
 	BGGHandleLookupEnabled     *bool               `bson:"bggHandleLookupEnabled,omitempty" json:"bggHandleLookupEnabled,omitempty"`
 	ScenePromptTemplate        string              `bson:"scenePromptTemplate,omitempty" json:"scenePromptTemplate,omitempty"`
 	AgentSystemPrompt          string              `bson:"agentSystemPrompt,omitempty" json:"agentSystemPrompt,omitempty"`

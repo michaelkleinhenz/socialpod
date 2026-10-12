@@ -28,6 +28,7 @@ const EPISODE_TYPES = [
   { value: 'news', label: 'News' },
   { value: 'review', label: 'Review' },
   { value: 'special', label: 'Special' },
+  { value: 'tatort', label: 'Tatort Spieltisch' },
 ];
 
 export function EpisodePage() {
@@ -139,6 +140,7 @@ export function EpisodePage() {
           if (s.episodeOverlayNewsId) map['news'] = s.episodeOverlayNewsId;
           if (s.episodeOverlayReviewId) map['review'] = s.episodeOverlayReviewId;
           if (s.episodeOverlaySpecialId) map['special'] = s.episodeOverlaySpecialId;
+          if (s.episodeOverlayTatortId) map['tatort'] = s.episodeOverlayTatortId;
           setOverlayMap(map);
           if (s.episodeCreatorWatermarkId) setDefaultOverlayId(s.episodeCreatorWatermarkId);
           api.getWatermarks().then((wms: Watermark[]) => {

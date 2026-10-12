@@ -78,9 +78,9 @@ func (h *EpisodeHandler) Submit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeType is required"})
 		return
 	}
-	validTypes := map[string]bool{"news": true, "review": true, "special": true}
+	validTypes := map[string]bool{"news": true, "review": true, "special": true, "tatort": true}
 	if !validTypes[input.EpisodeType] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeType must be one of: news, review, special"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "episodeType must be one of: news, review, special, tatort"})
 		return
 	}
 	if input.EpisodeDate == "" {

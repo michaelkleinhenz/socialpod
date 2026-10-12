@@ -44,6 +44,9 @@ export interface TeamSettings {
   episodeOverlaySpecialId?: string;
   episodeOverlaySpecialOffsetX?: number;
   episodeOverlaySpecialOffsetY?: number;
+  episodeOverlayTatortId?: string;
+  episodeOverlayTatortOffsetX?: number;
+  episodeOverlayTatortOffsetY?: number;
   scenePromptTemplate?: string;
 }
 

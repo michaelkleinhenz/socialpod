@@ -426,6 +426,13 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 			cfg.offsetY = team.EpisodeOverlaySpecialOffsetY
 			cfg.isEpisode = true
 		}
+	case "tatort":
+		overlayID = team.EpisodeOverlayTatortID
+		if overlayID != nil {
+			cfg.offsetX = team.EpisodeOverlayTatortOffsetX
+			cfg.offsetY = team.EpisodeOverlayTatortOffsetY
+			cfg.isEpisode = true
+		}
 	}
 	if overlayID == nil {
 		overlayID = team.BGGWatermarkID
@@ -1118,6 +1125,10 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 	if team.EpisodeOverlaySpecialID != nil {
 		eoSpecialID = team.EpisodeOverlaySpecialID.Hex()
 	}
+	eoTatortID := ""
+	if team.EpisodeOverlayTatortID != nil {
+		eoTatortID = team.EpisodeOverlayTatortID.Hex()
+	}
 	handleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		handleLookup = *team.BGGHandleLookupEnabled
@@ -1147,6 +1158,9 @@ func (h *BGGHandler) GetTeamSettings(c *gin.Context) {
 		"episodeOverlaySpecialId":       eoSpecialID,
 		"episodeOverlaySpecialOffsetX":  team.EpisodeOverlaySpecialOffsetX,
 		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
+		"episodeOverlayTatortId":        eoTatortID,
+		"episodeOverlayTatortOffsetX":   team.EpisodeOverlayTatortOffsetX,
+		"episodeOverlayTatortOffsetY":   team.EpisodeOverlayTatortOffsetY,
 		"bggHandleLookupEnabled":        handleLookup,
 		"scenePromptTemplate":           team.ScenePromptTemplate,
 		"agentSystemPrompt":             team.AgentSystemPrompt,
@@ -1188,6 +1202,9 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		EpisodeOverlaySpecialID       *string `json:"episodeOverlaySpecialId"`
 		EpisodeOverlaySpecialOffsetX  *int    `json:"episodeOverlaySpecialOffsetX"`
 		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
+		EpisodeOverlayTatortID        *string `json:"episodeOverlayTatortId"`
+		EpisodeOverlayTatortOffsetX   *int    `json:"episodeOverlayTatortOffsetX"`
+		EpisodeOverlayTatortOffsetY   *int    `json:"episodeOverlayTatortOffsetY"`
 		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
 		ScenePromptTemplate           *string `json:"scenePromptTemplate"`
 		AgentSystemPrompt             *string `json:"agentSystemPrompt"`
@@ -1310,6 +1327,7 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		{input.EpisodeOverlayNewsID, "episodeOverlayNewsId"},
 		{input.EpisodeOverlayReviewID, "episodeOverlayReviewId"},
 		{input.EpisodeOverlaySpecialID, "episodeOverlaySpecialId"},
+		{input.EpisodeOverlayTatortID, "episodeOverlayTatortId"},
 	} {
 		if pair.input != nil {
 			if *pair.input == "" {
@@ -1334,6 +1352,8 @@ func (h *BGGHandler) UpdateTeamSettings(c *gin.Context) {
 		{input.EpisodeOverlayReviewOffsetY, "episodeOverlayReviewOffsetY"},
 		{input.EpisodeOverlaySpecialOffsetX, "episodeOverlaySpecialOffsetX"},
 		{input.EpisodeOverlaySpecialOffsetY, "episodeOverlaySpecialOffsetY"},
+		{input.EpisodeOverlayTatortOffsetX, "episodeOverlayTatortOffsetX"},
+		{input.EpisodeOverlayTatortOffsetY, "episodeOverlayTatortOffsetY"},
 	} {
 		if pair.input != nil {
 			setFields[pair.field] = *pair.input
@@ -1399,6 +1419,10 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 	if team.EpisodeOverlaySpecialID != nil {
 		adminEoSpecialID = team.EpisodeOverlaySpecialID.Hex()
 	}
+	adminEoTatortID := ""
+	if team.EpisodeOverlayTatortID != nil {
+		adminEoTatortID = team.EpisodeOverlayTatortID.Hex()
+	}
 	adminHandleLookup := true
 	if team.BGGHandleLookupEnabled != nil {
 		adminHandleLookup = *team.BGGHandleLookupEnabled
@@ -1428,6 +1452,9 @@ func (h *BGGHandler) AdminGetTeamSettings(c *gin.Context) {
 		"episodeOverlaySpecialId":       adminEoSpecialID,
 		"episodeOverlaySpecialOffsetX":  team.EpisodeOverlaySpecialOffsetX,
 		"episodeOverlaySpecialOffsetY":  team.EpisodeOverlaySpecialOffsetY,
+		"episodeOverlayTatortId":        adminEoTatortID,
+		"episodeOverlayTatortOffsetX":   team.EpisodeOverlayTatortOffsetX,
+		"episodeOverlayTatortOffsetY":   team.EpisodeOverlayTatortOffsetY,
 		"bggHandleLookupEnabled":        adminHandleLookup,
 		"scenePromptTemplate":           team.ScenePromptTemplate,
 		"agentSystemPrompt":             team.AgentSystemPrompt,
@@ -1464,6 +1491,9 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		EpisodeOverlaySpecialID       *string `json:"episodeOverlaySpecialId"`
 		EpisodeOverlaySpecialOffsetX  *int    `json:"episodeOverlaySpecialOffsetX"`
 		EpisodeOverlaySpecialOffsetY  *int    `json:"episodeOverlaySpecialOffsetY"`
+		EpisodeOverlayTatortID        *string `json:"episodeOverlayTatortId"`
+		EpisodeOverlayTatortOffsetX   *int    `json:"episodeOverlayTatortOffsetX"`
+		EpisodeOverlayTatortOffsetY   *int    `json:"episodeOverlayTatortOffsetY"`
 		BGGHandleLookupEnabled        *bool   `json:"bggHandleLookupEnabled"`
 		ScenePromptTemplate           *string `json:"scenePromptTemplate"`
 		AgentSystemPrompt             *string `json:"agentSystemPrompt"`
@@ -1586,6 +1616,7 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		{input.EpisodeOverlayNewsID, "episodeOverlayNewsId"},
 		{input.EpisodeOverlayReviewID, "episodeOverlayReviewId"},
 		{input.EpisodeOverlaySpecialID, "episodeOverlaySpecialId"},
+		{input.EpisodeOverlayTatortID, "episodeOverlayTatortId"},
 	} {
 		if pair.input != nil {
 			if *pair.input == "" {
@@ -1610,6 +1641,8 @@ func (h *BGGHandler) AdminUpdateTeamSettings(c *gin.Context) {
 		{input.EpisodeOverlayReviewOffsetY, "episodeOverlayReviewOffsetY"},
 		{input.EpisodeOverlaySpecialOffsetX, "episodeOverlaySpecialOffsetX"},
 		{input.EpisodeOverlaySpecialOffsetY, "episodeOverlaySpecialOffsetY"},
+		{input.EpisodeOverlayTatortOffsetX, "episodeOverlayTatortOffsetX"},
+		{input.EpisodeOverlayTatortOffsetY, "episodeOverlayTatortOffsetY"},
 	} {
 		if pair.input != nil {
 			setFields[pair.field] = *pair.input
