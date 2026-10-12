@@ -255,23 +255,14 @@ func (h *GrowthHandler) UploadRadarFont(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	contentType := map[string]string{".ttf": "font/ttf", ".otf": "font/otf"}[ext]
-	if contentType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Upload a .ttf or .otf font file"})
-		return
-	}
 	data, err := io.ReadAll(io.LimitReader(file, maxRadarFontSize+1))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read the font file"})
 		return
 	}
-	if len(data) > maxRadarFontSize {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "The font file is larger than 10 MB"})
-		return
-	}
-	if _, err := services.ParseRadarFont(data); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Unusable font: " + err.Error()})
+	ext, contentType, err := checkRadarFont(header.Filename, data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -284,6 +275,31 @@ func (h *GrowthHandler) UploadRadarFont(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"url": url, "name": filepath.Base(header.Filename)})
+}
+
+// checkRadarFont accepts a TrueType (.ttf) or OpenType (.otf) font the slide
+// renderer can draw German text with, and returns the extension and content
+// type to store it under. Those follow the file's contents rather than its
+// name, since .otf files often hold TrueType outlines and vice versa.
+func checkRadarFont(filename string, data []byte) (ext, contentType string, err error) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".ttf", ".otf":
+	default:
+		return "", "", fmt.Errorf("upload a .ttf or .otf font file")
+	}
+	if len(data) > maxRadarFontSize {
+		return "", "", fmt.Errorf("the font file is larger than 10 MB")
+	}
+	if len(data) >= 4 && string(data[:4]) == "ttcf" {
+		return "", "", fmt.Errorf("this is a font collection; upload a single .ttf or .otf font")
+	}
+	if _, err := services.ParseRadarFont(data); err != nil {
+		return "", "", fmt.Errorf("unusable font: %v", err)
+	}
+	if string(data[:4]) == "OTTO" {
+		return ".otf", "font/otf", nil
+	}
+	return ".ttf", "font/ttf", nil
 }
 
 // teamInstagramAccounts lists the team's active Instagram accounts.

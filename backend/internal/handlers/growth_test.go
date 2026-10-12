@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"socialmedia/internal/models"
+	"socialmedia/internal/services"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 func snap(date string, n int) models.FollowerSnapshot {
@@ -235,6 +238,68 @@ func TestValidateGrowthSettings(t *testing.T) {
 	for i, s := range bad {
 		if err := validateGrowthSettings(&s); err == nil {
 			t.Errorf("case %d: invalid settings accepted", i)
+		}
+	}
+}
+
+func TestCheckRadarFont(t *testing.T) {
+	// A CFF-flavoured OpenType font: a subset of Inter Bold (testdata/README).
+	otf, err := os.ReadFile("testdata/radar-font.otf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := []struct {
+		name     string
+		data     []byte
+		ext, typ string
+	}{
+		{"Inter-Bold.otf", otf, ".otf", "font/otf"},
+		{"INTER-BOLD.OTF", otf, ".otf", "font/otf"},
+		{"GoRegular.ttf", goregular.TTF, ".ttf", "font/ttf"},
+		{"GoRegular.TTF", goregular.TTF, ".ttf", "font/ttf"},
+		// The stored type follows the contents, not the name.
+		{"TrueTypeOutlines.otf", goregular.TTF, ".ttf", "font/ttf"},
+		{"CFFOutlines.ttf", otf, ".otf", "font/otf"},
+	}
+	for _, tc := range accepted {
+		ext, typ, err := checkRadarFont(tc.name, tc.data)
+		if err != nil {
+			t.Errorf("%s rejected: %v", tc.name, err)
+			continue
+		}
+		if ext != tc.ext || typ != tc.typ {
+			t.Errorf("%s stored as %s %s, want %s %s", tc.name, ext, typ, tc.ext, tc.typ)
+		}
+	}
+
+	// CFF outlines take a different path from TrueType ones; draw every text
+	// a Radar has with them.
+	fonts, err := services.ParseRadarFont(otf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accent := services.ParseHexColor("")
+	if _, err := services.RenderRadarCover(nil, "Radar der Woche", "KW 42 · 5 Ankündigungen", accent, fonts); err != nil {
+		t.Errorf("cover with an OpenType font: %v", err)
+	}
+	if _, err := services.RenderRadarItem(services.RadarItemSlide{Index: 1, Total: 5, Title: "Größenwahn", GermanRelease: "offen"},
+		"Radar der Woche", "Kommt's auf Deutsch?", accent, fonts); err != nil {
+		t.Errorf("item slide with an OpenType font: %v", err)
+	}
+
+	rejected := []struct {
+		name string
+		data []byte
+	}{
+		{"Inter-Bold.woff2", otf},
+		{"font", goregular.TTF},
+		{"broken.ttf", []byte("not a font at all")},
+		{"collection.ttf", append([]byte("ttcf"), make([]byte, 64)...)},
+		{"huge.otf", make([]byte, maxRadarFontSize+1)},
+	}
+	for _, tc := range rejected {
+		if _, _, err := checkRadarFont(tc.name, tc.data); err == nil {
+			t.Errorf("%s accepted", tc.name)
 		}
 	}
 }

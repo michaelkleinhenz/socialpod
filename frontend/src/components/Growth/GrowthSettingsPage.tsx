@@ -75,6 +75,10 @@ function SlideImagePicker({ label, url, onChange }: { label: string; url?: strin
   );
 }
 
+// Extensions plus every MIME type TrueType/OpenType files are reported under,
+// so pickers that filter by type (iOS among them) don't grey the fonts out.
+const FONT_ACCEPT = '.ttf,.otf,font/ttf,font/otf,font/sfnt,application/x-font-ttf,application/x-font-truetype,application/x-font-otf,application/x-font-opentype,application/font-sfnt,application/vnd.ms-opentype';
+
 // RadarFontPicker uploads the TrueType/OpenType font the Radar slides are
 // drawn with and previews it with the Radar title.
 function RadarFontPicker({ url, name, sample, onChange }: {
@@ -125,7 +129,7 @@ function RadarFontPicker({ url, name, sample, onChange }: {
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(null)}><X size={14} /> Remove</button>
           )}
         </div>
-        <input ref={fileRef} type="file" accept=".ttf,.otf,font/ttf,font/otf" style={{ display: 'none' }}
+        <input ref={fileRef} type="file" accept={FONT_ACCEPT} style={{ display: 'none' }}
           onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
