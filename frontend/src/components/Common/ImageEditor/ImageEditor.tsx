@@ -1,0 +1,836 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import Konva from 'konva';
+import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Transformer } from 'react-konva';
+import {
+  AlignCenter, Bold, Crop, Loader2, Plus, Redo2, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api } from '../../../services/api';
+import type { Watermark } from '../../../types';
+import {
+  applyAdjustments, centredCrop, clamp, FILTER_PRESETS, hasAdjustments, imageLayerAttrs, loadImage,
+  measureText, newLayerId, NO_ADJUSTMENTS, renderEdit, textLayerAttrs,
+  type Adjustments, type CropBox, type EditorLayer, type ImageLayer, type TextLayer,
+} from './editorModel';
+import './ImageEditor.css';
+
+type Tab = 'crop' | 'filters' | 'watermark' | 'text';
+
+interface FontOption {
+  label: string;
+  family: string;
+}
+
+const BUILTIN_FONTS: FontOption[] = [
+  { label: 'Arial', family: 'Arial, Helvetica, sans-serif' },
+  { label: 'Helvetica', family: 'Helvetica, Arial, sans-serif' },
+  { label: 'Verdana', family: 'Verdana, sans-serif' },
+  { label: 'Trebuchet MS', family: 'Trebuchet MS, sans-serif' },
+  { label: 'Impact', family: 'Impact, Haettenschweiler, Arial Black, sans-serif' },
+  { label: 'Georgia', family: 'Georgia, serif' },
+  { label: 'Times New Roman', family: 'Times New Roman, Times, serif' },
+  { label: 'Rockwell', family: 'Rockwell, Rockwell Nova, Roboto Slab, DejaVu Serif, Sitka Small, serif' },
+  { label: 'Courier New', family: 'Courier New, monospace' },
+  { label: 'Comic Sans MS', family: 'Comic Sans MS, cursive' },
+];
+
+const ASPECTS: { id: string; label: string; ratio: number | null | 'original' }[] = [
+  { id: 'free', label: 'Free', ratio: null },
+  { id: 'original', label: 'Original', ratio: 'original' },
+  { id: '1:1', label: '1:1', ratio: 1 },
+  { id: '4:5', label: '4:5', ratio: 4 / 5 },
+  { id: '9:16', label: '9:16', ratio: 9 / 16 },
+  { id: '16:9', label: '16:9', ratio: 16 / 9 },
+];
+
+const SWATCHES = ['#ffffff', '#000000', '#facc15', '#f97316', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#22c55e'];
+
+// Undo steps kept; older ones are dropped.
+const HISTORY_LIMIT = 50;
+// Changes to the same control closer together than this are one undo step,
+// so a slider drag or a typed word does not take dozens of undos.
+const COALESCE_MS = 1000;
+
+// The part of the editor's state undo covers: the edit itself, not the view
+// (tab, selection) or what is loaded (image, fonts).
+interface Snapshot {
+  crop: CropBox;
+  aspectId: string;
+  adjustments: Adjustments;
+  layers: EditorLayer[];
+}
+
+// Around the image on screen, so crop and transform handles stay reachable.
+const STAGE_PADDING = 20;
+
+interface Props {
+  imageUrl: string;
+  // The team's watermarks, offered on the Watermark tab.
+  watermarks?: Watermark[];
+  // An overlay drawn over the crop area for reference but left out of the
+  // output, for images whose overlay is composited later (convention queues
+  // stamp theirs when the item is posted).
+  guideOverlay?: HTMLImageElement | null;
+  onSave: (blob: Blob) => void | Promise<void>;
+  onCancel: () => void;
+}
+
+const apiBase = import.meta.env.VITE_API_URL || '';
+const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
+
+export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
+  const [source, setSource] = useState<HTMLImageElement | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [tab, setTab] = useState<Tab>('crop');
+  const [crop, setCrop] = useState<CropBox | null>(null);
+  const [aspectId, setAspectId] = useState('free');
+  const [adjustments, setAdjustments] = useState<Adjustments>(NO_ADJUSTMENTS);
+  const [layers, setLayers] = useState<EditorLayer[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fonts, setFonts] = useState<FontOption[]>(BUILTIN_FONTS);
+  const [teamFont, setTeamFont] = useState<FontOption | null>(null);
+  const [addingWatermark, setAddingWatermark] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
+  // The control the last undo step was opened for, and when it last changed.
+  const lastChange = useRef<{ key: string; at: number } | null>(null);
+
+  const canvasBoxRef = useRef<HTMLDivElement>(null);
+  const baseRef = useRef<Konva.Image>(null);
+  const cropRectRef = useRef<Konva.Rect>(null);
+  const trRef = useRef<Konva.Transformer>(null);
+  const contentRef = useRef<Konva.Group>(null);
+  const nodeRefs = useRef(new Map<string, Konva.Node>());
+  const fontInputRef = useRef<HTMLInputElement>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isTouch = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches, []);
+
+  // Source image.
+  useEffect(() => {
+    let cancelled = false;
+    setLoadError(false);
+    loadImage(imageUrl)
+      .then(img => {
+        if (cancelled) return;
+        setSource(img);
+        setCrop({ x: 0, y: 0, width: img.naturalWidth, height: img.naturalHeight });
+      })
+      .catch(() => { if (!cancelled) setLoadError(true); });
+    return () => { cancelled = true; };
+  }, [imageUrl]);
+
+  // The team's Radar font, when one is uploaded, is offered first.
+  useEffect(() => {
+    let cancelled = false;
+    api.getGrowthSettings().then(async s => {
+      const url = s.radar?.fontUrl;
+      if (!url) return;
+      const label = s.radar?.fontName || 'Team font';
+      const family = 'SocialPod Team Font';
+      const face = new FontFace(family, `url(${resolveUrl(url)})`);
+      await face.load();
+      if (cancelled) return;
+      document.fonts.add(face);
+      const opt = { label, family };
+      setTeamFont(opt);
+      setFonts(prev => [opt, ...prev.filter(f => f.family !== family)]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Stage size follows the canvas area.
+  useLayoutEffect(() => {
+    const el = canvasBoxRef.current;
+    if (!el) return;
+    const update = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const natW = source?.naturalWidth ?? 1;
+  const natH = source?.naturalHeight ?? 1;
+
+  // What the stage shows: the whole image while cropping, the crop otherwise.
+  const view: CropBox = tab === 'crop' || !crop ? { x: 0, y: 0, width: natW, height: natH } : crop;
+  const scale = size.w && size.h
+    ? Math.max(0.01, Math.min((size.w - STAGE_PADDING * 2) / view.width, (size.h - STAGE_PADDING * 2) / view.height))
+    : 1;
+  const gx = (size.w - view.width * scale) / 2 - view.x * scale;
+  const gy = (size.h - view.height * scale) / 2 - view.y * scale;
+
+  // Filters run on a reduced copy on screen: enough for the display, cheap
+  // enough for a slider on a phone.
+  const previewRatio = Math.min(1, 1600 / Math.max(natW, natH));
+  useEffect(() => {
+    const node = baseRef.current;
+    if (!node || !source) return;
+    const id = requestAnimationFrame(() => {
+      applyAdjustments(node, adjustments, previewRatio);
+      node.getLayer()?.batchDraw();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [adjustments, source, previewRatio]);
+
+  const selected = layers.find(l => l.id === selectedId) ?? null;
+
+  // Attach the transformer to the crop box or the selected layer.
+  useEffect(() => {
+    const tr = trRef.current;
+    if (!tr) return;
+    const node = tab === 'crop'
+      ? cropRectRef.current
+      : (selectedId ? nodeRefs.current.get(selectedId) ?? null : null);
+    tr.nodes(node ? [node] : []);
+    tr.getLayer()?.batchDraw();
+  }, [tab, selectedId, layers, source, aspectId]);
+
+  // --- Undo -----------------------------------------------------------------
+
+  // Records the current state as an undo step. Called right before a change,
+  // while the state still holds what the change replaces. With a key, further
+  // changes to the same control in quick succession join that step.
+  const checkpoint = (key?: string) => {
+    if (!crop) return;
+    const now = Date.now();
+    const last = lastChange.current;
+    lastChange.current = key ? { key, at: now } : null;
+    // A gesture key joins its step for as long as the drag lasts; startGesture
+    // ends it.
+    const sticky = key?.startsWith('gesture:');
+    if (key && last?.key === key && (sticky || now - last.at < COALESCE_MS)) return;
+    const snap: Snapshot = { crop, aspectId, adjustments, layers };
+    setUndoStack(stack => [...stack.slice(-(HISTORY_LIMIT - 1)), snap]);
+    setRedoStack([]);
+  };
+
+  // A new drag or resize always starts its own step, however soon after the
+  // last one.
+  const startGesture = () => { lastChange.current = null; };
+
+  const restore = (snap: Snapshot) => {
+    setCrop(snap.crop);
+    setAspectId(snap.aspectId);
+    setAdjustments(snap.adjustments);
+    setLayers(snap.layers);
+    if (selectedId && !snap.layers.some(l => l.id === selectedId)) setSelectedId(null);
+    lastChange.current = null;
+  };
+
+  const undo = () => {
+    const prev = undoStack[undoStack.length - 1];
+    if (!prev || !crop) return;
+    setUndoStack(stack => stack.slice(0, -1));
+    setRedoStack(stack => [...stack, { crop, aspectId, adjustments, layers }]);
+    restore(prev);
+  };
+
+  const redo = () => {
+    const next = redoStack[redoStack.length - 1];
+    if (!next || !crop) return;
+    setRedoStack(stack => stack.slice(0, -1));
+    setUndoStack(stack => [...stack, { crop, aspectId, adjustments, layers }]);
+    restore(next);
+  };
+
+  // Every change to the edit goes through these, which record the undo step.
+  const updateLayer = (id: string, patch: Partial<ImageLayer> | Partial<TextLayer>, key?: string) => {
+    checkpoint(key);
+    setLayers(prev => prev.map(l => (l.id === id ? { ...l, ...patch } as EditorLayer : l)));
+  };
+
+  const addLayer = (layer: EditorLayer) => {
+    checkpoint();
+    setLayers(prev => [...prev, layer]);
+    setSelectedId(layer.id);
+  };
+
+  const changeAdjustments = (patch: Partial<Adjustments>, key?: string) => {
+    checkpoint(key);
+    setAdjustments(a => ({ ...a, ...patch }));
+  };
+
+  const changeCrop = (box: CropBox, nextAspectId = aspectId, key?: string) => {
+    checkpoint(key);
+    setCrop(box);
+    setAspectId(nextAspectId);
+  };
+
+  const deleteSelected = () => {
+    if (!selectedId) return;
+    checkpoint();
+    setLayers(prev => prev.filter(l => l.id !== selectedId));
+    setSelectedId(null);
+  };
+
+  const dirty = layers.length > 0 || hasAdjustments(adjustments) || (!!crop && !!source
+    && (crop.x !== 0 || crop.y !== 0 || crop.width !== natW || crop.height !== natH));
+
+  const handleCancel = useCallback(() => {
+    if (saving) return;
+    if (dirty && !window.confirm('Discard your changes to this image?')) return;
+    onCancel();
+  }, [dirty, saving, onCancel]);
+
+  // Keyboard: Escape leaves, Delete removes the selected layer, Ctrl/Cmd+Z
+  // and Ctrl/Cmd+Shift+Z (or Ctrl+Y) undo and redo — unless typing, where
+  // those keys belong to the field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      if (mod && !typing && (k === 'z' || k === 'y')) {
+        e.preventDefault();
+        if (k === 'y' || e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (selectedId) setSelectedId(null);
+        else handleCancel();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && selectedId) {
+        e.preventDefault();
+        deleteSelected();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    if (t === 'crop') setSelectedId(null);
+    else if (t === 'text' && selected?.kind !== 'text') setSelectedId(null);
+    else if (t === 'watermark' && selected?.kind !== 'image') setSelectedId(null);
+  };
+
+  const selectLayer = (l: EditorLayer) => {
+    setSelectedId(l.id);
+    setTab(l.kind === 'text' ? 'text' : 'watermark');
+  };
+
+  // --- Crop -----------------------------------------------------------------
+
+  const aspectRatio = (id: string): number | null => {
+    const a = ASPECTS.find(x => x.id === id);
+    if (!a || a.ratio === null) return null;
+    return a.ratio === 'original' ? natW / natH : a.ratio;
+  };
+
+  const pickAspect = (id: string) => {
+    if (!crop) return;
+    const ratio = aspectRatio(id);
+    changeCrop(ratio ? centredCrop(natW, natH, ratio) : crop, id);
+  };
+
+  const resetCrop = () => changeCrop({ x: 0, y: 0, width: natW, height: natH }, 'free');
+
+  // The crop box lives in image pixels; Konva reports drags and resizes as
+  // position and scale, which are folded back into a plain box.
+  const syncCropFromNode = () => {
+    const node = cropRectRef.current;
+    if (!node) return;
+    const width = node.width() * node.scaleX();
+    const height = node.height() * node.scaleY();
+    node.setAttrs({ width, height, scaleX: 1, scaleY: 1 });
+    changeCrop({ x: node.x(), y: node.y(), width, height }, aspectId, 'gesture:crop');
+  };
+
+  const cropDragBound = (pos: Konva.Vector2d): Konva.Vector2d => {
+    const node = cropRectRef.current;
+    if (!node) return pos;
+    const w = node.width() * node.scaleX() * scale;
+    const h = node.height() * node.scaleY() * scale;
+    return {
+      x: clamp(pos.x, gx, gx + natW * scale - w),
+      y: clamp(pos.y, gy, gy + natH * scale - h),
+    };
+  };
+
+  // Transformer boxes are in stage pixels.
+  const cropBoundBox = (oldBox: BoxLike, newBox: BoxLike): BoxLike => {
+    const minSide = 40;
+    const eps = 0.5;
+    if (
+      newBox.width < minSide || newBox.height < minSide
+      || newBox.x < gx - eps || newBox.y < gy - eps
+      || newBox.x + newBox.width > gx + natW * scale + eps
+      || newBox.y + newBox.height > gy + natH * scale + eps
+    ) return oldBox;
+    return newBox;
+  };
+
+  // --- Watermarks -----------------------------------------------------------
+
+  const addWatermark = async (wm: Watermark) => {
+    if (!crop) return;
+    setAddingWatermark(wm.id);
+    try {
+      const img = await loadImage(resolveUrl(wm.url));
+      const wmRatio = img.naturalWidth / img.naturalHeight;
+      const cropRatio = crop.width / crop.height;
+      let width: number;
+      let height: number;
+      let cx: number;
+      let cy: number;
+      if (Math.abs(wmRatio - cropRatio) / cropRatio < 0.03) {
+        // A frame made for this shape covers the whole picture.
+        width = crop.width;
+        height = crop.height;
+        cx = crop.x + crop.width / 2;
+        cy = crop.y + crop.height / 2;
+      } else {
+        // A logo goes small into the bottom-right corner.
+        const side = Math.min(crop.width, crop.height) * 0.3;
+        width = wmRatio >= 1 ? side : side * wmRatio;
+        height = width / wmRatio;
+        const margin = Math.min(crop.width, crop.height) * 0.04;
+        cx = crop.x + crop.width - margin - width / 2;
+        cy = crop.y + crop.height - margin - height / 2;
+      }
+      addLayer({ id: newLayerId(), kind: 'image', img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
+    } catch {
+      toast.error('Failed to load that watermark');
+    } finally {
+      setAddingWatermark(null);
+    }
+  };
+
+  const fitSelectedImage = () => {
+    if (!crop || selected?.kind !== 'image') return;
+    const r = selected.img.naturalWidth / selected.img.naturalHeight;
+    let width = crop.width;
+    let height = width / r;
+    if (height > crop.height) { height = crop.height; width = height * r; }
+    updateLayer(selected.id, {
+      width, height, rotation: 0,
+      x: crop.x + crop.width / 2, y: crop.y + crop.height / 2,
+    });
+  };
+
+  // --- Text -----------------------------------------------------------------
+
+  const addText = () => {
+    if (!crop) return;
+    const base: TextLayer = {
+      id: newLayerId(),
+      kind: 'text',
+      text: 'Your text',
+      fontFamily: (teamFont ?? BUILTIN_FONTS[0]).family,
+      fontSize: Math.round(Math.min(crop.width, crop.height) * 0.09),
+      fill: '#ffffff',
+      bold: true,
+      outline: true,
+      shadow: false,
+      x: 0,
+      y: 0,
+      rotation: 0,
+    };
+    const m = measureText(base);
+    addLayer({ ...base, x: crop.x + (crop.width - m.width) / 2, y: crop.y + (crop.height - m.height) / 2 });
+    // Select the placeholder so typing replaces it. Not on touch: the
+    // keyboard would cover the picture straight away.
+    if (!isTouch) {
+      setTimeout(() => { textAreaRef.current?.focus(); textAreaRef.current?.select(); }, 0);
+    }
+  };
+
+  const uploadFont = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const label = file.name.replace(/\.[^.]+$/, '');
+    const family = `SocialPod Upload ${label.replace(/[^\w -]/g, '')}`;
+    try {
+      const face = new FontFace(family, await file.arrayBuffer());
+      await face.load();
+      document.fonts.add(face);
+      const opt = { label, family };
+      setFonts(prev => [opt, ...prev.filter(f => f.family !== family)]);
+      if (selected?.kind === 'text') updateLayer(selected.id, { fontFamily: family });
+      toast.success(`Font "${label}" loaded`);
+    } catch {
+      toast.error('That file is not a font the browser can use');
+    }
+  };
+
+  // Re-centres the selected layer on the crop, keeping its rotation.
+  const centreSelected = () => {
+    if (!crop || !selected) return;
+    if (selected.kind === 'image') {
+      updateLayer(selected.id, { x: crop.x + crop.width / 2, y: crop.y + crop.height / 2 });
+      return;
+    }
+    const node = nodeRefs.current.get(selected.id);
+    const parent = contentRef.current;
+    if (!node || !parent) return;
+    const box = node.getClientRect({ relativeTo: parent, skipShadow: true, skipStroke: true });
+    updateLayer(selected.id, {
+      x: selected.x + (crop.x + crop.width / 2) - (box.x + box.width / 2),
+      y: selected.y + (crop.y + crop.height / 2) - (box.y + box.height / 2),
+    });
+  };
+
+  // Folds a finished resize into the layer itself: an image's size, a text's
+  // font size, so the text stays crisp and the size controls stay true.
+  const onLayerTransformEnd = (l: EditorLayer, node: Konva.Node) => {
+    const sx = node.scaleX();
+    const sy = node.scaleY();
+    node.setAttrs({ scaleX: 1, scaleY: 1 });
+    if (l.kind === 'image') {
+      const width = Math.max(4, l.width * sx);
+      const height = Math.max(4, l.height * sy);
+      node.setAttrs({ offsetX: width / 2, offsetY: height / 2 });
+      updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), width, height });
+    } else {
+      updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), fontSize: Math.max(4, l.fontSize * sx) });
+    }
+  };
+
+  // --- Save -----------------------------------------------------------------
+
+  const save = async () => {
+    if (!source || !crop || saving) return;
+    setSaving(true);
+    try {
+      const blob = await renderEdit({ source, crop, adjustments, layers });
+      await onSave(blob);
+    } catch (err) {
+      const e = err instanceof Error ? err : null;
+      toast.error(e?.name === 'SecurityError'
+        ? 'This image cannot be exported (it was loaded from another site)'
+        : (e?.message || 'Failed to save the image'));
+      setSaving(false);
+    }
+  };
+
+  // --- Render ---------------------------------------------------------------
+
+  const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    if (tab === 'crop') return;
+    if (e.target === e.target.getStage() || e.target === baseRef.current) setSelectedId(null);
+  };
+
+  const anchorSize = isTouch ? 22 : 11;
+  const layerTransformer = tab !== 'crop';
+  const ratio = aspectRatio(aspectId);
+
+  return (
+    <div className="ie-root" role="dialog" aria-label="Edit image">
+      <header className="ie-header">
+        <button className="ie-icon-btn" onClick={handleCancel} title="Cancel" disabled={saving}>
+          <X size={20} />
+        </button>
+        <span className="ie-title">Edit image</span>
+        <button className="ie-icon-btn" onClick={undo} title="Undo" aria-label="Undo" disabled={saving || undoStack.length === 0}>
+          <Undo2 size={18} />
+        </button>
+        <button className="ie-icon-btn" onClick={redo} title="Redo" aria-label="Redo" disabled={saving || redoStack.length === 0}>
+          <Redo2 size={18} />
+        </button>
+        <button className="btn btn-primary ie-save" onClick={save} disabled={!source || saving}>
+          {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
+        </button>
+      </header>
+
+      <div className="ie-canvas" ref={canvasBoxRef}>
+        {loadError && <div className="ie-message">The image could not be loaded.</div>}
+        {!source && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
+        {source && crop && size.w > 0 && (
+          <Stage width={size.w} height={size.h} onPointerDown={onStagePointerDown}>
+            <Layer>
+              <Group
+                ref={contentRef}
+                x={gx}
+                y={gy}
+                scaleX={scale}
+                scaleY={scale}
+                {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
+              >
+                <KImage ref={baseRef} image={source} width={natW} height={natH} />
+                {layers.map(l => (l.kind === 'image' ? (
+                  <KImage
+                    key={l.id}
+                    ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                    {...imageLayerAttrs(l)}
+                    listening={tab !== 'crop'}
+                    draggable={tab !== 'crop'}
+                    onPointerDown={() => selectLayer(l)}
+                    onDragStart={startGesture}
+                    onTransformStart={startGesture}
+                    onDragEnd={e => updateLayer(l.id, { x: e.target.x(), y: e.target.y() })}
+                    onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                  />
+                ) : (
+                  <KText
+                    key={l.id}
+                    ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                    {...textLayerAttrs(l)}
+                    listening={tab !== 'crop'}
+                    draggable={tab !== 'crop'}
+                    onPointerDown={() => selectLayer(l)}
+                    onDragStart={startGesture}
+                    onTransformStart={startGesture}
+                    onDblClick={() => textAreaRef.current?.focus()}
+                    onDragEnd={e => updateLayer(l.id, { x: e.target.x(), y: e.target.y() })}
+                    onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                  />
+                )))}
+                {guideOverlay && (
+                  <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
+                )}
+              </Group>
+
+              {tab === 'crop' && (
+                <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
+                  {/* Shade what the crop leaves out. */}
+                  <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
+                  <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                  <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                  <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                  {[1, 2].map(i => (
+                    <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                  ))}
+                  {[1, 2].map(i => (
+                    <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                  ))}
+                  <Rect
+                    ref={cropRectRef}
+                    x={crop.x}
+                    y={crop.y}
+                    width={crop.width}
+                    height={crop.height}
+                    fill="rgba(0,0,0,0)"
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                    strokeScaleEnabled={false}
+                    draggable
+                    dragBoundFunc={cropDragBound}
+                    onDragStart={startGesture}
+                    onTransformStart={startGesture}
+                    onDragMove={syncCropFromNode}
+                    onDragEnd={syncCropFromNode}
+                    onTransform={syncCropFromNode}
+                    onTransformEnd={syncCropFromNode}
+                  />
+                </Group>
+              )}
+
+              <Transformer
+                ref={trRef}
+                anchorSize={anchorSize}
+                anchorCornerRadius={anchorSize / 2}
+                anchorStroke="#6366f1"
+                anchorFill="#ffffff"
+                borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
+                borderStrokeWidth={1.5}
+                padding={layerTransformer ? 4 : 0}
+                rotateEnabled={layerTransformer}
+                rotateAnchorOffset={isTouch ? 36 : 28}
+                rotationSnaps={[0, 90, 180, 270]}
+                flipEnabled={false}
+                ignoreStroke
+                keepRatio={layerTransformer || ratio !== null}
+                enabledAnchors={layerTransformer || ratio !== null
+                  ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                  : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+                boundBoxFunc={(oldBox, newBox) => (layerTransformer
+                  ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
+                  : cropBoundBox(oldBox, newBox))}
+              />
+            </Layer>
+          </Stage>
+        )}
+      </div>
+
+      <div className="ie-panel">
+        {tab === 'crop' && (
+          <div className="ie-row ie-scroll">
+            {ASPECTS.map(a => (
+              <button key={a.id} className={`ie-chip ${aspectId === a.id ? 'active' : ''}`} onClick={() => pickAspect(a.id)}>
+                {a.label}
+              </button>
+            ))}
+            <button className="ie-chip" onClick={resetCrop}>Reset</button>
+          </div>
+        )}
+
+        {tab === 'filters' && (
+          <>
+            <div className="ie-row ie-scroll">
+              {FILTER_PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  className={`ie-chip ${adjustments.preset === p.id ? 'active' : ''}`}
+                  onClick={() => changeAdjustments({ preset: p.id })}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {(['brightness', 'contrast', 'saturation'] as const).map(k => (
+              <label key={k} className="ie-slider">
+                <span>{k[0].toUpperCase() + k.slice(1)}</span>
+                <input
+                  type="range"
+                  min={-100}
+                  max={100}
+                  value={adjustments[k]}
+                  onChange={e => changeAdjustments({ [k]: Number(e.target.value) }, `adjust:${k}`)}
+                  onDoubleClick={() => changeAdjustments({ [k]: 0 })}
+                />
+                <span className="ie-value">{adjustments[k]}</span>
+              </label>
+            ))}
+            {hasAdjustments(adjustments) && (
+              <div className="ie-row">
+                <button className="ie-chip" onClick={() => changeAdjustments(NO_ADJUSTMENTS)}>Reset filters</button>
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === 'watermark' && (
+          <>
+            {watermarks.length === 0 ? (
+              <p className="ie-hint">No watermarks yet. Upload them on the Watermarks page.</p>
+            ) : (
+              <div className="ie-row ie-scroll">
+                {watermarks.map(w => (
+                  <button
+                    key={w.id}
+                    className="ie-thumb"
+                    onClick={() => addWatermark(w)}
+                    disabled={addingWatermark !== null}
+                    title={`Add ${w.name || w.filename}`}
+                  >
+                    <img src={resolveUrl(w.url)} alt="" />
+                    <span>{addingWatermark === w.id ? 'Adding…' : (w.name || w.filename)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selected?.kind === 'image' ? (
+              <>
+                <label className="ie-slider">
+                  <span>Opacity</span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={100}
+                    value={Math.round(selected.opacity * 100)}
+                    onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 }, `opacity:${selected.id}`)}
+                  />
+                  <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
+                </label>
+                <div className="ie-row">
+                  <button className="ie-chip" onClick={fitSelectedImage}><Maximize size={14} /> Fit</button>
+                  <button className="ie-chip" onClick={centreSelected}><AlignCenter size={14} /> Centre</button>
+                  <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+                </div>
+              </>
+            ) : watermarks.length > 0 && (
+              <p className="ie-hint">Tap a watermark to add it, then drag it, pull its corners or turn it on the picture.</p>
+            )}
+          </>
+        )}
+
+        {tab === 'text' && (
+          selected?.kind === 'text' ? (
+            <>
+              <textarea
+                ref={textAreaRef}
+                className="ie-textarea"
+                rows={2}
+                value={selected.text}
+                onChange={e => updateLayer(selected.id, { text: e.target.value }, `text:${selected.id}`)}
+                placeholder="Text"
+              />
+              <div className="ie-row">
+                <select
+                  className="ie-select"
+                  value={selected.fontFamily}
+                  onChange={e => updateLayer(selected.id, { fontFamily: e.target.value })}
+                >
+                  {fonts.some(f => f.family === selected.fontFamily) ? null : (
+                    <option value={selected.fontFamily}>{selected.fontFamily}</option>
+                  )}
+                  {fonts.map(f => (
+                    <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>{f.label}</option>
+                  ))}
+                </select>
+                <button className="ie-icon-btn" onClick={() => fontInputRef.current?.click()} title="Load a font file">
+                  <Upload size={16} />
+                </button>
+              </div>
+              <div className="ie-row ie-scroll">
+                {SWATCHES.map(c => (
+                  <button
+                    key={c}
+                    className={`ie-swatch ${selected.fill.toLowerCase() === c ? 'active' : ''}`}
+                    style={{ background: c }}
+                    onClick={() => updateLayer(selected.id, { fill: c })}
+                    aria-label={`Colour ${c}`}
+                  />
+                ))}
+                <input
+                  type="color"
+                  className="ie-color"
+                  value={selected.fill}
+                  onChange={e => updateLayer(selected.id, { fill: e.target.value }, `fill:${selected.id}`)}
+                  title="Custom colour"
+                />
+              </div>
+              <div className="ie-row ie-scroll">
+                <button className={`ie-chip ${selected.bold ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { bold: !selected.bold })}>
+                  <Bold size={14} /> Bold
+                </button>
+                <button className={`ie-chip ${selected.outline ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { outline: !selected.outline })}>
+                  Outline
+                </button>
+                <button className={`ie-chip ${selected.shadow ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}>
+                  Shadow
+                </button>
+                <button className="ie-chip" onClick={centreSelected}><AlignCenter size={14} /> Centre</button>
+                <button className="ie-chip" onClick={addText}><Plus size={14} /> New</button>
+                <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="ie-row">
+                <button className="btn btn-primary" onClick={addText}><Plus size={16} /> Add text</button>
+                <button className="btn btn-secondary" onClick={() => fontInputRef.current?.click()}><Upload size={16} /> Load font</button>
+              </div>
+              <p className="ie-hint">
+                {layers.some(l => l.kind === 'text') ? 'Tap a text on the picture to edit it.' : 'Fonts you load are available until you close the editor.'}
+              </p>
+            </>
+          )
+        )}
+        <input ref={fontInputRef} type="file" accept=".ttf,.otf,.woff,.woff2,font/*" hidden onChange={uploadFont} />
+      </div>
+
+      <nav className="ie-tabs">
+        <button className={tab === 'crop' ? 'active' : ''} onClick={() => switchTab('crop')}><Crop size={20} /><span>Crop</span></button>
+        <button className={tab === 'filters' ? 'active' : ''} onClick={() => switchTab('filters')}><Sparkles size={20} /><span>Filters</span></button>
+        <button className={tab === 'watermark' ? 'active' : ''} onClick={() => switchTab('watermark')}><Stamp size={20} /><span>Watermark</span></button>
+        <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>
+      </nav>
+    </div>
+  );
+}
+
+interface BoxLike {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+}
