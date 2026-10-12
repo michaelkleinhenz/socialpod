@@ -750,6 +750,13 @@ class ApiClient {
     return this.request<{ message: string }>(`/radar/queue/${draftId}`, { method: 'DELETE' });
   }
 
+  setRadarRelease(draftId: string, germanRelease: import('../types').GermanRelease) {
+    return this.request<{ germanRelease: import('../types').GermanRelease }>(`/radar/queue/${draftId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ germanRelease }),
+    });
+  }
+
   generateRadar(draftIds: string[]) {
     return this.request<import('../types').RadarContent>('/radar/generate', {
       method: 'POST',

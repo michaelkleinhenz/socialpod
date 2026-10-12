@@ -236,6 +236,7 @@ func main() {
 		auth.GET("/radar/queue", radarHandler.Queue)
 		auth.POST("/radar/generate", radarHandler.Generate)
 		auth.DELETE("/radar/queue/:id", radarHandler.Remove)
+		auth.PUT("/radar/queue/:id", radarHandler.SetRelease)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 
 		// Feed

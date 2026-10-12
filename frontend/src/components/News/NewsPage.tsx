@@ -8,7 +8,7 @@ import { ImageCropper } from '../Common/ImageCropper';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import { CaptionChecker, RewriteInstagramButton, RadarScheduledMark } from '../PostEditor/InstagramTools';
-import { confirmRadarRemove, extractHandles, radarReleaseLabels } from '../../services/instagramGrowth';
+import { confirmRadarRemove, extractHandles, nextGermanRelease, radarReleaseLabels } from '../../services/instagramGrowth';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
 import './News.css';
@@ -579,6 +579,27 @@ export function NewsPage() {
     }
   }, [activeTab, pluginReady, loadRadarQueue]);
 
+  // Cycles the "Kommt es auf Deutsch?" badge: Offen → Ja → Nein → Offen.
+  const handleCycleRelease = async (entry: RadarQueueEntry) => {
+    const prev = entry.germanRelease;
+    const next = nextGermanRelease(prev);
+    const setRelease = (v: GermanRelease | undefined) => {
+      setRadarQueue(list => list.map(d => d.id === entry.id ? { ...d, germanRelease: v } : d));
+      // Keep the loaded lists in step, or saving the draft from the form
+      // would write the old value back.
+      const apply = (list: NewsDraft[]) => list.map(d => d.id === entry.id ? { ...d, germanRelease: v } : d);
+      setDrafts(apply);
+      setPostedDrafts(apply);
+    };
+    setRelease(next);
+    try {
+      await api.setRadarRelease(entry.id, next);
+    } catch (err) {
+      setRelease(prev);
+      toast.error(err instanceof Error ? err.message : 'Failed to update the badge');
+    }
+  };
+
   // Clears the draft's "Radar Post?" mark; the news itself stays.
   const handleRemoveFromRadar = async (entry: RadarQueueEntry) => {
     if (!confirmRadarRemove(entry)) return;
@@ -954,7 +975,7 @@ export function NewsPage() {
             gap: 6,
           }}
         >
-          <GalleryHorizontal size={14} /> Carousels {radarQueue.length > 0 && <span style={{
+          <GalleryHorizontal size={14} /> Radar List {radarQueue.length > 0 && <span style={{
             background: 'var(--bg-secondary, #1e293b)',
             color: 'var(--text-muted)',
             borderRadius: 10,
@@ -997,7 +1018,14 @@ export function NewsPage() {
                   <div className="radar-item-text" style={{ fontSize: 14 }}>
                     <strong>{entry.newsTagline || '(No tagline)'}</strong>
                     <span>
-                      {entry.germanRelease && <span className={`radar-badge ${entry.germanRelease}`}>{radarReleaseLabels[entry.germanRelease]}</span>}
+                      <button
+                        type="button"
+                        className={`radar-badge radar-badge-toggle ${entry.germanRelease || 'none'}`}
+                        onClick={() => handleCycleRelease(entry)}
+                        title="Kommt es auf Deutsch? Click to switch Offen → Ja → Nein"
+                      >
+                        {entry.germanRelease ? radarReleaseLabels[entry.germanRelease] : 'Deutsch?'}
+                      </button>
                       {format(new Date(entry.createdAt), 'MMM d, yyyy')}
                       {entry.posted ? ' · posted' : ' · draft'}
                       <RadarScheduledMark entry={entry} />
