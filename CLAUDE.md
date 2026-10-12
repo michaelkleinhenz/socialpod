@@ -57,9 +57,9 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 - `cmd/server/main.go` — wires all dependencies; defines four route groups: public `/api`, authenticated `/api` (JWT/API-token required), admin-only `/api/admin`, team-admin `/api/team`
 - `internal/config/` — loads all config from environment variables
 - `internal/database/mongo.go` — `MongoDB` wrapper that exposes typed collection accessors (`Posts()`, `Users()`, `Teams()`, etc.) and creates indexes on startup
-- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `footer.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`, `news_draft.go`, `episode_draft.go`)
-- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `footers.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`, `mcp.go`, `capture.go`)
-- `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context. The same bearer token authenticates both REST API and MCP requests.
+- `internal/models/` — BSON-tagged Go structs for each MongoDB collection (`post.go`, `user.go`, `team.go`, `social_account.go`, `footer.go`, `mention.go`, `convention.go`, `upload.go`, `watermark.go`, `team_invite.go`, `publisher_handle.go`, `news_draft.go`, `episode_draft.go`, `oauth.go`)
+- `internal/handlers/` — one file per handler group (`auth.go`, `posts.go`, `admin.go`, `inbox.go`, `footers.go`, `convention.go`, `mentions.go`, `invite.go`, `bgg.go`, `news.go`, `episode.go`, `publisher_handles.go`, `mcp.go`, `oauth.go`, `capture.go`)
+- `internal/middleware/auth.go` — `AuthRequired` tries three token types in order: JWT → user API token (`sm_...`) → team API token (`st_...`); sets `userId`, `isAdmin`, `isTeamAdmin`, `teamId` on the Gin context. The same bearer token authenticates both REST API and MCP requests. `MCPAuthRequired` guards `/api/mcp`: it additionally accepts OAuth access tokens (`spa_...`, `middleware/oauth.go`) and drops admin flags.
 - `internal/services/` — platform-specific: `bluesky.go`, `instagram.go`, `twitter.go`, `mastodon.go`, `threads.go`, `linkedin.go`, `youtube.go`; infrastructure: `scheduler.go`, `imageutil.go`, `email.go`
 
 The scheduler (`services/Scheduler`) runs every 30 seconds, queries for posts where `status == "scheduled"` and `scheduledAt <= now`, and publishes them. Footers are fetched from the DB and appended at publish time (not stored on the post itself).
@@ -71,7 +71,19 @@ A queue's watermark (`watermarkId`) is composited onto each image by `postItem` 
 ### MCP server (`handlers/mcp.go`)
 An MCP (Model Context Protocol) server is available at `POST /api/mcp` using the Streamable HTTP transport. It exposes all user-level operations as MCP tools: posts CRUD, footers, mentions, watermarks, accounts, profile, news drafts, and episode drafts. Authentication uses the same bearer token (`sm_...`) as the REST API — one token works for both interfaces.
 
-MCP clients (Claude Code, OpenCode, etc.) configure the server URL and an `Authorization: Bearer <token>` header. The MCP handler implements the JSON-RPC 2.0 protocol with `initialize`, `ping`, `tools/list`, and `tools/call` methods. Each tool performs the same database queries as the corresponding REST handler, respecting team/user scoping.
+MCP clients (Claude Code, OpenCode, etc.) configure the server URL and an `Authorization: Bearer <token>` header — or sign in with OAuth instead (below).
+
+The MCP endpoint has its own middleware, `middleware.MCPAuthRequired`, not `AuthRequired`. It accepts JWTs, API tokens and OAuth access tokens, and **always clears `isAdmin`/`isTeamAdmin`**: MCP exposes user features only, even for an admin (`get_profile` reports both as false). Never add an admin or team-admin tool to it. An unauthenticated request gets a 401 with `WWW-Authenticate: Bearer resource_metadata="…"`, which is how OAuth clients discover the authorization server.
+
+#### OAuth / OpenID Connect (`handlers/oauth.go`)
+Remote MCP clients that can't take a pasted token — Claude.ai custom connectors (and the Claude desktop/mobile apps, which share them), ChatGPT connectors, Claude Code's `/mcp` sign-in — use the built-in OAuth 2.1 authorization server, following the MCP authorization spec:
+
+- Discovery: `/.well-known/oauth-protected-resource` (RFC 9728), `/.well-known/oauth-authorization-server` (RFC 8414) and `/.well-known/openid-configuration`, each also under the `/api/mcp` path suffix. The issuer is `APP_URL`, which must therefore be the public HTTPS URL for Claude.ai or ChatGPT to connect — their servers make the calls.
+- Dynamic client registration at `POST /api/oauth/register` (RFC 7591). Redirect URIs must be https, http on loopback (any port matches, RFC 8252), or a native app's private-use scheme.
+- Authorization code + mandatory PKCE S256. The authorization endpoint is the SPA page `/oauth/authorize` (`OAuthConsentPage`): it sends a signed-out user through `/login?next=…`, then calls `GET /api/oauth/authorize` to validate the request and `POST /api/oauth/authorize` to approve or deny, and follows the returned `redirectUrl`. An unknown client or unregistered redirect URI is shown as an error and never redirected to.
+- `POST /api/oauth/token` (authorization_code, refresh_token with rotation), `POST /api/oauth/revoke`, `GET /api/oauth/userinfo`, `GET /api/oauth/jwks`. With the `openid` scope the token response carries an RS256 ID token; the signing key is generated on first use and stored in `oauth_keys`.
+- Tokens are opaque (`spa_` access, 1 h; `spr_` refresh, 90 days), stored only as SHA-256 hashes in `oauth_tokens`, with codes in `oauth_codes`; TTL indexes expire both. **OAuth access tokens are accepted by `/api/mcp` and userinfo only** — `AuthRequired` does not know them, so the REST API rejects them.
+- The Profile page lists connected apps (`GET /api/oauth/grants`) and disconnects one (`DELETE /api/oauth/grants/:clientId`, deletes all its tokens). Regenerating the API token does not affect OAuth connections. The MCP handler implements the JSON-RPC 2.0 protocol with `initialize`, `ping`, `tools/list`, and `tools/call` methods. Each tool performs the same database queries as the corresponding REST handler, respecting team/user scoping.
 
 MCP draft tools: `create_news_draft`, `list_news_drafts`, `get_news_draft`, `update_news_draft`, `delete_news_draft`, `post_news_draft`, `create_episode_draft`, `list_episode_drafts`, `get_episode_draft`, `update_episode_draft`, `delete_episode_draft`, `post_episode_draft`. Post drafts (post/story/reel) are regular posts created with `status: "draft"` via `create_post`.
 
@@ -131,7 +143,7 @@ Three roles with distinct Gin context keys:
 Posts and footers are scoped: if the user has a `teamId`, queries filter by team; otherwise by `userId`.
 
 ### Unified token authentication
-A single bearer token (`sm_...` prefix for users, `st_...` for teams) authenticates all external access: REST API calls (`/api/*`) and MCP requests (`/api/mcp`). Tokens are generated on the Profile page and passed as `Authorization: Bearer <token>`. Regenerating a token invalidates the previous one everywhere.
+A single bearer token (`sm_...` prefix for users, `st_...` for teams) authenticates all external access: REST API calls (`/api/*`) and MCP requests (`/api/mcp`). OAuth-connected MCP clients use their own tokens instead (see MCP server above), which work for `/api/mcp` only. Tokens are generated on the Profile page and passed as `Authorization: Bearer <token>`. Regenerating a token invalidates the previous one everywhere.
 
 ### Chrome extension (`chrome-extension/`)
 A Manifest V3 Chrome extension that captures the current browser tab (screenshot + extracted page images) and sends the data to a SocialPod server's `/api/capture` endpoint to create a draft. Supports news and post draft types — episode drafts are created in the web UI only. Users configure their SocialPod server URL and API token in the extension popup. `make chrome-extension` produces a `socialpod-capture.zip` ready for Chrome Web Store upload.

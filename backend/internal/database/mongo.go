@@ -113,6 +113,24 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "posted", Value: 1}, {Key: "updatedAt", Value: -1}}},
 	})
 
+	m.OAuthClients().Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "clientId", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+
+	// Codes and tokens expire on their own: the TTL index removes them once
+	// expiresAt has passed.
+	m.OAuthCodes().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "codeHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+	})
+
+	m.OAuthTokens().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "tokenHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "userId", Value: 1}, {Key: "clientId", Value: 1}}},
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+	})
+
 	log.Println("MongoDB indexes ensured")
 }
 
@@ -178,6 +196,22 @@ func (m *MongoDB) EpisodeDrafts() *mongo.Collection {
 
 func (m *MongoDB) TeamInvites() *mongo.Collection {
 	return m.Database.Collection("team_invites")
+}
+
+func (m *MongoDB) OAuthClients() *mongo.Collection {
+	return m.Database.Collection("oauth_clients")
+}
+
+func (m *MongoDB) OAuthCodes() *mongo.Collection {
+	return m.Database.Collection("oauth_codes")
+}
+
+func (m *MongoDB) OAuthTokens() *mongo.Collection {
+	return m.Database.Collection("oauth_tokens")
+}
+
+func (m *MongoDB) OAuthKeys() *mongo.Collection {
+	return m.Database.Collection("oauth_keys")
 }
 
 func (m *MongoDB) Close() {

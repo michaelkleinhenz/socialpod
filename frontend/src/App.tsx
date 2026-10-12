@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/Common/ErrorBoundary';
@@ -29,6 +29,7 @@ import { NewsPage } from './components/News/NewsPage';
 import { EpisodePage } from './components/Episode/EpisodePage';
 import { InvitePage } from './components/Auth/InvitePage';
 import { PrivacyPolicyPage } from './components/Auth/PrivacyPolicyPage';
+import { OAuthConsentPage } from './components/Auth/OAuthConsentPage';
 import './styles/global.css';
 
 // Register service worker for PWA / Web Share Target
@@ -55,16 +56,27 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
+// After signing in, go to the `next` param when it is a same-origin path (the
+// OAuth consent page sends users through login this way), else home. Read from
+// the router's location: LoginPage may already have moved window.location.
+function PostLoginRedirect() {
+  const [searchParams] = useSearchParams();
+  const next = searchParams.get('next');
+  return <Navigate to={next && next.startsWith('/') && !next.startsWith('//') ? next : '/'} replace />;
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth();
   if (loading) return <div className="loading-screen"><div className="spinner" /></div>;
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
+      <Route path="/login" element={user ? <PostLoginRedirect /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <RegisterPage />} />
       <Route path="/invite" element={user ? <Navigate to="/" /> : <InvitePage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      {/* OAuth authorization endpoint for MCP clients (Claude.ai, ChatGPT, ...) */}
+      <Route path="/oauth/authorize" element={<OAuthConsentPage />} />
       <Route path="/" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/log" element={<ProtectedRoute><Layout><LogPage /></Layout></ProtectedRoute>} />
       <Route path="/footers" element={<ProtectedRoute><Layout><FootersPage /></Layout></ProtectedRoute>} />

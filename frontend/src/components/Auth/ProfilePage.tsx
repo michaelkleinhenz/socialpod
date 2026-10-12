@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
-import { Key, Copy, RefreshCw, UsersRound, Lock, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { Key, Copy, RefreshCw, UsersRound, Lock, ChevronDown, ChevronRight, Check, Plug, Unplug } from 'lucide-react';
+import type { OAuthGrant } from '../../types';
 import toast from 'react-hot-toast';
 
 export function ProfilePage() {
@@ -347,8 +348,106 @@ curl -X POST ${restBaseUrl}/posts \\
             )}
           </>
         )}
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+        <ConnectedApps mcpUrl={mcpUrl} onCopy={copyToClipboard} />
       </div>
     </div>
+  );
+}
+
+// Apps connected to the MCP server through OAuth — Claude.ai custom
+// connectors, the Claude apps, ChatGPT — instead of a pasted API token. They
+// get user features only, never admin ones.
+function ConnectedApps({ mcpUrl, onCopy }: { mcpUrl: string; onCopy: (text: string, label?: string) => void }) {
+  const [grants, setGrants] = useState<OAuthGrant[] | null>(null);
+
+  const load = () => {
+    api.getOAuthGrants().then(setGrants).catch(() => setGrants([]));
+  };
+  useEffect(load, []);
+
+  const disconnect = async (g: OAuthGrant) => {
+    if (!confirm(`Disconnect ${g.clientName || 'this app'}? It will have to be approved again to reconnect.`)) return;
+    try {
+      await api.revokeOAuthGrant(g.clientId);
+      toast.success('App disconnected');
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Request failed');
+    }
+  };
+
+  return (
+    <>
+      <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Plug size={18} /> Connect Claude, ChatGPT &amp; other apps
+      </h3>
+      <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 12 }}>
+        Apps that support remote MCP servers with OAuth sign in with your SocialPod account — no token needed.
+        Add this URL as a custom connector, then approve the app when SocialPod asks:
+      </p>
+      <div style={{
+        background: 'var(--bg-primary)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '10px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        fontFamily: 'monospace',
+        fontSize: 13,
+        wordBreak: 'break-all',
+        marginBottom: 12,
+      }}>
+        <span style={{ flex: 1 }}>{mcpUrl}</span>
+        <button className="btn btn-ghost btn-sm" onClick={() => onCopy(mcpUrl, 'MCP URL copied')}>
+          <Copy size={14} />
+        </button>
+      </div>
+      <ul style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 12px', paddingLeft: 18 }}>
+        <li><strong>Claude</strong> (claude.ai, desktop and mobile apps): Settings → Connectors → Add custom connector.</li>
+        <li><strong>ChatGPT</strong>: Settings → Apps &amp; Connectors → Create (developer mode), authentication OAuth.</li>
+        <li><strong>Claude Code</strong>: <code style={codeInlineStyle}>claude mcp add --transport http socialpod {mcpUrl}</code>, then <code style={codeInlineStyle}>/mcp</code> to sign in.</li>
+      </ul>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+        Connected apps act as you with user features only — admin and team-admin functions are never available
+        through MCP. This server must be reachable from the internet for Claude.ai and ChatGPT to connect.
+      </p>
+
+      <label style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' }}>
+        Connected apps
+      </label>
+      {grants === null ? (
+        <div className="spinner" />
+      ) : grants.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>No apps connected.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {grants.map(g => (
+            <div key={g.clientId} style={{
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{g.clientName || 'Unnamed app'}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Last active {new Date(g.lastUsedAt).toLocaleString()}
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => disconnect(g)} title="Disconnect">
+                <Unplug size={14} /> Disconnect
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
