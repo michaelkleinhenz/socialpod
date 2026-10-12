@@ -107,6 +107,7 @@ export interface BGGGameData {
   suggestedContent: string;
   suggestedContentByPlatform?: Record<string, string>;
   suggestedHashtags?: string[];
+  publisherInstagramHandles?: string[];
 }
 
 export interface PublisherHandle {
@@ -121,12 +122,30 @@ export type PostStatus = 'draft' | 'scheduled' | 'published' | 'failed';
 export type PostType = 'post' | 'story' | 'reel';
 export type Platform = 'bluesky' | 'instagram' | 'twitter' | 'mastodon' | 'threads' | 'linkedin' | 'youtube';
 
+export interface PostInsights {
+  mediaProductType?: string;
+  permalink?: string;
+  reach: number;
+  views: number;
+  shares: number;
+  saved: number;
+  likes: number;
+  comments: number;
+  totalInteractions: number;
+  follows: number;
+  profileVisits: number;
+  fetchedAt: string;
+  error?: string;
+}
+
 export interface PostResult {
   platform: Platform;
   success: boolean;
   postId?: string;
   error?: string;
+  warning?: string;
   postedAt?: string;
+  insights?: PostInsights;
 }
 
 export interface NewsResult {
@@ -161,9 +180,14 @@ export interface Post {
   footerIds?: Record<string, string>;
   contentOverrides?: Record<string, string>;
   episodeNews?: EpisodeNews;
+  collaborators?: string[];
+  userTags?: string[];
+  radarDraftIds?: string[];
   createdAt: string;
   updatedAt: string;
 }
+
+export type GermanRelease = 'ja' | 'nein' | 'offen';
 
 export interface NewsDraft {
   id: string;
@@ -184,6 +208,9 @@ export interface NewsDraft {
   accountIds?: Record<string, string>;
   firstComment?: string;
   postType?: PostType;
+  radar?: boolean;
+  germanRelease?: GermanRelease;
+  radarPostId?: string;
   posted?: boolean;
   postedAt?: string;
   createdAt: string;
@@ -437,4 +464,138 @@ export interface OAuthGrant {
   clientId: string;
   clientName: string;
   lastUsedAt: string;
+}
+
+// ─── Instagram growth ────────────────────────────────────────────────────────
+
+export type SlotFormat = 'reel' | 'carousel' | 'image' | 'story' | 'any';
+
+export interface WeeklyPlanSlot {
+  id: string;
+  /** 0 = Monday … 6 = Sunday */
+  weekday: number;
+  time?: string;
+  format: SlotFormat;
+  label?: string;
+}
+
+export interface InstagramGoal {
+  target: number;
+  startDate: string;
+  endDate: string;
+  startFollowers?: number;
+  halfwayDate?: string;
+  halfwayThreshold?: number;
+}
+
+export interface RadarSettings {
+  title?: string;
+  badgeQuestion?: string;
+  coverImageUrl?: string;
+  closingImageUrl?: string;
+  closingText?: string;
+  captionIntro?: string;
+  captionOutro?: string;
+  accentColor?: string;
+}
+
+export interface GrowthSettings {
+  instagramGoal?: InstagramGoal;
+  weeklyPlan: WeeklyPlanSlot[];
+  maxSingleImagesPerWeek?: number;
+  instagramRewritePrompt?: string;
+  radar?: RadarSettings;
+}
+
+export interface GoalWeek {
+  start: string;
+  end: string;
+  net: number | null;
+  required: number;
+  current: boolean;
+}
+
+export interface GoalProgress {
+  goal: InstagramGoal;
+  startFollowers: number | null;
+  currentFollowers: number | null;
+  currentDate?: string;
+  requiredPerWeek: number;
+  totalWeeks: number;
+  progress: number | null;
+  expectedToday: number | null;
+  series: { date: string; followers: number }[];
+  weeks: GoalWeek[];
+  halfway: 'pending' | 'ok' | 'below';
+  halfwayDate: string;
+  halfwayProgress?: number;
+}
+
+export type ReportFormat = 'reel' | 'carousel' | 'image';
+
+export interface PostPerformance {
+  postId: string;
+  format: ReportFormat | 'story';
+  postedAt: string;
+  caption: string;
+  imageUrl?: string;
+  permalink?: string;
+  reach: number;
+  views: number;
+  shares: number;
+  saved: number;
+  likes: number;
+  comments: number;
+  follows: number;
+  profileVisits: number;
+  sendsPerReach: number;
+  savesPerReach: number;
+  score: number;
+  hasInsights: boolean;
+  insightsError?: string;
+  adCandidate: boolean;
+}
+
+export interface FormatStats {
+  format: ReportFormat;
+  posts: number;
+  withInsights: number;
+  reach: number;
+  shares: number;
+  saved: number;
+  follows: number;
+  avgReach: number;
+  sendsPerReach: number;
+  savesPerReach: number;
+}
+
+export interface WeeklyReport {
+  start: string;
+  end: string;
+  posts: PostPerformance[];
+  topPosts: PostPerformance[];
+  formats: FormatStats[];
+  weakestFormat?: ReportFormat;
+  stories: number;
+  missingInsights: number;
+  followersStart?: number;
+  followersEnd?: number;
+  netFollowers?: number;
+}
+
+export interface GrowthOverview {
+  accounts: { id: string; accountName: string; avatarUrl?: string }[];
+  accountId?: string;
+  settings: GrowthSettings;
+  goal?: GoalProgress;
+  latestSnapshot?: { date: string; followersCount: number; followsCount: number; mediaCount: number; updatedAt: string };
+  report: WeeklyReport;
+  adCandidates: PostPerformance[];
+}
+
+export interface RadarContent {
+  imageUrls: string[];
+  caption: string;
+  userTags: string[];
+  draftIds: string[];
 }

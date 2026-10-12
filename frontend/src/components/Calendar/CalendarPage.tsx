@@ -3,11 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
   format, addMonths, subMonths, addWeeks, subWeeks, addDays, subDays,
-  startOfDay, endOfDay, isSameMonth, isSameDay, isToday, parseISO,
+  startOfDay, endOfDay, isSameMonth, isSameDay, isToday, parseISO, getISOWeek,
 } from 'date-fns';
 import { DndContext, type DragEndEvent, DragOverlay, type DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { api } from '../../services/api';
-import type { Post, PostType, Platform, SocialAccount } from '../../types';
+import type { Post, PostType, Platform, SocialAccount, GrowthSettings, WeeklyPlanSlot } from '../../types';
+import { openSlotsForDay, weekMix } from '../../services/instagramGrowth';
+import { PlanSlotGhost, WeekMixBar } from './PlanSlots';
 import { PostEditor } from '../PostEditor/PostEditor';
 import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
@@ -42,6 +44,10 @@ export function CalendarPage() {
   // in a spinner would resize the panel on every tab switch.
   const [draftsLoaded, setDraftsLoaded] = useState(false);
   const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null);
+  // The team's weekly Instagram plan: open slots show up as placeholders and
+  // each week gets a format-mix line. Both need the unfiltered posts, so they
+  // hide while a filter is on.
+  const [growthSettings, setGrowthSettings] = useState<GrowthSettings | null>(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
@@ -85,6 +91,49 @@ export function CalendarPage() {
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   useEffect(() => { api.getActiveAccounts().then(setAccounts).catch(() => {}); }, []);
+  useEffect(() => { api.getGrowthSettings().then(setGrowthSettings).catch(() => {}); }, []);
+
+  const planSlots: WeeklyPlanSlot[] = growthSettings?.weeklyPlan ?? [];
+  const showPlan = planSlots.length > 0 && !filterPlatform && !filterStatus
+    && accounts.some(a => a.platform === 'instagram');
+  const todayStart = startOfDay(new Date());
+
+  // Open slots of a day. Past days are left alone: a gap there can no longer
+  // be filled.
+  const openSlots = (day: Date) =>
+    showPlan && day >= todayStart ? openSlotsForDay(day, planSlots, getPostsForDay(day)) : [];
+
+  const createFromSlot = (day: Date, slot: WeeklyPlanSlot) => {
+    const at = new Date(day);
+    const [h, m] = (slot.time || '12:00').split(':').map(Number);
+    at.setHours(h, m, 0, 0);
+    handleCreatePost(at, slot.format === 'reel' ? 'reel' : slot.format === 'story' ? 'story' : 'post');
+  };
+
+  // Weeks shown for the mix: the visible week, or every row of the month.
+  const mixWeeks = viewMode === 'week'
+    ? [weekStart]
+    : viewMode === 'month'
+      ? eachDayOfInterval({ start: calStart, end: calEnd }).filter((_, i) => i % 7 === 0)
+      : [];
+  const renderMix = () => showPlan && mixWeeks.length > 0 && (
+    <div className="week-mix-list">
+      {mixWeeks.map(ws => {
+        const we = endOfWeek(ws, { weekStartsOn: 1 });
+        const weekPosts = posts.filter(p => {
+          const d = parseISO(p.scheduledAt);
+          return d >= ws && d <= we;
+        });
+        return (
+          <WeekMixBar
+            key={ws.toISOString()}
+            label={`Week ${getISOWeek(ws)}`}
+            mix={weekMix(weekPosts, planSlots, growthSettings?.maxSingleImagesPerWeek ?? 2)}
+          />
+        );
+      })}
+    </div>
+  );
 
   const fetchDrafts = useCallback(async () => {
     try {
@@ -479,6 +528,8 @@ export function CalendarPage() {
         </div>
       )}
 
+      {activeTab === 'calendar' && renderMix()}
+
       {activeTab === 'calendar' && (
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {viewMode === '3day' ? (
@@ -508,6 +559,9 @@ export function CalendarPage() {
                           <DraggablePost key={post.id} id={post.id}>
                             <CalendarPost post={post} onClick={() => handleEditPost(post)} />
                           </DraggablePost>
+                        ))}
+                        {openSlots(day).map(slot => (
+                          <PlanSlotGhost key={slot.id} slot={slot} onCreate={() => createFromSlot(day, slot)} />
                         ))}
                       </div>
                       <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }} disabled={!hasAccounts}>
@@ -546,6 +600,9 @@ export function CalendarPage() {
                           <DraggablePost key={post.id} id={post.id}>
                             <CalendarPost post={post} onClick={() => handleEditPost(post)} />
                           </DraggablePost>
+                        ))}
+                        {openSlots(day).map(slot => (
+                          <PlanSlotGhost key={slot.id} slot={slot} onCreate={() => createFromSlot(day, slot)} />
                         ))}
                       </div>
                       <button className="add-post-btn week-add-btn" onClick={(e) => { e.stopPropagation(); handleCreatePost(day); }} disabled={!hasAccounts}>
@@ -592,6 +649,13 @@ export function CalendarPage() {
                             <CalendarPost post={post} onClick={() => handleEditPost(post)} />
                           </DraggablePost>
                         ))}
+                        {isSameMonth(day, currentDate) && openSlots(day).length > 0 && (
+                          <div className="plan-slot-row">
+                            {openSlots(day).map(slot => (
+                              <PlanSlotGhost key={slot.id} slot={slot} compact onCreate={() => createFromSlot(day, slot)} />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </DroppableDay>

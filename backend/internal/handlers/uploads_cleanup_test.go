@@ -55,6 +55,8 @@ func TestUploadReferencesCoverOwningCollections(t *testing.T) {
 		"convention_queue_items.imageUrl",
 		"convention_queue_items.imageUrls",
 		"watermarks.url",
+		"teams.growth.radar.coverImageUrl",
+		"teams.growth.radar.closingImageUrl",
 	}
 	for _, w := range want {
 		if !got[w] {

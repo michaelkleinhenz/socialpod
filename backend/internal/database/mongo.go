@@ -113,6 +113,11 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "posted", Value: 1}, {Key: "updatedAt", Value: -1}}},
 	})
 
+	m.FollowerSnapshots().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "accountId", Value: 1}, {Key: "date", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "teamId", Value: 1}, {Key: "date", Value: 1}}},
+	})
+
 	m.OAuthClients().Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "clientId", Value: 1}},
 		Options: options.Index().SetUnique(true),
@@ -196,6 +201,10 @@ func (m *MongoDB) EpisodeDrafts() *mongo.Collection {
 
 func (m *MongoDB) TeamInvites() *mongo.Collection {
 	return m.Database.Collection("team_invites")
+}
+
+func (m *MongoDB) FollowerSnapshots() *mongo.Collection {
+	return m.Database.Collection("follower_snapshots")
 }
 
 func (m *MongoDB) OAuthClients() *mongo.Collection {

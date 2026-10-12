@@ -45,6 +45,7 @@ type Team struct {
 	ScenePromptTemplate        string              `bson:"scenePromptTemplate,omitempty" json:"scenePromptTemplate,omitempty"`
 	AgentSystemPrompt          string              `bson:"agentSystemPrompt,omitempty" json:"agentSystemPrompt,omitempty"`
 	EnabledPlugins          []string            `bson:"enabledPlugins,omitempty" json:"enabledPlugins,omitempty"`
+	Growth                  *TeamGrowthSettings `bson:"growth,omitempty" json:"-"`
 	CreatedAt               time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt               time.Time           `bson:"updatedAt" json:"updatedAt"`
 }

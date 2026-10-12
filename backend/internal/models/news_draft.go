@@ -26,6 +26,14 @@ type NewsDraft struct {
 	AccountIDs       map[string]string   `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
 	FirstComment     string              `bson:"firstComment,omitempty" json:"firstComment,omitempty"`
 	PostType         PostType            `bson:"postType,omitempty" json:"postType,omitempty"`
+	// Radar puts the draft in the Radar queue, from which the "Radar der
+	// Woche" carousel is built. GermanRelease is the badge on its slide:
+	// "ja", "nein" or "offen".
+	Radar         bool                `bson:"radar,omitempty" json:"radar,omitempty"`
+	GermanRelease string              `bson:"germanRelease,omitempty" json:"germanRelease,omitempty"`
+	// RadarPostID is the post that carries this draft's Radar slide; set, it
+	// takes the draft out of the Radar queue.
+	RadarPostID   *primitive.ObjectID `bson:"radarPostId,omitempty" json:"radarPostId,omitempty"`
 	Posted           bool                `bson:"posted" json:"posted"`
 	PostedAt         *time.Time          `bson:"postedAt,omitempty" json:"postedAt,omitempty"`
 	CreatedAt        time.Time           `bson:"createdAt" json:"createdAt"`

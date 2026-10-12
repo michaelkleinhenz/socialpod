@@ -1,0 +1,131 @@
+.growth-page .page-header h1,
+.growth-section h2 { display: flex; align-items: center; gap: 10px; }
+
+.growth-section { margin-bottom: 32px; display: flex; flex-direction: column; gap: 12px; }
+.growth-section h2 { font-size: 18px; font-weight: 600; }
+.section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.section-intro { color: var(--text-secondary); font-size: 13px; margin-top: -4px; }
+.growth-notice { padding: 16px; color: var(--text-secondary); font-size: 14px; }
+.growth-page .muted { color: var(--text-muted); }
+.card-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+
+.growth-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.growth-alert div { display: flex; flex-direction: column; }
+.growth-alert span { color: var(--text-secondary); }
+.growth-alert svg { flex-shrink: 0; margin-top: 2px; }
+.growth-alert.danger { border-color: rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.08); }
+.growth-alert.danger svg { color: var(--danger); }
+.growth-alert.ok svg { color: var(--success); }
+.growth-alert.neutral svg { color: var(--text-muted); }
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+.stat-tile.warn { border-color: rgba(245, 158, 11, 0.5); }
+.stat-label { font-size: 12px; color: var(--text-secondary); }
+.stat-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.stat-value.small { font-size: 20px; }
+.stat-sub { font-size: 12px; color: var(--text-muted); }
+
+/* Follower chart */
+.follower-chart { position: relative; }
+.follower-chart svg { display: block; }
+.chart-grid { stroke: var(--border); stroke-width: 1; opacity: 0.6; }
+.chart-axis { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-followers { fill: none; stroke: #818cf8; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-target { stroke: #64748b; stroke-width: 2; stroke-dasharray: 6 5; }
+.chart-halfway { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart-crosshair { stroke: var(--text-secondary); stroke-width: 1; }
+.chart-dot { fill: #818cf8; stroke: var(--bg-card); stroke-width: 2; }
+.chart-label { fill: var(--text-primary); font-size: 12px; font-weight: 600; }
+.chart-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-line { display: inline-block; width: 18px; height: 0; border-top: 2px solid #818cf8; }
+.legend-line.target { border-top: 2px dashed #64748b; }
+.legend-line.halfway { border-top: 1px dotted var(--text-muted); }
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  min-width: 140px;
+}
+
+/* Tables */
+.goal-weeks table, .format-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.goal-weeks th, .format-table th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 12px; padding: 4px 8px; }
+.goal-weeks td, .format-table td { padding: 6px 8px; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.goal-weeks tr.current td { background: var(--accent-muted); }
+.format-table tr.weakest td { color: var(--warning); }
+.status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.status.ok { color: var(--success); }
+.status.behind { color: var(--warning); }
+.goal-weeks, .format-table { overflow-x: auto; }
+
+.week-picker { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-secondary); }
+
+/* Post rows */
+.perf-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.perf-row:first-of-type { border-top: none; }
+.perf-rank { width: 20px; font-weight: 700; color: var(--accent-hover); text-align: center; }
+.perf-row img, .perf-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; background: var(--bg-tertiary); flex-shrink: 0; }
+.perf-main { flex: 1; min-width: 0; }
+.perf-caption { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.perf-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.ad-flag { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 8px; background: var(--accent-muted); color: var(--accent-hover); }
+.perf-numbers { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.perf-numbers strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.perf-numbers em { font-style: normal; color: var(--text-muted); }
+.all-posts summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); }
+
+@media (max-width: 768px) {
+  .perf-row { flex-wrap: wrap; }
+  .perf-numbers { width: 100%; flex-wrap: wrap; gap: 8px 14px; }
+}
+
+/* Settings page */
+.growth-settings .card { padding: 20px; margin-bottom: 16px; }
+.growth-settings h3 { font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.growth-settings .card > p.hint { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.slot-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.slot-table td, .slot-table th { padding: 4px 6px; text-align: left; }
+.slot-table th { color: var(--text-muted); font-weight: 500; font-size: 12px; }
+.slot-table input, .slot-table select { width: 100%; }
+.slide-picker { display: flex; gap: 12px; align-items: flex-start; }
+.slide-preview {
+  width: 96px; height: 120px; border-radius: 6px; border: 1px dashed var(--border-light);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--text-muted); font-size: 11px; text-align: center;
+  flex-shrink: 0;
+}
+.slide-preview img { width: 100%; height: 100%; object-fit: cover; }

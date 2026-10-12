@@ -1749,6 +1749,10 @@ Recent post content snippets:
 		hourCounts, weekdayCounts,
 		formatSnippets(recentContents),
 	)
+	// Real Instagram numbers, when there are any, outweigh posting counts.
+	if ig := instagramPerformanceSummary(ctx, h.DB, c); ig != "" {
+		summary += "\n\n" + ig
+	}
 
 	model := settings.OpenRouterModel
 	if model == "" {
@@ -1771,7 +1775,7 @@ Recent post content snippets:
   ]
 }
 
-Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). Reply ONLY with valid JSON, no markdown fences.`
+Provide exactly 4 stats (pick the most insightful metrics like posting frequency, success rate, platform balance, consistency) and 3-5 recommendations based on the data. Recommendations should be specific and actionable (e.g. best times to post, content gaps, platform strategy, posting frequency suggestions). When Instagram performance data is included, base the stats and recommendations primarily on it: sends and saves per reach by format, the best posts, and follower growth against the goal. Reply ONLY with valid JSON, no markdown fences.`
 	}
 	systemPrompt += langInstr
 
