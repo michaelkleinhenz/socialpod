@@ -78,7 +78,7 @@ export function InstagramPeople({ collaborators, onCollaborators, tags, onTags, 
       </div>
       <div className="form-group">
         <label title="Tagged accounts are notified. Accounts @mentioned in the Instagram text are added automatically.">
-          <AtSign size={14} /> Tagged on the image <span className="first-comment-label-hint">(from @mentions, editable)</span>
+          <AtSign size={14} /> Image tags
         </label>
         <HandleChips values={tags} onChange={onTags} onRemove={onRemoveTag} max={20} placeholder="Mention a publisher with @ in the text, or add one here" />
       </div>
