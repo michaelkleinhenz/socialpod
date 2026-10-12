@@ -7,6 +7,8 @@ import { LoginPage } from './components/Auth/LoginPage';
 import { RegisterPage } from './components/Auth/RegisterPage';
 import { CalendarPage } from './components/Calendar/CalendarPage';
 import { AdminPage } from './components/Admin/AdminPage';
+import { GrowthPage } from './components/Growth/GrowthPage';
+import { GrowthSettingsPage } from './components/Growth/GrowthSettingsPage';
 import { AccountsPage } from './components/Admin/AccountsPage';
 import { SettingsPage } from './components/Admin/SettingsPage';
 import { UsersPage } from './components/Admin/UsersPage';
@@ -82,6 +84,8 @@ function AppRoutes() {
       <Route path="/footers" element={<ProtectedRoute><Layout><FootersPage /></Layout></ProtectedRoute>} />
       <Route path="/mentions" element={<ProtectedRoute><Layout><MentionsPage /></Layout></ProtectedRoute>} />
       <Route path="/feed" element={<ProtectedRoute><Layout><FeedPage /></Layout></ProtectedRoute>} />
+      <Route path="/growth" element={<ProtectedRoute><Layout><GrowthPage /></Layout></ProtectedRoute>} />
+      <Route path="/admin/growth" element={<ProtectedRoute teamAdminOnly><Layout><GrowthSettingsPage /></Layout></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Layout><ProfilePage /></Layout></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute teamAdminOnly><Layout><AdminPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/accounts" element={<ProtectedRoute adminOnly><Layout><AccountsPage /></Layout></ProtectedRoute>} />

@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload } from 'lucide-react';
+import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark, RadarContent } from '../../types';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, Radar } from 'lucide-react';
+import { CaptionChecker, InsightsStrip, InstagramPeople, RadarPicker } from './InstagramTools';
+import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import toast from 'react-hot-toast';
@@ -448,6 +450,23 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [cropWatermarkId, setCropWatermarkId] = useState('');
   const [cropWatermarkImg, setCropWatermarkImg] = useState<HTMLImageElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  // Instagram extras. Tags follow the @mentions of the Instagram text; the
+  // two lists record what was added or removed by hand on top of that.
+  const initialIgText = post ? (post.contentOverrides?.['instagram'] || post.content || '') : '';
+  const [collaborators, setCollaborators] = useState<string[]>(post?.collaborators ?? []);
+  const [extraTags, setExtraTags] = useState<string[]>(() => {
+    const auto = new Set(extractHandles(initialIgText).map(h => h.toLowerCase()));
+    return (post?.userTags ?? []).filter(t => !auto.has(t.toLowerCase()));
+  });
+  const [removedTags, setRemovedTags] = useState<string[]>(() => {
+    if (!post?.userTags) return [];
+    const kept = new Set(post.userTags.map(t => t.toLowerCase()));
+    return extractHandles(initialIgText).filter(h => !kept.has(h.toLowerCase()));
+  });
+  const [radarDraftIds, setRadarDraftIds] = useState<string[]>(post?.radarDraftIds ?? []);
+  const [radarOpen, setRadarOpen] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
+  const [insightsPost, setInsightsPost] = useState<Post | null>(post ?? null);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -886,6 +905,99 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
+
+  // The Instagram caption as it will go out: the Instagram text (its own
+  // override when texts are per platform) plus the Instagram footer.
+  const perPlatform = customizePerPlatform && platforms.length > 1;
+  const igSelected = isReel || (!isStory && platforms.includes('instagram'));
+  const igText = perPlatform ? (contentOverrides['instagram'] ?? '') : content;
+  const igFooter = isReel ? '' : (footers.find(f => f.id === footerIds['instagram'])?.content ?? '');
+  const igCaption = igFooter ? `${igText}\n${igFooter}` : igText;
+  const blueskyText = !isReel && platforms.includes('bluesky')
+    ? (perPlatform ? (contentOverrides['bluesky'] ?? '') : content)
+    : undefined;
+  const userTags = useMemo(() => {
+    const removed = new Set(removedTags.map(t => t.toLowerCase()));
+    const self = (instagramAccount?.accountName ?? '').toLowerCase();
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const h of [...extractHandles(igCaption), ...extraTags]) {
+      const key = h.toLowerCase();
+      if (seen.has(key) || removed.has(key) || key === self) continue;
+      seen.add(key);
+      out.push(h);
+    }
+    return out.slice(0, 20);
+  }, [igCaption, extraTags, removedTags, instagramAccount?.accountName]);
+
+  const setTags = (next: string[]) => {
+    const current = new Set(userTags.map(t => t.toLowerCase()));
+    const added = next.filter(t => !current.has(t.toLowerCase()));
+    setExtraTags(prev => [...prev, ...added]);
+    setRemovedTags(prev => prev.filter(r => !added.some(a => a.toLowerCase() === r.toLowerCase())));
+  };
+  const removeTag = (handle: string) => {
+    setRemovedTags(prev => [...prev, handle]);
+    setExtraTags(prev => prev.filter(t => t.toLowerCase() !== handle.toLowerCase()));
+  };
+
+  // Writes text into the Instagram caption: the Instagram override when texts
+  // are per platform (turning that on, if several platforms share one text),
+  // else the shared text.
+  const setInstagramText = (text: string) => {
+    if (!isReel && platforms.length > 1) {
+      if (!customizePerPlatform) {
+        const overrides: Record<string, string> = {};
+        for (const p of platforms) overrides[p] = content;
+        overrides['instagram'] = text;
+        setContentOverrides(overrides);
+        setContent('');
+        setCustomizePerPlatform(true);
+      } else {
+        setContentOverrides(prev => ({ ...prev, instagram: text }));
+      }
+    } else {
+      setContent(text);
+    }
+  };
+
+  const rewriteForInstagram = async () => {
+    const source = igText.trim() || content.trim();
+    if (!source) { toast.error('Write a text first'); return; }
+    setRewriting(true);
+    try {
+      const { text } = await api.rewriteForInstagram(source);
+      setInstagramText(text);
+      toast.success('Instagram caption rewritten');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Rewrite failed');
+    } finally {
+      setRewriting(false);
+    }
+  };
+
+  // Radar Content replaces this post's text and images with the generated
+  // carousel. It is an Instagram post: other platforms are switched off.
+  const applyRadar = (radar: RadarContent) => {
+    const hasContent = content.trim() || Object.values(contentOverrides).some(v => v.trim()) || images.length > 0;
+    if (hasContent && !window.confirm('Replace this post\'s text and images with the Radar carousel?')) return;
+    images.forEach(item => {
+      if (item.kind === 'file') {
+        const cached = objUrlCache.current.get(item.file);
+        if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(item.file); }
+      }
+    });
+    setImages(radar.imageUrls.map(url => ({ kind: 'url' as const, url })));
+    if (instagramAccount) setPlatforms(['instagram']);
+    setCustomizePerPlatform(false);
+    setContentOverrides({});
+    setContent(radar.caption);
+    setExtraTags(radar.userTags);
+    setRemovedTags([]);
+    setRadarDraftIds(radar.draftIds);
+    setRadarOpen(false);
+    toast.success(`Radar carousel added: ${radar.imageUrls.length} slides`);
+  };
   const twitterAccount = accounts.find(a => a.platform === 'twitter') ?? null;
   const mastodonAccount = accounts.find(a => a.platform === 'mastodon') ?? null;
   const threadsAccount = accounts.find(a => a.platform === 'threads') ?? null;
@@ -945,6 +1057,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         footerIds: (isStory || isReel) ? {} : footerIds,
         contentOverrides: (isStory || isReel || !customizePerPlatform) ? {} : contentOverrides,
         accountIds,
+        collaborators: igSelected ? collaborators : [],
+        userTags: igSelected ? userTags : [],
+        radarDraftIds,
       };
 
       await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
@@ -959,7 +1074,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || JSON.stringify(platforms) !== JSON.stringify(post?.platforms || ['bluesky'])
     || images.length !== (post?.imageUrls || []).length
     || JSON.stringify(footerIds) !== JSON.stringify(post?.footerIds || {})
-    || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {});
+    || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {})
+    || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || [])
+    || JSON.stringify(radarDraftIds) !== JSON.stringify(post?.radarDraftIds || []);
 
   const fetchBGGData = async () => {
     if (!bggUrl.trim()) return;
@@ -974,6 +1091,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         const blob = new Blob([arr], { type: 'image/jpeg' });
         const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
         setImages(prev => [{ kind: 'file', file }, ...prev]);
+      }
+      // The publishers are the natural collab partners for a game post.
+      if (collaborators.length === 0 && data.publisherInstagramHandles?.length) {
+        setCollaborators(data.publisherInstagramHandles.slice(0, 3));
       }
       const hashtagSuffix = (data.suggestedHashtags && data.suggestedHashtags.length > 0)
         ? '\n\n' + data.suggestedHashtags.join(' ')
@@ -1057,6 +1178,26 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
         <div className="editor-layout">
           <div className="editor-body">
+            {!isStory && !isReel && (
+              <div className="editor-toolbar">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setRadarOpen(true)}
+                  title="Build this week's Radar carousel from the queued news"
+                >
+                  <Radar size={14} /> Radar Content
+                </button>
+                {radarDraftIds.length > 0 && (
+                  <span className="editor-toolbar-note">Carries {radarDraftIds.length} Radar news</span>
+                )}
+              </div>
+            )}
+
+            {insightsPost && (insightsPost.status === 'published' || insightsPost.status === 'failed') && (
+              <InsightsStrip post={insightsPost} onUpdated={setInsightsPost} />
+            )}
+
             {accountsError && (
               <div className="accounts-error-banner">
                 <AlertTriangle size={14} />
@@ -1311,6 +1452,26 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   )}
                 </div>
 
+                {igSelected && (
+                  <>
+                    <CaptionChecker
+                      text={igCaption}
+                      blueskyText={blueskyText}
+                      taggedCount={userTags.length + collaborators.length}
+                      aiEnabled={aiEnabled}
+                      rewriting={rewriting}
+                      onRewrite={rewriteForInstagram}
+                    />
+                    <InstagramPeople
+                      collaborators={collaborators}
+                      onCollaborators={setCollaborators}
+                      tags={userTags}
+                      onTags={setTags}
+                      onRemoveTag={removeTag}
+                    />
+                  </>
+                )}
+
                 {/* Footer selectors */}
                 {footers.length > 0 && platforms.length > 0 && (() => {
                   const footerPlatformLabels: Record<string, string> = {
@@ -1414,6 +1575,20 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     </div>
                   </div>
                 </div>
+                <CaptionChecker
+                  text={igCaption}
+                  taggedCount={userTags.length + collaborators.length}
+                  aiEnabled={aiEnabled}
+                  rewriting={rewriting}
+                  onRewrite={rewriteForInstagram}
+                />
+                <InstagramPeople
+                  collaborators={collaborators}
+                  onCollaborators={setCollaborators}
+                  tags={userTags}
+                  onTags={setTags}
+                  onRemoveTag={removeTag}
+                />
               </>
             )}
 
@@ -1576,6 +1751,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           </div>
         </div>
       </div>
+
+      {radarOpen && <RadarPicker onClose={() => setRadarOpen(false)} onApply={applyRadar} />}
 
       {editingImageIdx !== null && (
         <div className="image-editor-overlay">

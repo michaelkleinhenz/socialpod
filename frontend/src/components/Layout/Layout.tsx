@@ -6,7 +6,7 @@ import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
   ScrollText, UsersRound, Signature, Image, LayoutGrid,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
-  Newspaper, Mic,
+  Newspaper, Mic, TrendingUp, Target,
 } from 'lucide-react';
 import './Layout.css';
 
@@ -46,6 +46,7 @@ export function Layout({ children }: { children: ReactNode }) {
       children: [
         { kind: 'leaf' as const, path: '/', icon: Calendar, label: 'Calendar' },
         { kind: 'leaf' as const, path: '/feed', icon: LayoutGrid, label: 'Feed' },
+        ...(user?.teamId ? [{ kind: 'leaf' as const, path: '/growth', icon: TrendingUp, label: 'Growth' }] : []),
         { kind: 'leaf' as const, path: '/log', icon: ScrollText, label: 'Post Log' },
         { kind: 'leaf' as const, path: '/convention', icon: Tent, label: 'Convention' },
         ...(newsPluginEnabled ? [{ kind: 'leaf' as const, path: '/news', icon: Newspaper, label: 'News' }] : []),
@@ -78,9 +79,10 @@ export function Layout({ children }: { children: ReactNode }) {
           { kind: 'leaf' as const, path: '/admin/my-team', icon: UsersRound, label: 'Team' },
           { kind: 'leaf' as const, path: '/admin/team-accounts', icon: Share2, label: 'Accounts' },
         ]),
+        ...(user?.teamId ? [{ kind: 'leaf' as const, path: '/admin/growth', icon: Target, label: 'Growth Settings' }] : []),
       ],
     }] : []),
-  ], [user?.isAdmin, user?.isTeamAdmin, newsPluginEnabled, episodePluginEnabled]);
+  ], [user?.isAdmin, user?.isTeamAdmin, user?.teamId, newsPluginEnabled, episodePluginEnabled]);
 
   const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null);
   const groupButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});

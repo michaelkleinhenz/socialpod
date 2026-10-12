@@ -102,6 +102,9 @@ type BGGGameResponse struct {
 	SuggestedContent            string            `json:"suggestedContent"`
 	SuggestedContentByPlatform  map[string]string `json:"suggestedContentByPlatform,omitempty"`
 	SuggestedHashtags           []string          `json:"suggestedHashtags,omitempty"`
+	// PublisherInstagramHandles are the publishers' Instagram usernames, the
+	// PostEditor's default collaborators.
+	PublisherInstagramHandles []string `json:"publisherInstagramHandles,omitempty"`
 }
 
 var (
@@ -212,9 +215,16 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 
 	// Resolve social handles if enabled for this team and OpenRouter is configured.
 	var contentByPlatform map[string]string
+	var publisherIG []string
 	if settings.OpenRouterAPIKey != "" && h.teamHandleLookupEnabled(ctx, c) {
-		allNames := append(append(publishers, designers...), artists...)
+		allNames := append(append([]string{}, publishers...), designers...)
+		allNames = append(allNames, artists...)
 		handlesByPlatform := h.resolveHandlesWithAI(ctx, allNames, settings)
+		for _, p := range publishers {
+			if handle := strings.TrimSpace(handlesByPlatform["instagram"][p]); handle != "" {
+				publisherIG = append(publisherIG, strings.TrimPrefix(handle, "@"))
+			}
+		}
 		if len(handlesByPlatform) > 0 {
 			contentByPlatform = make(map[string]string)
 			for platform, handles := range handlesByPlatform {
@@ -252,6 +262,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		SuggestedContent:           baseContent,
 		SuggestedContentByPlatform: contentByPlatform,
 		SuggestedHashtags:          suggestedHashtags,
+		PublisherInstagramHandles:  publisherIG,
 	}
 	c.JSON(http.StatusOK, resp)
 }

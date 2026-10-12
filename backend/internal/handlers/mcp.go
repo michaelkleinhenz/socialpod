@@ -16,6 +16,7 @@ import (
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/services"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -27,6 +28,8 @@ type MCPHandler struct {
 	DB        *database.MongoDB
 	UploadDir string
 	BGG       *BGGHandler
+	// Scheduler refreshes Instagram Insights on request; nil disables that.
+	Scheduler *services.Scheduler
 }
 
 type jsonrpcRequest struct {
@@ -306,6 +309,10 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 		return h.toolPostEpisodeDraft(c, args)
 	case "upload_image":
 		return h.toolUploadImage(c, args)
+	case "get_post_insights":
+		return h.toolGetPostInsights(c, args)
+	case "get_account_insights":
+		return h.toolGetAccountInsights(c, args)
 	default:
 		return map[string]string{"error": "Unknown tool: " + name}, true
 	}
@@ -482,6 +489,8 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 		FooterIDs:        mapStrArg(args, "footerIds"),
 		ContentOverrides: mapStrArg(args, "contentOverrides"),
 		ImageURLs:        imageURLs,
+		Collaborators:    cleanUsernames(strSliceArg(args, "collaborators"), 3),
+		UserTags:         cleanUsernames(strSliceArg(args, "userTags"), 20),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -560,6 +569,12 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	}
 	if overrides := mapStrArg(args, "contentOverrides"); overrides != nil {
 		update["contentOverrides"] = overrides
+	}
+	if _, ok := args["collaborators"]; ok {
+		update["collaborators"] = cleanUsernames(strSliceArg(args, "collaborators"), 3)
+	}
+	if _, ok := args["userTags"]; ok {
+		update["userTags"] = cleanUsernames(strSliceArg(args, "userTags"), 20)
 	}
 	imageURLs := strSliceArg(args, "imageUrls")
 	if uploaded, err := h.processInlineImages(args); err != nil {
@@ -1122,6 +1137,8 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		AccountIDs:       mapStrArg(args, "accountIds"),
 		FirstComment:     strArg(args, "firstComment"),
 		PostType:         models.PostType(strArg(args, "postType")),
+		Radar:            boolArg(args, "radar"),
+		GermanRelease:    normalizeGermanRelease(strArg(args, "germanRelease")),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -1249,6 +1266,12 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 		if s, ok := v.(string); ok {
 			update["postType"] = s
 		}
+	}
+	if v, ok := args["radar"].(bool); ok {
+		update["radar"] = v
+	}
+	if v, ok := args["germanRelease"].(string); ok {
+		update["germanRelease"] = normalizeGermanRelease(v)
 	}
 	if v, ok := args["status"]; ok {
 		if s, ok := v.(string); ok {
@@ -2228,6 +2251,10 @@ func (h *MCPHandler) toolUploadImage(_ *gin.Context, args map[string]any) (any, 
 // --- Tool definitions ---
 
 func (h *MCPHandler) toolDefinitions() []mcpTool {
+	return append(h.baseToolDefinitions(), growthToolDefinitions()...)
+}
+
+func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 	return []mcpTool{
 		{
 			Name:        "list_posts",
@@ -2267,6 +2294,8 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to specific account ID to use"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to footer ID to append"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to platform-specific content override"},
+					"collaborators":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to invite as collaborators (max 3); the post also appears on their profile once they accept"},
+					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to tag on the image (max 20)"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
 						"type": "object",
@@ -2297,6 +2326,8 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
+					"collaborators":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram collaborator usernames (max 3); an empty list clears them"},
+					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames tagged on the image; an empty list clears them"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
 						"type": "object",
@@ -2471,6 +2502,8 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"tags":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 					"postType":         map[string]any{"type": "string", "enum": []string{"post", "story", "reel"}, "description": "Post type (default: post)"},
 					"firstComment":     map[string]any{"type": "string", "description": "First comment text"},
+					"radar":            map[string]any{"type": "boolean", "description": "Queue this news for the weekly \"Radar der Woche\" carousel"},
+					"germanRelease":    map[string]any{"type": "string", "enum": []string{"ja", "nein", "offen"}, "description": "Badge on the Radar slide: is a German edition coming?"},
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
@@ -2521,6 +2554,8 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 					"tags":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 					"postType":         map[string]any{"type": "string", "description": "Post type"},
 					"firstComment":     map[string]any{"type": "string", "description": "First comment"},
+					"radar":            map[string]any{"type": "boolean", "description": "Queue this news for the weekly \"Radar der Woche\" carousel"},
+					"germanRelease":    map[string]any{"type": "string", "enum": []string{"ja", "nein", "offen"}, "description": "Badge on the Radar slide: is a German edition coming?"},
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},

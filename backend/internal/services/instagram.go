@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,44 +40,73 @@ func (e *igError) Error() string {
 const igGraphAPI = "https://graph.instagram.com/v25.0"
 const igGraphAPIUnversioned = "https://graph.instagram.com"
 
-func (s *InstagramService) Post(ctx context.Context, content string, imageURLs []string, accountID string) (string, error) {
-	account, err := s.getAccount(ctx, accountID)
-	if err != nil {
-		return "", fmt.Errorf("no active Instagram account: %w", err)
-	}
-
-	if len(imageURLs) == 0 {
-		return "", fmt.Errorf("Instagram requires at least one image")
-	}
-
-	// Get app settings for the public URL
-	var settings models.AppSettings
-	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
-	baseURL := settings.AppURL
-
-	if len(imageURLs) == 1 {
-		return s.postSingleImage(ctx, account, content, baseURL+imageURLs[0])
-	}
-	return s.postCarousel(ctx, account, content, imageURLs, baseURL)
+// MediaExtras are the optional Instagram-only additions to a feed post or
+// reel: collaborators invited to co-author it and accounts tagged on it.
+type MediaExtras struct {
+	Collaborators []string
+	UserTags      []string
 }
 
-func (s *InstagramService) postSingleImage(ctx context.Context, account *models.SocialAccount, caption, mediaURL string) (string, error) {
-	// Step 1: Create media container
-	params := url.Values{
-		"caption":      {caption},
-		"access_token": {account.AccessToken},
+func (e MediaExtras) empty() bool { return len(e.Collaborators) == 0 && len(e.UserTags) == 0 }
+
+const (
+	igMaxCollaborators = 3
+	igMaxUserTags      = 20
+)
+
+var igUsernameRe = regexp.MustCompile(`^[A-Za-z0-9._]{1,30}$`)
+
+// NormalizeIGUsernames strips "@", drops anything that is not a valid
+// Instagram username, removes duplicates (case-insensitively) and the account
+// itself, and caps the list at max entries.
+func NormalizeIGUsernames(names []string, self string, max int) []string {
+	seen := map[string]bool{strings.ToLower(strings.TrimPrefix(self, "@")): true}
+	var out []string
+	for _, n := range names {
+		n = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(n), "@"))
+		key := strings.ToLower(n)
+		if n == "" || seen[key] || !igUsernameRe.MatchString(n) {
+			continue
+		}
+		seen[key] = true
+		out = append(out, n)
+		if len(out) == max {
+			break
+		}
 	}
+	return out
+}
 
-	lowerURL := strings.ToLower(mediaURL)
-	if strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov") {
-		params.Set("media_type", "REELS")
-		params.Set("video_url", mediaURL)
-	} else {
-		params.Set("image_url", mediaURL)
+// collaboratorsParam encodes usernames the way the media endpoint expects.
+func collaboratorsParam(names []string) string {
+	b, _ := json.Marshal(names)
+	return string(b)
+}
+
+// userTagsParam encodes image tags. Instagram wants a position for each tag on
+// an image, so the tags are spread along the bottom edge where they cover the
+// least; a reel takes usernames only.
+func userTagsParam(names []string, withPosition bool) string {
+	tags := make([]map[string]any, 0, len(names))
+	for i, n := range names {
+		tag := map[string]any{"username": n}
+		if withPosition {
+			tag["x"] = math.Round(float64(i+1)/float64(len(names)+1)*100) / 100
+			if i%2 == 0 {
+				tag["y"] = 0.9
+			} else {
+				tag["y"] = 0.95
+			}
+		}
+		tags = append(tags, tag)
 	}
+	b, _ := json.Marshal(tags)
+	return string(b)
+}
 
-	log.Printf("IG post create: image_url=%s igUser=%s", mediaURL, account.IGUserID)
-
+// createContainer creates a media container and returns its ID.
+func (s *InstagramService) createContainer(account *models.SocialAccount, params url.Values) (string, error) {
+	params.Set("access_token", account.AccessToken)
 	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
 	if err != nil {
 		return "", err
@@ -83,25 +114,130 @@ func (s *InstagramService) postSingleImage(ctx context.Context, account *models.
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	log.Printf("IG post container response: status=%d body=%s", resp.StatusCode, string(body))
+	log.Printf("IG container response: status=%d body=%s", resp.StatusCode, string(body))
 
 	var container struct {
-		ID    string  `json:"id"`
+		ID    string   `json:"id"`
 		Error *igError `json:"error"`
 	}
 	json.Unmarshal(body, &container)
 	if container.Error != nil {
 		return "", container.Error
 	}
-
-	// Step 2: Publish
-	return s.publishContainer(account, container.ID)
+	if container.ID == "" {
+		return "", fmt.Errorf("IG returned no container ID (HTTP %d)", resp.StatusCode)
+	}
+	return container.ID, nil
 }
 
-func (s *InstagramService) postCarousel(ctx context.Context, account *models.SocialAccount, caption string, imageURLs []string, baseURL string) (string, error) {
-	var childIDs []string
+// createContainerWithExtras creates a container with the given collaborator
+// and tag parameters. A username Instagram does not know makes it refuse the
+// whole container, so when that happens the container is created again
+// without them: the post still goes out, and the returned warning says what
+// was dropped.
+func (s *InstagramService) createContainerWithExtras(account *models.SocialAccount, params url.Values, extras url.Values) (string, string, error) {
+	if len(extras) == 0 {
+		id, err := s.createContainer(account, params)
+		return id, "", err
+	}
+	withExtras := url.Values{}
+	for k, v := range params {
+		withExtras[k] = v
+	}
+	for k, v := range extras {
+		withExtras[k] = v
+	}
+	id, err := s.createContainer(account, withExtras)
+	if err == nil {
+		return id, "", nil
+	}
+	log.Printf("IG container with collaborators/tags failed, retrying without them: %v", err)
+	id, retryErr := s.createContainer(account, params)
+	if retryErr != nil {
+		return "", "", retryErr
+	}
+	var dropped []string
+	if extras.Has("collaborators") {
+		dropped = append(dropped, "collaborators")
+	}
+	if extras.Has("user_tags") {
+		dropped = append(dropped, "tags")
+	}
+	return id, fmt.Sprintf("Posted without %s: %v", strings.Join(dropped, " and "), err), nil
+}
 
-	// Create child containers
+// Post publishes a feed post (single image or carousel) and returns the media
+// ID plus a warning when collaborators or tags had to be dropped.
+func (s *InstagramService) Post(ctx context.Context, content string, imageURLs []string, accountID string, extras MediaExtras) (string, string, error) {
+	account, err := s.getAccount(ctx, accountID)
+	if err != nil {
+		return "", "", fmt.Errorf("no active Instagram account: %w", err)
+	}
+
+	if len(imageURLs) == 0 {
+		return "", "", fmt.Errorf("Instagram requires at least one image")
+	}
+
+	// Get app settings for the public URL
+	var settings models.AppSettings
+	s.DB.Settings().FindOne(ctx, bson.M{}).Decode(&settings)
+	baseURL := settings.AppURL
+
+	extras.Collaborators = NormalizeIGUsernames(extras.Collaborators, account.AccountName, igMaxCollaborators)
+	extras.UserTags = NormalizeIGUsernames(extras.UserTags, account.AccountName, igMaxUserTags)
+
+	if len(imageURLs) == 1 {
+		fullURL := imageURLs[0]
+		if !strings.HasPrefix(fullURL, "http") {
+			fullURL = baseURL + fullURL
+		}
+		return s.postSingleImage(ctx, account, content, fullURL, extras)
+	}
+	return s.postCarousel(ctx, account, content, imageURLs, baseURL, extras)
+}
+
+func (s *InstagramService) postSingleImage(ctx context.Context, account *models.SocialAccount, caption, mediaURL string, extras MediaExtras) (string, string, error) {
+	// Step 1: Create media container
+	params := url.Values{
+		"caption": {caption},
+	}
+
+	lowerURL := strings.ToLower(mediaURL)
+	isVideo := strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov")
+	if isVideo {
+		params.Set("media_type", "REELS")
+		params.Set("video_url", mediaURL)
+	} else {
+		params.Set("image_url", mediaURL)
+	}
+
+	extraParams := url.Values{}
+	if len(extras.Collaborators) > 0 {
+		extraParams.Set("collaborators", collaboratorsParam(extras.Collaborators))
+	}
+	if len(extras.UserTags) > 0 {
+		extraParams.Set("user_tags", userTagsParam(extras.UserTags, !isVideo))
+	}
+
+	log.Printf("IG post create: image_url=%s igUser=%s", mediaURL, account.IGUserID)
+
+	containerID, warning, err := s.createContainerWithExtras(account, params, extraParams)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Step 2: Publish
+	id, err := s.publishContainer(account, containerID)
+	return id, warning, err
+}
+
+func (s *InstagramService) postCarousel(ctx context.Context, account *models.SocialAccount, caption string, imageURLs []string, baseURL string, extras MediaExtras) (string, string, error) {
+	var childIDs []string
+	var warnings []string
+
+	// Create child containers. Tags go on the first image: Instagram takes
+	// them per carousel item, not on the carousel itself.
+	tagsPlaced := false
 	for _, imgURL := range imageURLs {
 		if len(childIDs) >= 10 { // IG carousel max
 			break
@@ -113,62 +249,60 @@ func (s *InstagramService) postCarousel(ctx context.Context, account *models.Soc
 
 		params := url.Values{
 			"is_carousel_item": {"true"},
-			"access_token":     {account.AccessToken},
 		}
 
 		lowerURL := strings.ToLower(fullURL)
-		if strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov") {
+		isVideo := strings.HasSuffix(lowerURL, ".mp4") || strings.HasSuffix(lowerURL, ".mov")
+		if isVideo {
 			params.Set("video_url", fullURL)
 		} else {
 			params.Set("image_url", fullURL)
 		}
 
+		extraParams := url.Values{}
+		if !tagsPlaced && !isVideo && len(extras.UserTags) > 0 {
+			extraParams.Set("user_tags", userTagsParam(extras.UserTags, true))
+			tagsPlaced = true
+		}
+
 		log.Printf("IG carousel child create: image_url=%s", fullURL)
 
-		resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
+		id, warning, err := s.createContainerWithExtras(account, params, extraParams)
 		if err != nil {
-			log.Printf("IG carousel child http error: %v", err)
+			log.Printf("IG carousel child error: %v", err)
 			continue
 		}
-
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		log.Printf("IG carousel child response: status=%d body=%s", resp.StatusCode, string(body))
-
-		var container struct {
-			ID string `json:"id"`
+		if warning != "" {
+			warnings = append(warnings, warning)
 		}
-		json.Unmarshal(body, &container)
-
-		if container.ID != "" {
-			childIDs = append(childIDs, container.ID)
-		}
+		childIDs = append(childIDs, id)
 	}
 
 	if len(childIDs) == 0 {
-		return "", fmt.Errorf("no carousel items created")
+		return "", "", fmt.Errorf("no carousel items created")
 	}
 
 	// Create carousel container
 	params := url.Values{
-		"media_type":   {"CAROUSEL"},
-		"caption":      {caption},
-		"children":     {strings.Join(childIDs, ",")},
-		"access_token": {account.AccessToken},
+		"media_type": {"CAROUSEL"},
+		"caption":    {caption},
+		"children":   {strings.Join(childIDs, ",")},
+	}
+	extraParams := url.Values{}
+	if len(extras.Collaborators) > 0 {
+		extraParams.Set("collaborators", collaboratorsParam(extras.Collaborators))
 	}
 
-	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
+	containerID, warning, err := s.createContainerWithExtras(account, params, extraParams)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	defer resp.Body.Close()
-
-	var container struct {
-		ID string `json:"id"`
+	if warning != "" {
+		warnings = append(warnings, warning)
 	}
-	json.NewDecoder(resp.Body).Decode(&container)
 
-	return s.publishContainer(account, container.ID)
+	id, err := s.publishContainer(account, containerID)
+	return id, strings.Join(warnings, "; "), err
 }
 
 func (s *InstagramService) waitForContainer(account *models.SocialAccount, containerID string) error {
@@ -307,10 +441,10 @@ func (s *InstagramService) PostStory(ctx context.Context, mediaURL string, accou
 
 // PostReel publishes an Instagram Reel. mediaURL must be a publicly reachable
 // URL pointing to an MP4 video file.
-func (s *InstagramService) PostReel(ctx context.Context, mediaURL string, caption string, accountID string) (string, error) {
+func (s *InstagramService) PostReel(ctx context.Context, mediaURL string, caption string, accountID string, extras MediaExtras) (string, string, error) {
 	account, err := s.getAccount(ctx, accountID)
 	if err != nil {
-		return "", fmt.Errorf("no active Instagram account: %w", err)
+		return "", "", fmt.Errorf("no active Instagram account: %w", err)
 	}
 
 	var settings models.AppSettings
@@ -322,32 +456,27 @@ func (s *InstagramService) PostReel(ctx context.Context, mediaURL string, captio
 	}
 
 	params := url.Values{
-		"media_type":   {"REELS"},
-		"video_url":    {fullURL},
-		"caption":      {caption},
-		"access_token": {account.AccessToken},
+		"media_type": {"REELS"},
+		"video_url":  {fullURL},
+		"caption":    {caption},
+	}
+
+	extraParams := url.Values{}
+	if c := NormalizeIGUsernames(extras.Collaborators, account.AccountName, igMaxCollaborators); len(c) > 0 {
+		extraParams.Set("collaborators", collaboratorsParam(c))
+	}
+	if t := NormalizeIGUsernames(extras.UserTags, account.AccountName, igMaxUserTags); len(t) > 0 {
+		extraParams.Set("user_tags", userTagsParam(t, false))
 	}
 
 	log.Printf("IG reel create: url=%s", fullURL)
-	resp, err := http.PostForm(fmt.Sprintf("%s/%s/media", igGraphAPI, account.IGUserID), params)
+	containerID, warning, err := s.createContainerWithExtras(account, params, extraParams)
 	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	log.Printf("IG reel container response: %s", string(body))
-
-	var container struct {
-		ID    string   `json:"id"`
-		Error *igError `json:"error"`
-	}
-	json.Unmarshal(body, &container)
-	if container.Error != nil {
-		return "", fmt.Errorf("IG reel error: %w", container.Error)
+		return "", "", fmt.Errorf("IG reel error: %w", err)
 	}
 
-	return s.publishContainer(account, container.ID)
+	id, err := s.publishContainer(account, containerID)
+	return id, warning, err
 }
 
 // PostComment posts a comment on an existing Instagram media object.

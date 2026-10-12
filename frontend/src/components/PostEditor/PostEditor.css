@@ -786,3 +786,193 @@
     max-height: 95vh;
   }
 }
+
+/* ─── Instagram tools ───────────────────────────────────────────────────── */
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.editor-toolbar-note {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.caption-checker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-primary);
+}
+
+.caption-checker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.caption-checker ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.caption-check {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.caption-check svg { flex-shrink: 0; position: relative; top: 2px; }
+.caption-check.ok { color: var(--success); }
+.caption-check.warn { color: var(--warning); }
+.caption-check.missing { color: var(--text-secondary); }
+.caption-check.missing svg { color: var(--text-muted); }
+
+.caption-check-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ig-people {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .ig-people { grid-template-columns: 1fr; }
+  .caption-check-hint { display: none; }
+}
+
+.handle-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 38px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.handle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 12px;
+  background: var(--accent-muted);
+  color: var(--accent-hover);
+  font-size: 12px;
+}
+
+.handle-chip button {
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+}
+
+.handle-chip button:hover { background: rgba(255, 255, 255, 0.1); }
+
+.handle-chip-input {
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px;
+}
+
+.insights-strip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-primary);
+}
+
+.insights-strip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px 12px;
+  margin-top: 6px;
+}
+
+.insights-grid div { display: flex; flex-direction: column; }
+.insights-grid strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.insights-grid span { font-size: 11px; color: var(--text-muted); }
+
+.insights-empty { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+.insights-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--warning);
+}
+
+.radar-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.radar-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.radar-queue-item.picked { border-color: var(--accent); background: var(--accent-muted); }
+.radar-queue-item img, .radar-noimg { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--bg-tertiary); }
+.radar-order { width: 18px; font-weight: 700; color: var(--accent-hover); text-align: center; flex-shrink: 0; }
+.radar-item-text { display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
+.radar-item-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radar-item-text > span { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+
+.radar-badge { padding: 0 6px; border-radius: 8px; font-weight: 600; color: #fff; }
+.radar-badge.ja { background: #16a34a; }
+.radar-badge.nein { background: #dc2626; }
+.radar-badge.offen { background: #d97706; }

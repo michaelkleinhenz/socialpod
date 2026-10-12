@@ -62,6 +62,21 @@ func (s *Scheduler) Start() {
 			}
 		}
 	}()
+	// Follower snapshots and Insights make several API calls per account and
+	// post, so they run on their own loop and never hold up publishing.
+	go func() {
+		growthTicker := time.NewTicker(1 * time.Hour)
+		defer growthTicker.Stop()
+		s.runGrowthJobs()
+		for {
+			select {
+			case <-growthTicker.C:
+				s.runGrowthJobs()
+			case <-s.stop:
+				return
+			}
+		}
+	}()
 }
 
 func (s *Scheduler) Stop() {
@@ -269,6 +284,11 @@ func (s *Scheduler) accountBelongsToTeam(ctx context.Context, accountID string, 
 	return err == nil && count > 0
 }
 
+// instagramExtras collects a post's Instagram collaborators and tags.
+func instagramExtras(post models.Post) MediaExtras {
+	return MediaExtras{Collaborators: post.Collaborators, UserTags: post.UserTags}
+}
+
 func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 	var results []models.PostResult
 	allSuccess := true
@@ -416,7 +436,8 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 					result.Error = "reel requires a video"
 					allSuccess = false
 				} else {
-					postID, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformInstagram), instagramFooter), accountID)
+					postID, warning, err := s.Instagram.PostReel(ctx, post.ImageURLs[0], applyContent(platformContent(models.PlatformInstagram), instagramFooter), accountID, instagramExtras(post))
+					result.Warning = warning
 					if err != nil {
 						result.Success = false
 						result.Error = err.Error()
@@ -429,7 +450,8 @@ func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {
 					}
 				}
 			} else {
-				postID, err := s.Instagram.Post(ctx, applyContent(platformContent(models.PlatformInstagram), instagramFooter), post.ImageURLs, accountID)
+				postID, warning, err := s.Instagram.Post(ctx, applyContent(platformContent(models.PlatformInstagram), instagramFooter), post.ImageURLs, accountID, instagramExtras(post))
+				result.Warning = warning
 				if err != nil {
 					result.Success = false
 					result.Error = err.Error()

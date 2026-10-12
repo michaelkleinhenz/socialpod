@@ -697,6 +697,53 @@ class ApiClient {
     });
   }
 
+  // Instagram growth
+  getGrowthSettings() {
+    return this.request<import('../types').GrowthSettings>('/growth/settings');
+  }
+
+  updateGrowthSettings(data: import('../types').GrowthSettings) {
+    return this.request<import('../types').GrowthSettings>('/team/growth', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  getGrowthOverview(params: { accountId?: string; start?: string; end?: string }) {
+    const query = new URLSearchParams();
+    if (params.accountId) query.set('accountId', params.accountId);
+    if (params.start) query.set('start', params.start);
+    if (params.end) query.set('end', params.end);
+    const qs = query.toString();
+    return this.request<import('../types').GrowthOverview>(`/growth/instagram${qs ? '?' + qs : ''}`);
+  }
+
+  refreshGrowth() {
+    return this.request<{ refreshed: number; posts: number; errors: string[] }>('/growth/refresh', { method: 'POST' });
+  }
+
+  refreshPostInsights(id: string) {
+    return this.request<import('../types').Post>(`/posts/${id}/insights`, { method: 'POST' });
+  }
+
+  rewriteForInstagram(text: string) {
+    return this.request<{ text: string }>('/growth/rewrite-instagram', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  getRadarQueue() {
+    return this.request<import('../types').NewsDraft[]>('/radar/queue');
+  }
+
+  generateRadar(draftIds: string[]) {
+    return this.request<import('../types').RadarContent>('/radar/generate', {
+      method: 'POST',
+      body: JSON.stringify({ draftIds }),
+    });
+  }
+
   // Admin BGG settings (manage any team's BGG overlay config)
   getAdminTeamBggSettings(teamId: string) {
     return this.request<import('../types').TeamSettings>(`/admin/teams/${teamId}/settings`);

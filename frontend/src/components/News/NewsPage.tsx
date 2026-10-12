@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft } from '../../types';
-import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2 } from 'lucide-react';
+import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft, GermanRelease } from '../../types';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Radar } from 'lucide-react';
 import { ImageCropper } from '../Common/ImageCropper';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
@@ -33,6 +33,10 @@ export function NewsPage() {
   const [newsTagline, setNewsTagline] = useState('');
   const [articleUrl, setArticleUrl] = useState('');
   const [shownotes, setShownotes] = useState('');
+  // "Radar Post?" queues the news for the weekly Radar carousel; the German
+  // edition answer becomes the badge on its slide.
+  const [radar, setRadar] = useState(false);
+  const [germanRelease, setGermanRelease] = useState<GermanRelease>('offen');
 
   // Single image handling
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -459,6 +463,8 @@ export function NewsPage() {
     setNewsTagline('');
     setArticleUrl('');
     setShownotes('');
+    setRadar(false);
+    setGermanRelease('offen');
     removeImage();
     setBggUrl('');
     setBggError('');
@@ -523,6 +529,8 @@ export function NewsPage() {
     setNewsTagline(draft.newsTagline || '');
     setArticleUrl(draft.articleUrl || '');
     setShownotes(draft.shownotes || '');
+    setRadar(!!draft.radar);
+    setGermanRelease(draft.germanRelease || 'offen');
     setAddSocialPost(draft.addSocialPosting);
     setContent(draft.content || '');
     setFirstComment(draft.firstComment || '');
@@ -574,6 +582,8 @@ export function NewsPage() {
       articleUrl: articleUrl.trim(),
       shownotes: shownotes.trim() || undefined,
       imageUrls,
+      radar,
+      germanRelease: radar ? germanRelease : undefined,
     };
 
     data.addSocialPosting = addSocialPost;
@@ -927,6 +937,20 @@ export function NewsPage() {
                           ? `Posted ${format(new Date(draft.postedAt), 'MMM d, yyyy HH:mm')}`
                           : `Updated ${format(new Date(draft.updatedAt), 'MMM d, yyyy HH:mm')}`}
                       </span>
+                      {draft.radar && (
+                        <span
+                          title={draft.radarPostId ? 'Used in a Radar post' : 'Waiting in the Radar queue'}
+                          style={{
+                            background: draft.radarPostId ? 'var(--bg-secondary, #1e293b)' : 'var(--accent)',
+                            color: draft.radarPostId ? 'var(--text-muted)' : '#fff',
+                            borderRadius: 4,
+                            padding: '1px 6px',
+                            fontSize: 11,
+                          }}
+                        >
+                          Radar{draft.radarPostId ? ' ✓' : ''}
+                        </span>
+                      )}
                       {draft.addSocialPosting && (
                         <span style={{
                           background: 'var(--bg-secondary, #1e293b)',
@@ -1069,6 +1093,34 @@ export function NewsPage() {
               onChange={e => setArticleUrl(e.target.value)}
               placeholder="https://example.com/article"
             />
+          </div>
+
+          {/* Radar */}
+          <div className="form-group radar-fields">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
+              <input type="checkbox" checked={radar} onChange={e => setRadar(e.target.checked)} />
+              <Radar size={14} /> Radar Post?
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 12 }}>
+                queues this news for the weekly “Radar der Woche” carousel
+              </span>
+            </label>
+            {radar && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                <span style={{ fontSize: 13 }}>Kommt's auf Deutsch?</span>
+                <div className="view-toggle">
+                  {(['ja', 'nein', 'offen'] as GermanRelease[]).map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`view-toggle-btn ${germanRelease === v ? 'active' : ''}`}
+                      onClick={() => setGermanRelease(v)}
+                    >
+                      {v === 'ja' ? 'Ja' : v === 'nein' ? 'Nein' : 'Offen'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Shownotes */}
