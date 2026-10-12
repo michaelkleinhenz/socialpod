@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Transformer } from 'react-konva';
 import {
-  AlignCenter, Bold, Crop, Loader2, Plus, Sparkles, Stamp, Trash2, Type, Upload, X, Maximize,
+  AlignCenter, Bold, Crop, Loader2, Plus, Redo2, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
@@ -45,6 +45,21 @@ const ASPECTS: { id: string; label: string; ratio: number | null | 'original' }[
 
 const SWATCHES = ['#ffffff', '#000000', '#facc15', '#f97316', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#22c55e'];
 
+// Undo steps kept; older ones are dropped.
+const HISTORY_LIMIT = 50;
+// Changes to the same control closer together than this are one undo step,
+// so a slider drag or a typed word does not take dozens of undos.
+const COALESCE_MS = 1000;
+
+// The part of the editor's state undo covers: the edit itself, not the view
+// (tab, selection) or what is loaded (image, fonts).
+interface Snapshot {
+  crop: CropBox;
+  aspectId: string;
+  adjustments: Adjustments;
+  layers: EditorLayer[];
+}
+
 // Around the image on screen, so crop and transform handles stay reachable.
 const STAGE_PADDING = 20;
 
@@ -77,6 +92,10 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   const [addingWatermark, setAddingWatermark] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
+  // The control the last undo step was opened for, and when it last changed.
+  const lastChange = useRef<{ key: string; at: number } | null>(null);
 
   const canvasBoxRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<Konva.Image>(null);
@@ -170,15 +189,83 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     tr.getLayer()?.batchDraw();
   }, [tab, selectedId, layers, source, aspectId]);
 
-  const updateLayer = useCallback((id: string, patch: Partial<ImageLayer> | Partial<TextLayer>) => {
-    setLayers(prev => prev.map(l => (l.id === id ? { ...l, ...patch } as EditorLayer : l)));
-  }, []);
+  // --- Undo -----------------------------------------------------------------
 
-  const deleteSelected = useCallback(() => {
+  // Records the current state as an undo step. Called right before a change,
+  // while the state still holds what the change replaces. With a key, further
+  // changes to the same control in quick succession join that step.
+  const checkpoint = (key?: string) => {
+    if (!crop) return;
+    const now = Date.now();
+    const last = lastChange.current;
+    lastChange.current = key ? { key, at: now } : null;
+    // A gesture key joins its step for as long as the drag lasts; startGesture
+    // ends it.
+    const sticky = key?.startsWith('gesture:');
+    if (key && last?.key === key && (sticky || now - last.at < COALESCE_MS)) return;
+    const snap: Snapshot = { crop, aspectId, adjustments, layers };
+    setUndoStack(stack => [...stack.slice(-(HISTORY_LIMIT - 1)), snap]);
+    setRedoStack([]);
+  };
+
+  // A new drag or resize always starts its own step, however soon after the
+  // last one.
+  const startGesture = () => { lastChange.current = null; };
+
+  const restore = (snap: Snapshot) => {
+    setCrop(snap.crop);
+    setAspectId(snap.aspectId);
+    setAdjustments(snap.adjustments);
+    setLayers(snap.layers);
+    if (selectedId && !snap.layers.some(l => l.id === selectedId)) setSelectedId(null);
+    lastChange.current = null;
+  };
+
+  const undo = () => {
+    const prev = undoStack[undoStack.length - 1];
+    if (!prev || !crop) return;
+    setUndoStack(stack => stack.slice(0, -1));
+    setRedoStack(stack => [...stack, { crop, aspectId, adjustments, layers }]);
+    restore(prev);
+  };
+
+  const redo = () => {
+    const next = redoStack[redoStack.length - 1];
+    if (!next || !crop) return;
+    setRedoStack(stack => stack.slice(0, -1));
+    setUndoStack(stack => [...stack, { crop, aspectId, adjustments, layers }]);
+    restore(next);
+  };
+
+  // Every change to the edit goes through these, which record the undo step.
+  const updateLayer = (id: string, patch: Partial<ImageLayer> | Partial<TextLayer>, key?: string) => {
+    checkpoint(key);
+    setLayers(prev => prev.map(l => (l.id === id ? { ...l, ...patch } as EditorLayer : l)));
+  };
+
+  const addLayer = (layer: EditorLayer) => {
+    checkpoint();
+    setLayers(prev => [...prev, layer]);
+    setSelectedId(layer.id);
+  };
+
+  const changeAdjustments = (patch: Partial<Adjustments>, key?: string) => {
+    checkpoint(key);
+    setAdjustments(a => ({ ...a, ...patch }));
+  };
+
+  const changeCrop = (box: CropBox, nextAspectId = aspectId, key?: string) => {
+    checkpoint(key);
+    setCrop(box);
+    setAspectId(nextAspectId);
+  };
+
+  const deleteSelected = () => {
     if (!selectedId) return;
+    checkpoint();
     setLayers(prev => prev.filter(l => l.id !== selectedId));
     setSelectedId(null);
-  }, [selectedId]);
+  };
 
   const dirty = layers.length > 0 || hasAdjustments(adjustments) || (!!crop && !!source
     && (crop.x !== 0 || crop.y !== 0 || crop.width !== natW || crop.height !== natH));
@@ -189,11 +276,21 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     onCancel();
   }, [dirty, saving, onCancel]);
 
-  // Keyboard: Escape leaves, Delete removes the selected layer — unless typing.
+  // Keyboard: Escape leaves, Delete removes the selected layer, Ctrl/Cmd+Z
+  // and Ctrl/Cmd+Shift+Z (or Ctrl+Y) undo and redo — unless typing, where
+  // those keys belong to the field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      if (mod && !typing && (k === 'z' || k === 'y')) {
+        e.preventDefault();
+        if (k === 'y' || e.shiftKey) redo();
+        else undo();
+        return;
+      }
       if (e.key === 'Escape') {
         if (selectedId) setSelectedId(null);
         else handleCancel();
@@ -204,7 +301,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, deleteSelected, handleCancel]);
+  });
 
   const switchTab = (t: Tab) => {
     setTab(t);
@@ -227,15 +324,12 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   };
 
   const pickAspect = (id: string) => {
-    setAspectId(id);
+    if (!crop) return;
     const ratio = aspectRatio(id);
-    if (ratio) setCrop(centredCrop(natW, natH, ratio));
+    changeCrop(ratio ? centredCrop(natW, natH, ratio) : crop, id);
   };
 
-  const resetCrop = () => {
-    setAspectId('free');
-    setCrop({ x: 0, y: 0, width: natW, height: natH });
-  };
+  const resetCrop = () => changeCrop({ x: 0, y: 0, width: natW, height: natH }, 'free');
 
   // The crop box lives in image pixels; Konva reports drags and resizes as
   // position and scale, which are folded back into a plain box.
@@ -245,7 +339,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     const width = node.width() * node.scaleX();
     const height = node.height() * node.scaleY();
     node.setAttrs({ width, height, scaleX: 1, scaleY: 1 });
-    setCrop({ x: node.x(), y: node.y(), width, height });
+    changeCrop({ x: node.x(), y: node.y(), width, height }, aspectId, 'gesture:crop');
   };
 
   const cropDragBound = (pos: Konva.Vector2d): Konva.Vector2d => {
@@ -300,9 +394,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         cx = crop.x + crop.width - margin - width / 2;
         cy = crop.y + crop.height - margin - height / 2;
       }
-      const layer: ImageLayer = { id: newLayerId(), kind: 'image', img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 };
-      setLayers(prev => [...prev, layer]);
-      setSelectedId(layer.id);
+      addLayer({ id: newLayerId(), kind: 'image', img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
     } catch {
       toast.error('Failed to load that watermark');
     } finally {
@@ -341,9 +433,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
       rotation: 0,
     };
     const m = measureText(base);
-    const layer = { ...base, x: crop.x + (crop.width - m.width) / 2, y: crop.y + (crop.height - m.height) / 2 };
-    setLayers(prev => [...prev, layer]);
-    setSelectedId(layer.id);
+    addLayer({ ...base, x: crop.x + (crop.width - m.width) / 2, y: crop.y + (crop.height - m.height) / 2 });
     // Select the placeholder so typing replaces it. Not on touch: the
     // keyboard would cover the picture straight away.
     if (!isTouch) {
@@ -438,6 +528,12 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
           <X size={20} />
         </button>
         <span className="ie-title">Edit image</span>
+        <button className="ie-icon-btn" onClick={undo} title="Undo" aria-label="Undo" disabled={saving || undoStack.length === 0}>
+          <Undo2 size={18} />
+        </button>
+        <button className="ie-icon-btn" onClick={redo} title="Redo" aria-label="Redo" disabled={saving || redoStack.length === 0}>
+          <Redo2 size={18} />
+        </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!source || saving}>
           {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
         </button>
@@ -466,6 +562,8 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                     listening={tab !== 'crop'}
                     draggable={tab !== 'crop'}
                     onPointerDown={() => selectLayer(l)}
+                    onDragStart={startGesture}
+                    onTransformStart={startGesture}
                     onDragEnd={e => updateLayer(l.id, { x: e.target.x(), y: e.target.y() })}
                     onTransformEnd={e => onLayerTransformEnd(l, e.target)}
                   />
@@ -477,6 +575,8 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                     listening={tab !== 'crop'}
                     draggable={tab !== 'crop'}
                     onPointerDown={() => selectLayer(l)}
+                    onDragStart={startGesture}
+                    onTransformStart={startGesture}
                     onDblClick={() => textAreaRef.current?.focus()}
                     onDragEnd={e => updateLayer(l.id, { x: e.target.x(), y: e.target.y() })}
                     onTransformEnd={e => onLayerTransformEnd(l, e.target)}
@@ -512,6 +612,8 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                     strokeScaleEnabled={false}
                     draggable
                     dragBoundFunc={cropDragBound}
+                    onDragStart={startGesture}
+                    onTransformStart={startGesture}
                     onDragMove={syncCropFromNode}
                     onDragEnd={syncCropFromNode}
                     onTransform={syncCropFromNode}
@@ -566,7 +668,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                 <button
                   key={p.id}
                   className={`ie-chip ${adjustments.preset === p.id ? 'active' : ''}`}
-                  onClick={() => setAdjustments(a => ({ ...a, preset: p.id }))}
+                  onClick={() => changeAdjustments({ preset: p.id })}
                 >
                   {p.label}
                 </button>
@@ -580,15 +682,15 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                   min={-100}
                   max={100}
                   value={adjustments[k]}
-                  onChange={e => setAdjustments(a => ({ ...a, [k]: Number(e.target.value) }))}
-                  onDoubleClick={() => setAdjustments(a => ({ ...a, [k]: 0 }))}
+                  onChange={e => changeAdjustments({ [k]: Number(e.target.value) }, `adjust:${k}`)}
+                  onDoubleClick={() => changeAdjustments({ [k]: 0 })}
                 />
                 <span className="ie-value">{adjustments[k]}</span>
               </label>
             ))}
             {hasAdjustments(adjustments) && (
               <div className="ie-row">
-                <button className="ie-chip" onClick={() => setAdjustments(NO_ADJUSTMENTS)}>Reset filters</button>
+                <button className="ie-chip" onClick={() => changeAdjustments(NO_ADJUSTMENTS)}>Reset filters</button>
               </div>
             )}
           </>
@@ -623,7 +725,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                     min={10}
                     max={100}
                     value={Math.round(selected.opacity * 100)}
-                    onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 })}
+                    onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 }, `opacity:${selected.id}`)}
                   />
                   <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
                 </label>
@@ -647,7 +749,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                 className="ie-textarea"
                 rows={2}
                 value={selected.text}
-                onChange={e => updateLayer(selected.id, { text: e.target.value })}
+                onChange={e => updateLayer(selected.id, { text: e.target.value }, `text:${selected.id}`)}
                 placeholder="Text"
               />
               <div className="ie-row">
@@ -681,7 +783,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                   type="color"
                   className="ie-color"
                   value={selected.fill}
-                  onChange={e => updateLayer(selected.id, { fill: e.target.value })}
+                  onChange={e => updateLayer(selected.id, { fill: e.target.value }, `fill:${selected.id}`)}
                   title="Custom colour"
                 />
               </div>
