@@ -648,7 +648,7 @@ func (h *AdminHandler) instagramAuthURL(ctx context.Context, state string) (stri
 	authURL := "https://api.instagram.com/oauth/authorize" +
 		"?client_id=" + settings.InstagramAppID +
 		"&redirect_uri=" + redirectURI +
-		"&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments" +
+		"&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_manage_insights" +
 		"&response_type=code" +
 		"&state=" + state
 	return authURL, nil
