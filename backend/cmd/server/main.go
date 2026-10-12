@@ -123,6 +123,8 @@ func main() {
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 	growthHandler := &handlers.GrowthHandler{DB: db, Scheduler: scheduler, UploadDir: cfg.UploadDir}
 	radarHandler := &handlers.RadarHandler{DB: db, UploadDir: cfg.UploadDir}
+	mediaHandler := &handlers.MediaHandler{DB: db, UploadDir: cfg.UploadDir}
+	handlers.SetAppBaseURL(cfg.AppURL)
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler, Scheduler: scheduler}
 	captureHandler := &handlers.CaptureHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
 	oauthHandler := handlers.NewOAuthHandler(db, cfg.AppURL)
@@ -245,7 +247,14 @@ func main() {
 		// Watermarks (team/user scoped)
 		auth.GET("/watermarks", adminHandler.ListWatermarks)
 		auth.POST("/watermarks", adminHandler.UploadWatermark)
+		auth.PUT("/watermarks/:id", adminHandler.UpdateWatermark)
 		auth.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
+
+		// Media library
+		auth.GET("/media", mediaHandler.List)
+		auth.POST("/media", mediaHandler.Create)
+		auth.PUT("/media/:id", mediaHandler.Update)
+		auth.DELETE("/media/:id", mediaHandler.Delete)
 
 		// Footers (team/user scoped)
 		auth.GET("/footers", footerHandler.List)

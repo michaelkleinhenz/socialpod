@@ -58,8 +58,10 @@ type mcpTool struct {
 }
 
 type toolResultContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Data     string `json:"data,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
 }
 
 func mcpScopeFilter(c *gin.Context) bson.M {
@@ -228,12 +230,25 @@ func (h *MCPHandler) handleToolsCall(c *gin.Context, id any, params json.RawMess
 
 	result, isErr := h.callTool(c, call.Name, call.Arguments)
 
+	// A rich result carries images: they follow the JSON as image blocks.
+	var images []mcpImage
+	if rich, ok := result.(*mcpRichResult); ok {
+		result, images = rich.Result, rich.Images
+	}
 	text, _ := json.Marshal(result)
+	content := []toolResultContent{{Type: "text", Text: string(text)}}
+	for _, img := range images {
+		content = append(content, toolResultContent{
+			Type:     "image",
+			Data:     base64.StdEncoding.EncodeToString(img.Data),
+			MimeType: img.MimeType,
+		})
+	}
 	return jsonrpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result: map[string]any{
-			"content": []toolResultContent{{Type: "text", Text: string(text)}},
+			"content": content,
 			"isError": isErr,
 		},
 	}
@@ -313,6 +328,38 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 		return h.toolGetPostInsights(c, args)
 	case "get_account_insights":
 		return h.toolGetAccountInsights(c, args)
+	case "update_watermark":
+		return h.toolUpdateWatermark(c, args)
+	case "list_media":
+		return h.toolListMedia(c, args)
+	case "add_media":
+		return h.toolAddMedia(c, args)
+	case "update_media":
+		return h.toolUpdateMedia(c, args)
+	case "delete_media":
+		return h.toolDeleteMedia(c, args)
+	case "get_image":
+		return h.toolGetImage(c, args)
+	case "compose_image":
+		return h.toolComposeImage(c, args)
+	case "capture_url":
+		return h.toolCaptureURL(c, args)
+	case "rewrite_instagram":
+		return h.toolRewriteInstagram(c, args)
+	case "check_instagram_caption":
+		return h.toolCheckInstagramCaption(c, args)
+	case "find_existing":
+		return h.toolFindExisting(c, args)
+	case "get_draft_queue":
+		return h.toolGetDraftQueue(c, args)
+	case "import_bgg":
+		return h.toolImportBGG(c, args)
+	case "upload_from_url":
+		return h.toolUploadFromURL(c, args)
+	case "get_growth_settings":
+		return h.toolGetGrowthSettings(c, args)
+	case "get_open_slots":
+		return h.toolGetOpenSlots(c, args)
 	default:
 		return map[string]string{"error": "Unknown tool: " + name}, true
 	}
@@ -373,6 +420,9 @@ func (h *MCPHandler) toolListPosts(c *gin.Context, args map[string]any) (any, bo
 	}
 	if platform := strArg(args, "platform"); platform != "" {
 		filter["platforms"] = platform
+	}
+	if origin := strArg(args, "origin"); origin != "" {
+		filter["origin"] = origin
 	}
 	if start := strArg(args, "start"); start != "" {
 		if t, err := time.Parse(time.RFC3339, start); err == nil {
@@ -466,6 +516,12 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 		postType = models.PostType(pt)
 	}
 
+	if status == models.PostStatusDraft {
+		if err := h.checkDraftCap(c); err != nil {
+			return map[string]string{"error": err.Error()}, true
+		}
+	}
+
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
@@ -491,6 +547,9 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 		ImageURLs:        imageURLs,
 		Collaborators:    cleanUsernames(strSliceArg(args, "collaborators"), 3),
 		UserTags:         cleanUsernames(strSliceArg(args, "userTags"), 20),
+		SourceURL:        strings.TrimSpace(strArg(args, "sourceUrl")),
+		SourceKey:        sourceKey(strArg(args, "sourceUrl")),
+		Origin:           mcpOrigin(args),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -569,6 +628,10 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	}
 	if overrides := mapStrArg(args, "contentOverrides"); overrides != nil {
 		update["contentOverrides"] = overrides
+	}
+	if v, ok := args["sourceUrl"].(string); ok {
+		update["sourceUrl"] = strings.TrimSpace(v)
+		update["sourceKey"] = sourceKey(v)
 	}
 	if _, ok := args["collaborators"]; ok {
 		update["collaborators"] = cleanUsernames(strSliceArg(args, "collaborators"), 3)
@@ -975,27 +1038,6 @@ func (h *MCPHandler) toolDeleteMention(c *gin.Context, args map[string]any) (any
 
 // --- Watermark tools ---
 
-func (h *MCPHandler) toolListWatermarks(c *gin.Context, _ map[string]any) (any, bool) {
-	filter := mcpScopeFilter(c)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cursor, err := h.DB.Watermarks().Find(ctx, filter)
-	if err != nil {
-		return map[string]string{"error": "Failed to fetch watermarks"}, true
-	}
-	defer cursor.Close(ctx)
-
-	var watermarks []models.Watermark
-	if err := cursor.All(ctx, &watermarks); err != nil {
-		return map[string]string{"error": "Failed to decode watermarks"}, true
-	}
-	if watermarks == nil {
-		watermarks = []models.Watermark{}
-	}
-	return watermarks, false
-}
-
 func (h *MCPHandler) toolDeleteWatermark(c *gin.Context, args map[string]any) (any, bool) {
 	id := strArg(args, "id")
 	if id == "" {
@@ -1081,6 +1123,9 @@ func boolArg(args map[string]any, key string) bool {
 }
 
 func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (any, bool) {
+	if err := h.checkDraftCap(c); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	}
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
@@ -1139,6 +1184,8 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		PostType:         models.PostType(strArg(args, "postType")),
 		Radar:            boolArg(args, "radar"),
 		GermanRelease:    normalizeGermanRelease(strArg(args, "germanRelease")),
+		SourceKey:        sourceKey(strArg(args, "articleUrl")),
+		Origin:           mcpOrigin(args),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -1235,6 +1282,7 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 	if v, ok := args["articleUrl"]; ok {
 		if s, ok := v.(string); ok {
 			update["articleUrl"] = s
+			update["sourceKey"] = sourceKey(s)
 		}
 	}
 	if v, ok := args["shownotes"]; ok {
@@ -1454,6 +1502,9 @@ func (h *MCPHandler) toolPostNewsDraft(c *gin.Context, args map[string]any) (any
 // --- Episode draft tools ---
 
 func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any) (any, bool) {
+	if err := h.checkDraftCap(c); err != nil {
+		return map[string]string{"error": err.Error()}, true
+	}
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
@@ -1500,6 +1551,7 @@ func (h *MCPHandler) toolCreateEpisodeDraft(c *gin.Context, args map[string]any)
 		AccountIDs:        mapStrArg(args, "accountIds"),
 		FirstComment:      strArg(args, "firstComment"),
 		PostType:          models.PostType(strArg(args, "postType")),
+		Origin:            mcpOrigin(args),
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
@@ -2251,7 +2303,11 @@ func (h *MCPHandler) toolUploadImage(_ *gin.Context, args map[string]any) (any, 
 // --- Tool definitions ---
 
 func (h *MCPHandler) toolDefinitions() []mcpTool {
-	return append(h.baseToolDefinitions(), growthToolDefinitions()...)
+	tools := append(h.baseToolDefinitions(), growthToolDefinitions()...)
+	tools = append(tools, agentToolDefinitions()...)
+	tools = append(tools, agentQueueToolDefinitions()...)
+	tools = append(tools, textToolDefinitions()...)
+	return append(tools, imageToolDefinitions()...)
 }
 
 func (h *MCPHandler) baseToolDefinitions() []mcpTool {
@@ -2264,6 +2320,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 				"properties": map[string]any{
 					"status":   map[string]any{"type": "string", "enum": []string{"draft", "scheduled", "published", "failed"}, "description": "Filter by post status"},
 					"platform": map[string]any{"type": "string", "enum": []string{"bluesky", "instagram", "twitter", "mastodon", "threads", "linkedin", "youtube"}, "description": "Filter by platform"},
+					"origin":   map[string]any{"type": "string", "description": "Only posts with this origin (e.g. mcp, agent)"},
 					"start":    map[string]any{"type": "string", "description": "Start date filter (RFC3339 format)"},
 					"end":      map[string]any{"type": "string", "description": "End date filter (RFC3339 format)"},
 				},
@@ -2294,6 +2351,8 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to specific account ID to use"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to footer ID to append"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Map of platform to platform-specific content override"},
+					"sourceUrl":        map[string]any{"type": "string", "description": "The page or BGG entry the post is about; find_existing uses it to detect duplicates"},
+					"origin":           map[string]any{"type": "string", "description": "Short label for who created it, e.g. agent (lower-case slug; default mcp). Drafts with an origin count towards the team's agent draft limit and are marked in the Drafts list."},
 					"collaborators":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to invite as collaborators (max 3); the post also appears on their profile once they accept"},
 					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to tag on the image (max 20)"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
@@ -2326,6 +2385,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
+					"sourceUrl":        map[string]any{"type": "string", "description": "The page or BGG entry the post is about; find_existing uses it to detect duplicates"},
 					"collaborators":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram collaborator usernames (max 3); an empty list clears them"},
 					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames tagged on the image; an empty list clears them"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
@@ -2457,9 +2517,16 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 			},
 		},
 		{
-			Name:        "list_watermarks",
-			Description: "List all available watermark images.",
-			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+			Name: "list_watermarks",
+			Description: "List the team's watermark images with their description, size, what the team uses each for (roles, e.g. BGG cover overlay) " +
+				"and fullCanvas, which marks overlays meant to cover the whole image (frames, banners: use anchor full in compose_image) as opposed to small logos. " +
+				"With preview=true a thumbnail of each (on grey) is attached.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
+				},
+			},
 		},
 		{
 			Name:        "delete_watermark",
@@ -2481,6 +2548,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"origin":           map[string]any{"type": "string", "description": "Short label for who created it, e.g. agent (lower-case slug; default mcp). Drafts with an origin count towards the team's agent draft limit and are marked in the Drafts list."},
 					"episodeNumber":    map[string]any{"type": "string", "description": "Episode number"},
 					"newsTagline":      map[string]any{"type": "string", "description": "Short tagline for the news episode"},
 					"articleUrl":       map[string]any{"type": "string", "description": "URL of the news article"},
@@ -2587,6 +2655,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"origin":           map[string]any{"type": "string", "description": "Short label for who created it, e.g. agent (lower-case slug; default mcp). Drafts with an origin count towards the team's agent draft limit and are marked in the Drafts list."},
 					"episodeNumber":     map[string]any{"type": "string", "description": "Episode number"},
 					"episodeTitle":      map[string]any{"type": "string", "description": "Episode title"},
 					"episodeType":       map[string]any{"type": "string", "enum": []string{"news", "review", "special", "tatort"}, "description": "Episode type"},

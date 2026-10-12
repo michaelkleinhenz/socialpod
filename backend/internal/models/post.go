@@ -111,6 +111,13 @@ type Post struct {
 	// RadarDraftIDs are the news drafts whose Radar slides this post carries.
 	// Saving the post takes them out of the Radar queue.
 	RadarDraftIDs []primitive.ObjectID `bson:"radarDraftIds,omitempty" json:"radarDraftIds,omitempty"`
+	// SourceURL is the web page or BGG entry the post is about, SourceKey its
+	// normalised form (see handlers.sourceKey) for duplicate checks.
+	SourceURL string `bson:"sourceUrl,omitempty" json:"sourceUrl,omitempty"`
+	SourceKey string `bson:"sourceKey,omitempty" json:"sourceKey,omitempty"`
+	// Origin names what created the post when it was not made by hand in the
+	// editor: "mcp" for MCP clients, or the label an agent passes ("agent").
+	Origin string `bson:"origin,omitempty" json:"origin,omitempty"`
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt    time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

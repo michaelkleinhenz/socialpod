@@ -39,6 +39,7 @@ var uploadReferences = []uploadReference{
 	{func(db *database.MongoDB) *mongo.Collection { return db.ConventionQueueItems() }, "imageUrl"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.ConventionQueueItems() }, "imageUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Watermarks() }, "url"},
+	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "url"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.coverImageUrl"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.closingImageUrl"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.fontUrl"},

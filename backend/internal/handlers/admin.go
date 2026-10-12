@@ -3034,11 +3034,12 @@ func (h *AdminHandler) UploadWatermark(c *gin.Context) {
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
 	wm := models.Watermark{
-		UserID:    objID,
-		Name:      name,
-		Filename:  fh.Filename,
-		URL:       url,
-		CreatedAt: time.Now(),
+		UserID:      objID,
+		Name:        name,
+		Description: strings.TrimSpace(c.PostForm("description")),
+		Filename:    fh.Filename,
+		URL:         url,
+		CreatedAt:   time.Now(),
 	}
 	if teamID, ok := c.Get("teamId"); ok {
 		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
@@ -3052,6 +3053,53 @@ func (h *AdminHandler) UploadWatermark(c *gin.Context) {
 	}
 	wm.ID = result.InsertedID.(primitive.ObjectID)
 	c.JSON(http.StatusCreated, wm)
+}
+
+// UpdateWatermark renames a watermark or changes its description.
+func (h *AdminHandler) UpdateWatermark(c *gin.Context) {
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid watermark ID"})
+		return
+	}
+	var input struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wm, err := updateWatermark(ctx, h.DB, watermarkFilter(c), id, input.Name, input.Description)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Watermark not found"})
+		return
+	}
+	c.JSON(http.StatusOK, wm)
+}
+
+func updateWatermark(ctx context.Context, db *database.MongoDB, scope bson.M, id primitive.ObjectID, name, description *string) (models.Watermark, error) {
+	set := bson.M{}
+	if name != nil && strings.TrimSpace(*name) != "" {
+		set["name"] = strings.TrimSpace(*name)
+	}
+	if description != nil {
+		set["description"] = strings.TrimSpace(*description)
+	}
+	filter := bson.M{"_id": id}
+	for k, v := range scope {
+		filter[k] = v
+	}
+	var wm models.Watermark
+	if len(set) == 0 {
+		err := db.Watermarks().FindOne(ctx, filter).Decode(&wm)
+		return wm, err
+	}
+	err := db.Watermarks().FindOneAndUpdate(ctx, filter, bson.M{"$set": set},
+		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&wm)
+	return wm, err
 }
 
 func (h *AdminHandler) DeleteWatermark(c *gin.Context) {

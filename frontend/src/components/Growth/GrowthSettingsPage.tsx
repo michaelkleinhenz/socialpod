@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { addWeeks, format } from 'date-fns';
-import { Target, CalendarRange, Wand2, Radar, Plus, Trash2, Save, Upload, X } from 'lucide-react';
+import { Target, CalendarRange, Wand2, Radar, Plus, Trash2, Save, Upload, X, Bot } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { GrowthSettings, InstagramGoal, SlotFormat, WeeklyPlanSlot } from '../../types';
@@ -275,6 +275,21 @@ export function GrowthSettingsPage() {
               value={settings.maxSingleImagesPerWeek ?? 2}
               onChange={e => setSettings(s => s && ({ ...s, maxSingleImagesPerWeek: Number(e.target.value) }))} />
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3><Bot size={16} /> Content agents</h3>
+        <p className="hint">
+          Agents connected over MCP can find content, build images and fill the Drafts list on their own. Their drafts are marked with
+          where they came from. This limit caps how many of them may wait for review at once; an agent cannot add more until people have
+          scheduled or deleted some. 0 means no limit.
+        </p>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>Open agent drafts at most</label>
+          <input className="input" type="number" min={0} max={500} style={{ maxWidth: 120 }}
+            value={settings.maxAgentDrafts ?? 0}
+            onChange={e => setSettings(s => s && ({ ...s, maxAgentDrafts: Math.max(0, Number(e.target.value) || 0) }))} />
         </div>
       </div>
 

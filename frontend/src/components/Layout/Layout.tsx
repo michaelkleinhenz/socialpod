@@ -6,7 +6,7 @@ import {
   Calendar, Settings, Users, Share2, LogOut, User, Zap,
   ScrollText, UsersRound, Signature, Image, LayoutGrid,
   AtSign, Tent, ChevronDown, Layers, SlidersHorizontal, Shield,
-  Newspaper, Mic, TrendingUp, Target, Menu, X,
+  Newspaper, Mic, TrendingUp, Target, Menu, X, FolderOpen,
 } from 'lucide-react';
 import './Layout.css';
 
@@ -62,6 +62,7 @@ export function Layout({ children }: { children: ReactNode }) {
         { kind: 'leaf' as const, path: '/footers', icon: Signature, label: 'Footers' },
         { kind: 'leaf' as const, path: '/mentions', icon: AtSign, label: 'Mentions' },
         { kind: 'leaf' as const, path: '/watermarks', icon: Image, label: 'Watermarks' },
+        { kind: 'leaf' as const, path: '/media', icon: FolderOpen, label: 'Media Library' },
       ],
     },
     ...((user?.isAdmin || user?.isTeamAdmin) ? [{

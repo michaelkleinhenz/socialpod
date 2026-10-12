@@ -164,6 +164,42 @@ curl -X DELETE http://localhost:8080/api/footers/{id} \
 
 ---
 
+## Watermarks & Media Library
+
+```bash
+# List watermarks
+curl http://localhost:8080/api/watermarks \
+  -H "Authorization: Bearer sm_..."
+
+# Rename a watermark or describe it (agents pick watermarks by the description)
+curl -X PUT http://localhost:8080/api/watermarks/{id} \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"description":"Full-size frame with the news banner at the bottom"}'
+
+# Search the media library (q: words in name/description/tags, tags: comma-separated, all required)
+curl "http://localhost:8080/api/media?q=wingspan&tags=cover" \
+  -H "Authorization: Bearer sm_..."
+
+# Add a file to the media library
+curl -X POST http://localhost:8080/api/media \
+  -H "Authorization: Bearer sm_..." \
+  -F "file=@box.jpg" -F "name=Wingspan box" \
+  -F "description=Front of the box, birds on a branch" -F "tags=wingspan,cover"
+
+# Change name, description or tags (tags replaces the list)
+curl -X PUT http://localhost:8080/api/media/{id} \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"tags":["wingspan","cover","box"]}'
+
+# Remove an entry (its file is freed unless something else uses it)
+curl -X DELETE http://localhost:8080/api/media/{id} \
+  -H "Authorization: Bearer sm_..."
+```
+
+---
+
 ## Mentions
 
 ```bash

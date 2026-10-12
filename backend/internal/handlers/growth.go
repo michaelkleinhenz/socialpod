@@ -166,6 +166,9 @@ func validateGrowthSettings(g *models.TeamGrowthSettings) error {
 	if g.MaxSingleImagesPerWeek < 0 {
 		return fmt.Errorf("the single-image limit cannot be negative")
 	}
+	if g.MaxAgentDrafts < 0 || g.MaxAgentDrafts > 500 {
+		return fmt.Errorf("the agent draft limit must be between 0 and 500")
+	}
 	if r := g.Radar; r != nil {
 		if r.AccentColor != "" && !hexColorRe.MatchString(r.AccentColor) {
 			return fmt.Errorf("the accent colour must be a hex colour like #6366f1")

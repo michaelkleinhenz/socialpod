@@ -10,6 +10,7 @@ SocialPod is a self-hosted social media scheduling platform for **Bluesky**, **I
 | [[Connecting Platforms]] | Auth setup for each social network |
 | [[Features]] | Footers, image editor, watermarks, per-platform text, mentions, AI generation, convention mode, Instagram feed, multitenancy, News & Episode Creators, BGG integration, PWA share target, team invites |
 | [[REST API]] | Full API reference with curl examples |
+| [[Content Agent]] | Letting an AI agent find content, build images and fill the draft queue over MCP |
 | [[n8n Integration]] | Installing and using the native n8n community node |
 | [[Development]] | Architecture, Makefile targets, CI/CD pipelines |
 | [[Troubleshooting]] | Common issues and fixes |
