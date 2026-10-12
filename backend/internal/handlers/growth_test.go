@@ -217,6 +217,10 @@ func TestValidateGrowthSettings(t *testing.T) {
 	if err := validateGrowthSettings(&ok); err != nil {
 		t.Fatalf("valid settings rejected: %v", err)
 	}
+	stale := models.TeamGrowthSettings{Radar: &models.RadarSettings{FontName: "Old.ttf"}}
+	if err := validateGrowthSettings(&stale); err != nil || stale.Radar.FontName != "" {
+		t.Errorf("a font name without a font should be cleared, got %q (%v)", stale.Radar.FontName, err)
+	}
 	if ok.WeeklyPlan[0].ID == "" {
 		t.Errorf("a new slot should get an ID")
 	}
@@ -226,6 +230,7 @@ func TestValidateGrowthSettings(t *testing.T) {
 		{WeeklyPlan: []models.WeeklyPlanSlot{{Weekday: 1, Time: "6 Uhr", Format: "reel"}}},
 		{WeeklyPlan: []models.WeeklyPlanSlot{{Weekday: 1, Format: "podcast"}}},
 		{Radar: &models.RadarSettings{CoverImageURL: "https://elsewhere.example/x.jpg"}},
+		{Radar: &models.RadarSettings{FontURL: "https://elsewhere.example/font.ttf"}},
 	}
 	for i, s := range bad {
 		if err := validateGrowthSettings(&s); err == nil {

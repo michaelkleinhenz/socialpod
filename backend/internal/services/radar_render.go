@@ -14,6 +14,7 @@ import (
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -34,20 +35,58 @@ var (
 	badgeNo      = color.RGBA{0xdc, 0x26, 0x26, 0xff}
 	badgeOpen    = color.RGBA{0xd9, 0x77, 0x06, 0xff}
 	fontsOnce    sync.Once
-	fontRegular  *opentype.Font
-	fontBold     *opentype.Font
+	defaultFonts RadarFonts
 	fontParseErr error
 )
 
+// RadarFonts are the typefaces the slides are drawn with: Regular for the
+// subtitle and badge question, Bold for everything else. The zero value
+// means the built-in Go fonts.
+type RadarFonts struct {
+	Regular *opentype.Font
+	Bold    *opentype.Font
+}
+
 func loadFonts() error {
 	fontsOnce.Do(func() {
-		fontRegular, fontParseErr = opentype.Parse(goregular.TTF)
+		defaultFonts.Regular, fontParseErr = opentype.Parse(goregular.TTF)
 		if fontParseErr != nil {
 			return
 		}
-		fontBold, fontParseErr = opentype.Parse(gobold.TTF)
+		defaultFonts.Bold, fontParseErr = opentype.Parse(gobold.TTF)
 	})
 	return fontParseErr
+}
+
+// resolve fills in the built-in fonts for any face not set.
+func (f RadarFonts) resolve() (RadarFonts, error) {
+	if err := loadFonts(); err != nil {
+		return RadarFonts{}, err
+	}
+	if f.Regular == nil {
+		f.Regular = defaultFonts.Regular
+	}
+	if f.Bold == nil {
+		f.Bold = defaultFonts.Bold
+	}
+	return f, nil
+}
+
+// ParseRadarFont reads an uploaded TrueType or OpenType font. A team uploads
+// one file, which is used for every text on the slides, so it must be able
+// to draw plain Latin text, umlauts included.
+func ParseRadarFont(data []byte) (RadarFonts, error) {
+	f, err := opentype.Parse(data)
+	if err != nil {
+		return RadarFonts{}, fmt.Errorf("not a TrueType or OpenType font: %w", err)
+	}
+	var buf sfnt.Buffer
+	for _, r := range "AZaz09äöüß" {
+		if idx, err := f.GlyphIndex(&buf, r); err != nil || idx == 0 {
+			return RadarFonts{}, fmt.Errorf("the font has no glyph for %q", r)
+		}
+	}
+	return RadarFonts{Regular: f, Bold: f}, nil
 }
 
 func face(f *opentype.Font, size float64) font.Face {
@@ -200,8 +239,9 @@ func drawCentered(dst *image.RGBA, f font.Face, c color.Color, baseline int, s s
 // RenderRadarCover draws the opening slide. With a cover image the image is
 // the slide; without one the title and subtitle are drawn on the accent
 // colour.
-func RenderRadarCover(coverImg image.Image, title, subtitle string, accent color.RGBA) ([]byte, error) {
-	if err := loadFonts(); err != nil {
+func RenderRadarCover(coverImg image.Image, title, subtitle string, accent color.RGBA, fonts RadarFonts) ([]byte, error) {
+	fonts, err := fonts.resolve()
+	if err != nil {
 		return nil, err
 	}
 	slide := newSlide(accent)
@@ -209,7 +249,7 @@ func RenderRadarCover(coverImg image.Image, title, subtitle string, accent color
 		fillCover(slide, coverImg)
 		return encodeSlide(slide)
 	}
-	titleFace := face(fontBold, 110)
+	titleFace := face(fonts.Bold, 110)
 	lines := wrapText(titleFace, title, RadarSlideWidth-160, 3)
 	lineH := 124
 	y := RadarSlideHeight/2 - (len(lines)*lineH)/2 + 90
@@ -218,7 +258,7 @@ func RenderRadarCover(coverImg image.Image, title, subtitle string, accent color
 		y += lineH
 	}
 	if subtitle != "" {
-		drawCentered(slide, face(fontRegular, 46), radarText, y+30, subtitle)
+		drawCentered(slide, face(fonts.Regular, 46), radarText, y+30, subtitle)
 	}
 	return encodeSlide(slide)
 }
@@ -234,14 +274,15 @@ type RadarItemSlide struct {
 
 // RenderRadarItem draws one game slide: header, the game image, its title and
 // the "Kommt's auf Deutsch?" badge.
-func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent color.RGBA) ([]byte, error) {
-	if err := loadFonts(); err != nil {
+func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent color.RGBA, fonts RadarFonts) ([]byte, error) {
+	fonts, err := fonts.resolve()
+	if err != nil {
 		return nil, err
 	}
 	slide := newSlide(radarBg)
 
 	// Header: the Radar title on the left, the position on the right.
-	headerFace := face(fontBold, 40)
+	headerFace := face(fonts.Bold, 40)
 	drawText(slide, headerFace, accent, 60, 92, strings.ToUpper(header))
 	pos := fmt.Sprintf("%d/%d", item.Index, item.Total)
 	drawText(slide, headerFace, radarMuted, RadarSlideWidth-60-textWidth(headerFace, pos), 92, pos)
@@ -254,7 +295,7 @@ func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent c
 	}
 
 	// Title, up to two lines.
-	titleFace := face(fontBold, 62)
+	titleFace := face(fonts.Bold, 62)
 	y := 1100
 	for _, l := range wrapText(titleFace, item.Title, RadarSlideWidth-120, 2) {
 		drawText(slide, titleFace, radarText, 60, y, l)
@@ -270,13 +311,13 @@ func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent c
 		case "nein":
 			label, bg = "NEIN", badgeNo
 		}
-		pillFace := face(fontBold, 52)
+		pillFace := face(fonts.Bold, 52)
 		pillW := textWidth(pillFace, label) + 80
 		pill := image.Rect(RadarSlideWidth-60-pillW, 1222, RadarSlideWidth-60, 1222+84)
 		fillRoundedRect(slide, pill, 42, bg)
 		drawText(slide, pillFace, radarText, pill.Min.X+40, pill.Min.Y+61, label)
 
-		qFace := face(fontRegular, 44)
+		qFace := face(fonts.Regular, 44)
 		q := wrapText(qFace, badgeQuestion, pill.Min.X-60-30, 1)
 		if len(q) > 0 {
 			drawText(slide, qFace, radarMuted, 60, pill.Min.Y+57, q[0])
@@ -287,8 +328,9 @@ func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent c
 
 // RenderRadarClosing draws the last slide: the closing image when there is
 // one, otherwise the closing text on the dark background.
-func RenderRadarClosing(closingImg image.Image, text string, accent color.RGBA) ([]byte, error) {
-	if err := loadFonts(); err != nil {
+func RenderRadarClosing(closingImg image.Image, text string, accent color.RGBA, fonts RadarFonts) ([]byte, error) {
+	fonts, err := fonts.resolve()
+	if err != nil {
 		return nil, err
 	}
 	slide := newSlide(radarBg)
@@ -297,7 +339,7 @@ func RenderRadarClosing(closingImg image.Image, text string, accent color.RGBA) 
 		return encodeSlide(slide)
 	}
 	fillRoundedRect(slide, image.Rect(60, 60, RadarSlideWidth-60, 72), 6, accent)
-	textFace := face(fontBold, 76)
+	textFace := face(fonts.Bold, 76)
 	lines := wrapText(textFace, text, RadarSlideWidth-160, 6)
 	lineH := 92
 	y := RadarSlideHeight/2 - (len(lines)*lineH)/2 + 60

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"socialmedia/internal/models"
+
+	"golang.org/x/image/font/gofont/gomono"
 )
 
 func TestNormalizeIGUsernames(t *testing.T) {
@@ -81,7 +83,7 @@ func decodeSlide(t *testing.T, data []byte) image.Image {
 
 func TestRenderRadarSlides(t *testing.T) {
 	accent := ParseHexColor("#6366f1")
-	cover, err := RenderRadarCover(nil, "Radar der Woche", "KW 42 · 5 Ankündigungen", accent)
+	cover, err := RenderRadarCover(nil, "Radar der Woche", "KW 42 · 5 Ankündigungen", accent, RadarFonts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +95,7 @@ func TestRenderRadarSlides(t *testing.T) {
 	}
 	item, err := RenderRadarItem(RadarItemSlide{
 		Index: 1, Total: 5, Title: "Ein ziemlich langer Spieltitel, der sicher umbrechen muss, weil er so lang ist", Image: game, GermanRelease: "ja",
-	}, "Radar der Woche", "Kommt's auf Deutsch?", accent)
+	}, "Radar der Woche", "Kommt's auf Deutsch?", accent, RadarFonts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +106,7 @@ func TestRenderRadarSlides(t *testing.T) {
 		t.Errorf("game image missing from its panel, pixel = %v", color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), 255})
 	}
 
-	closing, err := RenderRadarClosing(nil, "Welche Neuheit interessiert euch am meisten?", accent)
+	closing, err := RenderRadarClosing(nil, "Welche Neuheit interessiert euch am meisten?", accent, RadarFonts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +117,7 @@ func TestRenderRadarSlides(t *testing.T) {
 	for i := range coverImg.Pix {
 		coverImg.Pix[i] = 255
 	}
-	withImage, err := RenderRadarCover(coverImg, "ignored", "", accent)
+	withImage, err := RenderRadarCover(coverImg, "ignored", "", accent, RadarFonts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,7 @@ func TestWrapText(t *testing.T) {
 	if err := loadFonts(); err != nil {
 		t.Fatal(err)
 	}
-	f := face(fontBold, 62)
+	f := face(defaultFonts.Bold, 62)
 	lines := wrapText(f, "eins zwei drei vier fünf sechs sieben acht neun zehn elf zwölf dreizehn vierzehn", 400, 2)
 	if len(lines) != 2 || !strings.HasSuffix(lines[1], "…") {
 		t.Errorf("lines = %q, want two with an ellipsis", lines)
@@ -138,5 +140,32 @@ func TestWrapText(t *testing.T) {
 		if textWidth(f, l) > 400 {
 			t.Errorf("line %q is wider than 400px", l)
 		}
+	}
+}
+
+func TestRadarCustomFont(t *testing.T) {
+	fonts, err := ParseRadarFont(gomono.TTF)
+	if err != nil {
+		t.Fatalf("a valid font was rejected: %v", err)
+	}
+	if fonts.Regular == nil || fonts.Bold == nil {
+		t.Fatal("the uploaded font should serve both faces")
+	}
+	if _, err := ParseRadarFont([]byte("not a font")); err == nil {
+		t.Error("garbage was accepted as a font")
+	}
+
+	accent := ParseHexColor("#6366f1")
+	custom, err := RenderRadarCover(nil, "Radar der Woche", "KW 42", accent, fonts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodeSlide(t, custom)
+	builtin, err := RenderRadarCover(nil, "Radar der Woche", "KW 42", accent, RadarFonts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(custom, builtin) {
+		t.Error("the custom font made no difference to the slide")
 	}
 }

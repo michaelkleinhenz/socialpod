@@ -702,6 +702,15 @@ class ApiClient {
     return this.request<import('../types').GrowthSettings>('/growth/settings');
   }
 
+  uploadRadarFont(file: File) {
+    const form = new FormData();
+    form.append('font', file);
+    return this.request<{ url: string; name: string }>('/team/growth/font', {
+      method: 'POST',
+      body: form,
+    });
+  }
+
   updateGrowthSettings(data: import('../types').GrowthSettings) {
     return this.request<import('../types').GrowthSettings>('/team/growth', {
       method: 'PUT',
