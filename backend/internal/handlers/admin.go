@@ -1576,11 +1576,8 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": input.Prompt},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, input.Prompt),
 	})
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
@@ -1780,11 +1777,8 @@ Provide exactly 4 stats (pick the most insightful metrics like posting frequency
 	systemPrompt += langInstr
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": summary},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, summary),
 	})
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))

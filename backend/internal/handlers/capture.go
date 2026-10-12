@@ -44,7 +44,7 @@ Based on the requested entity type, return a JSON object with ONLY the following
 
 For "news":
 {
-  "newsTagline": "A very short headline for the news item — MAXIMUM 30 CHARACTERS including spaces",
+  "newsTagline": "A very short headline for the news item, MAXIMUM 30 CHARACTERS including spaces",
   "articleUrl": "The source URL",
   "shownotes": "Key points and summary of the article, with no blank lines between them",
   "content": "Ready-to-post social media text (max 280 characters)"
@@ -97,7 +97,7 @@ quotes (“ ”, „ “, « »), even when writing in a language that normally 
 Quote the title every single time it appears, in every text field: taglines,
 titles, summaries, show notes, intro texts, rules, scenes and social media text
 alike. Do not quote publisher, designer, illustrator or person names, do not put
-quotes inside a URL, and leave the "gameNamePublisher" field unquoted — it is a
+quotes inside a URL, and leave the "gameNamePublisher" field unquoted: it is a
 structured field, not prose.`
 
 type CaptureImage struct {
@@ -231,11 +231,8 @@ func (h *CaptureHandler) Capture(c *gin.Context) {
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": userPrompt},
-		},
+		"model":    model,
+		"messages": chatMessages(systemPrompt, userPrompt),
 	})
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
@@ -367,7 +364,7 @@ func (h *CaptureHandler) visionSelectImage(ctx context.Context, images []Capture
 			"I have %d images from the web page at %s. Pick the ONE image that would work best as the featured image for a social media post about this article. "+
 				"Prefer high-quality photos or illustrations that represent the article content. "+
 				"Avoid screenshots of the full page, navigation elements, ads, logos, or generic stock photos. "+
-				"The last image may be a screenshot of the page — only pick it if no better content image exists. "+
+				"The last image may be a screenshot of the page; only pick it if no better content image exists. "+
 				"Reply with ONLY the image number (1-%d), nothing else.",
 			len(validIndices), articleURL, len(validIndices)),
 	})
@@ -393,10 +390,8 @@ func (h *CaptureHandler) visionSelectImage(ctx context.Context, images []Capture
 	}
 
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]any{
-			{"role": "user", "content": content},
-		},
+		"model":      model,
+		"messages":   chatMessages("", content),
 		"max_tokens": 10,
 	})
 

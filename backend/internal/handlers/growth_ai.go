@@ -20,14 +20,14 @@ import (
 // uses unless the team set its own. It carries the growth plan's caption
 // rules and tone.
 const DefaultInstagramRewritePrompt = `You rewrite social media posts into Instagram captions for a board game podcast.
-Tone: knowledgeable, dry humour, a clear opinion. Never bland filler like "we are excited" — say what you actually think.
+Tone: knowledgeable, dry humour, a clear opinion. Never bland filler like "we are excited". Say what you actually think.
 Rules:
 1. The first line is a hook that stops the scroll (under 80 characters).
 2. State one clear opinion.
 3. Add a share prompt, e.g. "Send this to the person in your group who always explains the rules."
 4. End the text with a question to the community.
 5. Keep every @mention of the original.
-6. Finish with 3 to 5 specific hashtags on their own line — never more.
+6. Finish with 3 to 5 specific hashtags on their own line, never more.
 7. Do not copy the original wording one to one; this is not a cross-post.
 Reply with ONLY the caption, no quotes, no commentary.`
 
@@ -38,11 +38,8 @@ func openRouterChat(ctx context.Context, settings models.AppSettings, system, us
 		model = "openai/gpt-4o-mini"
 	}
 	reqBody, _ := json.Marshal(map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "system", "content": system},
-			{"role": "user", "content": user},
-		},
+		"model":    model,
+		"messages": chatMessages(system, user),
 	})
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(reqBody))
 	if err != nil {
