@@ -582,8 +582,6 @@ export function CalendarPage() {
         </div>
       )}
 
-      {activeTab === 'calendar' && renderMix()}
-
       {activeTab === 'calendar' && (
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         {viewMode === '3day' ? (
@@ -729,6 +727,8 @@ export function CalendarPage() {
         </DragOverlay>
       </DndContext>
       )}
+
+      {activeTab === 'calendar' && renderMix()}
 
       {loading && activeTab === 'calendar' && <div className="calendar-loading"><div className="spinner" /></div>}
 
