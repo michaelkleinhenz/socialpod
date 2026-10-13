@@ -149,6 +149,15 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "userId", Value: 1}, {Key: "clientId", Value: 1}}},
 		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
 	})
+	m.Agents().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "enabled", Value: 1}, {Key: "nextRunAt", Value: 1}}},
+	})
+	// Run logs expire on their own.
+	m.AgentRuns().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "agentId", Value: 1}, {Key: "startedAt", Value: -1}}},
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+	})
 
 	log.Println("MongoDB indexes ensured")
 }
@@ -241,6 +250,14 @@ func (m *MongoDB) OAuthTokens() *mongo.Collection {
 
 func (m *MongoDB) OAuthKeys() *mongo.Collection {
 	return m.Database.Collection("oauth_keys")
+}
+
+func (m *MongoDB) Agents() *mongo.Collection {
+	return m.Database.Collection("agents")
+}
+
+func (m *MongoDB) AgentRuns() *mongo.Collection {
+	return m.Database.Collection("agent_runs")
 }
 
 func (m *MongoDB) Close() {

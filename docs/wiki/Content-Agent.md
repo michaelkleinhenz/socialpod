@@ -2,9 +2,20 @@
 
 SocialPod's MCP server (`/api/mcp`) has everything an AI agent needs to run without supervision: it can find content on the web, check that a story hasn't been covered yet, import games from BoardGameGeek, build post images from the team's watermarks and media library, and put finished drafts into the Drafts list for people to review. Nothing is published without a person: the agent creates drafts, and people schedule them.
 
+## Built-in agents
+
+You don't need an outside MCP client to run an agent: **Post Tools → Agents** runs them inside SocialPod.
+
+1. On the **Profile** page, under *Agents*, enter your [OpenRouter](https://openrouter.ai/keys) API key and pick a default model. The model must support tool calling; the picker lists OpenRouter's tool-calling models with their prices. Usage is billed to your OpenRouter account.
+2. On the **Agents** page, write a **global prompt** (house rules every agent follows: language, tone, what never to post) and create one or more agents, each with a name, a prompt and a schedule: at set times of day (optionally on chosen weekdays), every hour at a given minute, every N minutes/hours/days (at least 15 minutes), or manual runs only. Times are read in the agent's timezone. An agent can override the model and the number of model turns per run (default 30, max 100).
+3. Each run gets the same tools as the MCP server (under the same names, with your rights, never admin rights) plus `web_search` (a web search through OpenRouter's web plugin, with the agent's own model) and `fetch_url` (a page's text, title, description, image and date). A prompt written for an MCP client therefore works unchanged; the "Insert example" button in the agent form fills in one for the news use case.
+4. **Run now** starts an agent outside its schedule; **Runs** shows the last runs with every tool call, its arguments and result, the model's summary, tokens and cost, and follows a run in progress. Runs are kept for 30 days. **Stop** cancels a run.
+
+What a built-in agent creates carries the origin `agent-<name>` (e.g. `agent-news-scout`) unless its prompt passes another one, and counts towards the draft limit below.
+
 ## Setup
 
-1. **Connect the agent.** Point any MCP client at `https://<your-host>/api/mcp`. For an agent that runs unattended (a scheduled Claude routine, a cron job), use a bearer token from the Profile page rather than OAuth: OAuth access tokens expire after an hour. A team token (`st_...`) works too.
+1. **Connect the agent.** (Not needed for built-in agents.) Point any MCP client at `https://<your-host>/api/mcp`. For an agent that runs unattended (a scheduled Claude routine, a cron job), use a bearer token from the Profile page rather than OAuth: OAuth access tokens expire after an hour. A team token (`st_...`) works too.
 2. **Describe your watermarks.** On the Watermarks page, give each watermark a description of what it looks like and how it is meant to be used, e.g. "round logo, place in a corner at 15% width" or "full-size frame with the news banner at the bottom". `list_watermarks` also reports what the team uses each one for (BGG overlay, news overlay, ...) and whether it is a full-canvas overlay.
 3. **Fill the media library.** Upload photos, box art, backgrounds and logos on the Media Library page, with a description and tags. The agent searches them with `list_media` and builds images from them.
 4. **Set a draft limit.** On Growth settings, "Content agents" caps how many agent drafts may wait for review at once. Once it is reached, creating more drafts fails until people have scheduled or deleted some.

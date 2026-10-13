@@ -15,6 +15,9 @@ type User struct {
 	IsTeamAdmin bool                `bson:"isTeamAdmin" json:"isTeamAdmin"`
 	TeamID      *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
 	APIToken  string              `bson:"apiToken,omitempty" json:"apiToken,omitempty"`
+	// Agent holds the Agents feature settings, including the OpenRouter key;
+	// never serialised.
+	Agent     *AgentSettings      `bson:"agent,omitempty" json:"-"`
 	CreatedAt time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time           `bson:"updatedAt" json:"updatedAt"`
 }

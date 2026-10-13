@@ -1524,6 +1524,8 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 
 	h.DB.Users().DeleteOne(ctx, bson.M{"_id": id})
 	h.DB.Posts().DeleteMany(ctx, bson.M{"userId": id})
+	h.DB.Agents().DeleteMany(ctx, bson.M{"userId": id})
+	h.DB.AgentRuns().DeleteMany(ctx, bson.M{"userId": id})
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
 }

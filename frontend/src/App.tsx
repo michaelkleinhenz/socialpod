@@ -18,6 +18,7 @@ import { TeamInfoPage } from './components/Admin/TeamInfoPage';
 import { PublisherHandlesPage } from './components/Admin/PublisherHandlesPage';
 import { WatermarksPage } from './components/Admin/WatermarksPage';
 import { MediaPage } from './components/Media/MediaPage';
+import { AgentsPage } from './components/Agents/AgentsPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
 import { LogPage } from './components/Log/LogPage';
 import { FootersPage } from './components/Footers/FootersPage';
@@ -98,6 +99,7 @@ function AppRoutes() {
       <Route path="/admin/publisher-handles" element={<ProtectedRoute adminOnly><Layout><PublisherHandlesPage /></Layout></ProtectedRoute>} />
       <Route path="/watermarks" element={<ProtectedRoute><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
       <Route path="/media" element={<ProtectedRoute><Layout><MediaPage /></Layout></ProtectedRoute>} />
+      <Route path="/agents" element={<ProtectedRoute><Layout><AgentsPage /></Layout></ProtectedRoute>} />
       {/* Convention mode */}
       <Route path="/convention" element={<ProtectedRoute><Layout><ConventionPage /></Layout></ProtectedRoute>} />
       <Route path="/convention/:id" element={<ProtectedRoute><Layout><QueueDetailPage /></Layout></ProtectedRoute>} />
