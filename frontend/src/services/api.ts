@@ -534,7 +534,7 @@ class ApiClient {
   }
 
   // Media library
-  getMedia(params: { q?: string; tags?: string[]; kind?: 'image' | 'video' | 'font' | 'color'; limit?: number } = {}) {
+  getMedia(params: { q?: string; tags?: string[]; kind?: 'image' | 'video' | 'font' | 'color' | 'template'; limit?: number } = {}) {
     const query = new URLSearchParams();
     if (params.q) query.set('q', params.q);
     if (params.kind) query.set('kind', params.kind);
@@ -555,6 +555,24 @@ class ApiClient {
 
   createMediaColor(data: { color: string; name?: string; description?: string; tags?: string[] }) {
     return this.request<MediaItem>('/media/colors', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  // Templates: the design as JSON plus a rendered preview image.
+  createMediaTemplate(preview: Blob, template: object, data: { name?: string; description?: string; tags?: string[] } = {}) {
+    const form = new FormData();
+    form.append('preview', preview, 'preview.jpg');
+    form.append('template', JSON.stringify(template));
+    if (data.name) form.append('name', data.name);
+    if (data.description) form.append('description', data.description);
+    if (data.tags?.length) form.append('tags', data.tags.join(','));
+    return this.request<MediaItem>('/media/templates', { method: 'POST', body: form });
+  }
+
+  updateMediaTemplate(id: string, preview: Blob, template: object) {
+    const form = new FormData();
+    form.append('preview', preview, 'preview.jpg');
+    form.append('template', JSON.stringify(template));
+    return this.request<MediaItem>(`/media/templates/${id}`, { method: 'PUT', body: form });
   }
 
   updateMedia(id: string, data: { name?: string; description?: string; color?: string; tags?: string[] }) {

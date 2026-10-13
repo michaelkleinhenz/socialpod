@@ -15,8 +15,9 @@ interface Props {
   // In drawing order: the first is drawn first, so it lies at the bottom.
   layers: EditorLayer[];
   selectedId: string | null;
-  // The base picture, listed at the bottom; it cannot be moved.
-  backgroundSrc: string;
+  // The base, listed at the bottom; it cannot be moved. A photo, or the
+  // colour of a blank canvas.
+  background: { src: string } | { color: string };
   onSelect: (layer: EditorLayer) => void;
   onSelectBackground: () => void;
   // The new drawing order.
@@ -25,7 +26,7 @@ interface Props {
 
 // The editor's objects, top to bottom, as Adobe Express lists them: the order
 // of the list is the order they are stacked in, and dragging a row restacks.
-export function LayerList({ layers, selectedId, backgroundSrc, onSelect, onSelectBackground, onReorder }: Props) {
+export function LayerList({ layers, selectedId, background, onSelect, onSelectBackground, onReorder }: Props) {
   const sensors = useSensors(
     // A few pixels of travel before a drag starts, so a tap still selects.
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -63,8 +64,10 @@ export function LayerList({ layers, selectedId, backgroundSrc, onSelect, onSelec
           </div>
         </SortableContext>
       </DndContext>
-      <button className="ie-layer ie-layer-fixed" onClick={onSelectBackground} title="The picture itself, always at the bottom">
-        <span className="ie-layer-thumb"><img src={backgroundSrc} alt="" /></span>
+      <button className="ie-layer ie-layer-fixed" onClick={onSelectBackground} title="Always at the bottom">
+        <span className="ie-layer-thumb">
+          {'src' in background ? <img src={background.src} alt="" /> : <span className="ie-layer-color" style={{ background: background.color }} />}
+        </span>
         <span className="ie-layer-name">Background</span>
       </button>
     </div>

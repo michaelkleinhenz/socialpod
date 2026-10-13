@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark, RadarContent } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, Radar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, Radar, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
 import { CaptionChecker, InsightsStrip, InstagramPeople, RadarPicker } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -516,6 +516,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [preparingPlatforms, setPreparingPlatforms] = useState(false);
   const [editingImageIdx, setEditingImageIdx] = useState<number | null>(null);
   const [croppingImageIdx, setCroppingImageIdx] = useState<number | null>(null);
+  // The image editor on a blank canvas, to make an image instead of uploading one.
+  const [creatingImage, setCreatingImage] = useState(false);
   // Overlay picked inside the cropper. Starts empty on every open — a post
   // image gets a watermark only when someone asks for one.
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -887,7 +889,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const onPaste = (e: ClipboardEvent) => {
       // The image editor, the cropper and Adobe Express own the clipboard while
       // they're up.
-      if (editingImageIdx !== null || croppingImageIdx !== null || adobeActive) return;
+      if (editingImageIdx !== null || croppingImageIdx !== null || creatingImage || adobeActive) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       for (const item of items) {
@@ -903,7 +905,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [addFiles, acceptsType, editingImageIdx, croppingImageIdx, adobeActive]);
+  }, [addFiles, acceptsType, editingImageIdx, croppingImageIdx, creatingImage, adobeActive]);
 
   // The cropper's overlay: reset whenever it opens, so an overlay is always a
   // deliberate pick, and load the picked watermark for the live preview and the
@@ -1675,6 +1677,15 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       ? 'Drop an image or video here, click to browse, or paste from clipboard'
                       : 'Drop an image here, click to browse, or paste from clipboard'}
                   </div>
+                  {!isReel && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm image-dropzone-create"
+                      onClick={e => { e.stopPropagation(); setCreatingImage(true); }}
+                    >
+                      <Palette size={14} /> Create an image
+                    </button>
+                  )}
                 </div>
               )}
               {images.length > 0 && (
@@ -1775,6 +1786,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
               {(isStory || isReel) ? <><Film size={16} /> Upload {isReel ? 'Video' : 'Media'}</> : <><Image size={16} /> Upload</>}
             </button>
+            {!isReel && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setCreatingImage(true)} title="Design an image, from scratch or a template">
+                <Palette size={16} /> Create Image
+              </button>
+            )}
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>
                 <Wand2 size={16} /> {adobeLoading ? 'Opening...' : (isStory ? 'Create Story Design' : isReel ? 'Create Reel Design' : 'Create Design')}
@@ -1837,6 +1853,23 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             ));
             setEditingImageIdx(null);
             toast.success('Image updated');
+          }}
+        />
+      )}
+
+      {creatingImage && (
+        <ImageEditor
+          canvas={{ width: 1080, height: isStory ? 1920 : 1350, background: '#ffffff' }}
+          title={isStory ? 'Create story image' : 'Create image'}
+          watermarks={watermarks}
+          onCancel={() => setCreatingImage(false)}
+          onSave={blob => {
+            const file = new File([blob], 'created.jpg', { type: 'image/jpeg' });
+            // A story holds one image, which a created one replaces.
+            if (isStory) setImages([{ kind: 'file', file }]);
+            else setImages(prev => [...prev, { kind: 'file', file }]);
+            setCreatingImage(false);
+            toast.success('Image added');
           }}
         />
       )}

@@ -43,7 +43,7 @@ var mediaContentTypes = map[string]string{
 func isFontContentType(ct string) bool { return strings.HasPrefix(ct, "font/") }
 
 // mediaKindPrefixes maps a list filter kind to the content type prefix.
-var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/", "color": "color/"}
+var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/", "color": "color/", "template": "template/"}
 
 var hexColorPattern = regexp.MustCompile(`^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$`)
 
@@ -116,7 +116,7 @@ func splitTags(s string) []string {
 
 // mediaListFilter builds the scoped query for a library search: words of
 // query must all appear in the name, description, tags or colour value; every
-// tag given must be present; kind (image, video, font, color; empty = all)
+// tag given must be present; kind (image, video, font, color, template; empty = all)
 // limits the content type.
 func mediaListFilter(scope bson.M, query string, tags []string, kind string) bson.M {
 	filter := bson.M{}

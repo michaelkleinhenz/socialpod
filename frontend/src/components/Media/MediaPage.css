@@ -30,6 +30,7 @@
 }
 
 .media-preview {
+  position: relative;
   padding: 0;
   color: var(--text-muted);
 }
@@ -126,4 +127,23 @@
 .media-color-field .input {
   flex: 1;
   font-family: monospace;
+}
+
+/* A template shows its whole design, not a crop of it. */
+.media-template img {
+  object-fit: contain;
+}
+
+.media-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 11px;
 }

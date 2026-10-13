@@ -95,6 +95,8 @@ export interface MediaItem {
   url: string;
   /** #rrggbb or #rrggbbaa, colour entries only. */
   color?: string;
+  /** An image editor design as JSON (EditorTemplate), template entries only; url is its preview. */
+  template?: string;
   name: string;
   description?: string;
   tags?: string[];
