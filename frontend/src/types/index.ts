@@ -453,6 +453,41 @@ export interface SchedulePreview {
   nextPostAt: string | null;
 }
 
+export type BackupFrequency = 'off' | 'hourly' | '6h' | '12h' | 'daily' | 'weekly';
+
+/** Full-system backup settings and status (admin). */
+export interface BackupConfig {
+  frequency: BackupFrequency;
+  /** Number of backups kept in the bucket. */
+  retention: number;
+  passphraseSet: boolean;
+  /** False when no S3 bucket is configured on the server. */
+  storageConfigured: boolean;
+  /** A backup or restore is in progress. */
+  running: boolean;
+  minPassphraseLength: number;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  lastError?: string;
+  lastName?: string;
+}
+
+/** One backup archive stored in the bucket. */
+export interface BackupEntry {
+  name: string;
+  size: number;
+  createdAt: string;
+  /** scheduled, manual or pre-restore */
+  kind: string;
+}
+
+export interface BackupRestoreResult {
+  restored: boolean;
+  /** Name of the backup of the state before the restore, if one was taken. */
+  safetyBackup: string;
+  collections: Record<string, number>;
+}
+
 /** One upload no document references any more. */
 export interface OrphanedUpload {
   filename: string;

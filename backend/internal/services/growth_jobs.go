@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"socialmedia/internal/backup"
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 
@@ -18,6 +19,9 @@ import (
 const insightsWindow = 60 * 24 * time.Hour
 
 func (s *Scheduler) runGrowthJobs() {
+	if backup.RestoreInProgress() {
+		return // a backup restore is replacing the data
+	}
 	s.SnapshotFollowers()
 	s.refreshDueInsights()
 }

@@ -30,11 +30,13 @@ func Connect(uri, dbName string) (*MongoDB, error) {
 
 	db := client.Database(dbName)
 	mdb := &MongoDB{Client: client, Database: db}
-	mdb.ensureIndexes()
+	mdb.EnsureIndexes()
 	return mdb, nil
 }
 
-func (m *MongoDB) ensureIndexes() {
+// EnsureIndexes creates the indexes every collection needs. It runs on
+// startup and again after a backup restore, which may create collections.
+func (m *MongoDB) EnsureIndexes() {
 	ctx := context.Background()
 
 	m.Users().Indexes().CreateOne(ctx, mongo.IndexModel{
@@ -258,6 +260,11 @@ func (m *MongoDB) Agents() *mongo.Collection {
 
 func (m *MongoDB) AgentRuns() *mongo.Collection {
 	return m.Database.Collection("agent_runs")
+}
+
+// BackupConfig holds the single full-system backup configuration.
+func (m *MongoDB) BackupConfig() *mongo.Collection {
+	return m.Database.Collection("backup_config")
 }
 
 func (m *MongoDB) Close() {

@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"socialmedia/internal/backup"
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 	"socialmedia/internal/services"
@@ -80,6 +81,9 @@ func startOfDay(t time.Time) time.Time {
 // passed, then for every active, in-window queue that is due it publishes one
 // random approved photo and rolls the queue's NextPostAt forward.
 func (h *ConventionHandler) runAutoPost() {
+	if backup.RestoreInProgress() {
+		return // a backup restore is replacing the data
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
