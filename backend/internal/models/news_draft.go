@@ -35,6 +35,10 @@ type NewsDraft struct {
 	// that post has not gone out the draft stays in the Radar queue, marked as
 	// scheduled; once it is published the draft was used and leaves the queue.
 	RadarPostID   *primitive.ObjectID `bson:"radarPostId,omitempty" json:"radarPostId,omitempty"`
+	// SourceKey is the normalised ArticleURL, Origin what created the draft
+	// (see Post).
+	SourceKey string `bson:"sourceKey,omitempty" json:"sourceKey,omitempty"`
+	Origin    string `bson:"origin,omitempty" json:"origin,omitempty"`
 	Posted           bool                `bson:"posted" json:"posted"`
 	PostedAt         *time.Time          `bson:"postedAt,omitempty" json:"postedAt,omitempty"`
 	CreatedAt        time.Time           `bson:"createdAt" json:"createdAt"`

@@ -73,6 +73,20 @@ func (m *MongoDB) ensureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
+	m.Posts().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "sourceKey", Value: 1}}},
+		{Keys: bson.D{{Key: "origin", Value: 1}, {Key: "status", Value: 1}}},
+	})
+	m.NewsDrafts().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "sourceKey", Value: 1}}},
+	})
+
+	m.Media().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
+		{Keys: bson.D{{Key: "teamId", Value: 1}}},
+		{Keys: bson.D{{Key: "tags", Value: 1}}},
+	})
+
 	m.Mentions().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
@@ -169,6 +183,12 @@ func (m *MongoDB) Footers() *mongo.Collection {
 
 func (m *MongoDB) Watermarks() *mongo.Collection {
 	return m.Database.Collection("watermarks")
+}
+
+// Media is the team's media library: uploaded material with a name,
+// description and tags, for composing post images.
+func (m *MongoDB) Media() *mongo.Collection {
+	return m.Database.Collection("media")
 }
 
 func (m *MongoDB) Mentions() *mongo.Collection {

@@ -79,9 +79,28 @@ export interface Watermark {
   userId: string;
   teamId?: string;
   name: string;
+  /** What it looks like and what it is for; agents pick watermarks by it. */
+  description?: string;
   filename: string;
   url: string;
   createdAt: string;
+}
+
+/** An entry of the team's media library (uploaded material for post images). */
+export interface MediaItem {
+  id: string;
+  userId: string;
+  teamId?: string;
+  url: string;
+  name: string;
+  description?: string;
+  tags?: string[];
+  contentType?: string;
+  width?: number;
+  height?: number;
+  size?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BGGGameData {
@@ -183,6 +202,10 @@ export interface Post {
   collaborators?: string[];
   userTags?: string[];
   radarDraftIds?: string[];
+  /** The page or BGG entry the post is about (set by MCP agents). */
+  sourceUrl?: string;
+  /** What created the post when not made in the editor: "mcp" or an agent's label. */
+  origin?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -213,6 +236,8 @@ export interface NewsDraft {
   radarPostId?: string;
   posted?: boolean;
   postedAt?: string;
+  /** What created the draft when not made by hand (see Post.origin). */
+  origin?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -250,6 +275,8 @@ export interface EpisodeDraft {
   postType?: PostType;
   posted?: boolean;
   postedAt?: string;
+  /** What created the draft when not made by hand (see Post.origin). */
+  origin?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -511,6 +538,8 @@ export interface GrowthSettings {
   weeklyPlan: WeeklyPlanSlot[];
   maxSingleImagesPerWeek?: number;
   instagramRewritePrompt?: string;
+  /** Open drafts MCP clients and agents may have waiting for review; 0 = no limit. */
+  maxAgentDrafts?: number;
   radar?: RadarSettings;
 }
 

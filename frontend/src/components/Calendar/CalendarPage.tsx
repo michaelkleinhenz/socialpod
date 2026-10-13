@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -15,7 +15,7 @@ import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
 import { DroppableDay } from './DroppableDay';
 import { PlatformIcon } from '../Common/PlatformIcon';
-import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Filter, FileText, Edit3, Trash2, Play, Loader, CalendarDays, Bot, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
@@ -43,6 +43,9 @@ export function CalendarPage() {
   // loaded, the refresh happens behind the list already on screen: swapping
   // in a spinner would resize the panel on every tab switch.
   const [draftsLoaded, setDraftsLoaded] = useState(false);
+  // "" shows every draft, "manual" those made in the editor, anything else
+  // the drafts of that origin (an MCP client or agent).
+  const [draftOrigin, setDraftOrigin] = useState('');
   const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null);
   // The team's weekly Instagram plan: open slots show up as placeholders and
   // each week gets a format-mix line. Both need the unfiltered posts, so they
@@ -151,6 +154,16 @@ export function CalendarPage() {
   useEffect(() => {
     if (activeTab === 'drafts') fetchDrafts();
   }, [activeTab, fetchDrafts]);
+
+  const draftOrigins = useMemo(
+    () => [...new Set(draftPosts.map(p => p.origin).filter((o): o is string => !!o))].sort(),
+    [draftPosts],
+  );
+  const visibleDrafts = useMemo(() => {
+    if (draftOrigin === '') return draftPosts;
+    if (draftOrigin === 'manual') return draftPosts.filter(p => !p.origin);
+    return draftPosts.filter(p => p.origin === draftOrigin);
+  }, [draftPosts, draftOrigin]);
 
   const handlePublishDraft = async (post: Post) => {
     setPublishingDraftId(post.id);
@@ -442,7 +455,19 @@ export function CalendarPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {draftPosts.map(post => (
+              {draftOrigins.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <label htmlFor="draft-origin" style={{ color: 'var(--text-muted)' }}>Show</label>
+                  <select id="draft-origin" className="select" style={{ width: 'auto' }} value={draftOrigin} onChange={e => setDraftOrigin(e.target.value)}>
+                    <option value="">All drafts ({draftPosts.length})</option>
+                    <option value="manual">Made by hand ({draftPosts.filter(p => !p.origin).length})</option>
+                    {draftOrigins.map(o => (
+                      <option key={o} value={o}>From {o} ({draftPosts.filter(p => p.origin === o).length})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {visibleDrafts.map(post => (
                 <div key={post.id} className="card" style={{ padding: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     {post.imageUrls && post.imageUrls.length > 0 && (
@@ -483,6 +508,29 @@ export function CalendarPage() {
                             <PlatformIcon key={p} platform={p as Platform} size={12} />
                           ))}
                         </span>
+                        {post.origin && (
+                          <span
+                            title="Created over MCP by an agent or client; review before scheduling"
+                            style={{
+                              background: 'var(--accent-muted)',
+                              color: 'var(--accent)',
+                              borderRadius: 4,
+                              padding: '1px 6px',
+                              fontSize: 11,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                            }}
+                          >
+                            <Bot size={11} /> {post.origin}
+                          </span>
+                        )}
+                        {post.sourceUrl && (
+                          <a href={post.sourceUrl} target="_blank" rel="noreferrer" title={post.sourceUrl}
+                            style={{ fontSize: 11, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
+                            <ExternalLink size={11} /> Source
+                          </a>
+                        )}
                       </div>
                       <div style={{
                         fontSize: 14,

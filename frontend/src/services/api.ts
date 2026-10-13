@@ -1,3 +1,5 @@
+import type { MediaItem, Watermark } from '../types';
+
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 class ApiClient {
@@ -470,15 +472,47 @@ class ApiClient {
     return this.request<any[]>('/watermarks');
   }
 
-  uploadWatermark(name: string, file: File) {
+  uploadWatermark(name: string, file: File, description = '') {
     const form = new FormData();
     form.append('name', name);
+    if (description) form.append('description', description);
     form.append('image', file);
     return this.request<any>('/watermarks', { method: 'POST', body: form });
   }
 
   deleteWatermark(id: string) {
     return this.request<any>(`/watermarks/${id}`, { method: 'DELETE' });
+  }
+
+  updateWatermark(id: string, data: { name?: string; description?: string }) {
+    return this.request<Watermark>(`/watermarks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  // Media library
+  getMedia(params: { q?: string; tags?: string[]; limit?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.q) query.set('q', params.q);
+    if (params.tags?.length) query.set('tags', params.tags.join(','));
+    if (params.limit) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return this.request<MediaItem[]>(`/media${qs ? '?' + qs : ''}`);
+  }
+
+  uploadMedia(file: File, data: { name?: string; description?: string; tags?: string[] } = {}) {
+    const form = new FormData();
+    form.append('file', file);
+    if (data.name) form.append('name', data.name);
+    if (data.description) form.append('description', data.description);
+    if (data.tags?.length) form.append('tags', data.tags.join(','));
+    return this.request<MediaItem>('/media', { method: 'POST', body: form });
+  }
+
+  updateMedia(id: string, data: { name?: string; description?: string; tags?: string[] }) {
+    return this.request<MediaItem>(`/media/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  deleteMedia(id: string) {
+    return this.request<any>(`/media/${id}`, { method: 'DELETE' });
   }
 
   // Teams

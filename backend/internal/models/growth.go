@@ -15,6 +15,10 @@ type TeamGrowthSettings struct {
 	MaxSingleImagesPerWeek int              `bson:"maxSingleImagesPerWeek,omitempty" json:"maxSingleImagesPerWeek,omitempty"`
 	InstagramRewritePrompt string           `bson:"instagramRewritePrompt,omitempty" json:"instagramRewritePrompt,omitempty"`
 	Radar                  *RadarSettings   `bson:"radar,omitempty" json:"radar,omitempty"`
+	// MaxAgentDrafts caps the open drafts MCP clients and agents may have
+	// waiting for review at once (posts, news and episode drafts with an
+	// origin); 0 means no limit.
+	MaxAgentDrafts int `bson:"maxAgentDrafts,omitempty" json:"maxAgentDrafts,omitempty"`
 }
 
 // InstagramGoal is a follower target with a date range. Dates are
