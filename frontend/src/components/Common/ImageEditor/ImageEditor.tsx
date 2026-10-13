@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer } from 'react-konva';
 import {
-  AlignCenter, Bold, Crop, FolderOpen, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, Bold, Crop, FolderOpen, Layers as LayersIcon, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
@@ -13,6 +13,7 @@ import {
   type Adjustments, type CropBox, type EditorLayer, type ImageLayer, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
+import { LayerList } from './LayerList';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'filters' | 'watermark' | 'media' | 'text';
@@ -113,6 +114,8 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
   });
   const [guides, setGuides] = useState<SnapResult | null>(null);
+  // The object list on the right; open from the start where there is room.
+  const [showLayers, setShowLayers] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 768px)').matches);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
   const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
@@ -308,6 +311,12 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     checkpoint(key);
     setCrop(box);
     setAspectId(nextAspectId);
+  };
+
+  // Restacks the objects: later in the list is drawn on top.
+  const reorderLayers = (next: EditorLayer[]) => {
+    checkpoint();
+    setLayers(next);
   };
 
   const deleteSelected = () => {
@@ -671,148 +680,173 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         >
           <Magnet size={18} />
         </button>
+        <button
+          className={`ie-icon-btn ${showLayers ? 'active' : ''}`}
+          onClick={() => setShowLayers(v => !v)}
+          title={showLayers ? 'Hide the object list' : 'Show the object list'}
+          aria-label="Objects"
+          aria-pressed={showLayers}
+        >
+          <LayersIcon size={18} />
+        </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!source || saving}>
           {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
         </button>
       </header>
 
-      <div className="ie-canvas" ref={canvasBoxRef}>
-        {loadError && <div className="ie-message">The image could not be loaded.</div>}
-        {!source && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
-        {source && crop && size.w > 0 && (
-          <Stage width={size.w} height={size.h} onPointerDown={onStagePointerDown}>
-            <Layer>
-              <Group
-                ref={contentRef}
-                x={gx}
-                y={gy}
-                scaleX={scale}
-                scaleY={scale}
-                {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
-              >
-                <KImage ref={baseRef} image={source} width={natW} height={natH} />
-                {layers.map(l => (l.kind === 'image' ? (
-                  <KImage
-                    key={l.id}
-                    ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                    {...imageLayerAttrs(l)}
-                    listening={tab !== 'crop'}
-                    draggable={tab !== 'crop'}
-                    onPointerDown={() => selectLayer(l)}
-                    onDragStart={startGesture}
-                    onTransformStart={startGesture}
-                    onDragMove={e => onLayerDragMove(l, e)}
-                    onDragEnd={e => onLayerDragEnd(l, e)}
-                    onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                  />
-                ) : (
-                  <KText
-                    key={l.id}
-                    ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                    {...textLayerAttrs(l)}
-                    listening={tab !== 'crop'}
-                    draggable={tab !== 'crop'}
-                    onPointerDown={() => selectLayer(l)}
-                    onDragStart={startGesture}
-                    onTransformStart={startGesture}
-                    onDblClick={() => textAreaRef.current?.focus()}
-                    onDragMove={e => onLayerDragMove(l, e)}
-                    onDragEnd={e => onLayerDragEnd(l, e)}
-                    onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                  />
-                )))}
-                {guideOverlay && (
-                  <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
-                )}
-              </Group>
-
-              {guides && tab !== 'crop' && (
-                <Group listening={false}>
-                  {guides.guides.map((g, i) => (g.orientation === 'v' ? (
-                    <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+      <div className="ie-body">
+        <div className="ie-canvas" ref={canvasBoxRef}>
+          {loadError && <div className="ie-message">The image could not be loaded.</div>}
+          {!source && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
+          {source && crop && size.w > 0 && (
+            <Stage width={size.w} height={size.h} onPointerDown={onStagePointerDown}>
+              <Layer>
+                <Group
+                  ref={contentRef}
+                  x={gx}
+                  y={gy}
+                  scaleX={scale}
+                  scaleY={scale}
+                  {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
+                >
+                  <KImage ref={baseRef} image={source} width={natW} height={natH} />
+                  {layers.map(l => (l.kind === 'image' ? (
+                    <KImage
+                      key={l.id}
+                      ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                      {...imageLayerAttrs(l)}
+                      listening={tab !== 'crop'}
+                      draggable={tab !== 'crop'}
+                      onPointerDown={() => selectLayer(l)}
+                      onDragStart={startGesture}
+                      onTransformStart={startGesture}
+                      onDragMove={e => onLayerDragMove(l, e)}
+                      onDragEnd={e => onLayerDragEnd(l, e)}
+                      onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                    />
                   ) : (
-                    <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                    <KText
+                      key={l.id}
+                      ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                      {...textLayerAttrs(l)}
+                      listening={tab !== 'crop'}
+                      draggable={tab !== 'crop'}
+                      onPointerDown={() => selectLayer(l)}
+                      onDragStart={startGesture}
+                      onTransformStart={startGesture}
+                      onDblClick={() => textAreaRef.current?.focus()}
+                      onDragMove={e => onLayerDragMove(l, e)}
+                      onDragEnd={e => onLayerDragEnd(l, e)}
+                      onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                    />
                   )))}
-                  {guides.gaps.map((m, i) => {
-                    const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
-                    const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
-                    const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
-                    const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
-                    const [lx, ly] = pt((a + b) / 2, c);
-                    return (
-                      <Group key={`m${i}`}>
-                        <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                        <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                        <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                        <Label x={lx} y={ly}>
-                          <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
-                          <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
-                        </Label>
-                      </Group>
-                    );
-                  })}
+                  {guideOverlay && (
+                    <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
+                  )}
                 </Group>
-              )}
 
-              {tab === 'crop' && (
-                <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
-                  {/* Shade what the crop leaves out. */}
-                  <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
-                  <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                  <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                  <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                  {[1, 2].map(i => (
-                    <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                  ))}
-                  {[1, 2].map(i => (
-                    <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                  ))}
-                  <Rect
-                    ref={cropRectRef}
-                    x={crop.x}
-                    y={crop.y}
-                    width={crop.width}
-                    height={crop.height}
-                    fill="rgba(0,0,0,0)"
-                    stroke="#ffffff"
-                    strokeWidth={2}
-                    strokeScaleEnabled={false}
-                    draggable
-                    dragBoundFunc={cropDragBound}
-                    onDragStart={startGesture}
-                    onTransformStart={startGesture}
-                    onDragMove={syncCropFromNode}
-                    onDragEnd={syncCropFromNode}
-                    onTransform={syncCropFromNode}
-                    onTransformEnd={syncCropFromNode}
-                  />
-                </Group>
-              )}
+                {guides && tab !== 'crop' && (
+                  <Group listening={false}>
+                    {guides.guides.map((g, i) => (g.orientation === 'v' ? (
+                      <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                    ) : (
+                      <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                    )))}
+                    {guides.gaps.map((m, i) => {
+                      const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
+                      const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
+                      const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
+                      const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
+                      const [lx, ly] = pt((a + b) / 2, c);
+                      return (
+                        <Group key={`m${i}`}>
+                          <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                          <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                          <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                          <Label x={lx} y={ly}>
+                            <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
+                            <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
+                          </Label>
+                        </Group>
+                      );
+                    })}
+                  </Group>
+                )}
 
-              <Transformer
-                ref={trRef}
-                anchorSize={anchorSize}
-                anchorCornerRadius={anchorSize / 2}
-                anchorStroke="#6366f1"
-                anchorFill="#ffffff"
-                borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
-                borderStrokeWidth={1.5}
-                padding={layerTransformer ? 4 : 0}
-                rotateEnabled={layerTransformer}
-                rotateAnchorOffset={isTouch ? 36 : 28}
-                rotationSnaps={[0, 90, 180, 270]}
-                flipEnabled={false}
-                ignoreStroke
-                keepRatio={layerTransformer || ratio !== null}
-                enabledAnchors={layerTransformer || ratio !== null
-                  ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
-                  : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
-                boundBoxFunc={(oldBox, newBox) => (layerTransformer
-                  ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
-                  : cropBoundBox(oldBox, newBox))}
-              />
-            </Layer>
-          </Stage>
+                {tab === 'crop' && (
+                  <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
+                    {/* Shade what the crop leaves out. */}
+                    <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
+                    <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                    <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                    <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                    {[1, 2].map(i => (
+                      <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                    ))}
+                    {[1, 2].map(i => (
+                      <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                    ))}
+                    <Rect
+                      ref={cropRectRef}
+                      x={crop.x}
+                      y={crop.y}
+                      width={crop.width}
+                      height={crop.height}
+                      fill="rgba(0,0,0,0)"
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      strokeScaleEnabled={false}
+                      draggable
+                      dragBoundFunc={cropDragBound}
+                      onDragStart={startGesture}
+                      onTransformStart={startGesture}
+                      onDragMove={syncCropFromNode}
+                      onDragEnd={syncCropFromNode}
+                      onTransform={syncCropFromNode}
+                      onTransformEnd={syncCropFromNode}
+                    />
+                  </Group>
+                )}
+
+                <Transformer
+                  ref={trRef}
+                  anchorSize={anchorSize}
+                  anchorCornerRadius={anchorSize / 2}
+                  anchorStroke="#6366f1"
+                  anchorFill="#ffffff"
+                  borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
+                  borderStrokeWidth={1.5}
+                  padding={layerTransformer ? 4 : 0}
+                  rotateEnabled={layerTransformer}
+                  rotateAnchorOffset={isTouch ? 36 : 28}
+                  rotationSnaps={[0, 90, 180, 270]}
+                  flipEnabled={false}
+                  ignoreStroke
+                  keepRatio={layerTransformer || ratio !== null}
+                  enabledAnchors={layerTransformer || ratio !== null
+                    ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                    : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+                  boundBoxFunc={(oldBox, newBox) => (layerTransformer
+                    ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
+                    : cropBoundBox(oldBox, newBox))}
+                />
+              </Layer>
+            </Stage>
+          )}
+        </div>
+
+        {showLayers && (
+          <aside className="ie-layers" aria-label="Objects">
+            <div className="ie-layers-title">Objects</div>
+            <LayerList
+              layers={layers}
+              selectedId={selectedId}
+              backgroundSrc={source?.src ?? imageUrl}
+              onSelect={selectLayer}
+              onSelectBackground={() => setSelectedId(null)}
+              onReorder={reorderLayers}
+            />
+          </aside>
         )}
       </div>
 
