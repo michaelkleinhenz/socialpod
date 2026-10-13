@@ -13,7 +13,7 @@ const statusConfig = {
   published: { icon: CheckCircle, color: 'var(--success)', label: 'Published' },
   scheduled: { icon: Clock, color: 'var(--accent)', label: 'Scheduled' },
   failed:    { icon: AlertTriangle, color: 'var(--danger)', label: 'Failed' },
-  draft:     { icon: FileEdit, color: 'var(--text-muted)', label: 'Draft' },
+  draft:     { icon: FileEdit, color: 'var(--warning)', label: 'Draft' },
 } as const;
 
 export function CalendarPost({ post, onClick, isDragging }: Props) {
@@ -36,9 +36,11 @@ export function CalendarPost({ post, onClick, isDragging }: Props) {
     <div
       className={`calendar-post ${post.status} ${isStory ? 'story' : ''} ${isReel ? 'reel' : ''} ${isDragging ? 'dragging' : ''}`}
       onClick={onClick}
+      title={post.status === 'draft' ? 'Draft: not scheduled, will not be published' : undefined}
     >
       <div className="post-top-row">
         <span className="post-time">{time}</span>
+        {post.status === 'draft' && <span className="post-draft-badge">DRAFT</span>}
         <span className="post-status-icon" title={cfg.label}>
           <StatusIcon size={12} color={cfg.color} />
         </span>
