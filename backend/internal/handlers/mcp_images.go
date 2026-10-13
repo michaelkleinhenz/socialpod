@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/image/font/opentype"
 )
 
@@ -65,6 +66,7 @@ func imageToolDefinitions() []mcpTool {
 			"opacity":      map[string]any{"type": "number", "description": "0 to 1 (default 1)"},
 			"text":         map[string]any{"type": "string", "description": "text: the text; \\n starts a new line, long lines wrap"},
 			"font":         map[string]any{"type": "string", "enum": []string{"bold", "regular", "team"}, "description": "text: built-in bold (default) or regular, or the team's uploaded Radar font"},
+			"fontMediaId":  map[string]any{"type": "string", "description": "text: a font from the media library (list_media with kind font); overrides font"},
 			"fontSize":     map[string]any{"type": "number", "description": "text: font size as a fraction of the canvas width (default 0.06; headlines 0.07-0.1, captions 0.035-0.05)"},
 			"color":        map[string]any{"type": "string", "description": "text/rect/gradient colour, #rgb, #rrggbb or #rrggbbaa (text default white, gradient default black)"},
 			"align":        map[string]any{"type": "string", "enum": []string{"left", "center", "right"}, "description": "text alignment (default follows the anchor)"},
@@ -95,42 +97,50 @@ func imageToolDefinitions() []mcpTool {
 		},
 		{
 			Name: "list_media",
-			Description: "Search the team's media library: uploaded photos, artwork, logos and backgrounds with a name, a description and tags. " +
-				"All words of query must appear in the name, description or tags; every tag in tags must be set. With preview=true a small thumbnail of each hit (up to 12) is attached.",
+			Description: "Search the team's media library: uploaded photos, artwork, logos, backgrounds and fonts, and the team's colours, each with a name, a description and tags. " +
+				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts or colours. " +
+				"A font's id goes into fontMediaId of a compose_image text layer. A colour entry has no file: its color (#rrggbb or #rrggbbaa) goes into any colour field of compose_image, " +
+				"and its description says how and where the team uses it; follow that. " +
+				"With preview=true a small thumbnail of each hit (up to 12) is attached; for a font, a text sample set in it.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query":   map[string]any{"type": "string", "description": "Words to search for"},
 					"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required tags"},
+					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color"}, "description": "Only this kind of entry (default all)"},
 					"limit":   map[string]any{"type": "number", "description": "Maximum results (default 50, max 200)"},
 					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
 				},
 			},
 		},
 		{
-			Name:        "add_media",
-			Description: "Add a file to the media library from a URL (an upload URL or a public URL) or from base64 data, with a name, a description of what it shows and tags.",
+			Name: "add_media",
+			Description: "Add a file to the media library from a URL (an upload URL or a public URL) or from base64 data, with a name, a description of what it shows and tags. " +
+				"Images, videos (mp4, mov) and fonts (.ttf, .otf; a font must draw Latin text with umlauts, max 10 MB) are accepted. " +
+				"Or add a colour: give color instead of url/data, and say in description how to use it.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"url":         map[string]any{"type": "string", "description": "Upload URL (/api/uploads/...) or public http(s) URL"},
 					"data":        map[string]any{"type": "string", "description": "Base64 file data, instead of url"},
 					"filename":    map[string]any{"type": "string", "description": "File name with extension, required with data"},
+					"color":       map[string]any{"type": "string", "description": "A colour (#rgb, #rrggbb or #rrggbbaa), instead of url or data"},
 					"name":        map[string]any{"type": "string", "description": "Display name"},
-					"description": map[string]any{"type": "string", "description": "What the file shows"},
+					"description": map[string]any{"type": "string", "description": "What the file shows, or for a colour how to use it"},
 					"tags":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 				},
 			},
 		},
 		{
 			Name:        "update_media",
-			Description: "Change a media library entry's name, description or tags. Only provided fields are changed; tags replaces the whole list.",
+			Description: "Change a media library entry's name, description or tags, or a colour entry's color. Only provided fields are changed; tags replaces the whole list.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"id":          map[string]any{"type": "string", "description": "Media ID"},
 					"name":        map[string]any{"type": "string"},
 					"description": map[string]any{"type": "string"},
+					"color":       map[string]any{"type": "string", "description": "Colour entries only: the new colour"},
 					"tags":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
 				"required": []string{"id"},
@@ -138,7 +148,7 @@ func imageToolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_media",
-			Description: "Remove an entry from the media library. Its file is freed unless a post, draft or anything else still uses it.",
+			Description: "Remove an entry (a file or a colour) from the media library. A file is freed unless a post, draft or anything else still uses it.",
 			InputSchema: map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Media ID"}},
@@ -148,7 +158,7 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "get_image",
 			Description: "Look at an image: returns its size and attaches a preview. Use it to check a watermark, a media entry, a found image or a post image before using it. " +
-				"Give url, watermarkId or mediaId.",
+				"Give url, watermarkId or mediaId. For a font in the media library the preview is a text sample set in it.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -165,6 +175,7 @@ func imageToolDefinitions() []mcpTool {
 				"team watermarks and media library images, text (headline, caption, badge), rectangles and gradients. The result is stored as an upload; " +
 				"pass its url in imageUrls of create_post or update_post. A preview is attached so you can check it and adjust. " +
 				"Team watermarks are often full-canvas PNG overlays (frames, banners): put those on top with anchor full. " +
+				"Take colours from the team's palette (list_media with kind color) and use each as its description says. " +
 				"For text over a photo, add a gradient or a boxColor so it stays legible. Keep text short; Instagram images carry a few words, not the caption.",
 			InputSchema: map[string]any{
 				"type": "object",
@@ -230,6 +241,9 @@ func (h *MCPHandler) loadImageBytes(ctx context.Context, c *gin.Context, ref map
 		var item models.MediaItem
 		if err := h.DB.Media().FindOne(ctx, filter).Decode(&item); err != nil {
 			return nil, "", fmt.Errorf("media %s not found", id)
+		}
+		if item.Color != "" {
+			return nil, "", fmt.Errorf("media %s is the colour %s, not a file: use it in a colour field", id, item.Color)
 		}
 		data, err := readImageBytes(ctx, h.DB, h.UploadDir, item.URL)
 		return data, item.URL, err
@@ -416,13 +430,13 @@ func (h *MCPHandler) toolUpdateWatermark(c *gin.Context, args map[string]any) (a
 
 type mediaInfo struct {
 	models.MediaItem
-	AbsoluteURL string `json:"absoluteUrl"`
+	AbsoluteURL string `json:"absoluteUrl,omitempty"`
 }
 
 func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	items, err := listMedia(ctx, h.DB, mcpScopeFilter(c), strArg(args, "query"), strSliceArg(args, "tags"), intArg(args, "limit", 50))
+	items, err := listMedia(ctx, h.DB, mcpScopeFilter(c), strArg(args, "query"), strSliceArg(args, "tags"), strArg(args, "kind"), intArg(args, "limit", 50))
 	if err != nil {
 		return map[string]string{"error": "Failed to load media"}, true
 	}
@@ -430,16 +444,16 @@ func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bo
 	var images []mcpImage
 	for _, it := range items {
 		out = append(out, mediaInfo{MediaItem: it, AbsoluteURL: absoluteURL(c, it.URL)})
-		if boolArg(args, "preview") && len(images) < 12 && strings.HasPrefix(it.ContentType, "image/") {
+		if boolArg(args, "preview") && len(images) < 12 && (strings.HasPrefix(it.ContentType, "image/") || isFontContentType(it.ContentType)) {
 			if data, err := readImageBytes(ctx, h.DB, h.UploadDir, it.URL); err == nil {
-				if img, err := decodeImage(data); err == nil {
+				if img, err := previewImage(it.ContentType, data); err == nil {
 					images = append(images, previewOf(img, 256)...)
 				}
 			}
 		}
 	}
 	if len(images) > 0 {
-		return &mcpRichResult{Result: map[string]any{"media": out, "previews": "attached in list order (images only)"}, Images: images}, false
+		return &mcpRichResult{Result: map[string]any{"media": out, "previews": "attached in list order (images and fonts only)"}, Images: images}, false
 	}
 	return out, false
 }
@@ -448,6 +462,14 @@ func (h *MCPHandler) toolAddMedia(c *gin.Context, args map[string]any) (any, boo
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	name, desc, tags := strArg(args, "name"), strArg(args, "description"), strSliceArg(args, "tags")
+
+	if hex := strArg(args, "color"); hex != "" {
+		item, err := addMediaColor(ctx, c, h.DB, hex, name, desc, tags)
+		if err != nil {
+			return map[string]string{"error": err.Error()}, true
+		}
+		return mediaInfo{MediaItem: item}, false
+	}
 
 	if b64 := strArg(args, "data"); b64 != "" {
 		filename := strArg(args, "filename")
@@ -470,7 +492,7 @@ func (h *MCPHandler) toolAddMedia(c *gin.Context, args map[string]any) (any, boo
 
 	raw := strArg(args, "url")
 	if raw == "" {
-		return map[string]string{"error": "give url or data"}, true
+		return map[string]string{"error": "give url, data or color"}, true
 	}
 	data, src, err := h.loadImageBytes(ctx, c, map[string]any{"url": raw})
 	if err != nil {
@@ -481,6 +503,11 @@ func (h *MCPHandler) toolAddMedia(c *gin.Context, args map[string]any) (any, boo
 		// Already one of our uploads: reference it instead of copying it.
 		if ext := strings.ToLower(filepath.Ext(src)); mediaContentTypes[ext] != "" {
 			ct = mediaContentTypes[ext]
+		}
+		if isFontContentType(ct) {
+			if _, ct, err = checkRadarFont(src, data); err != nil {
+				return map[string]string{"error": err.Error()}, true
+			}
 		}
 		item, err := recordMediaItem(ctx, c, h.DB, src, data, ct, name, desc, tags)
 		if err != nil {
@@ -509,7 +536,10 @@ func (h *MCPHandler) toolUpdateMedia(c *gin.Context, args map[string]any) (any, 
 	if err != nil {
 		return map[string]string{"error": "Invalid media ID"}, true
 	}
-	var name, desc *string
+	var name, desc, hex *string
+	if v, ok := args["color"].(string); ok {
+		hex = &v
+	}
 	if v, ok := args["name"].(string); ok {
 		name = &v
 	}
@@ -519,9 +549,12 @@ func (h *MCPHandler) toolUpdateMedia(c *gin.Context, args map[string]any) (any, 
 	_, setTags := args["tags"]
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, name, desc, strSliceArg(args, "tags"), setTags)
-	if err != nil {
+	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, name, desc, hex, strSliceArg(args, "tags"), setTags)
+	if err == mongo.ErrNoDocuments {
 		return map[string]string{"error": "Media not found"}, true
+	}
+	if err != nil {
+		return map[string]string{"error": err.Error()}, true
 	}
 	return mediaInfo{MediaItem: item, AbsoluteURL: absoluteURL(c, item.URL)}, false
 }
@@ -552,7 +585,7 @@ func (h *MCPHandler) toolGetImage(c *gin.Context, args map[string]any) (any, boo
 	if err != nil {
 		return map[string]string{"error": err.Error()}, true
 	}
-	img, err := decodeImage(data)
+	img, err := previewImage(http.DetectContentType(data), data)
 	if err != nil {
 		return map[string]string{"error": err.Error()}, true
 	}
@@ -653,6 +686,44 @@ func (h *MCPHandler) teamFont(ctx context.Context, c *gin.Context) *opentype.Fon
 	return fonts.Regular
 }
 
+// mediaFont loads a font from the media library.
+func (h *MCPHandler) mediaFont(ctx context.Context, c *gin.Context, id string) (*opentype.Font, error) {
+	data, _, err := h.loadImageBytes(ctx, c, map[string]any{"mediaId": id})
+	if err != nil {
+		return nil, err
+	}
+	fonts, err := services.ParseRadarFont(data)
+	if err != nil {
+		return nil, fmt.Errorf("media %s is not a usable font", id)
+	}
+	return fonts.Regular, nil
+}
+
+// fontSampleText shows the letters, umlauts, digits and the house-style
+// quotes a post image is likely to need.
+const fontSampleText = "Aa Bb Cc Gg Qq Rr\nÄÖÜ äöü ß 0123456789\n\"Wingspan\" & Co.?!"
+
+// previewImage decodes an image, or for a font renders a text sample in it,
+// so agents can look at a library font like at any image.
+func previewImage(contentType string, data []byte) (image.Image, error) {
+	if !isFontContentType(contentType) {
+		return decodeImage(data)
+	}
+	fonts, err := services.ParseRadarFont(data)
+	if err != nil {
+		return nil, err
+	}
+	return services.ComposeImage(services.ComposeSpec{
+		Width: 1080, Height: 540,
+		Background: color.RGBA{255, 255, 255, 255},
+		Layers: []services.ComposeLayer{{
+			Kind: "text", Anchor: "center", Align: "center", Width: 0.9,
+			Text: fontSampleText, Font: fonts.Regular, FontSize: 0.07,
+			Color: color.RGBA{0, 0, 0, 255},
+		}},
+	})
+}
+
 func (h *MCPHandler) buildComposeSpec(ctx context.Context, c *gin.Context, args map[string]any) (services.ComposeSpec, error) {
 	var spec services.ComposeSpec
 	var bw, bh int
@@ -688,6 +759,7 @@ func (h *MCPHandler) buildComposeSpec(ctx context.Context, c *gin.Context, args 
 	}
 	var teamFont *opentype.Font
 	teamFontLoaded := false
+	mediaFonts := map[string]*opentype.Font{}
 	for i, raw := range layers {
 		la, ok := raw.(map[string]any)
 		if !ok {
@@ -742,6 +814,17 @@ func (h *MCPHandler) buildComposeSpec(ctx context.Context, c *gin.Context, args 
 					teamFont, teamFontLoaded = h.teamFont(ctx, c), true
 				}
 				l.Font = teamFont // nil falls back to the built-in bold
+			}
+			if id := strArg(la, "fontMediaId"); id != "" {
+				f, ok := mediaFonts[id]
+				if !ok {
+					var err error
+					if f, err = h.mediaFont(ctx, c, id); err != nil {
+						return spec, fmt.Errorf("layers[%d]: %w", i, err)
+					}
+					mediaFonts[id] = f
+				}
+				l.Font = f
 			}
 		case "rect", "gradient":
 		default:

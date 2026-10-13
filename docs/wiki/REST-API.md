@@ -177,17 +177,24 @@ curl -X PUT http://localhost:8080/api/watermarks/{id} \
   -H "Content-Type: application/json" \
   -d '{"description":"Full-size frame with the news banner at the bottom"}'
 
-# Search the media library (q: words in name/description/tags, tags: comma-separated, all required)
+# Search the media library (q: words in name/description/tags, tags: comma-separated, all required,
+# kind: image, video, font or color)
 curl "http://localhost:8080/api/media?q=wingspan&tags=cover" \
   -H "Authorization: Bearer sm_..."
 
-# Add a file to the media library
+# Add a file to the media library (an image, an mp4/mov video, or a .ttf/.otf font)
 curl -X POST http://localhost:8080/api/media \
   -H "Authorization: Bearer sm_..." \
   -F "file=@box.jpg" -F "name=Wingspan box" \
   -F "description=Front of the box, birds on a branch" -F "tags=wingspan,cover"
 
-# Change name, description or tags (tags replaces the list)
+# Add a colour, with a description of how to use it
+curl -X POST http://localhost:8080/api/media/colors \
+  -H "Authorization: Bearer sm_..." \
+  -H "Content-Type: application/json" \
+  -d '{"color":"#c8102e","name":"Brand red","description":"Headlines and badges; never as a background behind photos","tags":["brand"]}'
+
+# Change name, description or tags (tags replaces the list; color for a colour entry)
 curl -X PUT http://localhost:8080/api/media/{id} \
   -H "Authorization: Bearer sm_..." \
   -H "Content-Type: application/json" \

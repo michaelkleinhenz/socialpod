@@ -534,9 +534,10 @@ class ApiClient {
   }
 
   // Media library
-  getMedia(params: { q?: string; tags?: string[]; limit?: number } = {}) {
+  getMedia(params: { q?: string; tags?: string[]; kind?: 'image' | 'video' | 'font' | 'color'; limit?: number } = {}) {
     const query = new URLSearchParams();
     if (params.q) query.set('q', params.q);
+    if (params.kind) query.set('kind', params.kind);
     if (params.tags?.length) query.set('tags', params.tags.join(','));
     if (params.limit) query.set('limit', String(params.limit));
     const qs = query.toString();
@@ -552,7 +553,11 @@ class ApiClient {
     return this.request<MediaItem>('/media', { method: 'POST', body: form });
   }
 
-  updateMedia(id: string, data: { name?: string; description?: string; tags?: string[] }) {
+  createMediaColor(data: { color: string; name?: string; description?: string; tags?: string[] }) {
+    return this.request<MediaItem>('/media/colors', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  updateMedia(id: string, data: { name?: string; description?: string; color?: string; tags?: string[] }) {
     return this.request<MediaItem>(`/media/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 

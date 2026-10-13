@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Every tool tools/list advertises must be handled by callTool.
@@ -155,7 +156,7 @@ func TestCanvasSize(t *testing.T) {
 
 func TestMediaListFilter(t *testing.T) {
 	scope := bson.M{"teamId": "t"}
-	f := mediaListFilter(scope, "wingspan box", []string{"#Cover", "cover", " art "})
+	f := mediaListFilter(scope, "wingspan box", []string{"#Cover", "cover", " art "}, "")
 	if f["teamId"] != "t" {
 		t.Error("scope lost")
 	}
@@ -170,8 +171,37 @@ func TestMediaListFilter(t *testing.T) {
 	if _, ok := scope["$and"]; ok {
 		t.Error("scope was modified")
 	}
-	if f := mediaListFilter(scope, "", nil); f["$and"] != nil {
+	if f := mediaListFilter(scope, "", nil, ""); f["$and"] != nil || f["contentType"] != nil {
 		t.Error("empty search should not filter")
+	}
+	if f := mediaListFilter(scope, "", nil, "Font"); f["contentType"] != (primitive.Regex{Pattern: "^font/"}) {
+		t.Errorf("kind font: contentType = %v", f["contentType"])
+	}
+	if f := mediaListFilter(scope, "", nil, "audio"); f["contentType"] != nil {
+		t.Error("unknown kind should not filter")
+	}
+}
+
+func TestNormalizeColor(t *testing.T) {
+	for in, want := range map[string]string{
+		"#1A2b3C":   "#1a2b3c",
+		"1a2b3c":    "#1a2b3c",
+		" #abc ":    "#aabbcc",
+		"#1a2b3cff": "#1a2b3c",
+		"#1a2b3c80": "#1a2b3c80",
+		"#ffffffff": "#ffffff",
+	} {
+		if got, err := normalizeColor(in); err != nil || got != want {
+			t.Errorf("normalizeColor(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "red", "#12", "#12345", "#1234567", "#gggggg"} {
+		if _, err := normalizeColor(bad); err == nil {
+			t.Errorf("normalizeColor(%q) accepted", bad)
+		}
+	}
+	if f := mediaListFilter(bson.M{}, "", nil, "color"); f["contentType"] != (primitive.Regex{Pattern: "^color/"}) {
+		t.Errorf("kind color: contentType = %v", f["contentType"])
 	}
 }
 

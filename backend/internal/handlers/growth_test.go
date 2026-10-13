@@ -303,3 +303,20 @@ func TestCheckRadarFont(t *testing.T) {
 		}
 	}
 }
+
+// A library font previews as a text sample; anything else decodes as an image.
+func TestPreviewImageFont(t *testing.T) {
+	img, err := previewImage("font/ttf", goregular.TTF)
+	if err != nil {
+		t.Fatalf("font preview: %v", err)
+	}
+	if b := img.Bounds(); b.Dx() != 1080 || b.Dy() != 540 {
+		t.Errorf("sample size = %v", b)
+	}
+	if _, err := previewImage("font/ttf", []byte("not a font")); err == nil {
+		t.Error("broken font previewed")
+	}
+	if _, err := previewImage("image/png", goregular.TTF); err == nil {
+		t.Error("a font decoded as an image")
+	}
+}

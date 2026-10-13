@@ -17,7 +17,7 @@ What a built-in agent creates carries the origin `agent-<name>` (e.g. `agent-new
 
 1. **Connect the agent.** (Not needed for built-in agents.) Point any MCP client at `https://<your-host>/api/mcp`. For an agent that runs unattended (a scheduled Claude routine, a cron job), use a bearer token from the Profile page rather than OAuth: OAuth access tokens expire after an hour. A team token (`st_...`) works too.
 2. **Describe your watermarks.** On the Watermarks page, give each watermark a description of what it looks like and how it is meant to be used, e.g. "round logo, place in a corner at 15% width" or "full-size frame with the news banner at the bottom". `list_watermarks` also reports what the team uses each one for (BGG overlay, news overlay, ...) and whether it is a full-canvas overlay.
-3. **Fill the media library.** Upload photos, box art, backgrounds and logos on the Media Library page, with a description and tags. The agent searches them with `list_media` and builds images from them.
+3. **Fill the media library.** Upload photos, box art, backgrounds and logos on the Media Library page, with a description and tags. The agent searches them with `list_media` and builds images from them. Fonts (.ttf or .otf) go there too: the agent finds them with `list_media` (`kind: "font"`, `preview: true` shows a sample of each) and sets text in them. Add the team colours with "Add Colour", one entry per colour, and describe in each how to use it ("headlines and badges", "never behind photos"); the agent lists them with `kind: "color"` and puts the hex values into `compose_image`.
 4. **Set a draft limit.** On Growth settings, "Content agents" caps how many agent drafts may wait for review at once. Once it is reached, creating more drafts fails until people have scheduled or deleted some.
 5. **Plan the week.** The weekly plan on Growth settings tells the agent which formats to make and when; `get_open_slots` lists the slots nothing fills yet.
 
@@ -52,7 +52,7 @@ Builds an image on the server and returns its URL plus a preview the agent can l
 }
 ```
 
-Bases and image layers take `url` (an upload or a public image), `mediaId` or `watermarkId`. Geometry is given in fractions of the canvas. Formats: `1:1`, `4:5` (default), `9:16`, `16:9`, `1.91:1`, `original`. Fits: `cover` (crop, with `focusX`/`focusY`), `contain`, `blur` (letterbox on a blurred copy, good for box art). Text can use the built-in fonts or the team's Radar font, with outline, shadow or a background box.
+Bases and image layers take `url` (an upload or a public image), `mediaId` or `watermarkId`. Geometry is given in fractions of the canvas. Formats: `1:1`, `4:5` (default), `9:16`, `16:9`, `1.91:1`, `original`. Fits: `cover` (crop, with `focusX`/`focusY`), `contain`, `blur` (letterbox on a blurred copy, good for box art). Text can use the built-in fonts, the team's Radar font (`"font": "team"`) or a font from the media library (`"fontMediaId": "<media id>"`), with outline, shadow or a background box.
 
 ## A run, step by step
 

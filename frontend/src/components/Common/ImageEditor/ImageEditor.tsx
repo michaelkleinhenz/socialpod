@@ -78,8 +78,9 @@ interface Props {
 const apiBase = import.meta.env.VITE_API_URL || '';
 const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 
-// The library also holds videos, which cannot go on a picture.
-const isImageMedia = (m: MediaItem) => !m.contentType?.startsWith('video/') && !/\.(mp4|mov)$/i.test(m.url);
+// The library also holds videos and fonts, which cannot go on a picture.
+const isImageMedia = (m: MediaItem) =>
+  !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
 export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
@@ -159,7 +160,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     let cancelled = false;
     const t = setTimeout(() => {
       setMediaLoading(true);
-      api.getMedia({ q: mediaQuery.trim(), limit: 100 })
+      api.getMedia({ q: mediaQuery.trim(), kind: 'image', limit: 100 })
         .then(items => { if (!cancelled) setMedia(items.filter(isImageMedia)); })
         .catch(() => { if (!cancelled) { setMedia(m => m ?? []); toast.error('Failed to load the media library'); } })
         .finally(() => { if (!cancelled) setMediaLoading(false); });

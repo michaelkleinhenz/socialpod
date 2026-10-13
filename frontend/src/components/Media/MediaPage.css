@@ -76,3 +76,54 @@
   border-color: var(--accent);
   color: #fff;
 }
+
+.media-font-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-primary);
+  font-size: 1.6rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.media-color-swatch {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
+.media-color-swatch span {
+  margin: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.media-color-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.media-color-field input[type="color"] {
+  width: 40px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.media-color-field .input {
+  flex: 1;
+  font-family: monospace;
+}
