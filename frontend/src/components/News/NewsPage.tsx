@@ -3,8 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft, GermanRelease, RadarQueueEntry } from '../../types';
-import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Radar, GalleryHorizontal } from 'lucide-react';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Palette, Radar, GalleryHorizontal } from 'lucide-react';
 import { ImageCropper } from '../Common/ImageCropper';
+import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import { CaptionChecker, RewriteInstagramButton, RadarScheduledMark } from '../PostEditor/InstagramTools';
@@ -51,6 +52,10 @@ export function NewsPage() {
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
   const [croppedPreviewUrl, setCroppedPreviewUrl] = useState<string | null>(null);
   const [croppedSize, setCroppedSize] = useState<number | null>(null);
+  // The image editor on a blank square canvas, to make an image instead of uploading one.
+  const [creatingImage, setCreatingImage] = useState(false);
+  // The team's watermarks, offered as layers in the image editor.
+  const [editorWatermarks, setEditorWatermarks] = useState<Watermark[] | null>(null);
 
   // Watermark
   const [watermark, setWatermark] = useState<Watermark | null>(null);
@@ -236,6 +241,11 @@ export function NewsPage() {
     setDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
+  };
+
+  const openImageCreator = () => {
+    if (editorWatermarks === null) api.getWatermarks().then(setEditorWatermarks).catch(() => setEditorWatermarks([]));
+    setCreatingImage(true);
   };
 
   const removeImage = () => {
@@ -1346,6 +1356,14 @@ export function NewsPage() {
                   <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
                   <div>Drop an image here, click to browse, or paste from clipboard</div>
                 </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={openImageCreator}
+                  style={{ alignSelf: 'flex-start' }}
+                  title="Design an image, from scratch or a template"
+                >
+                  <Palette size={14} /> Create Image
+                </button>
                 {adobeClientId && (
                   <button
                     className="btn btn-ghost btn-sm"
@@ -1405,6 +1423,13 @@ export function NewsPage() {
                   >
                     <Image size={14} /> Replace
                   </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={openImageCreator}
+                    title="Design an image, from scratch or a template"
+                  >
+                    <Palette size={14} /> Create Image
+                  </button>
                   {adobeClientId && (
                     <button
                       className="btn btn-ghost btn-sm"
@@ -1429,6 +1454,21 @@ export function NewsPage() {
               }}
             />
           </div>
+
+          {/* A created image goes through the cropper like any other, which
+              adds the overlay and keeps it under the size limit. */}
+          {creatingImage && (
+            <ImageEditor
+              canvas={{ width: 1080, height: 1080, background: '#ffffff' }}
+              title="Create image"
+              watermarks={editorWatermarks ?? []}
+              onCancel={() => setCreatingImage(false)}
+              onSave={blob => {
+                setCreatingImage(false);
+                handleFile(new File([blob], 'created.jpg', { type: 'image/jpeg' }));
+              }}
+            />
+          )}
 
           {/* Crop Modal */}
           {showCropper && imagePreviewUrl && (
