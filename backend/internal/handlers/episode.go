@@ -10,12 +10,12 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -250,7 +250,7 @@ func (h *EpisodeHandler) sendToWebhook(ctx context.Context, team *models.Team, i
 			imgPath = imgPath[1:]
 		}
 		fullPath := filepath.Join(h.UploadDir, filepath.Base(imgPath))
-		fileData, err := os.ReadFile(fullPath)
+		fileData, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(imgPath))
 		if err != nil {
 			log.Printf("[EpisodeCreator] Warning: could not read image %s: %v", fullPath, err)
 			continue

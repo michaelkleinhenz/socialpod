@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -57,7 +57,7 @@ func (s *YouTubeService) PostShort(ctx context.Context, videoURL string, caption
 }
 
 func (s *YouTubeService) uploadVideo(ctx context.Context, accessToken, description, mediaURL string, isShort bool) (string, error) {
-	mediaData, contentType, err := s.fetchMedia(mediaURL)
+	mediaData, contentType, err := s.fetchMedia(ctx, mediaURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch media: %w", err)
 	}
@@ -140,7 +140,7 @@ func (s *YouTubeService) uploadVideo(ctx context.Context, accessToken, descripti
 	return result.ID, nil
 }
 
-func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
+func (s *YouTubeService) fetchMedia(ctx context.Context, mediaURL string) ([]byte, string, error) {
 	if strings.HasPrefix(mediaURL, "http://") || strings.HasPrefix(mediaURL, "https://") {
 		resp, err := http.Get(mediaURL)
 		if err != nil {
@@ -162,7 +162,7 @@ func (s *YouTubeService) fetchMedia(mediaURL string) ([]byte, string, error) {
 	}
 
 	path := filepath.Join(s.UploadDir, filepath.Base(mediaURL))
-	data, err := os.ReadFile(path)
+	data, _, err := uploadstore.Read(ctx, s.DB, s.UploadDir, filepath.Base(mediaURL))
 	if err != nil {
 		return nil, "", err
 	}

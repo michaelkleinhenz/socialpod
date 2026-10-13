@@ -13,14 +13,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -136,20 +135,11 @@ func (s *TwitterService) FetchProfile(account *models.SocialAccount) (displayNam
 
 func (s *TwitterService) uploadMedia(ctx context.Context, account *models.SocialAccount, imageURL string) (string, error) {
 	filename := strings.TrimPrefix(imageURL, "/api/uploads/")
-	var fileData []byte
-
-	diskPath := filepath.Join(s.UploadDir, filename)
-	if d, readErr := os.ReadFile(diskPath); readErr == nil {
-		data, _ := ResizeImageIfNeeded(d, filename)
-		fileData = data
-	} else {
-		var upload models.Upload
-		if err := s.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload); err != nil {
-			return "", fmt.Errorf("upload not found: %s", filename)
-		}
-		data, _ := ResizeImageIfNeeded(upload.Data, filename)
-		fileData = data
+	raw, _, err := uploadstore.Read(ctx, s.DB, s.UploadDir, filename)
+	if err != nil {
+		return "", fmt.Errorf("upload not found: %s", filename)
 	}
+	fileData, _ := ResizeImageIfNeeded(raw, filename)
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)

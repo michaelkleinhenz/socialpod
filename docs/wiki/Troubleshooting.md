@@ -8,11 +8,9 @@
 **First user is not admin**
 - The admin flag is set during registration when the users collection is empty. To reset, clear the `users` collection in MongoDB.
 
-**Watermark images show as broken after a container restart**
-- Uploaded files are stored in `UPLOAD_DIR`. The provided `docker-compose.yml` mounts a named volume (`uploads_data`) at that path. If you deployed before this volume was added, run `make down && make up` — Docker will create the volume.
-
-**Watermark images broken immediately after upload**
-- Ensure `UPLOAD_DIR` matches the volume mount path. The default setup sets `UPLOAD_DIR=/app/uploads` and mounts `uploads_data:/app/uploads`.
+**Uploaded images show as broken**
+- Uploaded files are stored in the S3 bucket (`AWS_S3_BUCKET_NAME` and its credentials) under `uploads/`, or in MongoDB when no bucket is configured; `UPLOAD_DIR` is only a cache and may be lost on a restart. Check the startup log: it names the upload storage in use, and reports when the bucket is misconfigured.
+- After configuring a bucket on an existing install, the server moves the files stored in MongoDB to the bucket in the background on startup (`Upload storage: moved N uploads from MongoDB to S3`). Files that failed are retried on the next start and still served from MongoDB meanwhile.
 
 ---
 

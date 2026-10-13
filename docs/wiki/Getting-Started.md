@@ -34,15 +34,15 @@ All configuration is done via environment variables in `.env`:
 | `JWT_SECRET` | `change-me-in-production` | Secret for signing JWT tokens — **change this** |
 | `APP_URL` | `http://localhost:8080` | Public URL of the app (used for Instagram OAuth and media hosting) |
 | `APP_PORT` | `8080` | Port the app listens on |
-| `UPLOAD_DIR` | `./uploads` | Directory for uploaded image/video files |
-| `AWS_S3_BUCKET_NAME` | — | S3-compatible bucket for full-system backups (optional; backups are off without it) |
+| `UPLOAD_DIR` | `./uploads` | Local cache of uploaded image/video files (the bucket, or MongoDB without one, holds them durably) |
+| `AWS_S3_BUCKET_NAME` | — | S3-compatible bucket for uploaded files and full-system backups. Without it uploads are stored in MongoDB and backups are off |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | Credentials for that bucket |
 | `AWS_ENDPOINT_URL` | AWS for the region | Endpoint of a non-AWS bucket (MinIO, Cloudflare R2, Railway/Tigris, ...) |
 | `AWS_DEFAULT_REGION` | `us-east-1` | Bucket region |
 
 ## Backups
 
-With an S3 bucket configured, an admin can set up backups on **Admin → Settings → Backups**: a schedule (hourly to weekly, or manual only), how many backups to keep, and the encryption passphrase. Each backup holds the whole system (users, teams, connected accounts, settings and API keys, posts, drafts, queues, agents and every uploaded file) as an AES-256 encrypted ZIP under `backups/` in the bucket; it opens with 7-Zip, WinZip or Keka using the passphrase. The card lists the stored backups to download, restore or delete, and restores an uploaded backup file. A restore replaces all data and first stores a safety backup of the current state. Keep the passphrase safe: a backup cannot be restored without it. Server environment settings (`JWT_SECRET`, MongoDB and S3 credentials) are not part of a backup.
+With an S3 bucket configured, an admin can set up backups on **Admin → Settings → Backups**: a schedule (hourly to weekly, or manual only), how many backups to keep, and the encryption passphrase. Each backup holds the whole system (users, teams, connected accounts, settings and API keys, posts, drafts, queues, agents and every uploaded file) as an AES-256 encrypted ZIP under `backups/` in the bucket (uploaded files themselves live under `uploads/`); it opens with 7-Zip, WinZip or Keka using the passphrase. The card lists the stored backups to download, restore or delete, and restores an uploaded backup file. A restore replaces all data and first stores a safety backup of the current state. Keep the passphrase safe: a backup cannot be restored without it. Server environment settings (`JWT_SECRET`, MongoDB and S3 credentials) are not part of a backup.
 
 ## Production Deployment
 

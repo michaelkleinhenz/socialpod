@@ -495,9 +495,11 @@ export interface OrphanedUpload {
   filename: string;
   size: number;
   createdAt: string;
-  /** Where the orphan still exists — normally both. */
+  /** Where the orphan still exists: normally a database record with its
+   *  bytes in the S3 bucket (or in the record without one), plus a disk cache. */
   onDisk: boolean;
   inDatabase: boolean;
+  inBucket: boolean;
 }
 
 /** Result of an admin storage scan or sweep. */

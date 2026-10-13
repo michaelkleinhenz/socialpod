@@ -9,13 +9,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -153,20 +152,10 @@ func (s *LinkedInService) uploadImage(ctx context.Context, account *models.Socia
 		return "", fmt.Errorf("LinkedIn register upload returned empty uploadUrl or asset")
 	}
 
-	// Read image data from disk or MongoDB.
 	filename := strings.TrimPrefix(imageURL, "/api/uploads/")
-	var fileData []byte
-	diskPath := filepath.Join(s.UploadDir, filename)
-	if d, readErr := os.ReadFile(diskPath); readErr == nil {
-		fileData = d
-	} else {
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		var upload models.Upload
-		if dbErr := s.DB.Uploads().FindOne(dbCtx, bson.M{"filename": filename}).Decode(&upload); dbErr != nil {
-			return "", fmt.Errorf("image not found: %s", filename)
-		}
-		fileData = upload.Data
+	fileData, _, err := uploadstore.Read(ctx, s.DB, s.UploadDir, filename)
+	if err != nil {
+		return "", fmt.Errorf("image not found: %s", filename)
 	}
 
 	uploadReq, err := http.NewRequestWithContext(ctx, "PUT", uploadURL, bytes.NewReader(fileData))

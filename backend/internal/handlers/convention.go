@@ -14,7 +14,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -27,6 +26,7 @@ import (
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 	"socialmedia/internal/services"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -1619,24 +1619,9 @@ func applyWatermarkOverlay(baseData []byte, overlay image.Image) ([]byte, string
 
 func (h *ConventionHandler) readImageData(ctx context.Context, imageURL string) ([]byte, string, error) {
 	filename := filepath.Base(imageURL)
-	diskPath := filepath.Join(h.UploadDir, filename)
-
-	data, err := os.ReadFile(diskPath)
-	if err == nil {
-		ct := http.DetectContentType(data)
-		return data, ct, nil
-	}
-
-	var upload models.Upload
-	if err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload); err != nil {
+	data, ct, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filename)
+	if err != nil {
 		return nil, "", fmt.Errorf("image not found: %s", filename)
 	}
-	if len(upload.Data) == 0 {
-		return nil, "", fmt.Errorf("image data is empty for: %s", filename)
-	}
-	ct := upload.ContentType
-	if ct == "" {
-		ct = http.DetectContentType(upload.Data)
-	}
-	return upload.Data, ct, nil
+	return data, ct, nil
 }

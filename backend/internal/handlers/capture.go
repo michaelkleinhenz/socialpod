@@ -10,8 +10,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -478,45 +476,24 @@ func (h *CaptureHandler) saveImage(ctx context.Context, c *gin.Context, img *Cap
 	}
 
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-		log.Printf("[Capture] Failed to create upload dir: %v", err)
+	url, err := storeUploadBytes(ctx, h.DB, h.UploadDir, filename, ct, raw)
+	if err != nil {
+		log.Printf("[Capture] Failed to store image: %v", err)
 		return nil
 	}
-	dst := filepath.Join(h.UploadDir, filename)
-	if err := os.WriteFile(dst, raw, 0o644); err != nil {
-		log.Printf("[Capture] Failed to write image file: %v", err)
-		return nil
-	}
-	h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: ct,
-		Data:        raw,
-		Size:        int64(len(raw)),
-		CreatedAt:   time.Now(),
-	})
-	return []string{"/api/uploads/" + filename}
+	return []string{url}
 }
 
 // saveProcessedImage stores image bytes that already went through the BGG
 // letterbox + overlay pipeline, which always encodes JPEG.
 func (h *CaptureHandler) saveProcessedImage(ctx context.Context, raw []byte) []string {
 	filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-		log.Printf("[Capture] Failed to create upload dir: %v", err)
+	url, err := storeUploadBytes(ctx, h.DB, h.UploadDir, filename, "image/jpeg", raw)
+	if err != nil {
+		log.Printf("[Capture] Failed to store image: %v", err)
 		return nil
 	}
-	if err := os.WriteFile(filepath.Join(h.UploadDir, filename), raw, 0o644); err != nil {
-		log.Printf("[Capture] Failed to write image file: %v", err)
-		return nil
-	}
-	h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: "image/jpeg",
-		Data:        raw,
-		Size:        int64(len(raw)),
-		CreatedAt:   time.Now(),
-	})
-	return []string{"/api/uploads/" + filename}
+	return []string{url}
 }
 
 // newsTaglineMaxLen is the podcast chapter title limit the news tagline has to
@@ -1284,24 +1261,7 @@ func downloadAndSaveImage(ctx context.Context, db *database.MongoDB, uploadDir s
 	}
 
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-
-	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return "", err
-	}
-	dst := filepath.Join(uploadDir, filename)
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return "", err
-	}
-
-	db.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: ct,
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	})
-
-	return "/api/uploads/" + filename, nil
+	return storeUploadBytes(ctx, db, uploadDir, filename, ct, data)
 }
 
 // bggGameIDFromURL returns the BoardGameGeek item ID of a BGG game page, or ""

@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -226,19 +225,10 @@ func (s *BlueskyService) uploadImages(session *bskySession, pdsHost string, imag
 			break
 		}
 
-		// Read upload data from disk first, then fall back to MongoDB.
 		filename := strings.TrimPrefix(url, "/api/uploads/")
-		var fileData []byte
-		diskPath := filepath.Join(s.UploadDir, filename)
-		if d, readErr := os.ReadFile(diskPath); readErr == nil {
-			fileData = d
-		} else {
-			var upload models.Upload
-			err := s.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
-			if err != nil {
-				continue
-			}
-			fileData = upload.Data
+		fileData, _, err := uploadstore.Read(ctx, s.DB, s.UploadDir, filename)
+		if err != nil {
+			continue
 		}
 
 		// Resize if over Bluesky's 1MB blob limit

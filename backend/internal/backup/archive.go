@@ -1,12 +1,14 @@
 // Package backup creates and restores full-system backups: every MongoDB
 // collection (users, teams, settings incl. API keys and OAuth secrets, social
-// accounts, posts, drafts, and the uploads collection, which holds the bytes of
-// every uploaded image, video and font) bundled into one AES-encrypted ZIP.
+// accounts, posts, drafts, the uploads collection) and the uploaded files kept
+// outside the database (the S3 bucket), bundled into one AES-encrypted ZIP.
+// Uploads stored without a bucket carry their bytes in their uploads record.
 //
 // Archive layout:
 //
 //	manifest.json                  format version, counts, metadata
 //	db/<collection>/<00001>.jsonl  documents as canonical Extended JSON, one per line
+//	files/<filename>               uploaded files from outside the database
 package backup
 
 import (
@@ -50,6 +52,14 @@ var restoring atomic.Bool
 // their run while it is, so they never act on half-restored data.
 func RestoreInProgress() bool { return restoring.Load() }
 
+// Files is where uploaded files live outside the database. A backup copies
+// them in, a restore writes them back.
+type Files interface {
+	// Each calls fn with every file's name and bytes.
+	Each(ctx context.Context, fn func(name string, data []byte) error) error
+	Write(ctx context.Context, name string, data []byte) error
+}
+
 // Manifest describes the contents of a backup archive.
 type Manifest struct {
 	Format      string           `json:"format"`
@@ -58,14 +68,23 @@ type Manifest struct {
 	Kind        string           `json:"kind"`
 	Collections map[string]int64 `json:"collections"`
 	Chunks      map[string]int   `json:"chunks"`
+	// Files lists the uploaded files stored under files/.
+	Files []string `json:"files,omitempty"`
 }
 
 func chunkName(collection string, n int) string {
 	return fmt.Sprintf("db/%s/%05d.jsonl", collection, n)
 }
 
-// Create writes a complete backup of the database to w.
-func Create(ctx context.Context, db Store, w io.Writer, passphrase, kind string) (*Manifest, error) {
+func fileEntry(name string) string { return "files/" + name }
+
+func validFileName(n string) bool {
+	return n != "" && n != "." && n != ".." && len(n) <= 255 && !strings.ContainsAny(n, "/\\\x00")
+}
+
+// Create writes a complete backup of the database, and of files when it is
+// not nil, to w.
+func Create(ctx context.Context, db Store, w io.Writer, passphrase, kind string, files Files) (*Manifest, error) {
 	if passphrase == "" {
 		return nil, fmt.Errorf("backup passphrase is not set")
 	}
@@ -87,6 +106,22 @@ func Create(ctx context.Context, db Store, w io.Writer, passphrase, kind string)
 		}
 		if err := dumpCollection(ctx, db, name, zw, now, m); err != nil {
 			return nil, fmt.Errorf("dumping %s: %w", name, err)
+		}
+	}
+	if files != nil {
+		err := files.Each(ctx, func(name string, data []byte) error {
+			if !validFileName(name) {
+				return nil
+			}
+			// Images and videos are compressed already.
+			if err := zw.WriteFile(fileEntry(name), data, now, false); err != nil {
+				return err
+			}
+			m.Files = append(m.Files, name)
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("copying uploaded files: %w", err)
 		}
 	}
 
@@ -158,6 +193,9 @@ type RestoreOptions struct {
 	// KeepIfPresent lists collections whose current contents win: they are
 	// only restored from the archive when currently empty.
 	KeepIfPresent []string
+	// Files receives the archive's uploaded files. An archive holding files
+	// is refused without it.
+	Files Files
 }
 
 // RestoreResult summarises a restore.
@@ -186,6 +224,11 @@ func ReadManifest(zr *Reader) (*Manifest, error) {
 	for name := range m.Collections {
 		if !validCollectionName(name) {
 			return nil, fmt.Errorf("invalid collection name %q in backup", name)
+		}
+	}
+	for _, name := range m.Files {
+		if !validFileName(name) {
+			return nil, fmt.Errorf("invalid file name %q in backup", name)
 		}
 	}
 	return &m, nil
@@ -230,6 +273,11 @@ func Validate(zr *Reader) (*Manifest, error) {
 			return nil, fmt.Errorf("collection %s: expected %d documents, found %d", name, want, got)
 		}
 	}
+	for _, name := range m.Files {
+		if !zr.Has(fileEntry(name)) {
+			return nil, fmt.Errorf("file %s is listed but missing", name)
+		}
+	}
 	return m, nil
 }
 
@@ -242,8 +290,24 @@ func Restore(ctx context.Context, db Store, zr *Reader, opts RestoreOptions) (*R
 	if err != nil {
 		return nil, err
 	}
+	if len(m.Files) > 0 && opts.Files == nil {
+		return nil, fmt.Errorf("this backup holds %d uploaded files kept in S3; configure the bucket to restore it", len(m.Files))
+	}
 	restoring.Store(true)
 	defer restoring.Store(false)
+
+	// The files first: writing them changes nothing the current state uses
+	// (upload names are unique), so a failure here leaves the database as it
+	// was.
+	for _, name := range m.Files {
+		data, err := zr.ReadFile(fileEntry(name))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", fileEntry(name), err)
+		}
+		if err := opts.Files.Write(ctx, name, data); err != nil {
+			return nil, fmt.Errorf("restoring file %s: %w", name, err)
+		}
+	}
 
 	keep := map[string]bool{}
 	for _, n := range opts.KeepIfPresent {

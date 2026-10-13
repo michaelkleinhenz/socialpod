@@ -8,13 +8,12 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -144,17 +143,9 @@ func (s *MastodonService) Post(ctx context.Context, content string, imageURLs []
 
 func (s *MastodonService) uploadMedia(ctx context.Context, account *models.SocialAccount, imageURL string) (string, error) {
 	filename := strings.TrimPrefix(imageURL, "/api/uploads/")
-	var fileData []byte
-	diskPath := filepath.Join(s.UploadDir, filename)
-	if d, readErr := os.ReadFile(diskPath); readErr == nil {
-		fileData = d
-	} else {
-		var upload models.Upload
-		err := s.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
-		if err != nil {
-			return "", fmt.Errorf("upload not found: %s", filename)
-		}
-		fileData = upload.Data
+	fileData, _, err := uploadstore.Read(ctx, s.DB, s.UploadDir, filename)
+	if err != nil {
+		return "", fmt.Errorf("upload not found: %s", filename)
 	}
 
 	data, contentType := ResizeImageIfNeeded(fileData, filename)

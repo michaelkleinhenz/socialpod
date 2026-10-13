@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"socialmedia/internal/middleware"
 	"socialmedia/internal/objectstore"
 	"socialmedia/internal/services"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -64,6 +66,29 @@ func main() {
 	}
 	defer db.Close()
 	log.Println("Connected to MongoDB")
+
+	// Uploaded files and full-system backups share the S3-compatible bucket
+	// (AWS_* env vars): uploads under uploads/, backups under backups/.
+	s3, s3Err := objectstore.NewS3FromEnv()
+	switch {
+	case s3Err != nil:
+		log.Printf("WARNING: S3 storage misconfigured (%v); uploads are stored in MongoDB and backups are disabled", s3Err)
+	case s3 != nil:
+		uploadstore.Configure(s3)
+		log.Printf("Upload storage: S3 bucket %s", os.Getenv("AWS_S3_BUCKET_NAME"))
+		// Uploads stored in MongoDB before the bucket move out in the
+		// background; until then they are still read from their records.
+		go func() {
+			n, err := uploadstore.MigrateToBucket(context.Background(), db)
+			if err != nil {
+				log.Printf("Upload storage: moving uploads from MongoDB to S3: %v (%d moved, the rest are retried on the next start)", err, n)
+			} else if n > 0 {
+				log.Printf("Upload storage: moved %d uploads from MongoDB to S3", n)
+			}
+		}()
+	default:
+		log.Println("WARNING: upload storage: no S3 bucket configured (set AWS_S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY); uploads are stored in MongoDB")
+	}
 
 	// Start scheduler
 	scheduler := services.NewScheduler(db, cfg.UploadDir)
@@ -135,13 +160,11 @@ func main() {
 
 	// Full-system backups go to an S3-compatible bucket (AWS_* env vars).
 	backupHandler := &handlers.SystemBackupHandler{DB: db, UploadDir: cfg.UploadDir}
-	if s3, err := objectstore.NewS3FromEnv(); err != nil {
-		log.Printf("Backup storage: %v; backups disabled", err)
-	} else if s3 != nil {
+	if s3 != nil {
 		backupHandler.Store = s3
 		log.Printf("Backup storage: S3 bucket %s", os.Getenv("AWS_S3_BUCKET_NAME"))
 	} else {
-		log.Println("Backup storage: not configured (set AWS_S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY); backups disabled")
+		log.Println("Backup storage: not configured; backups disabled")
 	}
 	backupHandler.StartScheduler()
 	defer backupHandler.StopScheduler()

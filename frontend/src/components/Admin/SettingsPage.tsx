@@ -711,8 +711,8 @@ export function SettingsPage() {
                   {sweepReport.sample.map(f => (
                     <li key={f.filename}>
                       {f.filename} — {formatBytes(f.size)}, {new Date(f.createdAt).toLocaleDateString()}
-                      {!f.inDatabase && ' (file only, no database record)'}
-                      {!f.onDisk && ' (database record only, file missing)'}
+                      {' ('}{[f.inDatabase && 'record', f.inBucket && 'S3', f.onDisk && 'disk'].filter(Boolean).join(', ')}
+                      {!f.inDatabase && ', no database record'}{')'}
                     </li>
                   ))}
                 </ul>

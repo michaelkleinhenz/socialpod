@@ -9,7 +9,6 @@ import (
 	"image"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 	"socialmedia/internal/services"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -1949,8 +1949,7 @@ func (h *MCPHandler) loadEpisodeOverlay(c *gin.Context, episodeType string) imag
 		return nil
 	}
 
-	filename := filepath.Base(wm.URL)
-	wmData, err := os.ReadFile(filepath.Join(h.UploadDir, filename))
+	wmData, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(wm.URL))
 	if err != nil {
 		return nil
 	}
@@ -1988,8 +1987,7 @@ func (h *MCPHandler) loadNewsOverlay(c *gin.Context) image.Image {
 		return nil
 	}
 
-	filename := filepath.Base(wm.URL)
-	wmData, err := os.ReadFile(filepath.Join(h.UploadDir, filename))
+	wmData, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(wm.URL))
 	if err != nil {
 		return nil
 	}
@@ -2017,42 +2015,20 @@ func (h *MCPHandler) applyOverlayToSingleImage(overlay image.Image, imgURL strin
 		return imgURL
 	}
 
-	filename := filepath.Base(imgURL)
-	fullPath := filepath.Join(h.UploadDir, filename)
-
-	data, err := os.ReadFile(fullPath)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	data, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(imgURL))
 	if err != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		var upload models.Upload
-		if err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload); err != nil || len(upload.Data) == 0 {
-			return imgURL
-		}
-		data = upload.Data
+		return imgURL
 	}
 
 	overlaid, _ := applyWatermarkOverlay(data, overlay)
 
-	newFilename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-	newPath := filepath.Join(h.UploadDir, newFilename)
-	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+	url, err := storeUploadBytes(ctx, h.DB, h.UploadDir, fmt.Sprintf("%d.jpg", time.Now().UnixNano()), "image/jpeg", overlaid)
+	if err != nil {
 		return imgURL
 	}
-	if err := os.WriteFile(newPath, overlaid, 0o644); err != nil {
-		return imgURL
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    newFilename,
-		ContentType: "image/jpeg",
-		Data:        overlaid,
-		Size:        int64(len(overlaid)),
-		CreatedAt:   time.Now(),
-	})
-
-	return "/api/uploads/" + newFilename
+	return url
 }
 
 // fetchArticleImage fetches the best content image from the given article URL,
@@ -2086,22 +2062,12 @@ func (h *MCPHandler) fetchArticleImage(c *gin.Context, articleURL string) []stri
 				log.Printf("[MCP] fetchArticleImage: failed to download/process BGG image: %v", err)
 				return nil
 			}
-			filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-			if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+			url, err := storeUploadBytes(ctx, h.DB, h.UploadDir, fmt.Sprintf("%d.jpg", time.Now().UnixNano()), "image/jpeg", imgData)
+			if err != nil {
+				log.Printf("[MCP] storing the image: %v", err)
 				return nil
 			}
-			dst := filepath.Join(h.UploadDir, filename)
-			if err := os.WriteFile(dst, imgData, 0o644); err != nil {
-				return nil
-			}
-			h.DB.Uploads().InsertOne(ctx, models.Upload{
-				Filename:    filename,
-				ContentType: "image/jpeg",
-				Data:        imgData,
-				Size:        int64(len(imgData)),
-				CreatedAt:   time.Now(),
-			})
-			return []string{"/api/uploads/" + filename}
+			return []string{url}
 		}
 	}
 
@@ -2146,22 +2112,12 @@ func (h *MCPHandler) tryDownloadContentImage(ctx context.Context, c *gin.Context
 			log.Printf("[MCP] tryDownloadContentImage: failed with overlay: %v", err)
 			return nil
 		}
-		filename := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-		if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
+		url, err := storeUploadBytes(ctx, h.DB, h.UploadDir, fmt.Sprintf("%d.jpg", time.Now().UnixNano()), "image/jpeg", imgData)
+		if err != nil {
+			log.Printf("[MCP] storing the image: %v", err)
 			return nil
 		}
-		dst := filepath.Join(h.UploadDir, filename)
-		if err := os.WriteFile(dst, imgData, 0o644); err != nil {
-			return nil
-		}
-		h.DB.Uploads().InsertOne(ctx, models.Upload{
-			Filename:    filename,
-			ContentType: "image/jpeg",
-			Data:        imgData,
-			Size:        int64(len(imgData)),
-			CreatedAt:   time.Now(),
-		})
-		return []string{"/api/uploads/" + filename}
+		return []string{url}
 	}
 
 	log.Printf("[MCP] tryDownloadContentImage: downloading plain: %s", imageURL)
@@ -2230,24 +2186,9 @@ func (h *MCPHandler) saveBase64Upload(b64Data, filename string) (string, error) 
 	}
 
 	storedName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-
-	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create upload directory: %w", err)
-	}
-	dst := filepath.Join(h.UploadDir, storedName)
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    storedName,
-		ContentType: ct,
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	})
-	return "/api/uploads/" + storedName, nil
+	return storeUploadBytes(ctx, h.DB, h.UploadDir, storedName, ct, data)
 }
 
 func (h *MCPHandler) processInlineImages(args map[string]any) ([]string, error) {

@@ -8,8 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -17,6 +15,7 @@ import (
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 	"socialmedia/internal/services"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -500,14 +499,8 @@ func (h *RadarHandler) loadFont(ctx context.Context, url string) services.RadarF
 
 func readImageBytes(ctx context.Context, db *database.MongoDB, uploadDir, url string) ([]byte, error) {
 	if name := uploadFilename(url); name != "" {
-		if data, err := os.ReadFile(filepath.Join(uploadDir, name)); err == nil {
-			return data, nil
-		}
-		var up models.Upload
-		if err := db.Uploads().FindOne(ctx, bson.M{"filename": name}).Decode(&up); err != nil {
-			return nil, err
-		}
-		return up.Data, nil
+		data, _, err := uploadstore.Read(ctx, db, uploadDir, name)
+		return data, err
 	}
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		return nil, fmt.Errorf("unsupported image URL")
@@ -527,22 +520,14 @@ func readImageBytes(ctx context.Context, db *database.MongoDB, uploadDir, url st
 	return io.ReadAll(io.LimitReader(resp.Body, 15*1024*1024))
 }
 
-// storeUploadBytes saves generated image bytes like any upload: on disk and
-// in the uploads collection.
+// storeUploadBytes saves bytes like any upload (uploadstore: the bucket, a
+// record, the disk cache) and returns its URL.
 func storeUploadBytes(ctx context.Context, db *database.MongoDB, uploadDir, filename, contentType string, data []byte) (string, error) {
-	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(filepath.Join(uploadDir, filename), data, 0o644); err != nil {
-		return "", err
-	}
-	if _, err := db.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: contentType,
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	}); err != nil {
+	// Its own deadline, long enough for a video to reach the bucket: callers'
+	// contexts are sized for database calls.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
+	if err := uploadstore.Save(ctx, db, uploadDir, filename, contentType, data); err != nil {
 		return "", err
 	}
 	return uploadURLPrefix + filename, nil
