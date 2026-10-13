@@ -301,6 +301,67 @@ class ApiClient {
     });
   }
 
+  // Full-system backups (admin)
+  getBackupConfig() {
+    return this.request<import('../types').BackupConfig>('/admin/backups/config');
+  }
+
+  updateBackupConfig(patch: { frequency?: import('../types').BackupFrequency; retention?: number; passphrase?: string }) {
+    return this.request<import('../types').BackupConfig>('/admin/backups/config', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  listBackups() {
+    return this.request<import('../types').BackupEntry[]>('/admin/backups');
+  }
+
+  /** Starts a backup in the background; poll getBackupConfig for `running`. */
+  runBackup() {
+    return this.request<{ started: boolean }>('/admin/backups', { method: 'POST' });
+  }
+
+  deleteBackup(name: string) {
+    return this.request<{ deleted: boolean }>(`/admin/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  }
+
+  /** Restores a stored backup. Without a passphrase the configured one is used. */
+  restoreBackup(name: string, passphrase?: string) {
+    return this.request<import('../types').BackupRestoreResult>(`/admin/backups/${encodeURIComponent(name)}/restore`, {
+      method: 'POST',
+      body: JSON.stringify(passphrase ? { passphrase } : {}),
+    });
+  }
+
+  restoreBackupUpload(file: File, passphrase: string) {
+    const form = new FormData();
+    form.append('passphrase', passphrase);
+    form.append('file', file, file.name || 'backup.zip');
+    return this.request<import('../types').BackupRestoreResult>('/admin/backups/restore-upload', {
+      method: 'POST',
+      body: form,
+    });
+  }
+
+  /** Downloads a stored backup through the authenticated API and saves it. */
+  async downloadBackup(name: string) {
+    const token = this.getToken();
+    const res = await fetch(`${API_URL}/api/admin/backups/${encodeURIComponent(name)}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `Download failed (${res.status})` }));
+      throw new Error(err.error || 'Download failed');
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   updateSettings(data: any) {
     return this.request<any>('/admin/settings', {
       method: 'PUT',

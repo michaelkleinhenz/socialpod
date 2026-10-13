@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"socialmedia/internal/backup"
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 
@@ -202,6 +203,9 @@ func (s *Scheduler) refreshExpiringTokens() {
 }
 
 func (s *Scheduler) processScheduledPosts() {
+	if backup.RestoreInProgress() {
+		return // a backup restore is replacing the data
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 

@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import type { AppSettings, UploadSweepReport } from '../../types';
 import { Save, Copy, Check, Smartphone, HardDrive, Search, Trash2, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { BackupsCard } from './BackupsCard';
 import './Admin.css';
 
 export function SettingsPage() {
@@ -725,6 +726,8 @@ export function SettingsPage() {
           </div>
         )}
       </div>
+
+      <BackupsCard />
     </div>
   );
 }

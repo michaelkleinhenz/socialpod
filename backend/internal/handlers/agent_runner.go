@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"socialmedia/internal/backup"
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 
@@ -117,6 +118,9 @@ func (h *AgentHandler) recoverInterrupted() {
 // Claiming moves nextRunAt forward in the same update, so an agent is never
 // started twice for one slot.
 func (h *AgentHandler) runDue() {
+	if backup.RestoreInProgress() {
+		return // a backup restore is replacing the data
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	now := time.Now().UTC()

@@ -11,6 +11,7 @@ import (
 	"socialmedia/internal/database"
 	"socialmedia/internal/handlers"
 	"socialmedia/internal/middleware"
+	"socialmedia/internal/objectstore"
 	"socialmedia/internal/services"
 
 	"github.com/gin-contrib/cors"
@@ -131,6 +132,19 @@ func main() {
 	agentHandler := &handlers.AgentHandler{DB: db, MCP: mcpHandler}
 	agentHandler.StartScheduler()
 	defer agentHandler.StopScheduler()
+
+	// Full-system backups go to an S3-compatible bucket (AWS_* env vars).
+	backupHandler := &handlers.SystemBackupHandler{DB: db, UploadDir: cfg.UploadDir}
+	if s3, err := objectstore.NewS3FromEnv(); err != nil {
+		log.Printf("Backup storage: %v; backups disabled", err)
+	} else if s3 != nil {
+		backupHandler.Store = s3
+		log.Printf("Backup storage: S3 bucket %s", os.Getenv("AWS_S3_BUCKET_NAME"))
+	} else {
+		log.Println("Backup storage: not configured (set AWS_S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY); backups disabled")
+	}
+	backupHandler.StartScheduler()
+	defer backupHandler.StopScheduler()
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -373,6 +387,16 @@ func main() {
 		// and delete them when asked explicitly.
 		admin.GET("/uploads/orphans", adminHandler.SweepUploads)
 		admin.POST("/uploads/sweep", adminHandler.SweepUploads)
+
+		// Full-system backups (S3 bucket, encrypted ZIP)
+		admin.GET("/backups/config", backupHandler.GetConfig)
+		admin.PUT("/backups/config", backupHandler.UpdateConfig)
+		admin.GET("/backups", backupHandler.List)
+		admin.POST("/backups", backupHandler.RunNow)
+		admin.POST("/backups/restore-upload", backupHandler.RestoreUpload)
+		admin.GET("/backups/:name/download", backupHandler.Download)
+		admin.POST("/backups/:name/restore", backupHandler.RestoreStored)
+		admin.DELETE("/backups/:name", backupHandler.Delete)
 
 		admin.GET("/publisher-handles", publisherHandleHandler.List)
 		admin.POST("/publisher-handles", publisherHandleHandler.Create)
