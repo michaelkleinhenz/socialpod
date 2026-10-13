@@ -10,12 +10,12 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -251,7 +251,7 @@ func (h *NewsHandler) sendToN8N(ctx context.Context, team *models.Team, input *N
 			imgPath = imgPath[1:]
 		}
 		fullPath := filepath.Join(h.UploadDir, filepath.Base(imgPath))
-		fileData, err := os.ReadFile(fullPath)
+		fileData, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(imgPath))
 		if err != nil {
 			log.Printf("[NewsCreator] Warning: could not read image %s: %v", fullPath, err)
 			continue
@@ -374,25 +374,9 @@ func (h *NewsHandler) saveUpload(fh *multipart.FileHeader) (string, error) {
 	}
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 
-	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create upload directory: %w", err)
-	}
-	dst := filepath.Join(h.UploadDir, filename)
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: contentTypes[ext],
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	})
-
-	return "/api/uploads/" + filename, nil
+	return storeUploadBytes(ctx, h.DB, h.UploadDir, filename, contentTypes[ext], data)
 }
 
 // newsDraftFields maps a submitted news payload onto the stored draft fields,

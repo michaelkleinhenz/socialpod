@@ -2,16 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer } from 'react-konva';
 import {
-  AlignCenter, Bold, Crop, FolderOpen, Frame, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, AlignLeft, AlignRight, Bold, Crop, Crosshair, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp,
+  Trash2, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { MediaItem, Watermark } from '../../../types';
 import {
-  applyAdjustments, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerAttrs,
-  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, parseTemplate, renderEdit, textLayerAttrs,
+  applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
+  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, parseTemplate, renderEdit, resizeText, textLayerAttrs,
   toTemplate,
-  type Adjustments, type CropBox, type EditorCanvas, type EditorLayer, type EditorTemplate, type ImageLayer, type TextLayer,
+  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorLayer, type EditorTemplate, type ImageLayer, type TextAlign,
+  type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
 import { LayerList } from './LayerList';
@@ -45,6 +47,16 @@ const ASPECTS: { id: string; label: string; ratio: number | null | 'original' }[
   { id: '9:16', label: '9:16', ratio: 9 / 16 },
   { id: '16:9', label: '16:9', ratio: 16 / 9 },
 ];
+
+const TEXT_ALIGNS: { id: TextAlign; label: string; icon: typeof AlignLeft }[] = [
+  { id: 'left', label: 'Align left', icon: AlignLeft },
+  { id: 'center', label: 'Align centre', icon: AlignCenter },
+  { id: 'right', label: 'Align right', icon: AlignRight },
+];
+
+// The font sizes the size field takes, in pixels of the picture.
+const MIN_FONT_SIZE = 4;
+const MAX_FONT_SIZE = 2000;
 
 const SWATCHES = ['#ffffff', '#000000', '#facc15', '#f97316', '#ef4444', '#ec4899', '#8b5cf6', '#3b82f6', '#22c55e'];
 
@@ -127,6 +139,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  // A pasted or picked image on its way onto the picture.
+  const [placingImage, setPlacingImage] = useState(false);
+  // The font size field while it is being typed in, which may not be a valid
+  // size yet (cleared, or half a number).
+  // Kept with the text it belongs to, so selecting another text drops it.
+  const [fontSizeDraft, setFontSizeDraft] = useState<{ id: string; value: string } | null>(null);
   // The media library's templates, loaded when the Templates tab is opened.
   const [templates, setTemplates] = useState<MediaItem[] | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
@@ -155,6 +173,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const contentRef = useRef<Konva.Group>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const placeInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   const isTouch = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches, []);
@@ -620,10 +639,73 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     let height = width / r;
     if (height > crop.height) { height = crop.height; width = height * r; }
     updateLayer(selected.id, {
-      width, height, rotation: 0,
+      width, height, rotation: 0, srcCrop: undefined,
       x: crop.x + crop.width / 2, y: crop.y + crop.height / 2,
     });
   };
+
+  // --- Pasted images --------------------------------------------------------
+
+  // Puts an image file on the picture. With an image layer selected (a
+  // template's placeholder, say) it takes that layer's place: same frame,
+  // corners and border, the image cropped to fill it. Otherwise it goes in
+  // the middle like a media image. The file is uploaded first, so a design
+  // saved as a template refers to it by URL.
+  const placeImageFile = async (file: File) => {
+    if (!crop || placingImage) return;
+    const target = selected?.kind === 'image' ? selected : null;
+    setPlacingImage(true);
+    try {
+      const { url } = await api.uploadImage(file);
+      const img = await loadImage(resolveUrl(url));
+      if (target) {
+        updateLayer(target.id, {
+          img, src: url, origin: 'media',
+          srcCrop: centredCrop(img.naturalWidth, img.naturalHeight, target.width / target.height),
+        });
+        return;
+      }
+      const r = img.naturalWidth / img.naturalHeight;
+      let width = crop.width * 0.5;
+      let height = width / r;
+      if (height > crop.height * 0.5) { height = crop.height * 0.5; width = height * r; }
+      addLayer({
+        id: newLayerId(), kind: 'image', origin: 'media', src: url, img,
+        x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
+      });
+      if (tab !== 'watermark' && tab !== 'media') setTab('media');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add the image');
+    } finally {
+      setPlacingImage(false);
+    }
+  };
+
+  const pickPlaceFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) void placeImageFile(file);
+  };
+
+  // Ctrl/Cmd+V with an image on the clipboard. Caught before the page below
+  // (the post editor, the News form) sees it, which would take the image for
+  // itself; a text paste is left alone for the field it is headed for.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (saving) return;
+      for (const item of e.clipboardData?.items ?? []) {
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void placeImageFile(file);
+        return;
+      }
+    };
+    document.addEventListener('paste', onPaste, true);
+    return () => document.removeEventListener('paste', onPaste, true);
+  });
 
   // --- Text -----------------------------------------------------------------
 
@@ -710,8 +792,26 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       node.setAttrs({ offsetX: width / 2, offsetY: height / 2 });
       updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), width, height });
     } else {
-      updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), fontSize: Math.max(4, l.fontSize * sx) });
+      updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), fontSize: Math.max(MIN_FONT_SIZE, Math.round(l.fontSize * sx)) });
     }
+  };
+
+  // --- Corners and borders -------------------------------------------------
+
+  // A border's default and largest width follow the picture's size, so they
+  // look alike on a phone photo and a 4K one.
+  const borderScale = crop ? Math.min(crop.width, crop.height) : 1000;
+  const maxBorder = Math.max(20, Math.round(borderScale * 0.08));
+
+  const setBorderStyle = (l: ImageLayer, style: BorderStyle | null) => {
+    if (!style) { updateLayer(l.id, { border: undefined }); return; }
+    updateLayer(l.id, {
+      border: {
+        style,
+        width: l.border?.width ?? Math.max(2, Math.round(borderScale * 0.015)),
+        color: l.border?.color ?? '#ffffff',
+      },
+    });
   };
 
   // --- Save -----------------------------------------------------------------
@@ -743,28 +843,6 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (tab === 'crop') return;
     if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) setSelectedId(null);
   };
-
-  // Opacity, fit, centre and remove for the selected watermark or media image.
-  const imageLayerControls = selected?.kind === 'image' && (
-    <>
-      <label className="ie-slider">
-        <span>Opacity</span>
-        <input
-          type="range"
-          min={10}
-          max={100}
-          value={Math.round(selected.opacity * 100)}
-          onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 }, `opacity:${selected.id}`)}
-        />
-        <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
-      </label>
-      <div className="ie-row">
-        <button className="ie-chip" onClick={fitSelectedImage}><Maximize size={14} /> Fit</button>
-        <button className="ie-chip" onClick={centreSelected}><AlignCenter size={14} /> Centre</button>
-        <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
-      </div>
-    </>
-  );
 
   // The library's colours, the built-in swatches and a custom picker. The
   // picker passes key, so dragging through it is one undo step.
@@ -798,6 +876,78 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         title="Custom colour"
       />
     </div>
+  );
+
+  // Opacity, corners, border, fit, centre, replace and remove for the
+  // selected watermark or media image.
+  const imageLayerControls = selected?.kind === 'image' && (
+    <>
+      <label className="ie-slider">
+        <span>Opacity</span>
+        <input
+          type="range"
+          min={10}
+          max={100}
+          value={Math.round(selected.opacity * 100)}
+          onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 }, `opacity:${selected.id}`)}
+        />
+        <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
+      </label>
+      <label className="ie-slider">
+        <span>Corners</span>
+        <input
+          type="range"
+          min={0}
+          max={50}
+          value={selected.cornerRadius ?? 0}
+          onChange={e => updateLayer(selected.id, { cornerRadius: Number(e.target.value) }, `corners:${selected.id}`)}
+          onDoubleClick={() => updateLayer(selected.id, { cornerRadius: 0 })}
+        />
+        <span className="ie-value">{selected.cornerRadius ?? 0}%</span>
+      </label>
+      <span className="ie-label">Border</span>
+      <div className="ie-row ie-scroll">
+        <button className={`ie-chip ${!selected.border ? 'active' : ''}`} onClick={() => setBorderStyle(selected, null)}>None</button>
+        {BORDER_STYLES.map(b => (
+          <button
+            key={b.id}
+            className={`ie-chip ${selected.border?.style === b.id ? 'active' : ''}`}
+            onClick={() => setBorderStyle(selected, b.id)}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+      {selected.border && (
+        <>
+          <label className="ie-slider">
+            <span>Width</span>
+            <input
+              type="range"
+              min={1}
+              max={Math.max(maxBorder, Math.round(selected.border.width))}
+              value={Math.round(selected.border.width)}
+              onChange={e => updateLayer(selected.id, { border: { ...selected.border!, width: Number(e.target.value) } }, `border-width:${selected.id}`)}
+            />
+            <span className="ie-value">{Math.round(selected.border.width)}px</span>
+          </label>
+          {colorRow(
+            selected.border.color,
+            (c, key) => updateLayer(selected.id, { border: { ...selected.border!, color: c } }, key),
+            `border-color:${selected.id}`,
+          )}
+        </>
+      )}
+      <div className="ie-row ie-scroll">
+        <button className="ie-chip" onClick={fitSelectedImage}><Maximize size={14} /> Fit</button>
+        <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
+        <button className="ie-chip" onClick={() => placeInputRef.current?.click()} disabled={placingImage} title="Put another image in this one's place">
+          {placingImage ? <Loader2 size={14} className="ie-spin" /> : <ImageUp size={14} />} Replace
+        </button>
+        <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+      </div>
+      <p className="ie-hint">Paste an image (Ctrl+V) to put it in this one's place, filling its frame.</p>
+    </>
   );
 
   const anchorSize = isTouch ? 22 : 11;
@@ -858,21 +1008,28 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   {canvas
                     ? <Rect ref={backgroundRef} x={0} y={0} width={natW} height={natH} fill={canvas.background} />
                     : <KImage ref={baseRef} image={source ?? undefined} width={natW} height={natH} />}
-                  {layers.map(l => (l.kind === 'image' ? (
-                    <KImage
-                      key={l.id}
-                      ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                      {...imageLayerAttrs(l)}
-                      listening={tab !== 'crop'}
-                      draggable={tab !== 'crop'}
-                      onPointerDown={() => selectLayer(l)}
-                      onDragStart={startGesture}
-                      onTransformStart={startGesture}
-                      onDragMove={e => onLayerDragMove(l, e)}
-                      onDragEnd={e => onLayerDragEnd(l, e)}
-                      onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                    />
-                  ) : (
+                  {layers.map(l => (l.kind === 'image' ? (() => {
+                    const { group, parts } = imageLayerParts(l);
+                    return (
+                      <Group
+                        key={l.id}
+                        ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                        {...group}
+                        listening={tab !== 'crop'}
+                        draggable={tab !== 'crop'}
+                        onPointerDown={() => selectLayer(l)}
+                        onDragStart={startGesture}
+                        onTransformStart={startGesture}
+                        onDragMove={e => onLayerDragMove(l, e)}
+                        onDragEnd={e => onLayerDragEnd(l, e)}
+                        onTransformEnd={e => onLayerTransformEnd(l, e.currentTarget)}
+                      >
+                        {parts.map((p, i) => (p.kind === 'image'
+                          ? <KImage key={i} {...p.attrs} image={p.attrs.image} />
+                          : <Rect key={i} {...p.attrs} />))}
+                      </Group>
+                    );
+                  })() : (
                     <KText
                       key={l.id}
                       ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
@@ -1166,7 +1323,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               </div>
             )}
             {selected?.kind === 'image' ? imageLayerControls : media && media.length > 0 && (
-              <p className="ie-hint">Tap an image to add it, then drag it, pull its corners or turn it on the picture.</p>
+              <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
             )}
             <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
           </>
@@ -1196,6 +1353,37 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                     <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>{f.label}</option>
                   ))}
                 </select>
+                <input
+                  type="number"
+                  className="ie-number"
+                  min={MIN_FONT_SIZE}
+                  max={MAX_FONT_SIZE}
+                  step={1}
+                  value={fontSizeDraft?.id === selected.id ? fontSizeDraft.value : Math.round(selected.fontSize)}
+                  onChange={e => {
+                    setFontSizeDraft({ id: selected.id, value: e.target.value });
+                    const v = Math.round(Number(e.target.value));
+                    if (v >= MIN_FONT_SIZE && v <= MAX_FONT_SIZE) updateLayer(selected.id, resizeText(selected, v), `font-size:${selected.id}`);
+                  }}
+                  onBlur={() => setFontSizeDraft(null)}
+                  title="Font size in pixels of the picture"
+                  aria-label="Font size"
+                />
+                <span className="ie-unit">px</span>
+                <div className="ie-segmented" role="group" aria-label="Text alignment">
+                  {TEXT_ALIGNS.map(a => (
+                    <button
+                      key={a.id}
+                      className={(selected.align ?? 'center') === a.id ? 'active' : ''}
+                      onClick={() => updateLayer(selected.id, { align: a.id })}
+                      title={a.label}
+                      aria-label={a.label}
+                      aria-pressed={(selected.align ?? 'center') === a.id}
+                    >
+                      <a.icon size={16} />
+                    </button>
+                  ))}
+                </div>
               </div>
               {colorRow(selected.fill, (c, key) => updateLayer(selected.id, { fill: c }, key), `fill:${selected.id}`)}
               <div className="ie-row ie-scroll">
@@ -1208,7 +1396,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 <button className={`ie-chip ${selected.shadow ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}>
                   Shadow
                 </button>
-                <button className="ie-chip" onClick={centreSelected}><AlignCenter size={14} /> Centre</button>
+                <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
                 <button className="ie-chip" onClick={addText}><Plus size={14} /> New</button>
                 <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
               </div>
@@ -1225,6 +1413,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           )
         )}
       </div>
+
+      <input ref={placeInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={pickPlaceFile} />
 
       <nav className="ie-tabs">
         {canvasMode ? (

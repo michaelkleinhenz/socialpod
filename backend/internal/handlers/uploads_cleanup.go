@@ -3,12 +3,12 @@ package handlers
 import (
 	"context"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
+	"socialmedia/internal/uploadstore"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -103,21 +103,15 @@ func cleanupUploads(db *database.MongoDB, uploadDir string, urls []string) int {
 		}
 	}
 
-	removed := 0
 	filenames := make([]string, 0, len(candidates))
 	for _, filename := range candidates {
 		filenames = append(filenames, filename)
-		if err := os.Remove(filepath.Join(uploadDir, filename)); err != nil && !os.IsNotExist(err) {
-			log.Printf("upload cleanup: failed to delete file %s: %v", filename, err)
-			continue
-		}
-		removed++
 	}
-	if _, err := db.Uploads().DeleteMany(ctx, bson.M{"filename": bson.M{"$in": filenames}}); err != nil {
-		log.Printf("upload cleanup: failed to delete %d upload records: %v", len(filenames), err)
+	removed, errs := uploadstore.Delete(ctx, db, uploadDir, filenames)
+	for _, err := range errs {
+		log.Printf("upload cleanup: %v", err)
 	}
-
-	return removed
+	return len(removed)
 }
 
 // previousUploadURLs reads the images a document holds before an update that

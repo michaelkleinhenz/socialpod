@@ -13,13 +13,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -500,26 +500,12 @@ func (h *PostHandler) saveUpload(ctx context.Context, fh *multipart.FileHeader) 
 	return h.storeFile(filename, contentTypes[ext], data)
 }
 
-// storeFile writes file data to disk and persists it in MongoDB so
-// uploads survive ephemeral filesystem restarts (e.g. Railway).
+// storeFile stores an upload durably (uploadstore: the S3 bucket, or the
+// database without one) so it survives ephemeral filesystem restarts.
 func (h *PostHandler) storeFile(filename, contentType string, data []byte) (string, error) {
-	if err := os.MkdirAll(h.UploadDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create upload directory: %w", err)
-	}
-	dst := filepath.Join(h.UploadDir, filename)
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	h.DB.Uploads().InsertOne(ctx, models.Upload{
-		Filename:    filename,
-		ContentType: contentType,
-		Data:        data,
-		Size:        int64(len(data)),
-		CreatedAt:   time.Now(),
-	})
-	return "/api/uploads/" + filename, nil
+	return storeUploadBytes(ctx, h.DB, h.UploadDir, filename, contentType, data)
 }
 
 // UploadImage handles the standalone POST /api/upload endpoint (used by
@@ -709,40 +695,35 @@ func (h *PostHandler) UploadFromURL(c *gin.Context) {
 
 func (h *PostHandler) ServeImage(c *gin.Context) {
 	filename := c.Param("filename")
-	diskPath := filepath.Join(h.UploadDir, filename)
-
-	// Try disk cache first.
-	if _, err := os.Stat(diskPath); err == nil {
-		c.Header("Cache-Control", "public, max-age=31536000, immutable")
-		c.File(diskPath)
-		return
-	}
-
-	// Serve from MongoDB (durable store).
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var upload models.Upload
-	err := h.DB.Uploads().FindOne(ctx, bson.M{"filename": filename}).Decode(&upload)
-	if err != nil {
-		log.Printf("ServeImage: MongoDB lookup failed for %s: %v", filename, err)
+	if !uploadstore.ValidName(filename) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	if len(upload.Data) == 0 {
-		log.Printf("ServeImage: MongoDB record found for %s but Data is empty (size=%d, contentType=%s)", filename, upload.Size, upload.ContentType)
-		c.Status(http.StatusNotFound)
-		return
-	}
-
-	log.Printf("ServeImage: serving %s from MongoDB (%d bytes, %s)", filename, len(upload.Data), upload.ContentType)
-
-	// Re-cache to disk so subsequent requests bypass MongoDB.
-	os.MkdirAll(h.UploadDir, 0o755)
-	os.WriteFile(diskPath, upload.Data, 0o644)
-
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
-	c.Data(http.StatusOK, upload.ContentType, upload.Data)
+
+	// The disk cache, served as a file so range requests (video) work.
+	if p, ok := uploadstore.CachePath(h.UploadDir, filename); ok {
+		c.File(p)
+		return
+	}
+
+	// The durable store (the bucket, or the database), which caches it.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	data, ct, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filename)
+	if err != nil {
+		if !errors.Is(err, uploadstore.ErrNotFound) {
+			log.Printf("ServeImage: reading %s: %v", filename, err)
+		}
+		c.Header("Cache-Control", "no-store")
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if p, ok := uploadstore.CachePath(h.UploadDir, filename); ok {
+		c.File(p)
+		return
+	}
+	c.Data(http.StatusOK, ct, data)
 }
 
 func (h *PostHandler) Retry(c *gin.Context) {
@@ -873,7 +854,7 @@ func (h *PostHandler) sendEpisodeNews(ctx context.Context, post *models.Post) {
 			imgPath = imgPath[1:]
 		}
 		fullPath := filepath.Join(h.UploadDir, filepath.Base(imgPath))
-		if fileData, err := os.ReadFile(fullPath); err == nil {
+		if fileData, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(imgPath)); err == nil {
 			ext := filepath.Ext(fullPath)
 			mimeType := mime.TypeByExtension(ext)
 			if mimeType == "" {

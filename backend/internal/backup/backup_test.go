@@ -126,7 +126,7 @@ func TestCreateRestoreRoundTrip(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	m, err := Create(ctx, src, &buf, pass, "manual")
+	m, err := Create(ctx, src, &buf, pass, "manual", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,5 +193,68 @@ func TestCreateRestoreRoundTrip(t *testing.T) {
 	}
 	if len(dst2["users"]) != 1 {
 		t.Fatal("data modified despite failed validation")
+	}
+}
+
+// memFiles stands in for the bucket the uploaded files live in.
+type memFiles map[string][]byte
+
+func (f memFiles) Each(_ context.Context, fn func(string, []byte) error) error {
+	names := make([]string, 0, len(f))
+	for n := range f {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if err := fn(n, f[n]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f memFiles) Write(_ context.Context, name string, data []byte) error {
+	f[name] = append([]byte(nil), data...)
+	return nil
+}
+
+func TestCreateRestoreFiles(t *testing.T) {
+	ctx := context.Background()
+	src := memStore{}
+	src.seed("uploads", bson.D{{Key: "filename", Value: "a.jpg"}, {Key: "storage", Value: "s3"}})
+	files := memFiles{"a.jpg": bytes.Repeat([]byte{0xff, 0xd8, 1}, 500), "b.mp4": []byte("video")}
+
+	var buf bytes.Buffer
+	m, err := Create(ctx, src, &buf, pass, "manual", files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Files) != 2 {
+		t.Fatalf("manifest files: %v", m.Files)
+	}
+
+	// Without a place to put the files the restore is refused, and nothing
+	// is touched.
+	dst := memStore{}
+	dst.seed("users", bson.D{{Key: "email", Value: "stay@x"}})
+	zr, _ := NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()), pass)
+	if _, err := Restore(ctx, dst, zr, RestoreOptions{}); err == nil {
+		t.Fatal("expected a restore without Files to be refused")
+	}
+	if len(dst["users"]) != 1 {
+		t.Fatal("data modified despite the refused restore")
+	}
+
+	restored := memFiles{}
+	if _, err := Restore(ctx, dst, zr, RestoreOptions{Files: restored}); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		if !bytes.Equal(restored[name], data) {
+			t.Errorf("file %s not restored", name)
+		}
+	}
+	if len(dst["uploads"]) != 1 || len(dst["users"]) != 0 {
+		t.Fatalf("collections not restored: uploads %d users %d", len(dst["uploads"]), len(dst["users"]))
 	}
 }

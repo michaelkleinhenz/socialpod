@@ -21,6 +21,7 @@ import (
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
 	"socialmedia/internal/objectstore"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -467,9 +468,11 @@ func (h *SystemBackupHandler) restoreFrom(c *gin.Context, f *os.File, size int64
 	// Detach from the request so a closed browser tab can't abort a
 	// half-finished restore.
 	rctx := context.WithoutCancel(ctx)
-	res, err := backup.Restore(rctx, backup.MongoStore{DB: h.DB.Database}, zr, backup.RestoreOptions{
-		KeepIfPresent: []string{"backup_config"},
-	})
+	opts := backup.RestoreOptions{KeepIfPresent: []string{"backup_config"}}
+	if uploadstore.UsesBucket() {
+		opts.Files = bucketFiles{db: h.DB}
+	}
+	res, err := backup.Restore(rctx, backup.MongoStore{DB: h.DB.Database}, zr, opts)
 	if err != nil {
 		log.Printf("[Backup] restore from %s failed: %v", source, err)
 		msg := "restore failed: " + err.Error()
@@ -480,10 +483,15 @@ func (h *SystemBackupHandler) restoreFrom(c *gin.Context, f *os.File, size int64
 		return
 	}
 	h.DB.EnsureIndexes()
-	if err := syncUploadDir(rctx, h.DB, h.UploadDir); err != nil {
-		// The database is restored; files missing on disk are re-cached
-		// from it when they are served.
-		log.Printf("[Backup] refreshing %s after restore: %v", h.UploadDir, err)
+	if err := pruneUploadCache(rctx, h.DB, h.UploadDir); err != nil {
+		log.Printf("[Backup] pruning %s after restore: %v", h.UploadDir, err)
+	}
+	// A backup from before the bucket brings its files back inside their
+	// records; move them out again.
+	if n, err := uploadstore.MigrateToBucket(rctx, h.DB); err != nil {
+		log.Printf("[Backup] moving restored uploads to the bucket: %v (%d moved)", err, n)
+	} else if n > 0 {
+		log.Printf("[Backup] moved %d restored uploads to the bucket", n)
 	}
 	log.Printf("[Backup] restore from %s complete: %d collections", source, len(res.Collections))
 	c.JSON(http.StatusOK, gin.H{
@@ -493,43 +501,64 @@ func (h *SystemBackupHandler) restoreFrom(c *gin.Context, f *os.File, size int64
 	})
 }
 
-// syncUploadDir makes UPLOAD_DIR match the restored uploads collection: each
-// upload's bytes are written to disk and files with no record are removed.
-// Several code paths read uploads from disk only, so the disk copy must not
-// keep files of the replaced state or miss restored ones.
-func syncUploadDir(ctx context.Context, db *database.MongoDB, uploadDir string) error {
-	if uploadDir == "" {
-		return nil
-	}
-	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return err
-	}
-	cur, err := db.Uploads().Find(ctx, bson.M{}, options.Find().SetProjection(bson.M{"filename": 1, "data": 1}))
+// bucketFiles gives backups the uploads kept in the S3 bucket: every record
+// whose bytes are there.
+type bucketFiles struct{ db *database.MongoDB }
+
+func (f bucketFiles) Each(ctx context.Context, fn func(name string, data []byte) error) error {
+	cur, err := f.db.Uploads().Find(ctx, bson.M{"storage": uploadstore.StorageBucket},
+		options.Find().SetProjection(bson.M{"filename": 1}).SetNoCursorTimeout(true))
 	if err != nil {
 		return err
 	}
 	defer cur.Close(ctx)
-	keep := map[string]bool{}
 	for cur.Next(ctx) {
 		var u models.Upload
 		if err := cur.Decode(&u); err != nil {
 			return err
 		}
-		if u.Filename == "" || filepath.Base(u.Filename) != u.Filename || u.Filename == "." || u.Filename == ".." {
+		data, _, err := uploadstore.GetBucket(ctx, u.Filename)
+		if errors.Is(err, objectstore.ErrNotFound) {
+			// Deleted since the records were dumped, or lost before; the
+			// backup goes on without it.
+			log.Printf("[Backup] upload %s is not in the bucket, left out", u.Filename)
 			continue
 		}
-		keep[u.Filename] = true
-		if len(u.Data) == 0 {
-			continue
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", u.Filename, err)
 		}
-		if err := os.WriteFile(filepath.Join(uploadDir, u.Filename), u.Data, 0o644); err != nil {
+		if err := fn(u.Filename, data); err != nil {
 			return err
 		}
 	}
-	if err := cur.Err(); err != nil {
+	return cur.Err()
+}
+
+func (f bucketFiles) Write(ctx context.Context, name string, data []byte) error {
+	return uploadstore.PutBucket(ctx, name, "", data)
+}
+
+// pruneUploadCache removes the files in UPLOAD_DIR that no restored record
+// knows, so the cache does not serve the replaced state. The rest refill from
+// the bucket (or the records) when read.
+func pruneUploadCache(ctx context.Context, db *database.MongoDB, uploadDir string) error {
+	if uploadDir == "" {
+		return nil
+	}
+	names, err := db.Uploads().Distinct(ctx, "filename", bson.M{})
+	if err != nil {
 		return err
 	}
+	keep := make(map[string]bool, len(names))
+	for _, n := range names {
+		if s, ok := n.(string); ok {
+			keep[s] = true
+		}
+	}
 	entries, err := os.ReadDir(uploadDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -582,7 +611,11 @@ func (h *SystemBackupHandler) writeBackup(ctx context.Context, passphrase, kind 
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
 
-	if _, err := backup.Create(ctx, backup.MongoStore{DB: h.DB.Database}, tmp, passphrase, kind); err != nil {
+	var files backup.Files
+	if uploadstore.UsesBucket() {
+		files = bucketFiles{db: h.DB}
+	}
+	if _, err := backup.Create(ctx, backup.MongoStore{DB: h.DB.Database}, tmp, passphrase, kind, files); err != nil {
 		return "", err
 	}
 	size, err := tmp.Seek(0, io.SeekEnd)

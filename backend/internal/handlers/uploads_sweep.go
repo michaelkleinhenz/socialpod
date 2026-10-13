@@ -6,12 +6,13 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"socialmedia/internal/database"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -35,11 +36,13 @@ type OrphanedUpload struct {
 	Filename  string    `json:"filename"`
 	Size      int64     `json:"size"`
 	CreatedAt time.Time `json:"createdAt"`
-	// OnDisk and InDatabase say where the orphan still exists. An upload is
-	// normally both; a file whose record was lost (or vice versa) shows up
-	// with one of them false.
+	// OnDisk, InDatabase and InBucket say where the orphan still exists. An
+	// upload normally has a record and its bytes in the bucket (or, without
+	// one, in the record), with a cached copy on disk; one whose record was
+	// lost, or whose bytes were, shows up with some of them false.
 	OnDisk     bool `json:"onDisk"`
 	InDatabase bool `json:"inDatabase"`
+	InBucket   bool `json:"inBucket"`
 }
 
 // UploadSweepReport is what a scan found and, for a sweep, what it deleted.
@@ -88,14 +91,15 @@ func referencedUploadFilenames(ctx context.Context, db *database.MongoDB) (map[s
 	return referenced, nil
 }
 
-// uploadCandidate is one stored upload a sweep saw, from the uploads
-// collection, the upload directory, or both.
+// uploadCandidate is one stored upload a sweep saw, in the uploads
+// collection, the bucket, the upload directory, or several of them.
 type uploadCandidate struct {
 	Filename   string
 	Size       int64
 	CreatedAt  time.Time
 	InDatabase bool
 	OnDisk     bool
+	InBucket   bool
 }
 
 // classifyUploads separates the uploads a sweep may delete from the ones it
@@ -122,6 +126,7 @@ func classifyUploads(candidates []uploadCandidate, referenced map[string]bool, c
 			CreatedAt:  c.CreatedAt,
 			OnDisk:     c.OnDisk,
 			InDatabase: c.InDatabase,
+			InBucket:   c.InBucket,
 		})
 	}
 	sort.Slice(orphans, func(i, j int) bool {
@@ -142,11 +147,11 @@ func sampleOrphans(orphans []OrphanedUpload) []OrphanedUpload {
 	return append(make([]OrphanedUpload, 0, len(orphans)), orphans...)
 }
 
-// collectUploadCandidates reads both halves of the upload store: the records
-// in the uploads collection and the files in uploadDir. The two can drift
-// apart — a file written before its record was inserted, a record whose file
-// was lost — so an upload present in only one of them still counts, and one
-// present in both counts once.
+// collectUploadCandidates reads every part of the upload store: the records
+// in the uploads collection, the objects in the bucket and the files in
+// uploadDir. They can drift apart (bytes stored before their record was
+// inserted, a record whose bytes were lost) so an upload present in only one
+// of them still counts, and one present in several counts once.
 func collectUploadCandidates(ctx context.Context, db *database.MongoDB, uploadDir string) ([]uploadCandidate, []string, error) {
 	var problems []string
 	byName := map[string]*uploadCandidate{}
@@ -184,6 +189,25 @@ func collectUploadCandidates(ctx context.Context, db *database.MongoDB, uploadDi
 		return nil, problems, fmt.Errorf("listing uploads: %w", err)
 	}
 
+	// Without the bucket listing objects with no record would be missed, and
+	// deleting the rest is still safe.
+	objects, err := uploadstore.ListBucket(ctx)
+	if err != nil {
+		problems = append(problems, "failed to list the bucket: "+err.Error())
+	}
+	for name, obj := range objects {
+		if known, ok := byName[name]; ok {
+			known.InBucket = true
+			continue
+		}
+		byName[name] = &uploadCandidate{
+			Filename:  name,
+			Size:      obj.Size,
+			CreatedAt: obj.LastModified,
+			InBucket:  true,
+		}
+	}
+
 	entries, err := os.ReadDir(uploadDir)
 	if err != nil && !os.IsNotExist(err) {
 		// Without the directory listing a sweep would miss recordless files
@@ -191,7 +215,8 @@ func collectUploadCandidates(ctx context.Context, db *database.MongoDB, uploadDi
 		problems = append(problems, "failed to read the upload directory: "+err.Error())
 	}
 	for _, entry := range entries {
-		if entry.IsDir() {
+		// Dot files are the cache's own temporary files.
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		name := entry.Name()
@@ -220,7 +245,8 @@ func collectUploadCandidates(ctx context.Context, db *database.MongoDB, uploadDi
 }
 
 // sweepOrphanedUploads finds every upload no document references and, unless
-// dryRun is set, deletes it from disk and from the uploads collection.
+// dryRun is set, deletes it from the bucket, the disk and the uploads
+// collection.
 // Anything stored more recently than minAge is left alone.
 //
 // A failure to build the reference set or to list the uploads aborts the
@@ -257,19 +283,18 @@ func sweepOrphanedUploads(ctx context.Context, db *database.MongoDB, uploadDir s
 	}
 
 	filenames := make([]string, 0, len(orphans))
+	sizes := make(map[string]int64, len(orphans))
 	for _, orphan := range orphans {
-		if err := os.Remove(filepath.Join(uploadDir, orphan.Filename)); err != nil && !os.IsNotExist(err) {
-			report.Errors = append(report.Errors, "failed to delete file "+orphan.Filename+": "+err.Error())
-			continue
-		}
 		filenames = append(filenames, orphan.Filename)
-		report.DeletedFiles++
-		report.DeletedBytes += orphan.Size
+		sizes[orphan.Filename] = orphan.Size
 	}
-	if len(filenames) > 0 {
-		if _, err := db.Uploads().DeleteMany(ctx, bson.M{"filename": bson.M{"$in": filenames}}); err != nil {
-			report.Errors = append(report.Errors, "failed to delete upload records: "+err.Error())
-		}
+	removed, errs := uploadstore.Delete(ctx, db, uploadDir, filenames)
+	for _, name := range removed {
+		report.DeletedFiles++
+		report.DeletedBytes += sizes[name]
+	}
+	for _, err := range errs {
+		report.Errors = append(report.Errors, err.Error())
 	}
 	log.Printf("[UploadSweep] deleted %d orphaned files (%d bytes), %d errors", report.DeletedFiles, report.DeletedBytes, len(report.Errors))
 

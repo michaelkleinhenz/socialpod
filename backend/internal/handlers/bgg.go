@@ -15,7 +15,6 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -23,6 +22,7 @@ import (
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/uploadstore"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -452,8 +452,7 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 	if overlayID != nil {
 		var wm models.Watermark
 		if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *overlayID}).Decode(&wm); err == nil {
-			filename := filepath.Base(wm.URL)
-			if data, err := os.ReadFile(filepath.Join(h.UploadDir, filename)); err == nil {
+			if data, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(wm.URL)); err == nil {
 				if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
 					cfg.watermark = img
 				}
