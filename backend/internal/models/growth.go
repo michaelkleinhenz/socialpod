@@ -57,7 +57,12 @@ type WeeklyPlanSlot struct {
 // with the title (cover) or the closing text instead. FontURL is an uploaded
 // TrueType/OpenType font every slide text is drawn with (FontName is its
 // original file name, for display); without one the built-in Go fonts are
-// used.
+// used. The colours are "#rrggbb"; an empty one takes its default
+// (services.DefaultRadar*): AccentColor fills the drawn cover and marks the
+// item header and closing bar, BackgroundColor is the item and closing
+// slides' ground, PanelColor the box behind a game image, TextColor titles
+// and badge labels, MutedColor the position and badge question, and the
+// badge colours the Ja/Nein/Offen pill.
 type RadarSettings struct {
 	Title           string `bson:"title,omitempty" json:"title,omitempty"`
 	BadgeQuestion   string `bson:"badgeQuestion,omitempty" json:"badgeQuestion,omitempty"`
@@ -67,6 +72,13 @@ type RadarSettings struct {
 	CaptionIntro    string `bson:"captionIntro,omitempty" json:"captionIntro,omitempty"`
 	CaptionOutro    string `bson:"captionOutro,omitempty" json:"captionOutro,omitempty"`
 	AccentColor     string `bson:"accentColor,omitempty" json:"accentColor,omitempty"`
+	BackgroundColor string `bson:"backgroundColor,omitempty" json:"backgroundColor,omitempty"`
+	PanelColor      string `bson:"panelColor,omitempty" json:"panelColor,omitempty"`
+	TextColor       string `bson:"textColor,omitempty" json:"textColor,omitempty"`
+	MutedColor      string `bson:"mutedColor,omitempty" json:"mutedColor,omitempty"`
+	BadgeYesColor   string `bson:"badgeYesColor,omitempty" json:"badgeYesColor,omitempty"`
+	BadgeNoColor    string `bson:"badgeNoColor,omitempty" json:"badgeNoColor,omitempty"`
+	BadgeOpenColor  string `bson:"badgeOpenColor,omitempty" json:"badgeOpenColor,omitempty"`
 	FontURL         string `bson:"fontUrl,omitempty" json:"fontUrl,omitempty"`
 	FontName        string `bson:"fontName,omitempty" json:"fontName,omitempty"`
 }

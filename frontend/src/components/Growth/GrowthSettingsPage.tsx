@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { addWeeks, format } from 'date-fns';
-import { Target, CalendarRange, Wand2, Radar, Plus, Trash2, Save, Upload, X, Bot } from 'lucide-react';
+import { Target, CalendarRange, Wand2, Radar, Plus, Trash2, Save, Upload, X, Bot, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { GrowthSettings, InstagramGoal, SlotFormat, WeeklyPlanSlot } from '../../types';
 import { FORMAT_LABELS } from '../../services/instagramGrowth';
+import { RadarPreview } from './RadarPreview';
+import { RADAR_COLOR_DEFAULTS, RADAR_COLOR_FIELDS, radarColor, useRadarFont } from './radarSettings';
 import './Growth.css';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -84,24 +86,9 @@ const FONT_ACCEPT = '.ttf,.otf,font/ttf,font/otf,font/sfnt,application/x-font-tt
 function RadarFontPicker({ url, name, sample, onChange }: {
   url?: string; name?: string; sample: string; onChange: (font: { url: string; name: string } | null) => void;
 }) {
-  const apiUrl = import.meta.env.VITE_API_URL || '';
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [family, setFamily] = useState<string | null>(null);
-
-  useEffect(() => {
-    setFamily(null);
-    if (!url) return;
-    let cancelled = false;
-    const fam = `radar-font-${url.replace(/[^a-z0-9]/gi, '')}`;
-    const face = new FontFace(fam, `url(${url.startsWith('/') ? apiUrl + url : url})`);
-    face.load().then(loaded => {
-      if (cancelled) return;
-      document.fonts.add(loaded);
-      setFamily(fam);
-    }).catch(() => { /* the preview falls back to the page font */ });
-    return () => { cancelled = true; };
-  }, [url, apiUrl]);
+  const family = useRadarFont(url);
 
   const upload = async (file?: File) => {
     if (!file) return;
@@ -318,9 +305,24 @@ export function GrowthSettingsPage() {
             <label>Badge question</label>
             <input className="input" value={radar.badgeQuestion ?? ''} onChange={e => setRadar({ badgeQuestion: e.target.value })} />
           </div>
-          <div className="form-group">
-            <label>Accent colour</label>
-            <input className="input" type="color" value={radar.accentColor || '#6366f1'} onChange={e => setRadar({ accentColor: e.target.value })} style={{ height: 38, padding: 2 }} />
+        </div>
+        <div className="form-group">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ marginBottom: 0 }}>Colours</label>
+            {RADAR_COLOR_FIELDS.some(c => radarColor(radar, c.key) !== RADAR_COLOR_DEFAULTS[c.key]) && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}
+                onClick={() => setRadar({ ...RADAR_COLOR_DEFAULTS })}>
+                <RotateCcw size={14} /> Reset colours
+              </button>
+            )}
+          </div>
+          <div className="radar-colors">
+            {RADAR_COLOR_FIELDS.map(c => (
+              <label key={c.key} className="radar-color" title={c.hint}>
+                <input type="color" value={radarColor(radar, c.key)} onChange={e => setRadar({ [c.key]: e.target.value })} />
+                <span>{c.label}<small>{c.hint}</small></span>
+              </label>
+            ))}
           </div>
         </div>
         <div className="form-row">
@@ -336,6 +338,14 @@ export function GrowthSettingsPage() {
               onChange={e => setRadar({ closingText: e.target.value })} />
           </div>
         )}
+        <div className="form-group">
+          <label>Preview</label>
+          <RadarPreview radar={radar} />
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            A sketch with sample news; the real slides carry the queued games' images and titles.
+            {!radar.fontUrl && ' The built-in font is shown in your system font here.'}
+          </span>
+        </div>
         <div className="form-group">
           <label>Caption intro</label>
           <textarea className="textarea" rows={2} value={radar.captionIntro ?? ''} placeholder="📡 Radar der Woche: die Ankündigungen, die ihr kennen solltet."

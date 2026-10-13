@@ -278,12 +278,12 @@ func TestCheckRadarFont(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accent := services.ParseHexColor("")
-	if _, err := services.RenderRadarCover(nil, "Radar der Woche", "KW 42 · 5 Ankündigungen", accent, fonts); err != nil {
+	colors := services.DefaultRadarColors()
+	if _, err := services.RenderRadarCover(nil, "Radar der Woche", "KW 42 · 5 Ankündigungen", colors, fonts); err != nil {
 		t.Errorf("cover with an OpenType font: %v", err)
 	}
 	if _, err := services.RenderRadarItem(services.RadarItemSlide{Index: 1, Total: 5, Title: "Größenwahn", GermanRelease: "offen"},
-		"Radar der Woche", "Kommt's auf Deutsch?", accent, fonts); err != nil {
+		"Radar der Woche", "Kommt's auf Deutsch?", colors, fonts); err != nil {
 		t.Errorf("item slide with an OpenType font: %v", err)
 	}
 
