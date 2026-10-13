@@ -30,7 +30,36 @@ export interface ImageLayer {
   height: number;
   rotation: number;
   opacity: number;
+  // Corner rounding in percent of the shorter side: 0 square, 50 a circle
+  // (or a pill). Relative, so a resize keeps the look.
+  cornerRadius?: number;
+  border?: ImageBorder;
+  // The part of the image shown, in its own pixels; the whole image when
+  // absent. Set when an image takes a placeholder's place, so it fills the
+  // placeholder's frame instead of changing its shape.
+  srcCrop?: CropBox;
 }
+
+export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
+
+export const BORDER_STYLES: { id: BorderStyle; label: string }[] = [
+  { id: 'solid', label: 'Solid' },
+  { id: 'dashed', label: 'Dashed' },
+  { id: 'dotted', label: 'Dotted' },
+  { id: 'double', label: 'Double' },
+  { id: 'glow', label: 'Glow' },
+  { id: 'offset', label: 'Offset' },
+];
+
+// A frame around an image layer. The width is in source-image pixels and
+// sits outside the image, so the picture itself is never covered.
+export interface ImageBorder {
+  style: BorderStyle;
+  width: number;
+  color: string;
+}
+
+export type TextAlign = 'left' | 'center' | 'right';
 
 export interface TextLayer {
   id: string;
@@ -42,6 +71,8 @@ export interface TextLayer {
   bold: boolean;
   outline: boolean;
   shadow: boolean;
+  // How the lines of a multi-line text line up; centred when absent.
+  align?: TextAlign;
   x: number;
   y: number;
   rotation: number;
@@ -160,18 +191,71 @@ export function applyAdjustments(node: Konva.Image, a: Adjustments, pixelRatio: 
   node.cache({ pixelRatio });
 }
 
-export function imageLayerAttrs(l: ImageLayer): Konva.ImageConfig {
+export type ImagePart =
+  | { kind: 'image'; attrs: Konva.ImageConfig }
+  | { kind: 'rect'; attrs: Konva.RectConfig };
+
+// An image layer is a group, positioned and turned about its centre, holding
+// the image and whatever its border draws. The editor's stage and renderEdit
+// both build it from this, so screen and output stay alike.
+export function imageLayerParts(l: ImageLayer): { group: Konva.GroupConfig; parts: ImagePart[] } {
+  const { width: w, height: h } = l;
+  const r = (clamp(l.cornerRadius ?? 0, 0, 50) / 100) * Math.min(w, h);
+  const b = l.border && l.border.width > 0 ? l.border : null;
+  const bw = b?.width ?? 0;
+  const parts: ImagePart[] = [];
+  // The radius of a line drawn d outside the image edge, so it follows the
+  // image's rounding.
+  const around = (d: number) => (r > 0 ? r + d : 0);
+  const ring = (d: number, strokeWidth: number, extra: Konva.RectConfig = {}): ImagePart => ({
+    kind: 'rect',
+    attrs: { x: -d, y: -d, width: w + 2 * d, height: h + 2 * d, cornerRadius: around(d), stroke: b!.color, strokeWidth, ...extra },
+  });
+
+  if (b?.style === 'offset') {
+    parts.push({ kind: 'rect', attrs: { x: bw, y: bw, width: w, height: h, cornerRadius: r, fill: b.color } });
+  }
+  const crop = l.srcCrop;
+  parts.push({
+    kind: 'image',
+    attrs: {
+      image: l.img,
+      width: w,
+      height: h,
+      cornerRadius: r,
+      ...(crop ? { cropX: crop.x, cropY: crop.y, cropWidth: crop.width, cropHeight: crop.height } : {}),
+      ...(b?.style === 'glow'
+        ? { shadowEnabled: true, shadowColor: b.color, shadowBlur: bw * 2, shadowOpacity: 1, shadowOffsetX: 0, shadowOffsetY: 0 }
+        : {}),
+    },
+  });
+  switch (b?.style) {
+    case 'solid':
+      parts.push(ring(bw / 2, bw));
+      break;
+    case 'dashed':
+      parts.push(ring(bw / 2, bw, { dash: [bw * 3, bw * 2] }));
+      break;
+    case 'dotted':
+      // Zero-length dashes with round caps draw dots.
+      parts.push(ring(bw / 2, bw, { dash: [0.001, bw * 2], lineCap: 'round' }));
+      break;
+    case 'double':
+      parts.push(ring(bw / 6, bw / 3), ring((bw * 5) / 6, bw / 3));
+      break;
+  }
+
   return {
-    image: l.img,
-    x: l.x,
-    y: l.y,
-    width: l.width,
-    height: l.height,
-    offsetX: l.width / 2,
-    offsetY: l.height / 2,
-    rotation: l.rotation,
-    opacity: l.opacity,
+    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity },
+    parts,
   };
+}
+
+export function buildImageLayerNode(l: ImageLayer): Konva.Group {
+  const { group, parts } = imageLayerParts(l);
+  const g = new Konva.Group(group);
+  for (const p of parts) g.add(p.kind === 'image' ? new Konva.Image(p.attrs) : new Konva.Rect(p.attrs));
+  return g;
 }
 
 export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
@@ -184,7 +268,7 @@ export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
     fontSize: l.fontSize,
     fontStyle: l.bold ? 'bold' : 'normal',
     fill: l.fill,
-    align: 'center',
+    align: l.align ?? 'center',
     lineHeight: 1.15,
     stroke: l.outline ? (isLight(l.fill) ? '#000000' : '#ffffff') : undefined,
     strokeWidth: l.outline ? Math.max(1, l.fontSize * 0.08) : 0,
@@ -208,6 +292,20 @@ export function measureText(l: TextLayer): { width: number; height: number } {
   const size = { width: node.width(), height: node.height() };
   node.destroy();
   return size;
+}
+
+// The text at a new font size, its centre kept where it was (rotation
+// included), so a text grows or shrinks in place.
+export function resizeText(l: TextLayer, fontSize: number): Pick<TextLayer, 'fontSize' | 'x' | 'y'> {
+  const a = measureText(l);
+  const b = measureText({ ...l, fontSize });
+  const rad = (l.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  // The box's centre is its corner plus half its size, turned with it.
+  const dx = (a.width - b.width) / 2;
+  const dy = (a.height - b.height) / 2;
+  return { fontSize, x: l.x + dx * cos - dy * sin, y: l.y + dx * sin + dy * cos };
 }
 
 // The largest box of the given aspect ratio (width / height) centred in the
@@ -261,7 +359,7 @@ export async function renderEdit({ source, background = '#ffffff', crop, adjustm
     }
 
     for (const l of layers) {
-      group.add(l.kind === 'image' ? new Konva.Image(imageLayerAttrs(l)) : new Konva.Text(textLayerAttrs(l)));
+      group.add(l.kind === 'image' ? buildImageLayerNode(l) : new Konva.Text(textLayerAttrs(l)));
     }
 
     const canvas = group.toCanvas({ x: 0, y: 0, width, height, pixelRatio: 1 });
@@ -283,7 +381,11 @@ export function fitLayers<L extends EditorLayer | TemplateLayer>(layers: L[], fr
   if (sx === 1 && sy === 1 && from.x === to.x && from.y === to.y) return layers;
   return layers.map(l => {
     if (l.kind === 'image') {
-      return { ...l, x: to.x + (l.x - from.x) * sx, y: to.y + (l.y - from.y) * sy, width: l.width * s, height: l.height * s };
+      const il = l as ImageLayer;
+      return {
+        ...l, x: to.x + (l.x - from.x) * sx, y: to.y + (l.y - from.y) * sy, width: l.width * s, height: l.height * s,
+        ...(il.border ? { border: { ...il.border, width: il.border.width * s } } : {}),
+      };
     }
     const t = l as TextLayer;
     const m = measureText(t);
@@ -307,11 +409,16 @@ export function toTemplate(crop: CropBox, layers: EditorLayer[], background: str
       const x = l.x - crop.x;
       const y = l.y - crop.y;
       if (l.kind === 'image') {
-        return { kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity };
+        return {
+          kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
+          ...(l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+          ...(l.border ? { border: l.border } : {}),
+          ...(l.srcCrop ? { srcCrop: l.srcCrop } : {}),
+        };
       }
       return {
         kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
-        bold: l.bold, outline: l.outline, shadow: l.shadow, x, y, rotation: l.rotation,
+        bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
       };
     }),
   };

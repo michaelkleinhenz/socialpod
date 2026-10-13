@@ -497,3 +497,51 @@
 @keyframes ie-spin {
   to { transform: rotate(360deg); }
 }
+
+.ie-number {
+  width: 76px;
+  flex: none;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ie-unit {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ie-segmented {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ie-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ie-segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.ie-segmented button.active {
+  background: var(--accent);
+  color: #ffffff;
+}
