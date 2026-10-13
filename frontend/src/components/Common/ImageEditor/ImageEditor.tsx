@@ -2,20 +2,22 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer } from 'react-konva';
 import {
-  AlignCenter, Bold, Crop, FolderOpen, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, Bold, Crop, FolderOpen, Frame, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { MediaItem, Watermark } from '../../../types';
 import {
-  applyAdjustments, centredCrop, clamp, FILTER_PRESETS, hasAdjustments, imageLayerAttrs, loadImage,
-  measureText, newLayerId, NO_ADJUSTMENTS, renderEdit, textLayerAttrs,
-  type Adjustments, type CropBox, type EditorLayer, type ImageLayer, type TextLayer,
+  applyAdjustments, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerAttrs,
+  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, parseTemplate, renderEdit, textLayerAttrs,
+  toTemplate,
+  type Adjustments, type CropBox, type EditorCanvas, type EditorLayer, type EditorTemplate, type ImageLayer, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
+import { LayerList } from './LayerList';
 import './ImageEditor.css';
 
-type Tab = 'crop' | 'filters' | 'watermark' | 'media' | 'text';
+type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'watermark' | 'media' | 'text';
 
 interface FontOption {
   label: string;
@@ -55,6 +57,7 @@ const COALESCE_MS = 1000;
 // The part of the editor's state undo covers: the edit itself, not the view
 // (tab, selection) or what is loaded (image, fonts).
 interface Snapshot {
+  canvas: EditorCanvas | null;
   crop: CropBox;
   aspectId: string;
   adjustments: Adjustments;
@@ -70,14 +73,23 @@ const SNAP_STORAGE_KEY = 'socialpod.imageEditor.snap';
 const STAGE_PADDING = 20;
 
 interface Props {
-  imageUrl: string;
+  // The photo to edit. Without one the editor draws on a blank canvas: the
+  // Crop and Filters tabs give way to a Canvas tab (format, background).
+  imageUrl?: string;
+  // The blank canvas to start with, when there is no photo and no template.
+  canvas?: EditorCanvas;
+  // A design to start from (blank canvas only): its canvas and layers.
+  template?: EditorTemplate;
+  // Header title; "Edit image" by default.
+  title?: string;
   // The team's watermarks, offered on the Watermark tab.
   watermarks?: Watermark[];
   // An overlay drawn over the crop area for reference but left out of the
   // output, for images whose overlay is composited later (convention queues
   // stamp theirs when the item is posted).
   guideOverlay?: HTMLImageElement | null;
-  onSave: (blob: Blob) => void | Promise<void>;
+  // The rendered JPEG, and the design as a template (the crop as its canvas).
+  onSave: (blob: Blob, design: EditorTemplate) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -88,11 +100,19 @@ const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
-export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
+export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
+  const canvasMode = !imageUrl;
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<Tab>('crop');
-  const [crop, setCrop] = useState<CropBox | null>(null);
+  // The blank canvas, in canvas mode; null on a photo.
+  const [canvas, setCanvas] = useState<EditorCanvas | null>(() => {
+    if (!canvasMode) return null;
+    if (template) return { width: template.width, height: template.height, background: template.background };
+    return initialCanvas ?? DEFAULT_CANVAS;
+  });
+  // A blank canvas without a design yet opens on the templates to start from.
+  const [tab, setTab] = useState<Tab>(canvasMode ? (template ? 'canvas' : 'templates') : 'crop');
+  const [crop, setCrop] = useState<CropBox | null>(() => (canvas ? { x: 0, y: 0, width: canvas.width, height: canvas.height } : null));
   const [aspectId, setAspectId] = useState('free');
   const [adjustments, setAdjustments] = useState<Adjustments>(NO_ADJUSTMENTS);
   const [layers, setLayers] = useState<EditorLayer[]>([]);
@@ -107,12 +127,17 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  // The media library's templates, loaded when the Templates tab is opened.
+  const [templates, setTemplates] = useState<MediaItem[] | null>(null);
+  const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Smart guides while a layer is moved; Alt (Option) skips them for one drag.
   const [snapOn, setSnapOn] = useState(() => {
     try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
   });
   const [guides, setGuides] = useState<SnapResult | null>(null);
+  // The object list on the right; open from the start where there is room.
+  const [showLayers, setShowLayers] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 768px)').matches);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
   const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
@@ -121,6 +146,10 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
 
   const canvasBoxRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<Konva.Image>(null);
+  const backgroundRef = useRef<Konva.Rect>(null);
+  // Settles once the media library's fonts are loaded, so a template's texts
+  // are measured in their own font.
+  const fontsReady = useRef<Promise<void>>(Promise.resolve());
   const cropRectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const contentRef = useRef<Konva.Group>(null);
@@ -132,6 +161,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
 
   // Source image.
   useEffect(() => {
+    if (!imageUrl) return;
     let cancelled = false;
     setLoadError(false);
     loadImage(imageUrl)
@@ -148,7 +178,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   // A font file the browser cannot load is left out.
   useEffect(() => {
     let cancelled = false;
-    api.getMedia({ kind: 'font', limit: 200 }).then(async items => {
+    fontsReady.current = api.getMedia({ kind: 'font', limit: 200 }).then(async items => {
       const loaded = await Promise.all(items.filter(m => m.url).map(async m => {
         const family = `SocialPod Media ${m.id}`;
         try {
@@ -166,6 +196,13 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     return () => { cancelled = true; };
   }, []);
 
+  // The design to start from. Loading it is not an undo step.
+  useEffect(() => {
+    if (template && canvasMode) void applyTemplate(template, { record: false });
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The media library's colours.
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +211,22 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // Templates: fetched once the Templates tab has been opened.
+  const templatesOpened = tab === 'templates' || templates !== null;
+  useEffect(() => {
+    if (!templatesOpened || templates !== null) return;
+    let cancelled = false;
+    api.getMedia({ kind: 'template', limit: 200 })
+      .then(items => {
+        if (cancelled) return;
+        setTemplates(items);
+        // With nothing to start from, a new canvas opens on its own settings.
+        if (items.length === 0 && canvasMode) setTab(t => (t === 'templates' ? 'canvas' : t));
+      })
+      .catch(() => { if (!cancelled) { setTemplates([]); toast.error('Failed to load the templates'); } });
+    return () => { cancelled = true; };
+  }, [templatesOpened, templates, canvasMode]);
 
   // Media library: fetched once the Media tab has been opened, then again as
   // the search changes.
@@ -202,8 +255,10 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     return () => ro.disconnect();
   }, []);
 
-  const natW = source?.naturalWidth ?? 1;
-  const natH = source?.naturalHeight ?? 1;
+  const natW = canvas?.width ?? source?.naturalWidth ?? 1;
+  const natH = canvas?.height ?? source?.naturalHeight ?? 1;
+  // What the stage draws on: the photo once loaded, or the blank canvas.
+  const ready = canvasMode || !!source;
 
   // What the stage shows: the whole image while cropping, the crop otherwise.
   const view: CropBox = tab === 'crop' || !crop ? { x: 0, y: 0, width: natW, height: natH } : crop;
@@ -253,7 +308,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     // ends it.
     const sticky = key?.startsWith('gesture:');
     if (key && last?.key === key && (sticky || now - last.at < COALESCE_MS)) return;
-    const snap: Snapshot = { crop, aspectId, adjustments, layers };
+    const snap: Snapshot = { canvas, crop, aspectId, adjustments, layers };
     setUndoStack(stack => [...stack.slice(-(HISTORY_LIMIT - 1)), snap]);
     setRedoStack([]);
   };
@@ -263,6 +318,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   const startGesture = () => { lastChange.current = null; };
 
   const restore = (snap: Snapshot) => {
+    setCanvas(snap.canvas);
     setCrop(snap.crop);
     setAspectId(snap.aspectId);
     setAdjustments(snap.adjustments);
@@ -275,7 +331,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     const prev = undoStack[undoStack.length - 1];
     if (!prev || !crop) return;
     setUndoStack(stack => stack.slice(0, -1));
-    setRedoStack(stack => [...stack, { crop, aspectId, adjustments, layers }]);
+    setRedoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers }]);
     restore(prev);
   };
 
@@ -283,7 +339,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     const next = redoStack[redoStack.length - 1];
     if (!next || !crop) return;
     setRedoStack(stack => stack.slice(0, -1));
-    setUndoStack(stack => [...stack, { crop, aspectId, adjustments, layers }]);
+    setUndoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers }]);
     restore(next);
   };
 
@@ -310,6 +366,12 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     setAspectId(nextAspectId);
   };
 
+  // Restacks the objects: later in the list is drawn on top.
+  const reorderLayers = (next: EditorLayer[]) => {
+    checkpoint();
+    setLayers(next);
+  };
+
   const deleteSelected = () => {
     if (!selectedId) return;
     checkpoint();
@@ -317,8 +379,10 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     setSelectedId(null);
   };
 
-  const dirty = layers.length > 0 || hasAdjustments(adjustments) || (!!crop && !!source
-    && (crop.x !== 0 || crop.y !== 0 || crop.width !== natW || crop.height !== natH));
+  const dirty = canvasMode
+    ? undoStack.length > 0
+    : layers.length > 0 || hasAdjustments(adjustments) || (!!crop && !!source
+      && (crop.x !== 0 || crop.y !== 0 || crop.width !== natW || crop.height !== natH));
 
   const handleCancel = useCallback(() => {
     if (saving) return;
@@ -418,6 +482,57 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     return newBox;
   };
 
+  // --- Canvas ---------------------------------------------------------------
+
+  // A new format keeps the layers where they were relative to the canvas.
+  const changeFormat = (width: number, height: number) => {
+    if (!canvas || (canvas.width === width && canvas.height === height)) return;
+    checkpoint();
+    const to = { x: 0, y: 0, width, height };
+    setLayers(prev => fitLayers(prev, { x: 0, y: 0, width: canvas.width, height: canvas.height }, to));
+    setCanvas({ ...canvas, width, height });
+    setCrop(to);
+  };
+
+  const changeBackground = (background: string, key?: string) => {
+    if (!canvas) return;
+    checkpoint(key);
+    setCanvas({ ...canvas, background });
+  };
+
+  // --- Templates ------------------------------------------------------------
+
+  // On a blank canvas a template replaces the design, canvas included; on a
+  // photo its layers are laid over the crop.
+  const applyTemplate = async (t: EditorTemplate, { record = true } = {}) => {
+    if (!crop) return;
+    await fontsReady.current;
+    const target = canvasMode ? { x: 0, y: 0, width: t.width, height: t.height } : crop;
+    const { layers: added, missing } = await instantiateTemplate(t, target, resolveUrl);
+    if (record) checkpoint();
+    if (canvasMode) {
+      setCanvas({ width: t.width, height: t.height, background: t.background });
+      setCrop(target);
+      setLayers(added);
+    } else {
+      setLayers(prev => [...prev, ...added]);
+    }
+    setSelectedId(null);
+    if (missing) toast.error(missing === 1 ? 'One image of the template could not be loaded' : `${missing} images of the template could not be loaded`);
+  };
+
+  const pickTemplate = async (item: MediaItem) => {
+    const t = parseTemplate(item.template);
+    if (!t) { toast.error('This template cannot be read'); return; }
+    if (canvasMode && layers.length > 0 && !window.confirm('Replace your design with this template?')) return;
+    setApplyingTemplate(item.id);
+    try {
+      await applyTemplate(t);
+    } finally {
+      setApplyingTemplate(null);
+    }
+  };
+
   // --- Watermarks -----------------------------------------------------------
 
   const addWatermark = async (wm: Watermark) => {
@@ -446,7 +561,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         cx = crop.x + crop.width - margin - width / 2;
         cy = crop.y + crop.height - margin - height / 2;
       }
-      addLayer({ id: newLayerId(), kind: 'image', origin: 'watermark', img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
+      addLayer({ id: newLayerId(), kind: 'image', origin: 'watermark', src: wm.url, img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
     } catch {
       toast.error('Failed to load that watermark');
     } finally {
@@ -471,7 +586,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
       let height = width / r;
       if (height > crop.height * share) { height = crop.height * share; width = height * r; }
       addLayer({
-        id: newLayerId(), kind: 'image', origin: 'media', img,
+        id: newLayerId(), kind: 'image', origin: 'media', src: item.url, img,
         x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
       });
     } catch {
@@ -602,11 +717,17 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   // --- Save -----------------------------------------------------------------
 
   const save = async () => {
-    if (!source || !crop || saving) return;
+    if (!ready || !crop || saving) return;
     setSaving(true);
     try {
-      const blob = await renderEdit({ source, crop, adjustments, layers });
-      await onSave(blob);
+      const blob = await renderEdit({
+        source: canvasMode ? null : source,
+        background: canvas?.background,
+        crop,
+        adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
+        layers,
+      });
+      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff'));
     } catch (err) {
       const e = err instanceof Error ? err : null;
       toast.error(e?.name === 'SecurityError'
@@ -620,7 +741,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
 
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     if (tab === 'crop') return;
-    if (e.target === e.target.getStage() || e.target === baseRef.current) setSelectedId(null);
+    if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) setSelectedId(null);
   };
 
   // Opacity, fit, centre and remove for the selected watermark or media image.
@@ -645,6 +766,40 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     </>
   );
 
+  // The library's colours, the built-in swatches and a custom picker. The
+  // picker passes key, so dragging through it is one undo step.
+  const colorRow = (value: string, pick: (color: string, key?: string) => void, key: string) => (
+    <div className="ie-row ie-scroll">
+      {libraryColors.map(m => (
+        <button
+          key={m.id}
+          className={`ie-swatch ${value.toLowerCase() === m.color!.toLowerCase() ? 'active' : ''}`}
+          style={{ background: m.color }}
+          onClick={() => pick(m.color!)}
+          title={m.name}
+          aria-label={`Colour ${m.name}`}
+        />
+      ))}
+      {libraryColors.length > 0 && <span className="ie-swatch-divider" />}
+      {SWATCHES.map(c => (
+        <button
+          key={c}
+          className={`ie-swatch ${value.toLowerCase() === c ? 'active' : ''}`}
+          style={{ background: c }}
+          onClick={() => pick(c)}
+          aria-label={`Colour ${c}`}
+        />
+      ))}
+      <input
+        type="color"
+        className="ie-color"
+        value={value.slice(0, 7)}
+        onChange={e => pick(e.target.value, key)}
+        title="Custom colour"
+      />
+    </div>
+  );
+
   const anchorSize = isTouch ? 22 : 11;
   const layerTransformer = tab !== 'crop';
   const ratio = aspectRatio(aspectId);
@@ -655,7 +810,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         <button className="ie-icon-btn" onClick={handleCancel} title="Cancel" disabled={saving}>
           <X size={20} />
         </button>
-        <span className="ie-title">Edit image</span>
+        <span className="ie-title">{title ?? 'Edit image'}</span>
         <button className="ie-icon-btn" onClick={undo} title="Undo" aria-label="Undo" disabled={saving || undoStack.length === 0}>
           <Undo2 size={18} />
         </button>
@@ -671,148 +826,175 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         >
           <Magnet size={18} />
         </button>
-        <button className="btn btn-primary ie-save" onClick={save} disabled={!source || saving}>
+        <button
+          className={`ie-icon-btn ${showLayers ? 'active' : ''}`}
+          onClick={() => setShowLayers(v => !v)}
+          title={showLayers ? 'Hide the object list' : 'Show the object list'}
+          aria-label="Objects"
+          aria-pressed={showLayers}
+        >
+          <LayersIcon size={18} />
+        </button>
+        <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
           {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
         </button>
       </header>
 
-      <div className="ie-canvas" ref={canvasBoxRef}>
-        {loadError && <div className="ie-message">The image could not be loaded.</div>}
-        {!source && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
-        {source && crop && size.w > 0 && (
-          <Stage width={size.w} height={size.h} onPointerDown={onStagePointerDown}>
-            <Layer>
-              <Group
-                ref={contentRef}
-                x={gx}
-                y={gy}
-                scaleX={scale}
-                scaleY={scale}
-                {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
-              >
-                <KImage ref={baseRef} image={source} width={natW} height={natH} />
-                {layers.map(l => (l.kind === 'image' ? (
-                  <KImage
-                    key={l.id}
-                    ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                    {...imageLayerAttrs(l)}
-                    listening={tab !== 'crop'}
-                    draggable={tab !== 'crop'}
-                    onPointerDown={() => selectLayer(l)}
-                    onDragStart={startGesture}
-                    onTransformStart={startGesture}
-                    onDragMove={e => onLayerDragMove(l, e)}
-                    onDragEnd={e => onLayerDragEnd(l, e)}
-                    onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                  />
-                ) : (
-                  <KText
-                    key={l.id}
-                    ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                    {...textLayerAttrs(l)}
-                    listening={tab !== 'crop'}
-                    draggable={tab !== 'crop'}
-                    onPointerDown={() => selectLayer(l)}
-                    onDragStart={startGesture}
-                    onTransformStart={startGesture}
-                    onDblClick={() => textAreaRef.current?.focus()}
-                    onDragMove={e => onLayerDragMove(l, e)}
-                    onDragEnd={e => onLayerDragEnd(l, e)}
-                    onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                  />
-                )))}
-                {guideOverlay && (
-                  <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
-                )}
-              </Group>
-
-              {guides && tab !== 'crop' && (
-                <Group listening={false}>
-                  {guides.guides.map((g, i) => (g.orientation === 'v' ? (
-                    <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+      <div className="ie-body">
+        <div className="ie-canvas" ref={canvasBoxRef}>
+          {loadError && <div className="ie-message">The image could not be loaded.</div>}
+          {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
+          {ready && crop && size.w > 0 && (
+            <Stage width={size.w} height={size.h} onPointerDown={onStagePointerDown}>
+              <Layer>
+                <Group
+                  ref={contentRef}
+                  x={gx}
+                  y={gy}
+                  scaleX={scale}
+                  scaleY={scale}
+                  {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
+                >
+                  {canvas
+                    ? <Rect ref={backgroundRef} x={0} y={0} width={natW} height={natH} fill={canvas.background} />
+                    : <KImage ref={baseRef} image={source ?? undefined} width={natW} height={natH} />}
+                  {layers.map(l => (l.kind === 'image' ? (
+                    <KImage
+                      key={l.id}
+                      ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                      {...imageLayerAttrs(l)}
+                      listening={tab !== 'crop'}
+                      draggable={tab !== 'crop'}
+                      onPointerDown={() => selectLayer(l)}
+                      onDragStart={startGesture}
+                      onTransformStart={startGesture}
+                      onDragMove={e => onLayerDragMove(l, e)}
+                      onDragEnd={e => onLayerDragEnd(l, e)}
+                      onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                    />
                   ) : (
-                    <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                    <KText
+                      key={l.id}
+                      ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
+                      {...textLayerAttrs(l)}
+                      listening={tab !== 'crop'}
+                      draggable={tab !== 'crop'}
+                      onPointerDown={() => selectLayer(l)}
+                      onDragStart={startGesture}
+                      onTransformStart={startGesture}
+                      onDblClick={() => textAreaRef.current?.focus()}
+                      onDragMove={e => onLayerDragMove(l, e)}
+                      onDragEnd={e => onLayerDragEnd(l, e)}
+                      onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                    />
                   )))}
-                  {guides.gaps.map((m, i) => {
-                    const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
-                    const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
-                    const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
-                    const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
-                    const [lx, ly] = pt((a + b) / 2, c);
-                    return (
-                      <Group key={`m${i}`}>
-                        <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                        <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                        <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                        <Label x={lx} y={ly}>
-                          <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
-                          <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
-                        </Label>
-                      </Group>
-                    );
-                  })}
+                  {guideOverlay && (
+                    <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
+                  )}
                 </Group>
-              )}
 
-              {tab === 'crop' && (
-                <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
-                  {/* Shade what the crop leaves out. */}
-                  <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
-                  <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                  <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                  <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                  {[1, 2].map(i => (
-                    <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                  ))}
-                  {[1, 2].map(i => (
-                    <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                  ))}
-                  <Rect
-                    ref={cropRectRef}
-                    x={crop.x}
-                    y={crop.y}
-                    width={crop.width}
-                    height={crop.height}
-                    fill="rgba(0,0,0,0)"
-                    stroke="#ffffff"
-                    strokeWidth={2}
-                    strokeScaleEnabled={false}
-                    draggable
-                    dragBoundFunc={cropDragBound}
-                    onDragStart={startGesture}
-                    onTransformStart={startGesture}
-                    onDragMove={syncCropFromNode}
-                    onDragEnd={syncCropFromNode}
-                    onTransform={syncCropFromNode}
-                    onTransformEnd={syncCropFromNode}
-                  />
-                </Group>
-              )}
+                {guides && tab !== 'crop' && (
+                  <Group listening={false}>
+                    {guides.guides.map((g, i) => (g.orientation === 'v' ? (
+                      <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                    ) : (
+                      <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                    )))}
+                    {guides.gaps.map((m, i) => {
+                      const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
+                      const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
+                      const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
+                      const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
+                      const [lx, ly] = pt((a + b) / 2, c);
+                      return (
+                        <Group key={`m${i}`}>
+                          <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                          <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                          <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                          <Label x={lx} y={ly}>
+                            <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
+                            <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
+                          </Label>
+                        </Group>
+                      );
+                    })}
+                  </Group>
+                )}
 
-              <Transformer
-                ref={trRef}
-                anchorSize={anchorSize}
-                anchorCornerRadius={anchorSize / 2}
-                anchorStroke="#6366f1"
-                anchorFill="#ffffff"
-                borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
-                borderStrokeWidth={1.5}
-                padding={layerTransformer ? 4 : 0}
-                rotateEnabled={layerTransformer}
-                rotateAnchorOffset={isTouch ? 36 : 28}
-                rotationSnaps={[0, 90, 180, 270]}
-                flipEnabled={false}
-                ignoreStroke
-                keepRatio={layerTransformer || ratio !== null}
-                enabledAnchors={layerTransformer || ratio !== null
-                  ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
-                  : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
-                boundBoxFunc={(oldBox, newBox) => (layerTransformer
-                  ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
-                  : cropBoundBox(oldBox, newBox))}
-              />
-            </Layer>
-          </Stage>
+                {tab === 'crop' && (
+                  <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
+                    {/* Shade what the crop leaves out. */}
+                    <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
+                    <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                    <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                    <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                    {[1, 2].map(i => (
+                      <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                    ))}
+                    {[1, 2].map(i => (
+                      <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                    ))}
+                    <Rect
+                      ref={cropRectRef}
+                      x={crop.x}
+                      y={crop.y}
+                      width={crop.width}
+                      height={crop.height}
+                      fill="rgba(0,0,0,0)"
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      strokeScaleEnabled={false}
+                      draggable
+                      dragBoundFunc={cropDragBound}
+                      onDragStart={startGesture}
+                      onTransformStart={startGesture}
+                      onDragMove={syncCropFromNode}
+                      onDragEnd={syncCropFromNode}
+                      onTransform={syncCropFromNode}
+                      onTransformEnd={syncCropFromNode}
+                    />
+                  </Group>
+                )}
+
+                <Transformer
+                  ref={trRef}
+                  anchorSize={anchorSize}
+                  anchorCornerRadius={anchorSize / 2}
+                  anchorStroke="#6366f1"
+                  anchorFill="#ffffff"
+                  borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
+                  borderStrokeWidth={1.5}
+                  padding={layerTransformer ? 4 : 0}
+                  rotateEnabled={layerTransformer}
+                  rotateAnchorOffset={isTouch ? 36 : 28}
+                  rotationSnaps={[0, 90, 180, 270]}
+                  flipEnabled={false}
+                  ignoreStroke
+                  keepRatio={layerTransformer || ratio !== null}
+                  enabledAnchors={layerTransformer || ratio !== null
+                    ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                    : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+                  boundBoxFunc={(oldBox, newBox) => (layerTransformer
+                    ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
+                    : cropBoundBox(oldBox, newBox))}
+                />
+              </Layer>
+            </Stage>
+          )}
+        </div>
+
+        {showLayers && (
+          <aside className="ie-layers" aria-label="Objects">
+            <div className="ie-layers-title">Objects</div>
+            <LayerList
+              layers={layers}
+              selectedId={selectedId}
+              background={canvas ? { color: canvas.background } : { src: source?.src ?? imageUrl ?? '' }}
+              onSelect={selectLayer}
+              onSelectBackground={() => { setSelectedId(null); if (canvasMode) setTab('canvas'); }}
+              onReorder={reorderLayers}
+            />
+          </aside>
         )}
       </div>
 
@@ -826,6 +1008,55 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
             ))}
             <button className="ie-chip" onClick={resetCrop}>Reset</button>
           </div>
+        )}
+
+        {tab === 'canvas' && canvas && (
+          <>
+            <div className="ie-row ie-scroll">
+              {CANVAS_FORMATS.map(f => (
+                <button
+                  key={f.id}
+                  className={`ie-chip ${canvas.width === f.width && canvas.height === f.height ? 'active' : ''}`}
+                  onClick={() => changeFormat(f.width, f.height)}
+                  title={`${f.width} × ${f.height}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <span className="ie-label">Background</span>
+            {colorRow(canvas.background, changeBackground, 'background')}
+          </>
+        )}
+
+        {tab === 'templates' && (
+          templates === null ? (
+            <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+          ) : templates.length === 0 ? (
+            <p className="ie-hint">No templates yet. Create them in the Media Library.</p>
+          ) : (
+            <>
+              <div className="ie-row ie-scroll">
+                {templates.map(t => (
+                  <button
+                    key={t.id}
+                    className="ie-thumb"
+                    onClick={() => pickTemplate(t)}
+                    disabled={applyingTemplate !== null}
+                    title={t.description ? `${t.name}: ${t.description}` : t.name}
+                  >
+                    <img src={resolveUrl(t.url)} alt="" loading="lazy" />
+                    <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="ie-hint">
+                {canvasMode
+                  ? 'Tap a template to start from it. It replaces the current design.'
+                  : 'Tap a template to lay its texts and images over the picture.'}
+              </p>
+            </>
+          )
         )}
 
         {tab === 'filters' && (
@@ -966,35 +1197,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                   ))}
                 </select>
               </div>
-              <div className="ie-row ie-scroll">
-                {libraryColors.map(m => (
-                  <button
-                    key={m.id}
-                    className={`ie-swatch ${selected.fill.toLowerCase() === m.color!.toLowerCase() ? 'active' : ''}`}
-                    style={{ background: m.color }}
-                    onClick={() => updateLayer(selected.id, { fill: m.color! })}
-                    title={m.name}
-                    aria-label={`Colour ${m.name}`}
-                  />
-                ))}
-                {libraryColors.length > 0 && <span className="ie-swatch-divider" />}
-                {SWATCHES.map(c => (
-                  <button
-                    key={c}
-                    className={`ie-swatch ${selected.fill.toLowerCase() === c ? 'active' : ''}`}
-                    style={{ background: c }}
-                    onClick={() => updateLayer(selected.id, { fill: c })}
-                    aria-label={`Colour ${c}`}
-                  />
-                ))}
-                <input
-                  type="color"
-                  className="ie-color"
-                  value={selected.fill.slice(0, 7)}
-                  onChange={e => updateLayer(selected.id, { fill: e.target.value }, `fill:${selected.id}`)}
-                  title="Custom colour"
-                />
-              </div>
+              {colorRow(selected.fill, (c, key) => updateLayer(selected.id, { fill: c }, key), `fill:${selected.id}`)}
               <div className="ie-row ie-scroll">
                 <button className={`ie-chip ${selected.bold ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { bold: !selected.bold })}>
                   <Bold size={14} /> Bold
@@ -1024,8 +1227,15 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
       </div>
 
       <nav className="ie-tabs">
-        <button className={tab === 'crop' ? 'active' : ''} onClick={() => switchTab('crop')}><Crop size={20} /><span>Crop</span></button>
-        <button className={tab === 'filters' ? 'active' : ''} onClick={() => switchTab('filters')}><Sparkles size={20} /><span>Filters</span></button>
+        {canvasMode ? (
+          <button className={tab === 'canvas' ? 'active' : ''} onClick={() => switchTab('canvas')}><Frame size={20} /><span>Canvas</span></button>
+        ) : (
+          <>
+            <button className={tab === 'crop' ? 'active' : ''} onClick={() => switchTab('crop')}><Crop size={20} /><span>Crop</span></button>
+            <button className={tab === 'filters' ? 'active' : ''} onClick={() => switchTab('filters')}><Sparkles size={20} /><span>Filters</span></button>
+          </>
+        )}
+        <button className={tab === 'templates' ? 'active' : ''} onClick={() => switchTab('templates')}><LayoutTemplate size={20} /><span>Templates</span></button>
         <button className={tab === 'watermark' ? 'active' : ''} onClick={() => switchTab('watermark')}><Stamp size={20} /><span>Watermark</span></button>
         <button className={tab === 'media' ? 'active' : ''} onClick={() => switchTab('media')}><FolderOpen size={20} /><span>Media</span></button>
         <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>

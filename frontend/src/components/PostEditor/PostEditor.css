@@ -109,6 +109,15 @@
   opacity: 0.5;
 }
 
+.image-dropzone-create {
+  margin-top: 12px;
+}
+
+.image-dropzone-create svg {
+  margin-bottom: 0;
+  opacity: 1;
+}
+
 .image-dropzone.dragover {
   border-color: var(--accent);
   background: rgba(99, 102, 241, 0.05);

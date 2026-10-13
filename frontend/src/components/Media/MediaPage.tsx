@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Film, FolderOpen, Palette, Pencil, Search, Trash2, Type, Upload, X } from 'lucide-react';
+import { Brush, Check, Film, FolderOpen, LayoutTemplate, Palette, Pencil, Search, Trash2, Type, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
-import type { MediaItem } from '../../types';
+import type { MediaItem, Watermark } from '../../types';
+import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
+import { parseTemplate, type EditorTemplate } from '../Common/ImageEditor/editorModel';
 import { ColorField, ColorFormModal } from './ColorFormModal';
+import { TemplateFormModal, type NewTemplate } from './TemplateFormModal';
 import { HEX_COLOR } from './mediaColor';
 import '../Admin/Admin.css';
 import './MediaPage.css';
@@ -16,6 +19,10 @@ function parseTags(s: string): string[] {
 }
 
 const isFont = (item: MediaItem) => !!item.contentType?.startsWith('font/');
+const isTemplate = (item: MediaItem) => !!item.contentType?.startsWith('template/');
+
+// The template open in the image editor: a new one, or a library entry.
+type Designing = { kind: 'new'; info: NewTemplate } | { kind: 'edit'; item: MediaItem; template: EditorTemplate };
 
 /** A library font, shown as a sample set in it once the browser has loaded it. */
 function FontPreview({ item }: { item: MediaItem }) {
@@ -62,6 +69,10 @@ export function MediaPage() {
   const [editTags, setEditTags] = useState('');
   const [editColor, setEditColor] = useState('');
   const [addingColor, setAddingColor] = useState(false);
+  const [newTemplate, setNewTemplate] = useState(false);
+  const [designing, setDesigning] = useState<Designing | null>(null);
+  // For the editor's Watermark tab, loaded when a template is first opened.
+  const [watermarks, setWatermarks] = useState<Watermark[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
@@ -135,6 +146,34 @@ export function MediaPage() {
     }
   };
 
+  const openDesign = (d: Designing) => {
+    setDesigning(d);
+    if (watermarks === null) api.getWatermarks().then(setWatermarks).catch(() => setWatermarks([]));
+  };
+
+  const editDesign = (item: MediaItem) => {
+    const template = parseTemplate(item.template);
+    if (!template) { toast.error('This template cannot be read'); return; }
+    openDesign({ kind: 'edit', item, template });
+  };
+
+  // The editor's render becomes the template's preview. Errors propagate, so
+  // the editor stays open with the design.
+  const saveDesign = async (blob: Blob, design: EditorTemplate) => {
+    if (!designing) return;
+    if (designing.kind === 'new') {
+      const { name, description, tags } = designing.info;
+      const item = await api.createMediaTemplate(blob, design, { name, description, tags });
+      setItems(prev => [item, ...prev]);
+      toast.success('Template added');
+    } else {
+      const item = await api.updateMediaTemplate(designing.item.id, blob, design);
+      setItems(prev => prev.map(i => (i.id === item.id ? item : i)));
+      toast.success('Template saved');
+    }
+    setDesigning(null);
+  };
+
   const toggleTag = (tag: string) => {
     setTagFilter(prev => (prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]));
   };
@@ -149,7 +188,8 @@ export function MediaPage() {
         Photos, artwork, logos, backgrounds and fonts for post images. Describe what each file shows and tag it: MCP agents
         search the library by name, description and tags and compose post images from it together with the watermarks,
         setting their text in the fonts uploaded here (.ttf or .otf) and following the team colours: say in each
-        colour's description how and where to use it.
+        colour's description how and where to use it. Templates are designs for the image editor, which posts and stories
+        can start from when an image is created.
       </p>
 
       <div className="media-toolbar">
@@ -182,6 +222,9 @@ export function MediaPage() {
         <button className="btn btn-secondary" onClick={() => setAddingColor(true)}>
           <Palette size={16} /> Add Colour
         </button>
+        <button className="btn btn-secondary" onClick={() => setNewTemplate(true)}>
+          <LayoutTemplate size={16} /> New Template
+        </button>
       </div>
 
       {tagFilter.length > 0 && (
@@ -197,13 +240,13 @@ export function MediaPage() {
       {!loading && items.length === 0 ? (
         <div className="empty-state">
           <FolderOpen size={32} />
-          <p>{query || tagFilter.length ? 'Nothing matches the search.' : 'No media yet. Upload material or add colours to build post images from.'}</p>
+          <p>{query || tagFilter.length ? 'Nothing matches the search.' : 'No media yet. Upload material, add colours or design templates to build post images from.'}</p>
         </div>
       ) : (
         <div className="watermark-grid">
           {items.map(item => (
             <div key={item.id} className="watermark-card">
-              <div className="watermark-preview media-preview">
+              <div className={`watermark-preview media-preview${isTemplate(item) ? ' media-template' : ''}`}>
                 {item.color ? (
                   <div className="media-color-swatch" style={{ background: item.color }}>
                     <span>{item.color}</span>
@@ -214,6 +257,9 @@ export function MediaPage() {
                   <FontPreview item={item} />
                 ) : (
                   <img src={src(item.url)} alt={item.name} loading="lazy" />
+                )}
+                {isTemplate(item) && (
+                  <span className="media-badge"><LayoutTemplate size={12} /> Template</span>
                 )}
               </div>
               {editing === item.id ? (
@@ -242,6 +288,11 @@ export function MediaPage() {
                   <div className="watermark-info">
                     <span className="watermark-name" title={item.name}>{item.name}</span>
                     <span className="watermark-actions">
+                      {isTemplate(item) && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => editDesign(item)} title="Edit design">
+                          <Brush size={14} />
+                        </button>
+                      )}
                       <button className="btn btn-ghost btn-sm" onClick={() => startEdit(item)} title="Edit">
                         <Pencil size={14} />
                       </button>
@@ -270,6 +321,27 @@ export function MediaPage() {
             </div>
           ))}
         </div>
+      )}
+      {newTemplate && (
+        <TemplateFormModal
+          onClose={() => setNewTemplate(false)}
+          onContinue={info => {
+            setNewTemplate(false);
+            openDesign({ kind: 'new', info });
+          }}
+        />
+      )}
+      {designing && (
+        <ImageEditor
+          canvas={designing.kind === 'new'
+            ? { width: designing.info.width, height: designing.info.height, background: '#ffffff' }
+            : undefined}
+          template={designing.kind === 'edit' ? designing.template : undefined}
+          title={designing.kind === 'new' ? `New template: ${designing.info.name}` : `Template: ${designing.item.name}`}
+          watermarks={watermarks ?? []}
+          onSave={saveDesign}
+          onCancel={() => setDesigning(null)}
+        />
       )}
       {addingColor && (
         <ColorFormModal

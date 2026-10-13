@@ -27,6 +27,10 @@
 
 .ie-title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   font-size: 15px;
 }
@@ -59,14 +63,172 @@
   color: var(--accent-hover);
 }
 
+.ie-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .ie-canvas {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   /* A checkerboard shows through transparent parts of the picture. */
   background:
     repeating-conic-gradient(#111827 0% 25%, #0b1220 0% 50%) 50% / 24px 24px;
+}
+
+/* The object list on the right edge, top of the stack first. */
+.ie-layers {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-secondary);
+  min-height: 0;
+}
+
+.ie-layers-title {
+  padding: 10px 12px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.ie-layers-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.ie-layers-list .ie-hint {
+  padding: 4px 4px 8px;
+  font-size: 12px;
+}
+
+.ie-layers-sortable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ie-layer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: grab;
+  /* Dragging a row must not scroll the page on touch. */
+  touch-action: none;
+  user-select: none;
+}
+
+.ie-layer:hover {
+  border-color: var(--border-light);
+}
+
+.ie-layer.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ie-layer.dragging {
+  position: relative;
+  z-index: 1;
+  cursor: grabbing;
+  opacity: 0.9;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.ie-layer-fixed {
+  cursor: pointer;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+.ie-layer-thumb {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: repeating-conic-gradient(#475569 0% 25%, #334155 0% 50%) 50% / 10px 10px;
+}
+
+.ie-layer-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.ie-layer-color {
+  width: 100%;
+  height: 100%;
+}
+
+.ie-layer-text {
+  font-size: 18px;
+  line-height: 1;
+  -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.6);
+}
+
+.ie-layer-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+}
+
+.ie-layer-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.ie-layer-grip {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* On a phone the list lies over the picture's right edge, behind its toggle. */
+@media (max-width: 768px) {
+  .ie-header {
+    gap: 6px;
+  }
+
+  .ie-layers {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 168px;
+    z-index: 2;
+    box-shadow: -6px 0 16px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .ie-message {
@@ -286,6 +448,11 @@
   border: none;
   background: none;
   cursor: pointer;
+}
+
+.ie-label {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .ie-hint {

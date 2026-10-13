@@ -40,6 +40,7 @@ var uploadReferences = []uploadReference{
 	{func(db *database.MongoDB) *mongo.Collection { return db.ConventionQueueItems() }, "imageUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Watermarks() }, "url"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "url"},
+	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "templateUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.coverImageUrl"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.closingImageUrl"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.fontUrl"},
@@ -150,6 +151,8 @@ func deleteOneAndCollectUploadURLs(ctx context.Context, coll *mongo.Collection, 
 		ImageURL  string   `bson:"imageUrl"`
 		ImageURLs []string `bson:"imageUrls"`
 		URL       string   `bson:"url"`
+		// The images a media library template uses.
+		TemplateURLs []string `bson:"templateUrls"`
 	}
 	if err := res.Decode(&doc); err != nil {
 		log.Printf("upload cleanup: failed to read images off deleted document: %v", err)
@@ -163,6 +166,7 @@ func deleteOneAndCollectUploadURLs(ctx context.Context, coll *mongo.Collection, 
 	if doc.URL != "" {
 		urls = append(urls, doc.URL)
 	}
+	urls = append(urls, doc.TemplateURLs...)
 	return urls, nil
 }
 

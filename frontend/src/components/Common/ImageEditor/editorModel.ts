@@ -20,6 +20,9 @@ export interface ImageLayer {
   kind: 'image';
   // The tab it was added from, which selecting it later reopens.
   origin: 'watermark' | 'media';
+  // Where the image came from (a watermark's or library entry's URL), so a
+  // template can load it again.
+  src: string;
   img: HTMLImageElement;
   x: number;
   y: number;
@@ -45,6 +48,36 @@ export interface TextLayer {
 }
 
 export type EditorLayer = ImageLayer | TextLayer;
+
+// A blank canvas the editor draws on instead of a photo.
+export interface EditorCanvas {
+  width: number;
+  height: number;
+  background: string;
+}
+
+// A saved design: a canvas and its layers, images by URL. The media library
+// stores these as templates (JSON); the server reads only the outline and the
+// image layers' src.
+export type TemplateLayer = Omit<ImageLayer, 'id' | 'img'> | Omit<TextLayer, 'id'>;
+
+export interface EditorTemplate {
+  version: 1;
+  width: number;
+  height: number;
+  background: string;
+  layers: TemplateLayer[];
+}
+
+// What a blank canvas starts as when nothing else is given.
+export const DEFAULT_CANVAS: EditorCanvas = { width: 1080, height: 1350, background: '#ffffff' };
+
+export const CANVAS_FORMATS: { id: string; label: string; width: number; height: number }[] = [
+  { id: '1:1', label: 'Square 1:1', width: 1080, height: 1080 },
+  { id: '4:5', label: 'Portrait 4:5', width: 1080, height: 1350 },
+  { id: '9:16', label: 'Story 9:16', width: 1080, height: 1920 },
+  { id: '16:9', label: 'Landscape 16:9', width: 1920, height: 1080 },
+];
 
 export type FilterPreset = 'none' | 'vivid' | 'mono' | 'sepia' | 'warm' | 'cool' | 'fade';
 
@@ -191,7 +224,9 @@ export function centredCrop(natW: number, natH: number, ratio: number | null): C
 }
 
 export interface RenderInput {
-  source: HTMLImageElement;
+  // The photo, or null for a blank canvas filled with background.
+  source: HTMLImageElement | null;
+  background?: string;
   crop: CropBox;
   adjustments: Adjustments;
   layers: EditorLayer[];
@@ -202,7 +237,7 @@ export interface RenderInput {
 }
 
 // Renders the edit at full resolution, independent of the on-screen stage.
-export async function renderEdit({ source, crop, adjustments, layers, maxSide = 4096, quality = 0.92 }: RenderInput): Promise<Blob> {
+export async function renderEdit({ source, background = '#ffffff', crop, adjustments, layers, maxSide = 4096, quality = 0.92 }: RenderInput): Promise<Blob> {
   const scale = Math.min(1, maxSide / Math.max(crop.width, crop.height));
   const width = Math.max(1, Math.round(crop.width * scale));
   const height = Math.max(1, Math.round(crop.height * scale));
@@ -217,9 +252,13 @@ export async function renderEdit({ source, crop, adjustments, layers, maxSide = 
     const group = new Konva.Group({ x: -crop.x * scale, y: -crop.y * scale, scaleX: scale, scaleY: scale });
     layer.add(group);
 
-    const base = new Konva.Image({ image: source, width: source.naturalWidth, height: source.naturalHeight });
-    group.add(base);
-    applyAdjustments(base, adjustments, scale);
+    if (source) {
+      const base = new Konva.Image({ image: source, width: source.naturalWidth, height: source.naturalHeight });
+      group.add(base);
+      applyAdjustments(base, adjustments, scale);
+    } else {
+      group.add(new Konva.Rect({ x: crop.x, y: crop.y, width: crop.width, height: crop.height, fill: background }));
+    }
 
     for (const l of layers) {
       group.add(l.kind === 'image' ? new Konva.Image(imageLayerAttrs(l)) : new Konva.Text(textLayerAttrs(l)));
@@ -232,6 +271,83 @@ export async function renderEdit({ source, crop, adjustments, layers, maxSide = 
   } finally {
     stage.destroy();
   }
+}
+
+// Maps layers laid out on the box from onto the box to: positions follow the
+// box on each axis, sizes scale evenly by the smaller factor so nothing is
+// distorted. Texts keep their centre, since they are placed by their corner.
+export function fitLayers<L extends EditorLayer | TemplateLayer>(layers: L[], from: CropBox, to: CropBox): L[] {
+  const sx = to.width / from.width;
+  const sy = to.height / from.height;
+  const s = Math.min(sx, sy);
+  if (sx === 1 && sy === 1 && from.x === to.x && from.y === to.y) return layers;
+  return layers.map(l => {
+    if (l.kind === 'image') {
+      return { ...l, x: to.x + (l.x - from.x) * sx, y: to.y + (l.y - from.y) * sy, width: l.width * s, height: l.height * s };
+    }
+    const t = l as TextLayer;
+    const m = measureText(t);
+    const fontSize = t.fontSize * s;
+    const m2 = measureText({ ...t, fontSize });
+    const cx = to.x + (t.x + m.width / 2 - from.x) * sx;
+    const cy = to.y + (t.y + m.height / 2 - from.y) * sy;
+    return { ...l, fontSize, x: cx - m2.width / 2, y: cy - m2.height / 2 };
+  });
+}
+
+// The design as a template: the crop becomes the canvas, layers move with it.
+export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string): EditorTemplate {
+  return {
+    version: 1,
+    width: Math.round(crop.width),
+    height: Math.round(crop.height),
+    background,
+    // Everything but the id and the loaded image.
+    layers: layers.map((l): TemplateLayer => {
+      const x = l.x - crop.x;
+      const y = l.y - crop.y;
+      if (l.kind === 'image') {
+        return { kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity };
+      }
+      return {
+        kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
+        bold: l.bold, outline: l.outline, shadow: l.shadow, x, y, rotation: l.rotation,
+      };
+    }),
+  };
+}
+
+// Reads a template stored in the media library; null if it is not one.
+export function parseTemplate(raw: string | undefined): EditorTemplate | null {
+  if (!raw) return null;
+  try {
+    const t = JSON.parse(raw) as EditorTemplate;
+    if (!(t.width > 0 && t.height > 0) || !Array.isArray(t.layers)) return null;
+    return { ...t, background: t.background || '#ffffff' };
+  } catch {
+    return null;
+  }
+}
+
+// Turns a template's layers into editor layers on the box target, loading its
+// images. Images that fail to load are left out and counted.
+export async function instantiateTemplate(
+  t: EditorTemplate, target: CropBox, resolve: (url: string) => string,
+): Promise<{ layers: EditorLayer[]; missing: number }> {
+  const fitted = fitLayers(t.layers, { x: 0, y: 0, width: t.width, height: t.height }, target);
+  let missing = 0;
+  const loaded = await Promise.all(fitted.map(async (l): Promise<EditorLayer | null> => {
+    if (l.kind === 'text') return { ...(l as Omit<TextLayer, 'id'>), id: newLayerId() };
+    const il = l as Omit<ImageLayer, 'id' | 'img'>;
+    try {
+      const img = await loadImage(resolve(il.src));
+      return { ...il, id: newLayerId(), img };
+    } catch {
+      missing++;
+      return null;
+    }
+  }));
+  return { layers: loaded.filter((l): l is EditorLayer => l !== null), missing };
 }
 
 export function loadImage(url: string): Promise<HTMLImageElement> {

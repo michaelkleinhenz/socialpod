@@ -15,19 +15,28 @@ import (
 // MediaColorType is the content type of a colour entry.
 const MediaColorType = "color/hex"
 
+// MediaTemplateType is the content type of a template: a design for the
+// image editor (canvas size, background colour, texts and images). URL is a
+// rendered preview of it, Template the design as JSON, and TemplateURLs the
+// uploads its image layers use, so they stay while the template does.
+const MediaTemplateType = "template/socialpod"
+
 type MediaItem struct {
-	ID          primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	UserID      primitive.ObjectID  `bson:"userId" json:"userId"`
-	TeamID      *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
-	URL         string              `bson:"url" json:"url"`
-	Color       string              `bson:"color,omitempty" json:"color,omitempty"`
-	Name        string              `bson:"name" json:"name"`
-	Description string              `bson:"description,omitempty" json:"description,omitempty"`
-	Tags        []string            `bson:"tags,omitempty" json:"tags,omitempty"`
-	ContentType string              `bson:"contentType,omitempty" json:"contentType,omitempty"`
-	Width       int                 `bson:"width,omitempty" json:"width,omitempty"`
-	Height      int                 `bson:"height,omitempty" json:"height,omitempty"`
-	Size        int64               `bson:"size,omitempty" json:"size,omitempty"`
-	CreatedAt   time.Time           `bson:"createdAt" json:"createdAt"`
-	UpdatedAt   time.Time           `bson:"updatedAt" json:"updatedAt"`
+	ID       primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	UserID   primitive.ObjectID  `bson:"userId" json:"userId"`
+	TeamID   *primitive.ObjectID `bson:"teamId,omitempty" json:"teamId,omitempty"`
+	URL      string              `bson:"url" json:"url"`
+	Color    string              `bson:"color,omitempty" json:"color,omitempty"`
+	Template string              `bson:"template,omitempty" json:"template,omitempty"`
+	// TemplateURLs lists the uploads Template's image layers point at.
+	TemplateURLs []string  `bson:"templateUrls,omitempty" json:"-"`
+	Name         string    `bson:"name" json:"name"`
+	Description  string    `bson:"description,omitempty" json:"description,omitempty"`
+	Tags         []string  `bson:"tags,omitempty" json:"tags,omitempty"`
+	ContentType  string    `bson:"contentType,omitempty" json:"contentType,omitempty"`
+	Width        int       `bson:"width,omitempty" json:"width,omitempty"`
+	Height       int       `bson:"height,omitempty" json:"height,omitempty"`
+	Size         int64     `bson:"size,omitempty" json:"size,omitempty"`
+	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt    time.Time `bson:"updatedAt" json:"updatedAt"`
 }

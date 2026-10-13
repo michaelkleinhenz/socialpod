@@ -56,6 +56,7 @@ func TestUploadReferencesCoverOwningCollections(t *testing.T) {
 		"convention_queue_items.imageUrls",
 		"watermarks.url",
 		"media.url",
+		"media.templateUrls",
 		"teams.growth.radar.coverImageUrl",
 		"teams.growth.radar.closingImageUrl",
 		"teams.growth.radar.fontUrl",

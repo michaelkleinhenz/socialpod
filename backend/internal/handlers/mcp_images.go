@@ -107,7 +107,7 @@ func imageToolDefinitions() []mcpTool {
 				"properties": map[string]any{
 					"query":   map[string]any{"type": "string", "description": "Words to search for"},
 					"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required tags"},
-					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color"}, "description": "Only this kind of entry (default all)"},
+					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color", "template"}, "description": "Only this kind of entry (default all). A template is a design for the image editor; its url is a preview image"},
 					"limit":   map[string]any{"type": "number", "description": "Maximum results (default 50, max 200)"},
 					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
 				},
