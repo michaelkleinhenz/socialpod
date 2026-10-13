@@ -128,6 +128,9 @@ func main() {
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler, Scheduler: scheduler}
 	captureHandler := &handlers.CaptureHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
 	oauthHandler := handlers.NewOAuthHandler(db, cfg.AppURL)
+	agentHandler := &handlers.AgentHandler{DB: db, MCP: mcpHandler}
+	agentHandler.StartScheduler()
+	defer agentHandler.StopScheduler()
 
 	robotsTxt := func(c *gin.Context) {
 		c.Data(http.StatusOK, "text/plain", []byte("User-agent: *\nAllow: /\n"))
@@ -269,6 +272,19 @@ func main() {
 		auth.DELETE("/mentions/:id", mentionHandler.Delete)
 		auth.GET("/mentions/export", mentionHandler.Export)
 		auth.POST("/mentions/import", mentionHandler.Import)
+
+		// Agents: scheduled prompts that run the user's MCP tools
+		auth.GET("/agents/settings", agentHandler.GetSettings)
+		auth.PUT("/agents/settings", agentHandler.UpdateSettings)
+		auth.GET("/agents/models", agentHandler.ListModels)
+		auth.GET("/agents", agentHandler.List)
+		auth.POST("/agents", agentHandler.Create)
+		auth.PUT("/agents/:id", agentHandler.Update)
+		auth.DELETE("/agents/:id", agentHandler.Delete)
+		auth.POST("/agents/:id/run", agentHandler.Run)
+		auth.POST("/agents/:id/stop", agentHandler.Stop)
+		auth.GET("/agents/:id/runs", agentHandler.ListRuns)
+		auth.GET("/agents/:id/runs/:runId", agentHandler.GetRun)
 
 		// Chrome extension capture endpoint
 		auth.POST("/capture", captureHandler.Capture)

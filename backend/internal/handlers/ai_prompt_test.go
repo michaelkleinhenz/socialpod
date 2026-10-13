@@ -22,8 +22,9 @@ func TestChatMessagesCarriesNoDashRule(t *testing.T) {
 }
 
 // Every chat completion request must build its messages with chatMessages,
-// so none can go out without the no-dash rule.
-var chatMessagesUse = regexp.MustCompile(`"messages":\s+chatMessages\(`)
+// so none can go out without the no-dash rule. A multi-turn conversation (the
+// agent runner) starts its message list with chatMessages and appends to it.
+var chatMessagesUse = regexp.MustCompile(`"messages":\s+chatMessages\(|\bmessages\s*:=?\s+chatMessages\(`)
 
 func TestEveryAIRequestUsesChatMessages(t *testing.T) {
 	files, _ := filepath.Glob("*.go")

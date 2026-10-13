@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../services/api';
 import { Key, Copy, RefreshCw, UsersRound, Lock, ChevronDown, ChevronRight, Check, Plug, Unplug } from 'lucide-react';
 import type { OAuthGrant } from '../../types';
+import { AgentSettingsSection } from '../Agents/AgentSettingsSection';
 import toast from 'react-hot-toast';
 
 export function ProfilePage() {
@@ -189,6 +190,8 @@ curl -X POST ${restBaseUrl}/posts \\
         </button>
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+
+        <AgentSettingsSection />
 
         <h3 style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Key size={18} /> API &amp; MCP Access

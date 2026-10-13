@@ -642,3 +642,85 @@ export interface RadarContent {
   userTags: string[];
   draftIds: string[];
 }
+
+// ─── Agents ──────────────────────────────────────────────────────────────────
+
+export type AgentScheduleKind = 'manual' | 'interval' | 'hourly' | 'daily';
+
+export interface AgentSchedule {
+  kind: AgentScheduleKind;
+  intervalMinutes?: number;
+  minute?: number;
+  /** "HH:MM", for daily schedules */
+  times?: string[];
+  /** 0 = Monday; empty = every day */
+  weekdays?: number[];
+  timezone?: string;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  prompt: string;
+  enabled: boolean;
+  schedule: AgentSchedule;
+  /** Overrides the default model from the Profile page */
+  model?: string;
+  maxSteps?: number;
+  /** Origin label of the drafts it creates */
+  origin: string;
+  nextRunAt?: string;
+  running: boolean;
+  runStartedAt?: string;
+  lastRunAt?: string;
+  lastStatus?: AgentRunStatus;
+  lastError?: string;
+}
+
+export type AgentInput = Pick<Agent, 'name' | 'prompt' | 'enabled' | 'schedule' | 'model' | 'maxSteps'>;
+
+export type AgentRunStatus = 'running' | 'ok' | 'error' | 'limit' | 'stopped';
+
+export interface AgentRunStep {
+  at: string;
+  kind: 'message' | 'tool';
+  text?: string;
+  tool?: string;
+  args?: string;
+  result?: string;
+  isError?: boolean;
+}
+
+export interface AgentRun {
+  id: string;
+  agentId: string;
+  trigger: 'schedule' | 'manual';
+  model: string;
+  status: AgentRunStatus;
+  startedAt: string;
+  finishedAt?: string;
+  steps?: AgentRunStep[];
+  toolCalls: number;
+  summary?: string;
+  error?: string;
+  promptTokens: number;
+  completionTokens: number;
+  cost: number;
+}
+
+export interface AgentSettings {
+  hasKey: boolean;
+  keyHint: string;
+  model: string;
+  globalPrompt: string;
+}
+
+export interface AgentModel {
+  id: string;
+  name: string;
+  contextLength: number;
+  /** US dollars per million tokens */
+  promptPrice: number;
+  completionPrice: number;
+  images: boolean;
+}

@@ -1,4 +1,4 @@
-import type { MediaItem, Watermark } from '../types';
+import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, MediaItem, Watermark } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -486,6 +486,51 @@ class ApiClient {
 
   updateWatermark(id: string, data: { name?: string; description?: string }) {
     return this.request<Watermark>(`/watermarks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  // Agents
+  getAgentSettings() {
+    return this.request<AgentSettings>('/agents/settings');
+  }
+
+  updateAgentSettings(data: { openRouterKey?: string; model?: string; globalPrompt?: string }) {
+    return this.request<AgentSettings>('/agents/settings', { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  getAgentModels() {
+    return this.request<AgentModel[]>('/agents/models');
+  }
+
+  getAgents() {
+    return this.request<Agent[]>('/agents');
+  }
+
+  createAgent(data: AgentInput) {
+    return this.request<Agent>('/agents', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  updateAgent(id: string, data: AgentInput) {
+    return this.request<Agent>(`/agents/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  deleteAgent(id: string) {
+    return this.request<any>(`/agents/${id}`, { method: 'DELETE' });
+  }
+
+  runAgent(id: string) {
+    return this.request<{ runId: string }>(`/agents/${id}/run`, { method: 'POST' });
+  }
+
+  stopAgent(id: string) {
+    return this.request<any>(`/agents/${id}/stop`, { method: 'POST' });
+  }
+
+  getAgentRuns(id: string) {
+    return this.request<AgentRun[]>(`/agents/${id}/runs`);
+  }
+
+  getAgentRun(id: string, runId: string) {
+    return this.request<AgentRun>(`/agents/${id}/runs/${runId}`);
   }
 
   // Media library
