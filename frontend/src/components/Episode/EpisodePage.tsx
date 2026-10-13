@@ -3,9 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
 import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, EpisodeDraft } from '../../types';
-import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Wand2, Dice5, FileText, Trash2, Play, Edit3, Save, CheckCircle2 } from 'lucide-react';
+import { Mic, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Sparkles, Wand2, Dice5, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Palette } from 'lucide-react';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
+import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
@@ -66,6 +67,8 @@ export function EpisodePage() {
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
   const [croppedPreviewUrl, setCroppedPreviewUrl] = useState<string | null>(null);
   const [croppedSize, setCroppedSize] = useState<number | null>(null);
+  // The image editor on a blank square canvas, to make an image instead of uploading one.
+  const [creatingImage, setCreatingImage] = useState(false);
 
   // Watermark
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -293,6 +296,8 @@ export function EpisodePage() {
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
   };
+
+  const openImageCreator = () => setCreatingImage(true);
 
   const removeImage = () => {
     if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
@@ -1340,6 +1345,14 @@ export function EpisodePage() {
                   <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
                   <div>Drop an image here, click to browse, or paste from clipboard</div>
                 </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={openImageCreator}
+                  style={{ alignSelf: 'flex-start' }}
+                  title="Design an image, from scratch or a template"
+                >
+                  <Palette size={14} /> Create Image
+                </button>
                 {adobeClientId && (
                   <button
                     className="btn btn-ghost btn-sm"
@@ -1398,6 +1411,13 @@ export function EpisodePage() {
                   >
                     <Image size={14} /> Replace
                   </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={openImageCreator}
+                    title="Design an image, from scratch or a template"
+                  >
+                    <Palette size={14} /> Create Image
+                  </button>
                   {adobeClientId && (
                     <button
                       className="btn btn-ghost btn-sm"
@@ -1422,6 +1442,21 @@ export function EpisodePage() {
               }}
             />
           </div>
+
+          {/* A created image goes through the cropper like any other, which
+              adds the overlay and keeps it under the size limit. */}
+          {creatingImage && (
+            <ImageEditor
+              canvas={{ width: 1080, height: 1080, background: '#ffffff' }}
+              title="Create image"
+              watermarks={watermarks}
+              onCancel={() => setCreatingImage(false)}
+              onSave={blob => {
+                setCreatingImage(false);
+                handleFile(new File([blob], 'created.jpg', { type: 'image/jpeg' }));
+              }}
+            />
+          )}
 
           {/* Crop Modal */}
           {showCropper && imagePreviewUrl && (
