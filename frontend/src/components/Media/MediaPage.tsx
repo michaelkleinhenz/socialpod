@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Film, FolderOpen, Pencil, Search, Trash2, Upload, X } from 'lucide-react';
+import { Check, Film, FolderOpen, Pencil, Search, Trash2, Type, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { MediaItem } from '../../types';
@@ -11,6 +11,35 @@ const src = (url: string) => (url.startsWith('/') ? apiUrl + url : url);
 
 function parseTags(s: string): string[] {
   return s.split(/[,;]/).map(t => t.trim().replace(/^#/, '').toLowerCase()).filter(Boolean);
+}
+
+const isFont = (item: MediaItem) => !!item.contentType?.startsWith('font/');
+
+/** A library font, shown as a sample set in it once the browser has loaded it. */
+function FontPreview({ item }: { item: MediaItem }) {
+  const family = `SocialPod Media ${item.id}`;
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const face = new FontFace(family, `url(${src(item.url)})`);
+    face.load()
+      .then(f => {
+        if (cancelled) return;
+        document.fonts.add(f);
+        setLoaded(true);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [family, item.url]);
+
+  if (!loaded) return <Type size={40} />;
+  return (
+    <div className="media-font-sample" style={{ fontFamily: `"${family}"` }}>
+      <span>Aa Bb Cc</span>
+      <span>ÄÖÜ äöü 0123</span>
+    </div>
+  );
 }
 
 /**
@@ -106,8 +135,9 @@ export function MediaPage() {
       </div>
 
       <p className="watermarks-description">
-        Photos, artwork, logos and backgrounds for post images. Describe what each file shows and tag it: MCP agents
-        search the library by name, description and tags and compose post images from it together with the watermarks.
+        Photos, artwork, logos, backgrounds and fonts for post images. Describe what each file shows and tag it: MCP agents
+        search the library by name, description and tags and compose post images from it together with the watermarks,
+        setting their text in the fonts uploaded here (.ttf or .otf).
       </p>
 
       <div className="media-toolbar">
@@ -130,7 +160,7 @@ export function MediaPage() {
           ref={fileRef}
           type="file"
           multiple
-          accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime"
+          accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,.ttf,.otf,font/ttf,font/otf"
           style={{ display: 'none' }}
           onChange={e => handleUpload(e.target.files)}
         />
@@ -161,6 +191,8 @@ export function MediaPage() {
               <div className="watermark-preview media-preview">
                 {item.contentType?.startsWith('video/') ? (
                   <Film size={40} />
+                ) : isFont(item) ? (
+                  <FontPreview item={item} />
                 ) : (
                   <img src={src(item.url)} alt={item.name} loading="lazy" />
                 )}

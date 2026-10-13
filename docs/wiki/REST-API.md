@@ -177,11 +177,12 @@ curl -X PUT http://localhost:8080/api/watermarks/{id} \
   -H "Content-Type: application/json" \
   -d '{"description":"Full-size frame with the news banner at the bottom"}'
 
-# Search the media library (q: words in name/description/tags, tags: comma-separated, all required)
+# Search the media library (q: words in name/description/tags, tags: comma-separated, all required,
+# kind: image, video or font)
 curl "http://localhost:8080/api/media?q=wingspan&tags=cover" \
   -H "Authorization: Bearer sm_..."
 
-# Add a file to the media library
+# Add a file to the media library (an image, an mp4/mov video, or a .ttf/.otf font)
 curl -X POST http://localhost:8080/api/media \
   -H "Authorization: Bearer sm_..." \
   -F "file=@box.jpg" -F "name=Wingspan box" \

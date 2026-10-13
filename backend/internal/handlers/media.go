@@ -22,8 +22,9 @@ import (
 )
 
 // MediaHandler serves the team media library: uploaded material (photos,
-// artwork, logos, backgrounds) with a name, a description and tags, which
-// people and agents build post images from. Files are ordinary uploads; a
+// artwork, logos, backgrounds, fonts) with a name, a description and tags,
+// which people and agents build post images from; compose_image draws text
+// in a library font (fontMediaId). Files are ordinary uploads; a
 // library entry only references one, and media.url is in uploadReferences so
 // cleanup and the sweep keep files the library still holds.
 type MediaHandler struct {
@@ -35,7 +36,13 @@ var mediaContentTypes = map[string]string{
 	".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
 	".gif": "image/gif", ".webp": "image/webp",
 	".mp4": "video/mp4", ".mov": "video/quicktime",
+	".ttf": "font/ttf", ".otf": "font/otf",
 }
+
+func isFontContentType(ct string) bool { return strings.HasPrefix(ct, "font/") }
+
+// mediaKindPrefixes maps a list filter kind to the content type prefix.
+var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/"}
 
 // normalizeTags lower-cases, trims and de-duplicates tags.
 func normalizeTags(tags []string) []string {
@@ -58,11 +65,15 @@ func splitTags(s string) []string {
 
 // mediaListFilter builds the scoped query for a library search: words of
 // query must all appear in the name, description or tags; every tag given
-// must be present.
-func mediaListFilter(scope bson.M, query string, tags []string) bson.M {
+// must be present; kind (image, video, font; empty = all) limits the content
+// type.
+func mediaListFilter(scope bson.M, query string, tags []string, kind string) bson.M {
 	filter := bson.M{}
 	for k, v := range scope {
 		filter[k] = v
+	}
+	if prefix, ok := mediaKindPrefixes[strings.ToLower(strings.TrimSpace(kind))]; ok {
+		filter["contentType"] = primitive.Regex{Pattern: "^" + regexp.QuoteMeta(prefix)}
 	}
 	var and []bson.M
 	for _, w := range strings.Fields(query) {
@@ -80,12 +91,12 @@ func mediaListFilter(scope bson.M, query string, tags []string) bson.M {
 	return filter
 }
 
-func listMedia(ctx context.Context, db *database.MongoDB, scope bson.M, query string, tags []string, limit int) ([]models.MediaItem, error) {
+func listMedia(ctx context.Context, db *database.MongoDB, scope bson.M, query string, tags []string, kind string, limit int) ([]models.MediaItem, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "updatedAt", Value: -1}}).SetLimit(int64(limit))
-	cursor, err := db.Media().Find(ctx, mediaListFilter(scope, query, tags), opts)
+	cursor, err := db.Media().Find(ctx, mediaListFilter(scope, query, tags, kind), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +113,14 @@ func addMediaItem(ctx context.Context, c *gin.Context, db *database.MongoDB, upl
 	ct, ok := mediaContentTypes[ext]
 	if !ok {
 		return models.MediaItem{}, fmt.Errorf("unsupported file type %s", ext)
+	}
+	if isFontContentType(ct) {
+		// Same checks as the team's Radar font: it must parse and draw
+		// Latin text with umlauts. The contents decide .ttf or .otf.
+		var err error
+		if ext, ct, err = checkRadarFont("font"+ext, data); err != nil {
+			return models.MediaItem{}, err
+		}
 	}
 	maxSize := 15 * 1024 * 1024
 	if strings.HasPrefix(ct, "video/") {
@@ -177,7 +196,7 @@ func (h *MediaHandler) List(c *gin.Context) {
 	defer cancel()
 	limit := 0
 	fmt.Sscanf(c.Query("limit"), "%d", &limit)
-	items, err := listMedia(ctx, h.DB, mcpScopeFilter(c), c.Query("q"), splitTags(c.Query("tags")), limit)
+	items, err := listMedia(ctx, h.DB, mcpScopeFilter(c), c.Query("q"), splitTags(c.Query("tags")), c.Query("kind"), limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load media"})
 		return
@@ -185,8 +204,8 @@ func (h *MediaHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, items)
 }
 
-// Create takes a multipart upload: file, plus optional name, description and
-// comma-separated tags.
+// Create takes a multipart upload: file (image, video, or a .ttf/.otf font),
+// plus optional name, description and comma-separated tags.
 func (h *MediaHandler) Create(c *gin.Context) {
 	fh, err := c.FormFile("file")
 	if err != nil {

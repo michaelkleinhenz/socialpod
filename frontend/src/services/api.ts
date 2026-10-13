@@ -534,9 +534,10 @@ class ApiClient {
   }
 
   // Media library
-  getMedia(params: { q?: string; tags?: string[]; limit?: number } = {}) {
+  getMedia(params: { q?: string; tags?: string[]; kind?: 'image' | 'video' | 'font'; limit?: number } = {}) {
     const query = new URLSearchParams();
     if (params.q) query.set('q', params.q);
+    if (params.kind) query.set('kind', params.kind);
     if (params.tags?.length) query.set('tags', params.tags.join(','));
     if (params.limit) query.set('limit', String(params.limit));
     const qs = query.toString();

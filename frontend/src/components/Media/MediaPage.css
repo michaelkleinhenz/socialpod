@@ -76,3 +76,14 @@
   border-color: var(--accent);
   color: #fff;
 }
+
+.media-font-sample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-primary);
+  font-size: 1.6rem;
+  line-height: 1.2;
+  text-align: center;
+}

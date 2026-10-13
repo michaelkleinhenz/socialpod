@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Every tool tools/list advertises must be handled by callTool.
@@ -155,7 +156,7 @@ func TestCanvasSize(t *testing.T) {
 
 func TestMediaListFilter(t *testing.T) {
 	scope := bson.M{"teamId": "t"}
-	f := mediaListFilter(scope, "wingspan box", []string{"#Cover", "cover", " art "})
+	f := mediaListFilter(scope, "wingspan box", []string{"#Cover", "cover", " art "}, "")
 	if f["teamId"] != "t" {
 		t.Error("scope lost")
 	}
@@ -170,8 +171,14 @@ func TestMediaListFilter(t *testing.T) {
 	if _, ok := scope["$and"]; ok {
 		t.Error("scope was modified")
 	}
-	if f := mediaListFilter(scope, "", nil); f["$and"] != nil {
+	if f := mediaListFilter(scope, "", nil, ""); f["$and"] != nil || f["contentType"] != nil {
 		t.Error("empty search should not filter")
+	}
+	if f := mediaListFilter(scope, "", nil, "Font"); f["contentType"] != (primitive.Regex{Pattern: "^font/"}) {
+		t.Errorf("kind font: contentType = %v", f["contentType"])
+	}
+	if f := mediaListFilter(scope, "", nil, "audio"); f["contentType"] != nil {
+		t.Error("unknown kind should not filter")
 	}
 }
 
