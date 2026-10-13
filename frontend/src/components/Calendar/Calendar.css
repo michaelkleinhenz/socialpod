@@ -200,6 +200,40 @@
 .calendar-post.scheduled { border-left-color: var(--accent); }
 .calendar-post.published { border-left-color: var(--success); }
 .calendar-post.draft { border-left-color: var(--text-muted); }
+/* Drafts sit on the calendar at their planned time but will not go out:
+   a striped amber card with a dashed outline and a DRAFT badge keeps them
+   from being mistaken for scheduled posts at a glance. */
+.calendar-post.draft {
+  border-left-color: var(--warning);
+  border-top: 1px dashed rgba(245, 158, 11, 0.55);
+  border-right: 1px dashed rgba(245, 158, 11, 0.55);
+  border-bottom: 1px dashed rgba(245, 158, 11, 0.55);
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.10) 0 6px,
+    rgba(245, 158, 11, 0.03) 6px 12px
+  ), var(--bg-primary);
+}
+.calendar-post.draft:hover {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.16) 0 6px,
+    rgba(245, 158, 11, 0.06) 6px 12px
+  ), var(--bg-tertiary);
+}
+.calendar-post.draft .post-preview { font-style: italic; opacity: 0.85; }
+.post-draft-badge {
+  margin-left: 6px;
+  margin-right: auto;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+  color: var(--bg-primary);
+  background: var(--warning);
+}
 .calendar-post.failed { border-left-color: var(--danger); }
 .calendar-post.story { border-left-style: dashed; }
 .calendar-post.reel { border-left-style: dotted; }
