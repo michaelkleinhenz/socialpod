@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Transformer } from 'react-konva';
 import {
-  AlignCenter, Bold, Crop, Loader2, Plus, Redo2, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, Bold, Crop, FolderOpen, Loader2, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
-import type { Watermark } from '../../../types';
+import type { MediaItem, Watermark } from '../../../types';
 import {
   applyAdjustments, centredCrop, clamp, FILTER_PRESETS, hasAdjustments, imageLayerAttrs, loadImage,
   measureText, newLayerId, NO_ADJUSTMENTS, renderEdit, textLayerAttrs,
@@ -14,7 +14,7 @@ import {
 } from './editorModel';
 import './ImageEditor.css';
 
-type Tab = 'crop' | 'filters' | 'watermark' | 'text';
+type Tab = 'crop' | 'filters' | 'watermark' | 'media' | 'text';
 
 interface FontOption {
   label: string;
@@ -78,6 +78,9 @@ interface Props {
 const apiBase = import.meta.env.VITE_API_URL || '';
 const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 
+// The library also holds videos, which cannot go on a picture.
+const isImageMedia = (m: MediaItem) => !m.contentType?.startsWith('video/') && !/\.(mp4|mov)$/i.test(m.url);
+
 export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -90,6 +93,12 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   const [fonts, setFonts] = useState<FontOption[]>(BUILTIN_FONTS);
   const [teamFont, setTeamFont] = useState<FontOption | null>(null);
   const [addingWatermark, setAddingWatermark] = useState<string | null>(null);
+  // The team's media library, loaded when the Media tab is first opened.
+  const [media, setMedia] = useState<MediaItem[] | null>(null);
+  const [mediaQuery, setMediaQuery] = useState('');
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [addingMedia, setAddingMedia] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [saving, setSaving] = useState(false);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
@@ -104,6 +113,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   const contentRef = useRef<Konva.Group>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const fontInputRef = useRef<HTMLInputElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   const isTouch = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches, []);
@@ -140,6 +150,22 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // Media library: fetched once the Media tab has been opened, then again as
+  // the search changes.
+  const mediaOpened = tab === 'media' || media !== null;
+  useEffect(() => {
+    if (!mediaOpened) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      setMediaLoading(true);
+      api.getMedia({ q: mediaQuery.trim(), limit: 100 })
+        .then(items => { if (!cancelled) setMedia(items.filter(isImageMedia)); })
+        .catch(() => { if (!cancelled) { setMedia(m => m ?? []); toast.error('Failed to load the media library'); } })
+        .finally(() => { if (!cancelled) setMediaLoading(false); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [mediaOpened, mediaQuery]);
 
   // Stage size follows the canvas area.
   useLayoutEffect(() => {
@@ -307,12 +333,14 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     setTab(t);
     if (t === 'crop') setSelectedId(null);
     else if (t === 'text' && selected?.kind !== 'text') setSelectedId(null);
-    else if (t === 'watermark' && selected?.kind !== 'image') setSelectedId(null);
+    else if ((t === 'watermark' || t === 'media') && selected?.kind !== 'image') setSelectedId(null);
   };
 
   const selectLayer = (l: EditorLayer) => {
     setSelectedId(l.id);
-    setTab(l.kind === 'text' ? 'text' : 'watermark');
+    // An image layer keeps the tab it is on when that tab handles images too.
+    if (l.kind === 'text') setTab('text');
+    else if (tab !== 'watermark' && tab !== 'media') setTab(l.origin);
   };
 
   // --- Crop -----------------------------------------------------------------
@@ -394,11 +422,55 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         cx = crop.x + crop.width - margin - width / 2;
         cy = crop.y + crop.height - margin - height / 2;
       }
-      addLayer({ id: newLayerId(), kind: 'image', img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
+      addLayer({ id: newLayerId(), kind: 'image', origin: 'watermark', img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
     } catch {
       toast.error('Failed to load that watermark');
     } finally {
       setAddingWatermark(null);
+    }
+  };
+
+  // --- Media ----------------------------------------------------------------
+
+  const addMedia = async (item: MediaItem) => {
+    if (!crop) return;
+    setAddingMedia(item.id);
+    try {
+      const img = await loadImage(resolveUrl(item.url));
+      const r = img.naturalWidth / img.naturalHeight;
+      const cropRatio = crop.width / crop.height;
+      // A picture of the crop's own shape fills it, as a background or a
+      // frame would; anything else goes in the middle at about half size,
+      // ready to be placed.
+      const share = Math.abs(r - cropRatio) / cropRatio < 0.03 ? 1 : 0.5;
+      let width = crop.width * share;
+      let height = width / r;
+      if (height > crop.height * share) { height = crop.height * share; width = height * r; }
+      addLayer({
+        id: newLayerId(), kind: 'image', origin: 'media', img,
+        x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
+      });
+    } catch {
+      toast.error('Failed to load that image');
+    } finally {
+      setAddingMedia(null);
+    }
+  };
+
+  // Adds a file to the library and puts it on the picture straight away.
+  const uploadMedia = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingMedia(true);
+    try {
+      const item = await api.uploadMedia(file);
+      setMedia(prev => [item, ...(prev ?? []).filter(m => m.id !== item.id)]);
+      await addMedia(item);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingMedia(false);
     }
   };
 
@@ -516,6 +588,28 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     if (tab === 'crop') return;
     if (e.target === e.target.getStage() || e.target === baseRef.current) setSelectedId(null);
   };
+
+  // Opacity, fit, centre and remove for the selected watermark or media image.
+  const imageLayerControls = selected?.kind === 'image' && (
+    <>
+      <label className="ie-slider">
+        <span>Opacity</span>
+        <input
+          type="range"
+          min={10}
+          max={100}
+          value={Math.round(selected.opacity * 100)}
+          onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 }, `opacity:${selected.id}`)}
+        />
+        <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
+      </label>
+      <div className="ie-row">
+        <button className="ie-chip" onClick={fitSelectedImage}><Maximize size={14} /> Fit</button>
+        <button className="ie-chip" onClick={centreSelected}><AlignCenter size={14} /> Centre</button>
+        <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+      </div>
+    </>
+  );
 
   const anchorSize = isTouch ? 22 : 11;
   const layerTransformer = tab !== 'crop';
@@ -716,28 +810,61 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                 ))}
               </div>
             )}
-            {selected?.kind === 'image' ? (
-              <>
-                <label className="ie-slider">
-                  <span>Opacity</span>
-                  <input
-                    type="range"
-                    min={10}
-                    max={100}
-                    value={Math.round(selected.opacity * 100)}
-                    onChange={e => updateLayer(selected.id, { opacity: Number(e.target.value) / 100 }, `opacity:${selected.id}`)}
-                  />
-                  <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
-                </label>
-                <div className="ie-row">
-                  <button className="ie-chip" onClick={fitSelectedImage}><Maximize size={14} /> Fit</button>
-                  <button className="ie-chip" onClick={centreSelected}><AlignCenter size={14} /> Centre</button>
-                  <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
-                </div>
-              </>
-            ) : watermarks.length > 0 && (
+            {selected?.kind === 'image' ? imageLayerControls : watermarks.length > 0 && (
               <p className="ie-hint">Tap a watermark to add it, then drag it, pull its corners or turn it on the picture.</p>
             )}
+          </>
+        )}
+
+        {tab === 'media' && (
+          <>
+            <div className="ie-row">
+              <div className="ie-search">
+                <Search size={16} />
+                <input
+                  type="search"
+                  value={mediaQuery}
+                  onChange={e => setMediaQuery(e.target.value)}
+                  placeholder="Search the media library"
+                />
+              </div>
+              <button
+                className="ie-icon-btn"
+                onClick={() => mediaInputRef.current?.click()}
+                disabled={uploadingMedia}
+                title="Add an image to the library"
+              >
+                {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
+              </button>
+            </div>
+            {media === null ? (
+              <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+            ) : media.length === 0 ? (
+              <p className="ie-hint">
+                {mediaLoading ? 'Searching…' : mediaQuery.trim()
+                  ? 'Nothing in the library matches that.'
+                  : 'The media library has no images yet. Add them here or on the Media Library page.'}
+              </p>
+            ) : (
+              <div className="ie-row ie-scroll">
+                {media.map(m => (
+                  <button
+                    key={m.id}
+                    className="ie-thumb"
+                    onClick={() => addMedia(m)}
+                    disabled={addingMedia !== null}
+                    title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
+                  >
+                    <img src={resolveUrl(m.url)} alt="" loading="lazy" />
+                    <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selected?.kind === 'image' ? imageLayerControls : media && media.length > 0 && (
+              <p className="ie-hint">Tap an image to add it, then drag it, pull its corners or turn it on the picture.</p>
+            )}
+            <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
           </>
         )}
 
@@ -821,6 +948,7 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         <button className={tab === 'crop' ? 'active' : ''} onClick={() => switchTab('crop')}><Crop size={20} /><span>Crop</span></button>
         <button className={tab === 'filters' ? 'active' : ''} onClick={() => switchTab('filters')}><Sparkles size={20} /><span>Filters</span></button>
         <button className={tab === 'watermark' ? 'active' : ''} onClick={() => switchTab('watermark')}><Stamp size={20} /><span>Watermark</span></button>
+        <button className={tab === 'media' ? 'active' : ''} onClick={() => switchTab('media')}><FolderOpen size={20} /><span>Media</span></button>
         <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>
       </nav>
     </div>
