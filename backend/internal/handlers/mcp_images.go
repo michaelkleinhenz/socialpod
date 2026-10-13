@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/image/font/opentype"
 )
 
@@ -96,16 +97,17 @@ func imageToolDefinitions() []mcpTool {
 		},
 		{
 			Name: "list_media",
-			Description: "Search the team's media library: uploaded photos, artwork, logos, backgrounds and fonts with a name, a description and tags. " +
-				"All words of query must appear in the name, description or tags; every tag in tags must be set; kind limits the results to images, videos or fonts. " +
-				"A font's id goes into fontMediaId of a compose_image text layer. " +
+			Description: "Search the team's media library: uploaded photos, artwork, logos, backgrounds and fonts, and the team's colours, each with a name, a description and tags. " +
+				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts or colours. " +
+				"A font's id goes into fontMediaId of a compose_image text layer. A colour entry has no file: its color (#rrggbb or #rrggbbaa) goes into any colour field of compose_image, " +
+				"and its description says how and where the team uses it; follow that. " +
 				"With preview=true a small thumbnail of each hit (up to 12) is attached; for a font, a text sample set in it.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query":   map[string]any{"type": "string", "description": "Words to search for"},
 					"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required tags"},
-					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font"}, "description": "Only this kind of file (default all)"},
+					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color"}, "description": "Only this kind of entry (default all)"},
 					"limit":   map[string]any{"type": "number", "description": "Maximum results (default 50, max 200)"},
 					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
 				},
@@ -114,28 +116,31 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "add_media",
 			Description: "Add a file to the media library from a URL (an upload URL or a public URL) or from base64 data, with a name, a description of what it shows and tags. " +
-				"Images, videos (mp4, mov) and fonts (.ttf, .otf; a font must draw Latin text with umlauts, max 10 MB) are accepted.",
+				"Images, videos (mp4, mov) and fonts (.ttf, .otf; a font must draw Latin text with umlauts, max 10 MB) are accepted. " +
+				"Or add a colour: give color instead of url/data, and say in description how to use it.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"url":         map[string]any{"type": "string", "description": "Upload URL (/api/uploads/...) or public http(s) URL"},
 					"data":        map[string]any{"type": "string", "description": "Base64 file data, instead of url"},
 					"filename":    map[string]any{"type": "string", "description": "File name with extension, required with data"},
+					"color":       map[string]any{"type": "string", "description": "A colour (#rgb, #rrggbb or #rrggbbaa), instead of url or data"},
 					"name":        map[string]any{"type": "string", "description": "Display name"},
-					"description": map[string]any{"type": "string", "description": "What the file shows"},
+					"description": map[string]any{"type": "string", "description": "What the file shows, or for a colour how to use it"},
 					"tags":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 				},
 			},
 		},
 		{
 			Name:        "update_media",
-			Description: "Change a media library entry's name, description or tags. Only provided fields are changed; tags replaces the whole list.",
+			Description: "Change a media library entry's name, description or tags, or a colour entry's color. Only provided fields are changed; tags replaces the whole list.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"id":          map[string]any{"type": "string", "description": "Media ID"},
 					"name":        map[string]any{"type": "string"},
 					"description": map[string]any{"type": "string"},
+					"color":       map[string]any{"type": "string", "description": "Colour entries only: the new colour"},
 					"tags":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
 				"required": []string{"id"},
@@ -143,7 +148,7 @@ func imageToolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_media",
-			Description: "Remove an entry from the media library. Its file is freed unless a post, draft or anything else still uses it.",
+			Description: "Remove an entry (a file or a colour) from the media library. A file is freed unless a post, draft or anything else still uses it.",
 			InputSchema: map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Media ID"}},
@@ -170,6 +175,7 @@ func imageToolDefinitions() []mcpTool {
 				"team watermarks and media library images, text (headline, caption, badge), rectangles and gradients. The result is stored as an upload; " +
 				"pass its url in imageUrls of create_post or update_post. A preview is attached so you can check it and adjust. " +
 				"Team watermarks are often full-canvas PNG overlays (frames, banners): put those on top with anchor full. " +
+				"Take colours from the team's palette (list_media with kind color) and use each as its description says. " +
 				"For text over a photo, add a gradient or a boxColor so it stays legible. Keep text short; Instagram images carry a few words, not the caption.",
 			InputSchema: map[string]any{
 				"type": "object",
@@ -235,6 +241,9 @@ func (h *MCPHandler) loadImageBytes(ctx context.Context, c *gin.Context, ref map
 		var item models.MediaItem
 		if err := h.DB.Media().FindOne(ctx, filter).Decode(&item); err != nil {
 			return nil, "", fmt.Errorf("media %s not found", id)
+		}
+		if item.Color != "" {
+			return nil, "", fmt.Errorf("media %s is the colour %s, not a file: use it in a colour field", id, item.Color)
 		}
 		data, err := readImageBytes(ctx, h.DB, h.UploadDir, item.URL)
 		return data, item.URL, err
@@ -421,7 +430,7 @@ func (h *MCPHandler) toolUpdateWatermark(c *gin.Context, args map[string]any) (a
 
 type mediaInfo struct {
 	models.MediaItem
-	AbsoluteURL string `json:"absoluteUrl"`
+	AbsoluteURL string `json:"absoluteUrl,omitempty"`
 }
 
 func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bool) {
@@ -454,6 +463,14 @@ func (h *MCPHandler) toolAddMedia(c *gin.Context, args map[string]any) (any, boo
 	defer cancel()
 	name, desc, tags := strArg(args, "name"), strArg(args, "description"), strSliceArg(args, "tags")
 
+	if hex := strArg(args, "color"); hex != "" {
+		item, err := addMediaColor(ctx, c, h.DB, hex, name, desc, tags)
+		if err != nil {
+			return map[string]string{"error": err.Error()}, true
+		}
+		return mediaInfo{MediaItem: item}, false
+	}
+
 	if b64 := strArg(args, "data"); b64 != "" {
 		filename := strArg(args, "filename")
 		if filename == "" {
@@ -475,7 +492,7 @@ func (h *MCPHandler) toolAddMedia(c *gin.Context, args map[string]any) (any, boo
 
 	raw := strArg(args, "url")
 	if raw == "" {
-		return map[string]string{"error": "give url or data"}, true
+		return map[string]string{"error": "give url, data or color"}, true
 	}
 	data, src, err := h.loadImageBytes(ctx, c, map[string]any{"url": raw})
 	if err != nil {
@@ -519,7 +536,10 @@ func (h *MCPHandler) toolUpdateMedia(c *gin.Context, args map[string]any) (any, 
 	if err != nil {
 		return map[string]string{"error": "Invalid media ID"}, true
 	}
-	var name, desc *string
+	var name, desc, hex *string
+	if v, ok := args["color"].(string); ok {
+		hex = &v
+	}
 	if v, ok := args["name"].(string); ok {
 		name = &v
 	}
@@ -529,9 +549,12 @@ func (h *MCPHandler) toolUpdateMedia(c *gin.Context, args map[string]any) (any, 
 	_, setTags := args["tags"]
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, name, desc, strSliceArg(args, "tags"), setTags)
-	if err != nil {
+	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, name, desc, hex, strSliceArg(args, "tags"), setTags)
+	if err == mongo.ErrNoDocuments {
 		return map[string]string{"error": "Media not found"}, true
+	}
+	if err != nil {
+		return map[string]string{"error": err.Error()}, true
 	}
 	return mediaInfo{MediaItem: item, AbsoluteURL: absoluteURL(c, item.URL)}, false
 }

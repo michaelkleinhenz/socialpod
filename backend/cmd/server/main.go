@@ -256,6 +256,7 @@ func main() {
 		// Media library
 		auth.GET("/media", mediaHandler.List)
 		auth.POST("/media", mediaHandler.Create)
+		auth.POST("/media/colors", mediaHandler.CreateColor)
 		auth.PUT("/media/:id", mediaHandler.Update)
 		auth.DELETE("/media/:id", mediaHandler.Delete)
 

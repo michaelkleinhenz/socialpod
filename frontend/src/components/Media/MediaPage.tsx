@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Film, FolderOpen, Pencil, Search, Trash2, Type, Upload, X } from 'lucide-react';
+import { Check, Film, FolderOpen, Palette, Pencil, Search, Trash2, Type, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { MediaItem } from '../../types';
+import { ColorField, ColorFormModal } from './ColorFormModal';
+import { HEX_COLOR } from './mediaColor';
 import '../Admin/Admin.css';
 import './MediaPage.css';
 
@@ -58,6 +60,8 @@ export function MediaPage() {
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editTags, setEditTags] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [addingColor, setAddingColor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
@@ -98,14 +102,21 @@ export function MediaPage() {
     setEditName(item.name);
     setEditDescription(item.description || '');
     setEditTags((item.tags || []).join(', '));
+    setEditColor(item.color || '');
   };
 
-  const saveEdit = async (id: string) => {
+  const saveEdit = async (item: MediaItem) => {
+    const id = item.id;
+    if (item.color && !HEX_COLOR.test(editColor.trim())) {
+      toast.error('Enter the colour as #rrggbb or #rrggbbaa');
+      return;
+    }
     try {
       const updated = await api.updateMedia(id, {
         name: editName.trim(),
         description: editDescription.trim(),
         tags: parseTags(editTags),
+        ...(item.color ? { color: editColor.trim() } : {}),
       });
       setItems(prev => prev.map(i => (i.id === id ? updated : i)));
       setEditing(null);
@@ -137,7 +148,8 @@ export function MediaPage() {
       <p className="watermarks-description">
         Photos, artwork, logos, backgrounds and fonts for post images. Describe what each file shows and tag it: MCP agents
         search the library by name, description and tags and compose post images from it together with the watermarks,
-        setting their text in the fonts uploaded here (.ttf or .otf).
+        setting their text in the fonts uploaded here (.ttf or .otf) and following the team colours: say in each
+        colour's description how and where to use it.
       </p>
 
       <div className="media-toolbar">
@@ -167,6 +179,9 @@ export function MediaPage() {
         <button className="btn btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
           <Upload size={16} /> {uploading ? 'Uploading...' : 'Upload'}
         </button>
+        <button className="btn btn-secondary" onClick={() => setAddingColor(true)}>
+          <Palette size={16} /> Add Colour
+        </button>
       </div>
 
       {tagFilter.length > 0 && (
@@ -182,14 +197,18 @@ export function MediaPage() {
       {!loading && items.length === 0 ? (
         <div className="empty-state">
           <FolderOpen size={32} />
-          <p>{query || tagFilter.length ? 'Nothing matches the search.' : 'No media yet. Upload material to build post images from.'}</p>
+          <p>{query || tagFilter.length ? 'Nothing matches the search.' : 'No media yet. Upload material or add colours to build post images from.'}</p>
         </div>
       ) : (
         <div className="watermark-grid">
           {items.map(item => (
             <div key={item.id} className="watermark-card">
               <div className="watermark-preview media-preview">
-                {item.contentType?.startsWith('video/') ? (
+                {item.color ? (
+                  <div className="media-color-swatch" style={{ background: item.color }}>
+                    <span>{item.color}</span>
+                  </div>
+                ) : item.contentType?.startsWith('video/') ? (
                   <Film size={40} />
                 ) : isFont(item) ? (
                   <FontPreview item={item} />
@@ -200,19 +219,20 @@ export function MediaPage() {
               {editing === item.id ? (
                 <div className="watermark-edit">
                   <input className="input" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" />
+                  {item.color && <ColorField value={editColor} onChange={setEditColor} />}
                   <textarea
                     className="input"
                     rows={3}
                     value={editDescription}
                     onChange={e => setEditDescription(e.target.value)}
-                    placeholder="What the file shows"
+                    placeholder={item.color ? 'How to use this colour' : 'What the file shows'}
                   />
                   <input className="input" value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="Tags, comma-separated" />
                   <div className="watermark-edit-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} title="Cancel">
                       <X size={14} />
                     </button>
-                    <button className="btn btn-primary btn-sm" onClick={() => saveEdit(item.id)} title="Save">
+                    <button className="btn btn-primary btn-sm" onClick={() => saveEdit(item)} title="Save">
                       <Check size={14} />
                     </button>
                   </div>
@@ -250,6 +270,16 @@ export function MediaPage() {
             </div>
           ))}
         </div>
+      )}
+      {addingColor && (
+        <ColorFormModal
+          onClose={() => setAddingColor(false)}
+          onCreated={item => {
+            setAddingColor(false);
+            setItems(prev => [item, ...prev]);
+            toast.success('Colour added');
+          }}
+        />
       )}
     </div>
   );

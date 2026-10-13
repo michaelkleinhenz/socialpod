@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -42,7 +43,57 @@ var mediaContentTypes = map[string]string{
 func isFontContentType(ct string) bool { return strings.HasPrefix(ct, "font/") }
 
 // mediaKindPrefixes maps a list filter kind to the content type prefix.
-var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/"}
+var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/", "color": "color/"}
+
+var hexColorPattern = regexp.MustCompile(`^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$`)
+
+// normalizeColor turns #rgb, #rrggbb or #rrggbbaa (the # optional) into
+// lower-case #rrggbb, or #rrggbbaa when it is not fully opaque.
+func normalizeColor(s string) (string, error) {
+	h := strings.ToLower(strings.TrimSpace(s))
+	if !hexColorPattern.MatchString(h) {
+		return "", fmt.Errorf("%q is not a colour (use #rrggbb or #rrggbbaa)", s)
+	}
+	h = strings.TrimPrefix(h, "#")
+	if len(h) == 3 {
+		h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
+	}
+	if len(h) == 8 && strings.HasSuffix(h, "ff") {
+		h = h[:6]
+	}
+	return "#" + h, nil
+}
+
+// addMediaColor records a colour in the library. The description is meant to
+// say how and where to use it.
+func addMediaColor(ctx context.Context, c *gin.Context, db *database.MongoDB, hex, name, description string, tags []string) (models.MediaItem, error) {
+	hex, err := normalizeColor(hex)
+	if err != nil {
+		return models.MediaItem{}, err
+	}
+	if strings.TrimSpace(name) == "" {
+		name = hex
+	}
+	userID, _ := c.Get("userId")
+	uid, _ := primitive.ObjectIDFromHex(userID.(string))
+	item := models.MediaItem{
+		UserID:      uid,
+		TeamID:      teamIDFrom(c),
+		Color:       hex,
+		Name:        strings.TrimSpace(name),
+		Description: strings.TrimSpace(description),
+		Tags:        normalizeTags(tags),
+		ContentType: models.MediaColorType,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	res, err := db.Media().InsertOne(ctx, item)
+	if err != nil {
+		return models.MediaItem{}, err
+	}
+	item.ID = res.InsertedID.(primitive.ObjectID)
+	return item, nil
+}
 
 // normalizeTags lower-cases, trims and de-duplicates tags.
 func normalizeTags(tags []string) []string {
@@ -64,9 +115,9 @@ func splitTags(s string) []string {
 }
 
 // mediaListFilter builds the scoped query for a library search: words of
-// query must all appear in the name, description or tags; every tag given
-// must be present; kind (image, video, font; empty = all) limits the content
-// type.
+// query must all appear in the name, description, tags or colour value; every
+// tag given must be present; kind (image, video, font, color; empty = all)
+// limits the content type.
 func mediaListFilter(scope bson.M, query string, tags []string, kind string) bson.M {
 	filter := bson.M{}
 	for k, v := range scope {
@@ -79,7 +130,7 @@ func mediaListFilter(scope bson.M, query string, tags []string, kind string) bso
 	for _, w := range strings.Fields(query) {
 		re := primitive.Regex{Pattern: regexp.QuoteMeta(w), Options: "i"}
 		and = append(and, bson.M{"$or": []bson.M{
-			{"name": re}, {"description": re}, {"tags": re},
+			{"name": re}, {"description": re}, {"tags": re}, {"color": re},
 		}})
 	}
 	if tags = normalizeTags(tags); len(tags) > 0 {
@@ -168,10 +219,22 @@ func recordMediaItem(ctx context.Context, c *gin.Context, db *database.MongoDB, 
 	return item, nil
 }
 
+// errNotAColor is returned when a colour is set on an entry that is a file.
+var errNotAColor = fmt.Errorf("only a colour entry has a colour to change")
+
 // updateMediaItem changes the given fields of a library entry; nil leaves a
-// field as is.
-func updateMediaItem(ctx context.Context, db *database.MongoDB, scope bson.M, id primitive.ObjectID, name, description *string, tags []string, setTags bool) (models.MediaItem, error) {
+// field as is. hex changes a colour entry's colour.
+func updateMediaItem(ctx context.Context, db *database.MongoDB, scope bson.M, id primitive.ObjectID, name, description, hex *string, tags []string, setTags bool) (models.MediaItem, error) {
 	set := bson.M{"updatedAt": time.Now()}
+	filter := bson.M{"_id": id}
+	if hex != nil {
+		norm, err := normalizeColor(*hex)
+		if err != nil {
+			return models.MediaItem{}, err
+		}
+		set["color"] = norm
+		filter["contentType"] = models.MediaColorType
+	}
 	if name != nil && strings.TrimSpace(*name) != "" {
 		set["name"] = strings.TrimSpace(*name)
 	}
@@ -181,13 +244,18 @@ func updateMediaItem(ctx context.Context, db *database.MongoDB, scope bson.M, id
 	if setTags {
 		set["tags"] = normalizeTags(tags)
 	}
-	filter := bson.M{"_id": id}
 	for k, v := range scope {
 		filter[k] = v
 	}
 	var item models.MediaItem
 	err := db.Media().FindOneAndUpdate(ctx, filter, bson.M{"$set": set},
 		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&item)
+	if err == mongo.ErrNoDocuments && hex != nil {
+		delete(filter, "contentType")
+		if n, _ := db.Media().CountDocuments(ctx, filter); n > 0 {
+			return item, errNotAColor
+		}
+	}
 	return item, err
 }
 
@@ -237,6 +305,28 @@ func (h *MediaHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, item)
 }
 
+// CreateColor adds a colour: {color, name, description, tags}.
+func (h *MediaHandler) CreateColor(c *gin.Context) {
+	var input struct {
+		Color       string   `json:"color" binding:"required"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Tags        []string `json:"tags"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	item, err := addMediaColor(ctx, c, h.DB, input.Color, input.Name, input.Description, input.Tags)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, item)
+}
+
 func (h *MediaHandler) Update(c *gin.Context) {
 	id, err := primitive.ObjectIDFromHex(c.Param("id"))
 	if err != nil {
@@ -246,6 +336,7 @@ func (h *MediaHandler) Update(c *gin.Context) {
 	var input struct {
 		Name        *string   `json:"name"`
 		Description *string   `json:"description"`
+		Color       *string   `json:"color"`
 		Tags        *[]string `json:"tags"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -258,9 +349,13 @@ func (h *MediaHandler) Update(c *gin.Context) {
 	if input.Tags != nil {
 		tags = *input.Tags
 	}
-	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, input.Name, input.Description, tags, input.Tags != nil)
-	if err != nil {
+	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, input.Name, input.Description, input.Color, tags, input.Tags != nil)
+	if err == mongo.ErrNoDocuments {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, item)

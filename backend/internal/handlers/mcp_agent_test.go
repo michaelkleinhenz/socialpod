@@ -182,6 +182,29 @@ func TestMediaListFilter(t *testing.T) {
 	}
 }
 
+func TestNormalizeColor(t *testing.T) {
+	for in, want := range map[string]string{
+		"#1A2b3C":   "#1a2b3c",
+		"1a2b3c":    "#1a2b3c",
+		" #abc ":    "#aabbcc",
+		"#1a2b3cff": "#1a2b3c",
+		"#1a2b3c80": "#1a2b3c80",
+		"#ffffffff": "#ffffff",
+	} {
+		if got, err := normalizeColor(in); err != nil || got != want {
+			t.Errorf("normalizeColor(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "red", "#12", "#12345", "#1234567", "#gggggg"} {
+		if _, err := normalizeColor(bad); err == nil {
+			t.Errorf("normalizeColor(%q) accepted", bad)
+		}
+	}
+	if f := mediaListFilter(bson.M{}, "", nil, "color"); f["contentType"] != (primitive.Regex{Pattern: "^color/"}) {
+		t.Errorf("kind color: contentType = %v", f["contentType"])
+	}
+}
+
 func TestCheckCaption(t *testing.T) {
 	good := "Der neue Feld: kaufen oder warten?\n\nSchick das deiner Spielerunde, die immer zu spät kommt.\nWas meint ihr?\n\n#brettspiele #kennerspiel #spielessen"
 	checks := checkCaption(good, nil, 1)

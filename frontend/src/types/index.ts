@@ -91,7 +91,10 @@ export interface MediaItem {
   id: string;
   userId: string;
   teamId?: string;
+  /** Empty for a colour entry, which carries color instead of a file. */
   url: string;
+  /** #rrggbb or #rrggbbaa, colour entries only. */
+  color?: string;
   name: string;
   description?: string;
   tags?: string[];
