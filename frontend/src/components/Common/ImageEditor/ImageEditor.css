@@ -227,6 +227,31 @@
   font-size: 16px;
 }
 
+.ie-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.ie-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text-primary);
+  /* 16px keeps iOS from zooming into the field. */
+  font-size: 16px;
+}
+
 .ie-swatch {
   width: 32px;
   height: 32px;
@@ -252,6 +277,9 @@
 }
 
 .ie-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: 13px;
   color: var(--text-muted);

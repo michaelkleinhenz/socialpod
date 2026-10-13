@@ -18,6 +18,8 @@ export interface CropBox {
 export interface ImageLayer {
   id: string;
   kind: 'image';
+  // The tab it was added from, which selecting it later reopens.
+  origin: 'watermark' | 'media';
   img: HTMLImageElement;
   x: number;
   y: number;
