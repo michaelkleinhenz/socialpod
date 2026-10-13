@@ -529,6 +529,13 @@ export interface RadarSettings {
   captionIntro?: string;
   captionOutro?: string;
   accentColor?: string;
+  backgroundColor?: string;
+  panelColor?: string;
+  textColor?: string;
+  mutedColor?: string;
+  badgeYesColor?: string;
+  badgeNoColor?: string;
+  badgeOpenColor?: string;
   fontUrl?: string;
   fontName?: string;
 }

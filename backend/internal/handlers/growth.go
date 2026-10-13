@@ -72,8 +72,22 @@ func defaultGrowthSettings(g *models.TeamGrowthSettings) models.TeamGrowthSettin
 	if radar.BadgeQuestion == "" {
 		radar.BadgeQuestion = "Kommt's auf Deutsch?"
 	}
-	if radar.AccentColor == "" {
-		radar.AccentColor = "#6366f1"
+	for _, c := range []struct {
+		field *string
+		def   string
+	}{
+		{&radar.AccentColor, services.DefaultRadarAccent},
+		{&radar.BackgroundColor, services.DefaultRadarBackground},
+		{&radar.PanelColor, services.DefaultRadarPanel},
+		{&radar.TextColor, services.DefaultRadarText},
+		{&radar.MutedColor, services.DefaultRadarMuted},
+		{&radar.BadgeYesColor, services.DefaultRadarBadgeYes},
+		{&radar.BadgeNoColor, services.DefaultRadarBadgeNo},
+		{&radar.BadgeOpenColor, services.DefaultRadarBadgeOpen},
+	} {
+		if *c.field == "" {
+			*c.field = c.def
+		}
 	}
 	out.Radar = &radar
 	return out
@@ -170,8 +184,19 @@ func validateGrowthSettings(g *models.TeamGrowthSettings) error {
 		return fmt.Errorf("the agent draft limit must be between 0 and 500")
 	}
 	if r := g.Radar; r != nil {
-		if r.AccentColor != "" && !hexColorRe.MatchString(r.AccentColor) {
-			return fmt.Errorf("the accent colour must be a hex colour like #6366f1")
+		for _, c := range []struct{ name, value string }{
+			{"accent", r.AccentColor},
+			{"background", r.BackgroundColor},
+			{"panel", r.PanelColor},
+			{"text", r.TextColor},
+			{"muted text", r.MutedColor},
+			{"\"Ja\" badge", r.BadgeYesColor},
+			{"\"Nein\" badge", r.BadgeNoColor},
+			{"\"Offen\" badge", r.BadgeOpenColor},
+		} {
+			if c.value != "" && !hexColorRe.MatchString(c.value) {
+				return fmt.Errorf("the %s colour must be a hex colour like #6366f1", c.name)
+			}
 		}
 		for _, u := range []string{r.CoverImageURL, r.ClosingImageURL} {
 			if u != "" && uploadFilename(u) == "" {

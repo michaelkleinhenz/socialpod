@@ -281,13 +281,22 @@ func (h *RadarHandler) Generate(c *gin.Context) {
 
 // render draws and stores the slides and composes the caption.
 func (h *RadarHandler) render(ctx context.Context, drafts []models.NewsDraft, radar models.RadarSettings, now time.Time) (*RadarContent, error) {
-	accent := services.ParseHexColor(radar.AccentColor)
+	colors := services.ParseRadarColors(services.RadarColorHexes{
+		Accent:     radar.AccentColor,
+		Background: radar.BackgroundColor,
+		Panel:      radar.PanelColor,
+		Text:       radar.TextColor,
+		Muted:      radar.MutedColor,
+		BadgeYes:   radar.BadgeYesColor,
+		BadgeNo:    radar.BadgeNoColor,
+		BadgeOpen:  radar.BadgeOpenColor,
+	})
 	fonts := h.loadFont(ctx, radar.FontURL)
 	var slides [][]byte
 
 	_, week := now.ISOWeek()
 	subtitle := fmt.Sprintf("KW %d · %d %s", week, len(drafts), pluralDE(len(drafts), "Ankündigung", "Ankündigungen"))
-	cover, err := services.RenderRadarCover(h.loadImage(ctx, radar.CoverImageURL), radar.Title, subtitle, accent, fonts)
+	cover, err := services.RenderRadarCover(h.loadImage(ctx, radar.CoverImageURL), radar.Title, subtitle, colors, fonts)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +313,7 @@ func (h *RadarHandler) render(ctx context.Context, drafts []models.NewsDraft, ra
 			Title:         radarItemTitle(d),
 			Image:         img,
 			GermanRelease: d.GermanRelease,
-		}, radar.Title, radar.BadgeQuestion, accent, fonts)
+		}, radar.Title, radar.BadgeQuestion, colors, fonts)
 		if err != nil {
 			return nil, err
 		}
@@ -315,7 +324,7 @@ func (h *RadarHandler) render(ctx context.Context, drafts []models.NewsDraft, ra
 	if closingText == "" {
 		closingText = defaultRadarClosingText
 	}
-	closing, err := services.RenderRadarClosing(h.loadImage(ctx, radar.ClosingImageURL), closingText, accent, fonts)
+	closing, err := services.RenderRadarClosing(h.loadImage(ctx, radar.ClosingImageURL), closingText, colors, fonts)
 	if err != nil {
 		return nil, err
 	}

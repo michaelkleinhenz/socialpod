@@ -133,3 +133,12 @@
   flex: 1; min-width: 0; min-height: 56px; padding: 8px 12px; border-radius: 6px; border: 1px dashed var(--border-light);
   display: flex; align-items: center; font-size: 26px; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
+.radar-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 12px; margin-top: 6px; }
+.radar-color { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; margin: 0; }
+.radar-color input[type="color"] { width: 36px; height: 30px; padding: 2px; border: 1px solid var(--border-light); border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0; }
+.radar-color span { display: flex; flex-direction: column; min-width: 0; }
+.radar-color small { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radar-preview { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 4px; }
+.radar-preview-slide { margin: 0; flex: 0 0 150px; }
+.radar-preview-slide svg { display: block; width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border-light); }
+.radar-preview-slide figcaption { font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 4px; }

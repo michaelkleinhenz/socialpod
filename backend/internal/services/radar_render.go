@@ -26,14 +26,58 @@ const (
 	RadarSlideHeight = 1350
 )
 
+// Default Radar colours, as "#rrggbb". Teams can override each one.
+const (
+	DefaultRadarAccent     = "#6366f1"
+	DefaultRadarBackground = "#0f172a"
+	DefaultRadarPanel      = "#1e293b"
+	DefaultRadarText       = "#f8fafc"
+	DefaultRadarMuted      = "#94a3b8"
+	DefaultRadarBadgeYes   = "#16a34a"
+	DefaultRadarBadgeNo    = "#dc2626"
+	DefaultRadarBadgeOpen  = "#d97706"
+)
+
+// RadarColors are the colours the slides are drawn with. Accent fills the
+// drawn cover and marks the item header and the closing slide's bar;
+// Background is the item and closing slides' ground, Panel the box behind a
+// game image; Text is titles and badge labels, Muted the position and the
+// badge question; the badge colours fill the Ja/Nein/Offen pill.
+type RadarColors struct {
+	Accent     color.RGBA
+	Background color.RGBA
+	Panel      color.RGBA
+	Text       color.RGBA
+	Muted      color.RGBA
+	BadgeYes   color.RGBA
+	BadgeNo    color.RGBA
+	BadgeOpen  color.RGBA
+}
+
+// RadarColorHexes are RadarColors as "#rrggbb" strings; an empty or invalid
+// value takes the default.
+type RadarColorHexes struct {
+	Accent, Background, Panel, Text, Muted, BadgeYes, BadgeNo, BadgeOpen string
+}
+
+// ParseRadarColors resolves the hex strings, filling in defaults.
+func ParseRadarColors(h RadarColorHexes) RadarColors {
+	return RadarColors{
+		Accent:     parseHex(h.Accent, DefaultRadarAccent),
+		Background: parseHex(h.Background, DefaultRadarBackground),
+		Panel:      parseHex(h.Panel, DefaultRadarPanel),
+		Text:       parseHex(h.Text, DefaultRadarText),
+		Muted:      parseHex(h.Muted, DefaultRadarMuted),
+		BadgeYes:   parseHex(h.BadgeYes, DefaultRadarBadgeYes),
+		BadgeNo:    parseHex(h.BadgeNo, DefaultRadarBadgeNo),
+		BadgeOpen:  parseHex(h.BadgeOpen, DefaultRadarBadgeOpen),
+	}
+}
+
+// DefaultRadarColors are the colours of a team that set none.
+func DefaultRadarColors() RadarColors { return ParseRadarColors(RadarColorHexes{}) }
+
 var (
-	radarBg      = color.RGBA{0x0f, 0x17, 0x2a, 0xff}
-	radarPanel   = color.RGBA{0x1e, 0x29, 0x3b, 0xff}
-	radarText    = color.RGBA{0xf8, 0xfa, 0xfc, 0xff}
-	radarMuted   = color.RGBA{0x94, 0xa3, 0xb8, 0xff}
-	badgeYes     = color.RGBA{0x16, 0xa3, 0x4a, 0xff}
-	badgeNo      = color.RGBA{0xdc, 0x26, 0x26, 0xff}
-	badgeOpen    = color.RGBA{0xd9, 0x77, 0x06, 0xff}
 	fontsOnce    sync.Once
 	defaultFonts RadarFonts
 	fontParseErr error
@@ -97,16 +141,24 @@ func face(f *opentype.Font, size float64) font.Face {
 	return fc
 }
 
-// ParseHexColor reads "#rrggbb", falling back to the default accent.
-func ParseHexColor(s string) color.RGBA {
-	c := color.RGBA{0x63, 0x66, 0xf1, 0xff}
-	if len(s) == 7 && s[0] == '#' {
-		var r, g, b uint8
-		if _, err := fmt.Sscanf(s[1:], "%02x%02x%02x", &r, &g, &b); err == nil {
-			c = color.RGBA{r, g, b, 0xff}
-		}
+// parseHex reads "#rrggbb", falling back to def (itself "#rrggbb").
+func parseHex(s, def string) color.RGBA {
+	if c, ok := hexRGBA(s); ok {
+		return c
 	}
+	c, _ := hexRGBA(def)
 	return c
+}
+
+func hexRGBA(s string) (color.RGBA, bool) {
+	if len(s) != 7 || s[0] != '#' {
+		return color.RGBA{}, false
+	}
+	var r, g, b uint8
+	if _, err := fmt.Sscanf(s[1:], "%02x%02x%02x", &r, &g, &b); err != nil {
+		return color.RGBA{}, false
+	}
+	return color.RGBA{r, g, b, 0xff}, true
 }
 
 func newSlide(bg color.Color) *image.RGBA {
@@ -239,12 +291,12 @@ func drawCentered(dst *image.RGBA, f font.Face, c color.Color, baseline int, s s
 // RenderRadarCover draws the opening slide. With a cover image the image is
 // the slide; without one the title and subtitle are drawn on the accent
 // colour.
-func RenderRadarCover(coverImg image.Image, title, subtitle string, accent color.RGBA, fonts RadarFonts) ([]byte, error) {
+func RenderRadarCover(coverImg image.Image, title, subtitle string, colors RadarColors, fonts RadarFonts) ([]byte, error) {
 	fonts, err := fonts.resolve()
 	if err != nil {
 		return nil, err
 	}
-	slide := newSlide(accent)
+	slide := newSlide(colors.Accent)
 	if coverImg != nil {
 		fillCover(slide, coverImg)
 		return encodeSlide(slide)
@@ -254,11 +306,11 @@ func RenderRadarCover(coverImg image.Image, title, subtitle string, accent color
 	lineH := 124
 	y := RadarSlideHeight/2 - (len(lines)*lineH)/2 + 90
 	for _, l := range lines {
-		drawCentered(slide, titleFace, radarText, y, l)
+		drawCentered(slide, titleFace, colors.Text, y, l)
 		y += lineH
 	}
 	if subtitle != "" {
-		drawCentered(slide, face(fonts.Regular, 46), radarText, y+30, subtitle)
+		drawCentered(slide, face(fonts.Regular, 46), colors.Text, y+30, subtitle)
 	}
 	return encodeSlide(slide)
 }
@@ -274,22 +326,22 @@ type RadarItemSlide struct {
 
 // RenderRadarItem draws one game slide: header, the game image, its title and
 // the "Kommt's auf Deutsch?" badge.
-func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent color.RGBA, fonts RadarFonts) ([]byte, error) {
+func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, colors RadarColors, fonts RadarFonts) ([]byte, error) {
 	fonts, err := fonts.resolve()
 	if err != nil {
 		return nil, err
 	}
-	slide := newSlide(radarBg)
+	slide := newSlide(colors.Background)
 
 	// Header: the Radar title on the left, the position on the right.
 	headerFace := face(fonts.Bold, 40)
-	drawText(slide, headerFace, accent, 60, 92, strings.ToUpper(header))
+	drawText(slide, headerFace, colors.Accent, 60, 92, strings.ToUpper(header))
 	pos := fmt.Sprintf("%d/%d", item.Index, item.Total)
-	drawText(slide, headerFace, radarMuted, RadarSlideWidth-60-textWidth(headerFace, pos), 92, pos)
+	drawText(slide, headerFace, colors.Muted, RadarSlideWidth-60-textWidth(headerFace, pos), 92, pos)
 
 	// The game image on a panel.
 	box := image.Rect(60, 130, RadarSlideWidth-60, 130+880)
-	fillRoundedRect(slide, box, 28, radarPanel)
+	fillRoundedRect(slide, box, 28, colors.Panel)
 	if item.Image != nil {
 		fitInto(slide, box.Inset(20), item.Image)
 	}
@@ -298,53 +350,53 @@ func RenderRadarItem(item RadarItemSlide, header, badgeQuestion string, accent c
 	titleFace := face(fonts.Bold, 62)
 	y := 1100
 	for _, l := range wrapText(titleFace, item.Title, RadarSlideWidth-120, 2) {
-		drawText(slide, titleFace, radarText, 60, y, l)
+		drawText(slide, titleFace, colors.Text, 60, y, l)
 		y += 72
 	}
 
 	// Badge: the question on the left, the answer as a coloured pill.
 	if item.GermanRelease != "" {
-		label, bg := "OFFEN", badgeOpen
+		label, bg := "OFFEN", colors.BadgeOpen
 		switch item.GermanRelease {
 		case "ja":
-			label, bg = "JA", badgeYes
+			label, bg = "JA", colors.BadgeYes
 		case "nein":
-			label, bg = "NEIN", badgeNo
+			label, bg = "NEIN", colors.BadgeNo
 		}
 		pillFace := face(fonts.Bold, 52)
 		pillW := textWidth(pillFace, label) + 80
 		pill := image.Rect(RadarSlideWidth-60-pillW, 1222, RadarSlideWidth-60, 1222+84)
 		fillRoundedRect(slide, pill, 42, bg)
-		drawText(slide, pillFace, radarText, pill.Min.X+40, pill.Min.Y+61, label)
+		drawText(slide, pillFace, colors.Text, pill.Min.X+40, pill.Min.Y+61, label)
 
 		qFace := face(fonts.Regular, 44)
 		q := wrapText(qFace, badgeQuestion, pill.Min.X-60-30, 1)
 		if len(q) > 0 {
-			drawText(slide, qFace, radarMuted, 60, pill.Min.Y+57, q[0])
+			drawText(slide, qFace, colors.Muted, 60, pill.Min.Y+57, q[0])
 		}
 	}
 	return encodeSlide(slide)
 }
 
 // RenderRadarClosing draws the last slide: the closing image when there is
-// one, otherwise the closing text on the dark background.
-func RenderRadarClosing(closingImg image.Image, text string, accent color.RGBA, fonts RadarFonts) ([]byte, error) {
+// one, otherwise the closing text on the background colour.
+func RenderRadarClosing(closingImg image.Image, text string, colors RadarColors, fonts RadarFonts) ([]byte, error) {
 	fonts, err := fonts.resolve()
 	if err != nil {
 		return nil, err
 	}
-	slide := newSlide(radarBg)
+	slide := newSlide(colors.Background)
 	if closingImg != nil {
 		fillCover(slide, closingImg)
 		return encodeSlide(slide)
 	}
-	fillRoundedRect(slide, image.Rect(60, 60, RadarSlideWidth-60, 72), 6, accent)
+	fillRoundedRect(slide, image.Rect(60, 60, RadarSlideWidth-60, 72), 6, colors.Accent)
 	textFace := face(fonts.Bold, 76)
 	lines := wrapText(textFace, text, RadarSlideWidth-160, 6)
 	lineH := 92
 	y := RadarSlideHeight/2 - (len(lines)*lineH)/2 + 60
 	for _, l := range lines {
-		drawCentered(slide, textFace, radarText, y, l)
+		drawCentered(slide, textFace, colors.Text, y, l)
 		y += lineH
 	}
 	return encodeSlide(slide)
