@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import Konva from 'konva';
-import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Transformer } from 'react-konva';
+import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer } from 'react-konva';
 import {
-  AlignCenter, Bold, Crop, FolderOpen, Loader2, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, Bold, Crop, FolderOpen, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp, Trash2, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
@@ -12,6 +12,7 @@ import {
   measureText, newLayerId, NO_ADJUSTMENTS, renderEdit, textLayerAttrs,
   type Adjustments, type CropBox, type EditorLayer, type ImageLayer, type TextLayer,
 } from './editorModel';
+import { snapBox, type SnapResult } from './snapping';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'filters' | 'watermark' | 'media' | 'text';
@@ -60,6 +61,11 @@ interface Snapshot {
   layers: EditorLayer[];
 }
 
+// How close, in screen pixels, a moved layer has to come to snap.
+const SNAP_PX = 6;
+const GUIDE_COLOR = '#ff2d95';
+const SNAP_STORAGE_KEY = 'socialpod.imageEditor.snap';
+
 // Around the image on screen, so crop and transform handles stay reachable.
 const STAGE_PADDING = 20;
 
@@ -102,6 +108,11 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Smart guides while a layer is moved; Alt (Option) skips them for one drag.
+  const [snapOn, setSnapOn] = useState(() => {
+    try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
+  });
+  const [guides, setGuides] = useState<SnapResult | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
   const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
@@ -526,6 +537,35 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
     }
   };
 
+  const toggleSnap = () => {
+    setSnapOn(on => {
+      try { localStorage.setItem(SNAP_STORAGE_KEY, on ? 'off' : 'on'); } catch { /* per-viewer convenience only */ }
+      return !on;
+    });
+  };
+
+  // Snaps a moving layer to the page and the other layers and shows the
+  // guides it lines up on. Konva recomputes the position from the pointer on
+  // every move, so the shift never accumulates.
+  const onLayerDragMove = (l: EditorLayer, e: Konva.KonvaEventObject<DragEvent>) => {
+    const node = e.target;
+    const parent = contentRef.current;
+    if (!crop || !parent || !snapOn || e.evt?.altKey) { setGuides(null); return; }
+    const opts = { relativeTo: parent, skipShadow: true, skipStroke: true };
+    const others = layers
+      .filter(o => o.id !== l.id)
+      .map(o => nodeRefs.current.get(o.id)?.getClientRect(opts))
+      .filter((b): b is NonNullable<typeof b> => !!b);
+    const r = snapBox(node.getClientRect(opts), crop, others, SNAP_PX / scale);
+    if (r.dx || r.dy) node.position({ x: node.x() + r.dx, y: node.y() + r.dy });
+    setGuides(r.guides.length || r.gaps.length ? r : null);
+  };
+
+  const onLayerDragEnd = (l: EditorLayer, e: Konva.KonvaEventObject<DragEvent>) => {
+    setGuides(null);
+    updateLayer(l.id, { x: e.target.x(), y: e.target.y() });
+  };
+
   // Re-centres the selected layer on the crop, keeping its rotation.
   const centreSelected = () => {
     if (!crop || !selected) return;
@@ -622,6 +662,15 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
         <button className="ie-icon-btn" onClick={redo} title="Redo" aria-label="Redo" disabled={saving || redoStack.length === 0}>
           <Redo2 size={18} />
         </button>
+        <button
+          className={`ie-icon-btn ${snapOn ? 'active' : ''}`}
+          onClick={toggleSnap}
+          title={snapOn ? 'Smart guides on (hold Alt to move freely)' : 'Smart guides off'}
+          aria-label="Smart guides"
+          aria-pressed={snapOn}
+        >
+          <Magnet size={18} />
+        </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!source || saving}>
           {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
         </button>
@@ -652,7 +701,8 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                     onPointerDown={() => selectLayer(l)}
                     onDragStart={startGesture}
                     onTransformStart={startGesture}
-                    onDragEnd={e => updateLayer(l.id, { x: e.target.x(), y: e.target.y() })}
+                    onDragMove={e => onLayerDragMove(l, e)}
+                    onDragEnd={e => onLayerDragEnd(l, e)}
                     onTransformEnd={e => onLayerTransformEnd(l, e.target)}
                   />
                 ) : (
@@ -666,7 +716,8 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                     onDragStart={startGesture}
                     onTransformStart={startGesture}
                     onDblClick={() => textAreaRef.current?.focus()}
-                    onDragEnd={e => updateLayer(l.id, { x: e.target.x(), y: e.target.y() })}
+                    onDragMove={e => onLayerDragMove(l, e)}
+                    onDragEnd={e => onLayerDragEnd(l, e)}
                     onTransformEnd={e => onLayerTransformEnd(l, e.target)}
                   />
                 )))}
@@ -674,6 +725,34 @@ export function ImageEditor({ imageUrl, watermarks = [], guideOverlay, onSave, o
                   <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
                 )}
               </Group>
+
+              {guides && tab !== 'crop' && (
+                <Group listening={false}>
+                  {guides.guides.map((g, i) => (g.orientation === 'v' ? (
+                    <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                  ) : (
+                    <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                  )))}
+                  {guides.gaps.map((m, i) => {
+                    const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
+                    const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
+                    const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
+                    const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
+                    const [lx, ly] = pt((a + b) / 2, c);
+                    return (
+                      <Group key={`m${i}`}>
+                        <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                        <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                        <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                        <Label x={lx} y={ly}>
+                          <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
+                          <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
+                        </Label>
+                      </Group>
+                    );
+                  })}
+                </Group>
+              )}
 
               {tab === 'crop' && (
                 <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>

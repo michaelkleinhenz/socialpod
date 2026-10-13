@@ -54,6 +54,11 @@
   border-color: var(--border-light);
 }
 
+.ie-icon-btn.active {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
 .ie-canvas {
   position: relative;
   flex: 1;
