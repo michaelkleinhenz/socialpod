@@ -54,6 +54,26 @@ Builds an image on the server and returns its URL plus a preview the agent can l
 
 Bases and image layers take `url` (an upload or a public image), `mediaId` or `watermarkId`. Geometry is given in fractions of the canvas. Formats: `1:1`, `4:5` (default), `9:16`, `16:9`, `1.91:1`, `original`. Fits: `cover` (crop, with `focusX`/`focusY`), `contain`, `blur` (letterbox on a blurred copy, good for box art). Text can use the built-in fonts, the team's Radar font (`"font": "team"`) or a font from the media library (`"fontMediaId": "<media id>"`), with outline, shadow or a background box.
 
+#### Templates as the base
+
+Designs saved as templates in the media library ("New Template", built in the image editor) can be the base of `compose_image`. That keeps a series, such as the slides of a carousel, in the team's design: the agent only swaps the texts and images. `list_media` with `kind: "template"` lists each template's layers as `templateLayers` (index, kind, the text or image, the position as fractions of the canvas); changes name a layer by its index:
+
+```json
+{
+  "template": {
+    "mediaId": "6ace50c9...",
+    "layers": [
+      {"index": 3, "text": "\"Wingspan\" bekommt\neine Asien-Edition"},
+      {"index": 4, "text": "Seite 2/7", "color": "#a31b22"},
+      {"index": 1, "url": "/api/uploads/cover.jpg", "focusY": 0.3},
+      {"index": 2, "hide": true}
+    ]
+  }
+}
+```
+
+The template sets the canvas (`format`, `width` and `height` are ignored). A new text keeps the layer's font, size, colour and alignment, and `fontScale` shrinks it for a longer one; lines only break at `\n`. A swapped image is cropped to fill the layer's frame, keeping its corners and border. A `base` goes under the template's layers and extra `layers` on top. Fonts from the media library are used as in the editor; system fonts the editor offers (Arial and the like) are drawn in the built-in fonts on the server, so templates meant for agents should use library fonts.
+
 ## A run, step by step
 
 A prompt along these lines works well for a scheduled agent:

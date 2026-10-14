@@ -43,7 +43,12 @@ type ComposeSpec struct {
 	// from -1 to 1 and are applied after it.
 	Filter                           string
 	Brightness, Contrast, Saturation float64
-	Layers                           []ComposeLayer
+	// Template, when set, is an editor template drawn above the base and
+	// below Layers, scaled by TemplateScale (canvas px per template px; 0
+	// means 1). Its image layers' Image and fonts must be resolved already.
+	Template      *TemplateDesign
+	TemplateScale float64
+	Layers        []ComposeLayer
 }
 
 // ComposeLayer is one layer above the base. Kind is "image", "text", "rect"
@@ -153,6 +158,9 @@ func ComposeImage(spec ComposeSpec) (*image.RGBA, error) {
 		return nil, err
 	}
 	bg := spec.Background
+	if bg.A == 0 && spec.Template != nil {
+		bg = templateColor(spec.Template.Background, color.RGBA{255, 255, 255, 255})
+	}
 	if bg.A == 0 {
 		bg = color.RGBA{0, 0, 0, 255}
 	}
@@ -162,6 +170,13 @@ func ComposeImage(spec ComposeSpec) (*image.RGBA, error) {
 	if spec.Base != nil {
 		drawBase(dst, spec)
 		applyFilter(dst, spec.Filter, spec.Brightness, spec.Contrast, spec.Saturation)
+	}
+	if spec.Template != nil {
+		scale := spec.TemplateScale
+		if scale <= 0 {
+			scale = 1
+		}
+		drawTemplate(dst, *spec.Template, scale, fonts)
 	}
 
 	for i, l := range spec.Layers {

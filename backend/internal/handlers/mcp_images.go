@@ -98,10 +98,12 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "list_media",
 			Description: "Search the team's media library: uploaded photos, artwork, logos, backgrounds and fonts, and the team's colours, each with a name, a description and tags. " +
-				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts or colours. " +
+				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts, colours or templates. " +
 				"A font's id goes into fontMediaId of a compose_image text layer. A colour entry has no file: its color (#rrggbb or #rrggbbaa) goes into any colour field of compose_image, " +
 				"and its description says how and where the team uses it; follow that. " +
-				"With preview=true a small thumbnail of each hit (up to 12) is attached; for a font, a text sample set in it.",
+				"A template is a design of the team's image editor: its templateLayers list each layer by index (texts with their wording, images with their frame), " +
+				"and compose_image with template draws it with the texts and images you swap in. " +
+				"With preview=true a small thumbnail of each hit (up to 12) is attached; for a font, a text sample set in it; for a template, its preview.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -172,7 +174,9 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "compose_image",
 			Description: "Build a post image on the server: a base image (or a plain background) fitted to a format, an optional filter, and layers on top: " +
-				"team watermarks and media library images, text (headline, caption, badge), rectangles and gradients. The result is stored as an upload; " +
+				"team watermarks and media library images, text (headline, caption, badge), rectangles and gradients. " +
+				"Or start from a template of the media library (template: the team's own designs, with texts and images swapped per layer), which keeps a series of images in the team's design. " +
+				"The result is stored as an upload; " +
 				"pass its url in imageUrls of create_post or update_post. A preview is attached so you can check it and adjust. " +
 				"Team watermarks are often full-canvas PNG overlays (frames, banners): put those on top with anchor full. " +
 				"Take colours from the team's palette (list_media with kind color) and use each as its description says. " +
@@ -180,6 +184,36 @@ func imageToolDefinitions() []mcpTool {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"template": map[string]any{
+						"type": "object",
+						"description": "An image editor template from the media library (list_media with kind template, which lists each template's layers as templateLayers) drawn as the design: " +
+							"its canvas size and background, then its layers with the changes in layers. format, width and height are ignored; a base, if given, goes under the template's layers, and layers on top of them. " +
+							"Use it for series like carousel slides: the same template every slide, only the texts and images changed.",
+						"properties": map[string]any{
+							"mediaId": map[string]any{"type": "string", "description": "The template's media id"},
+							"layers": map[string]any{
+								"type":        "array",
+								"description": "Changes to the template's layers, by index (templateLayers[].index). Layers not named stay as designed.",
+								"items": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"index":       map[string]any{"type": "number", "description": "The layer to change"},
+										"hide":        map[string]any{"type": "boolean", "description": "Leave the layer out"},
+										"text":        map[string]any{"type": "string", "description": "text layer: the new text (\\n starts a new line; lines do not wrap). It keeps the layer's font, size, colour and alignment point"},
+										"fontScale":   map[string]any{"type": "number", "description": "text layer: multiply the font size, e.g. 0.8 for a longer text"},
+										"color":       map[string]any{"type": "string", "description": "text layer: new text colour"},
+										"url":         map[string]any{"type": "string", "description": "image layer: replace the image (upload or public URL); it is cropped to fill the layer's frame, corners and border kept"},
+										"mediaId":     map[string]any{"type": "string", "description": "image layer: replace the image with a media library image"},
+										"watermarkId": map[string]any{"type": "string", "description": "image layer: replace the image with a team watermark"},
+										"focusX":      map[string]any{"type": "number", "description": "image replacement: horizontal point to keep in the frame, 0 left to 1 right (default 0.5)"},
+										"focusY":      map[string]any{"type": "number", "description": "image replacement: vertical point to keep in the frame, 0 top to 1 bottom (default 0.5)"},
+									},
+									"required": []string{"index"},
+								},
+							},
+						},
+						"required": []string{"mediaId"},
+					},
 					"base": map[string]any{
 						"type":        "object",
 						"description": "Base image: one of url, mediaId or watermarkId. Omit for a plain background.",
@@ -431,6 +465,9 @@ func (h *MCPHandler) toolUpdateWatermark(c *gin.Context, args map[string]any) (a
 type mediaInfo struct {
 	models.MediaItem
 	AbsoluteURL string `json:"absoluteUrl,omitempty"`
+	// TemplateLayers describes a template's layers for compose_image; the
+	// design's JSON itself is left out.
+	TemplateLayers []templateLayerInfo `json:"templateLayers,omitempty"`
 }
 
 func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bool) {
@@ -443,8 +480,13 @@ func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bo
 	out := make([]mediaInfo, 0, len(items))
 	var images []mcpImage
 	for _, it := range items {
-		out = append(out, mediaInfo{MediaItem: it, AbsoluteURL: absoluteURL(c, it.URL)})
-		if boolArg(args, "preview") && len(images) < 12 && (strings.HasPrefix(it.ContentType, "image/") || isFontContentType(it.ContentType)) {
+		info := mediaInfo{MediaItem: it, AbsoluteURL: absoluteURL(c, it.URL)}
+		if it.ContentType == models.MediaTemplateType {
+			info.TemplateLayers = templateLayerInfos(it.Template)
+			info.Template = ""
+		}
+		out = append(out, info)
+		if boolArg(args, "preview") && len(images) < 12 && (strings.HasPrefix(it.ContentType, "image/") || isFontContentType(it.ContentType) || it.ContentType == models.MediaTemplateType) {
 			if data, err := readImageBytes(ctx, h.DB, h.UploadDir, it.URL); err == nil {
 				if img, err := previewImage(it.ContentType, data); err == nil {
 					images = append(images, previewOf(img, 256)...)
@@ -453,7 +495,7 @@ func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bo
 		}
 	}
 	if len(images) > 0 {
-		return &mcpRichResult{Result: map[string]any{"media": out, "previews": "attached in list order (images and fonts only)"}, Images: images}, false
+		return &mcpRichResult{Result: map[string]any{"media": out, "previews": "attached in list order (images, fonts and template previews only)"}, Images: images}, false
 	}
 	return out, false
 }
@@ -735,8 +777,15 @@ func (h *MCPHandler) buildComposeSpec(ctx context.Context, c *gin.Context, args 
 		spec.Base = img
 		bw, bh = img.Bounds().Dx(), img.Bounds().Dy()
 	}
-	w, hgt, err := canvasSize(strArg(args, "format"), intArg(args, "width", 0), intArg(args, "height", 0), bw, bh)
-	if err != nil {
+	var w, hgt int
+	var err error
+	if tpl, ok := args["template"].(map[string]any); ok && len(tpl) > 0 {
+		// The template sets the canvas; format, width and height are ignored.
+		if spec.Template, err = h.buildTemplate(ctx, c, tpl); err != nil {
+			return spec, err
+		}
+		w, hgt, spec.TemplateScale = templateCanvas(spec.Template)
+	} else if w, hgt, err = canvasSize(strArg(args, "format"), intArg(args, "width", 0), intArg(args, "height", 0), bw, bh); err != nil {
 		return spec, err
 	}
 	if w > services.MaxComposeSide || hgt > services.MaxComposeSide {
