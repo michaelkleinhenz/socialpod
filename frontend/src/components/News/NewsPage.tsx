@@ -2,14 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../../services/api';
-import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft, GermanRelease, RadarQueueEntry } from '../../types';
-import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Palette, Radar, GalleryHorizontal } from 'lucide-react';
+import type { Platform, Footer, SocialAccount, MentionEntry, TeamSettings, Watermark, PublicSettings, NewsDraft } from '../../types';
+import { Newspaper, Image, Send, Clock, Tag, MessageSquare, Upload, Crop, X, Loader, Dice5, Sparkles, Wand2, FileText, Trash2, Play, Edit3, Save, CheckCircle2, Palette } from 'lucide-react';
 import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { MentionTextarea } from '../PostEditor/MentionTextarea';
-import { CaptionChecker, RewriteInstagramButton, RadarScheduledMark } from '../PostEditor/InstagramTools';
-import { confirmRadarRemove, extractHandles, nextGermanRelease, radarReleaseLabels } from '../../services/instagramGrowth';
+import { CaptionChecker, RewriteInstagramButton } from '../PostEditor/InstagramTools';
+import { extractHandles } from '../../services/instagramGrowth';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
 import './News.css';
@@ -36,11 +36,6 @@ export function NewsPage() {
   const [newsTagline, setNewsTagline] = useState('');
   const [articleUrl, setArticleUrl] = useState('');
   const [shownotes, setShownotes] = useState('');
-  // "Radar Post?" queues the news for the weekly Radar carousel; the German
-  // edition answer becomes the badge on its slide.
-  const [radar, setRadar] = useState(false);
-  const [germanRelease, setGermanRelease] = useState<GermanRelease>('offen');
-
   // Single image handling
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -92,7 +87,7 @@ export function NewsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Tabs & Drafts
-  const [activeTab, setActiveTab] = useState<'create' | 'drafts' | 'posted' | 'carousels'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'drafts' | 'posted'>('create');
   const [drafts, setDrafts] = useState<NewsDraft[]>([]);
   const [postedDrafts, setPostedDrafts] = useState<NewsDraft[]>([]);
   const [removingPosted, setRemovingPosted] = useState(false);
@@ -103,12 +98,6 @@ export function NewsPage() {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [postingDraftId, setPostingDraftId] = useState<string | null>(null);
-
-  // The Radar queue: news marked "Radar Post?" that have not gone out in a
-  // Radar post yet, marked when an unpublished one already carries them.
-  const [radarQueue, setRadarQueue] = useState<RadarQueueEntry[]>([]);
-  const [radarQueueLoaded, setRadarQueueLoaded] = useState(false);
-  const [removingRadarId, setRemovingRadarId] = useState<string | null>(null);
 
   // Adobe Express
   const [adobeClientId, setAdobeClientId] = useState('');
@@ -512,8 +501,6 @@ export function NewsPage() {
     setNewsTagline('');
     setArticleUrl('');
     setShownotes('');
-    setRadar(false);
-    setGermanRelease('offen');
     removeImage();
     setBggUrl('');
     setBggError('');
@@ -573,70 +560,11 @@ export function NewsPage() {
     }
   }, [activeTab, pluginReady, loadDrafts]);
 
-  const loadRadarQueue = useCallback(async () => {
-    try {
-      setRadarQueue(await api.getRadarQueue());
-    } catch {
-      toast.error('Failed to load the Radar queue');
-    } finally {
-      setRadarQueueLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'carousels' && pluginReady) {
-      loadRadarQueue();
-    }
-  }, [activeTab, pluginReady, loadRadarQueue]);
-
-  // Cycles the "Kommt es auf Deutsch?" badge: Offen → Ja → Nein → Offen.
-  const handleCycleRelease = async (entry: RadarQueueEntry) => {
-    const prev = entry.germanRelease;
-    const next = nextGermanRelease(prev);
-    const setRelease = (v: GermanRelease | undefined) => {
-      setRadarQueue(list => list.map(d => d.id === entry.id ? { ...d, germanRelease: v } : d));
-      // Keep the loaded lists in step, or saving the draft from the form
-      // would write the old value back.
-      const apply = (list: NewsDraft[]) => list.map(d => d.id === entry.id ? { ...d, germanRelease: v } : d);
-      setDrafts(apply);
-      setPostedDrafts(apply);
-    };
-    setRelease(next);
-    try {
-      await api.setRadarRelease(entry.id, next);
-    } catch (err) {
-      setRelease(prev);
-      toast.error(err instanceof Error ? err.message : 'Failed to update the badge');
-    }
-  };
-
-  // Clears the draft's "Radar Post?" mark; the news itself stays.
-  const handleRemoveFromRadar = async (entry: RadarQueueEntry) => {
-    if (!confirmRadarRemove(entry)) return;
-    setRemovingRadarId(entry.id);
-    try {
-      await api.removeFromRadar(entry.id);
-      setRadarQueue(prev => prev.filter(d => d.id !== entry.id));
-      // Keep the loaded lists in step, or loading the draft into the form
-      // and saving it would tick "Radar Post?" again.
-      const unmark = (list: NewsDraft[]) => list.map(d => d.id === entry.id ? { ...d, radar: false } : d);
-      setDrafts(unmark);
-      setPostedDrafts(unmark);
-      toast.success('Removed from the Radar');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove from the Radar');
-    } finally {
-      setRemovingRadarId(null);
-    }
-  };
-
   const loadDraftIntoForm = (draft: NewsDraft) => {
     setEpisodeNumber(draft.episodeNumber || '');
     setNewsTagline(draft.newsTagline || '');
     setArticleUrl(draft.articleUrl || '');
     setShownotes(draft.shownotes || '');
-    setRadar(!!draft.radar);
-    setGermanRelease(draft.germanRelease || 'offen');
     setAddSocialPost(draft.addSocialPosting);
     setContent(draft.content || '');
     setFirstComment(draft.firstComment || '');
@@ -688,8 +616,6 @@ export function NewsPage() {
       articleUrl: articleUrl.trim(),
       shownotes: shownotes.trim() || undefined,
       imageUrls,
-      radar,
-      germanRelease: radar ? germanRelease : undefined,
     };
 
     data.addSocialPosting = addSocialPost;
@@ -968,96 +894,7 @@ export function NewsPage() {
             fontWeight: 600,
           }}>{postedDrafts.length}</span>}
         </button>
-        <button
-          className={`news-tab ${activeTab === 'carousels' ? 'active' : ''}`}
-          onClick={() => setActiveTab('carousels')}
-          style={{
-            padding: '10px 20px',
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'carousels' ? '2px solid var(--accent)' : '2px solid transparent',
-            color: activeTab === 'carousels' ? 'var(--text)' : 'var(--text-muted)',
-            cursor: 'pointer',
-            fontWeight: activeTab === 'carousels' ? 600 : 400,
-            fontSize: 14,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <GalleryHorizontal size={14} /> Radar List {radarQueue.length > 0 && <span style={{
-            background: 'var(--bg-secondary, #1e293b)',
-            color: 'var(--text-muted)',
-            borderRadius: 10,
-            padding: '1px 7px',
-            fontSize: 11,
-            fontWeight: 600,
-          }}>{radarQueue.length}</span>}
-        </button>
       </div>
-
-      {/* Radar queue */}
-      {activeTab === 'carousels' && (() => {
-        if (!radarQueueLoaded) {
-          return <div className="tab-panel panel-loading"><div className="spinner" /></div>;
-        }
-        if (radarQueue.length === 0) {
-          return (
-            <div className="tab-panel empty-state">
-              <GalleryHorizontal size={48} />
-              <p>No news for the Radar</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-                Tick “Radar Post?” on a news item to queue it for the weekly carousel.
-              </p>
-            </div>
-          );
-        }
-        return (
-          <div className="tab-panel" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>
-              News marked “Radar Post?” that have not gone out in a Radar carousel yet.
-              Build the carousel with “Radar Content” in the post editor.
-            </p>
-            {radarQueue.map(entry => {
-              const img = entry.imageUrls?.[0];
-              return (
-                <div key={entry.id} className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {img
-                    ? <img src={img.startsWith('/') ? `${apiUrl}${img}` : img} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-                    : <span className="radar-noimg" style={{ width: 56, height: 56 }} />}
-                  <div className="radar-item-text" style={{ fontSize: 14 }}>
-                    <strong>{entry.newsTagline || '(No tagline)'}</strong>
-                    <span>
-                      <button
-                        type="button"
-                        className={`radar-badge radar-badge-toggle ${entry.germanRelease || 'none'}`}
-                        onClick={() => handleCycleRelease(entry)}
-                        title="Kommt es auf Deutsch? Click to switch Offen → Ja → Nein"
-                      >
-                        {entry.germanRelease ? radarReleaseLabels[entry.germanRelease] : 'Deutsch?'}
-                      </button>
-                      {format(new Date(entry.createdAt), 'MMM d, yyyy')}
-                      {entry.posted ? ' · posted' : ' · draft'}
-                      <RadarScheduledMark entry={entry} />
-                    </span>
-                  </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => handleRemoveFromRadar(entry)}
-                    disabled={removingRadarId === entry.id}
-                    title="Remove from the Radar"
-                    style={{ color: 'var(--danger)', flexShrink: 0, marginLeft: 'auto' }}
-                  >
-                    {removingRadarId === entry.id
-                      ? <Loader size={14} className="post-editor-spin" />
-                      : <Trash2 size={14} />}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
 
       {/* Drafts + Posted Tabs */}
       {(activeTab === 'drafts' || activeTab === 'posted') && (() => {
@@ -1132,20 +969,6 @@ export function NewsPage() {
                           ? `Posted ${format(new Date(draft.postedAt), 'MMM d, yyyy HH:mm')}`
                           : `Updated ${format(new Date(draft.updatedAt), 'MMM d, yyyy HH:mm')}`}
                       </span>
-                      {draft.radar && (
-                        <span
-                          title={draft.radarPostId ? 'Used in a Radar post' : 'Waiting in the Radar queue'}
-                          style={{
-                            background: draft.radarPostId ? 'var(--bg-secondary, #1e293b)' : 'var(--accent)',
-                            color: draft.radarPostId ? 'var(--text-muted)' : '#fff',
-                            borderRadius: 4,
-                            padding: '1px 6px',
-                            fontSize: 11,
-                          }}
-                        >
-                          Radar{draft.radarPostId ? ' ✓' : ''}
-                        </span>
-                      )}
                       {draft.addSocialPosting && (
                         <span style={{
                           background: 'var(--bg-secondary, #1e293b)',
@@ -1288,34 +1111,6 @@ export function NewsPage() {
               onChange={e => setArticleUrl(e.target.value)}
               placeholder="https://example.com/article"
             />
-          </div>
-
-          {/* Radar */}
-          <div className="form-group radar-fields">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0 }}>
-              <input type="checkbox" checked={radar} onChange={e => setRadar(e.target.checked)} />
-              <Radar size={14} /> Radar Post?
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 12 }}>
-                queues this news for the weekly “Radar der Woche” carousel
-              </span>
-            </label>
-            {radar && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <span style={{ fontSize: 13 }}>Kommt's auf Deutsch?</span>
-                <div className="view-toggle">
-                  {(['ja', 'nein', 'offen'] as GermanRelease[]).map(v => (
-                    <button
-                      key={v}
-                      type="button"
-                      className={`view-toggle-btn ${germanRelease === v ? 'active' : ''}`}
-                      onClick={() => setGermanRelease(v)}
-                    >
-                      {v === 'ja' ? 'Ja' : v === 'nein' ? 'Nein' : 'Offen'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Shownotes */}

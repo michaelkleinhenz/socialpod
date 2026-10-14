@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"socialmedia/internal/models"
-	"socialmedia/internal/services"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/image/font/gofont/goregular"
@@ -191,27 +190,6 @@ func TestExtractIGHandles(t *testing.T) {
 	}
 }
 
-func TestRadarCaption(t *testing.T) {
-	drafts := []models.NewsDraft{
-		{NewsTagline: "Arche Nova Erweiterung", GermanRelease: "ja", Content: "Neu bei @feuerlandspiele"},
-		{Content: "Großes Spiel von @ludonova\nzweite Zeile", GermanRelease: "offen"},
-	}
-	radar := defaultGrowthSettings(nil).Radar
-	caption, tags := radarCaption(drafts, *radar)
-	for _, want := range []string{
-		"1. Arche Nova Erweiterung · Kommt's auf Deutsch? Ja (@feuerlandspiele)",
-		"2. Großes Spiel von · Kommt's auf Deutsch? Offen (@ludonova)",
-		defaultRadarCaptionOutro,
-	} {
-		if !strings.Contains(caption, want) {
-			t.Errorf("caption misses %q:\n%s", want, caption)
-		}
-	}
-	if strings.Join(tags, ",") != "feuerlandspiele,ludonova" {
-		t.Errorf("tags = %v", tags)
-	}
-}
-
 func TestValidateGrowthSettings(t *testing.T) {
 	ok := models.TeamGrowthSettings{
 		InstagramGoal: &models.InstagramGoal{Target: 1000, StartDate: "2026-10-12", EndDate: "2027-01-04"},
@@ -219,10 +197,6 @@ func TestValidateGrowthSettings(t *testing.T) {
 	}
 	if err := validateGrowthSettings(&ok); err != nil {
 		t.Fatalf("valid settings rejected: %v", err)
-	}
-	stale := models.TeamGrowthSettings{Radar: &models.RadarSettings{FontName: "Old.ttf"}}
-	if err := validateGrowthSettings(&stale); err != nil || stale.Radar.FontName != "" {
-		t.Errorf("a font name without a font should be cleared, got %q (%v)", stale.Radar.FontName, err)
 	}
 	if ok.WeeklyPlan[0].ID == "" {
 		t.Errorf("a new slot should get an ID")
@@ -232,8 +206,6 @@ func TestValidateGrowthSettings(t *testing.T) {
 		{WeeklyPlan: []models.WeeklyPlanSlot{{Weekday: 7, Format: "reel"}}},
 		{WeeklyPlan: []models.WeeklyPlanSlot{{Weekday: 1, Time: "6 Uhr", Format: "reel"}}},
 		{WeeklyPlan: []models.WeeklyPlanSlot{{Weekday: 1, Format: "podcast"}}},
-		{Radar: &models.RadarSettings{CoverImageURL: "https://elsewhere.example/x.jpg"}},
-		{Radar: &models.RadarSettings{FontURL: "https://elsewhere.example/font.ttf"}},
 	}
 	for i, s := range bad {
 		if err := validateGrowthSettings(&s); err == nil {
@@ -242,9 +214,9 @@ func TestValidateGrowthSettings(t *testing.T) {
 	}
 }
 
-func TestCheckRadarFont(t *testing.T) {
+func TestCheckFontUpload(t *testing.T) {
 	// A CFF-flavoured OpenType font: a subset of Inter Bold (testdata/README).
-	otf, err := os.ReadFile("testdata/radar-font.otf")
+	otf, err := os.ReadFile("testdata/font.otf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +234,7 @@ func TestCheckRadarFont(t *testing.T) {
 		{"CFFOutlines.ttf", otf, ".otf", "font/otf"},
 	}
 	for _, tc := range accepted {
-		ext, typ, err := checkRadarFont(tc.name, tc.data)
+		ext, typ, err := checkFontUpload(tc.name, tc.data)
 		if err != nil {
 			t.Errorf("%s rejected: %v", tc.name, err)
 			continue
@@ -272,19 +244,10 @@ func TestCheckRadarFont(t *testing.T) {
 		}
 	}
 
-	// CFF outlines take a different path from TrueType ones; draw every text
-	// a Radar has with them.
-	fonts, err := services.ParseRadarFont(otf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	colors := services.DefaultRadarColors()
-	if _, err := services.RenderRadarCover(nil, "Radar der Woche", "KW 42 · 5 Ankündigungen", colors, fonts); err != nil {
-		t.Errorf("cover with an OpenType font: %v", err)
-	}
-	if _, err := services.RenderRadarItem(services.RadarItemSlide{Index: 1, Total: 5, Title: "Größenwahn", GermanRelease: "offen"},
-		"Radar der Woche", "Kommt's auf Deutsch?", colors, fonts); err != nil {
-		t.Errorf("item slide with an OpenType font: %v", err)
+	// CFF outlines take a different path from TrueType ones; draw text with
+	// them.
+	if _, err := previewImage("font/otf", otf); err != nil {
+		t.Errorf("text sample with an OpenType font: %v", err)
 	}
 
 	rejected := []struct {
@@ -295,10 +258,10 @@ func TestCheckRadarFont(t *testing.T) {
 		{"font", goregular.TTF},
 		{"broken.ttf", []byte("not a font at all")},
 		{"collection.ttf", append([]byte("ttcf"), make([]byte, 64)...)},
-		{"huge.otf", make([]byte, maxRadarFontSize+1)},
+		{"huge.otf", make([]byte, maxFontSize+1)},
 	}
 	for _, tc := range rejected {
-		if _, _, err := checkRadarFont(tc.name, tc.data); err == nil {
+		if _, _, err := checkFontUpload(tc.name, tc.data); err == nil {
 			t.Errorf("%s accepted", tc.name)
 		}
 	}

@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark, RadarContent } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, Radar, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
-import { CaptionChecker, InsightsStrip, InstagramPeople, RadarPicker } from './InstagramTools';
+import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
+import { CaptionChecker, InsightsStrip, InstagramPeople } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
@@ -537,8 +537,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const kept = new Set(post.userTags.map(t => t.toLowerCase()));
     return extractHandles(initialIgText).filter(h => !kept.has(h.toLowerCase()));
   });
-  const [radarDraftIds, setRadarDraftIds] = useState<string[]>(post?.radarDraftIds ?? []);
-  const [radarOpen, setRadarOpen] = useState(false);
   const [rewriting, setRewriting] = useState(false);
   const [insightsPost, setInsightsPost] = useState<Post | null>(post ?? null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1043,28 +1041,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }
   };
 
-  // Radar Content replaces this post's text and images with the generated
-  // carousel. It is an Instagram post: other platforms are switched off.
-  const applyRadar = (radar: RadarContent) => {
-    const hasContent = content.trim() || Object.values(contentOverrides).some(v => v.trim()) || images.length > 0;
-    if (hasContent && !window.confirm('Replace this post\'s text and images with the Radar carousel?')) return;
-    images.forEach(item => {
-      if (item.kind === 'file') {
-        const cached = objUrlCache.current.get(item.file);
-        if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(item.file); }
-      }
-    });
-    setImages(radar.imageUrls.map(url => ({ kind: 'url' as const, url })));
-    if (instagramAccount) setPlatforms(['instagram']);
-    setCustomizePerPlatform(false);
-    setContentOverrides({});
-    setContent(radar.caption);
-    setExtraTags(radar.userTags);
-    setRemovedTags([]);
-    setRadarDraftIds(radar.draftIds);
-    setRadarOpen(false);
-    toast.success(`Radar carousel added: ${radar.imageUrls.length} slides`);
-  };
   const twitterAccount = accounts.find(a => a.platform === 'twitter') ?? null;
   const mastodonAccount = accounts.find(a => a.platform === 'mastodon') ?? null;
   const threadsAccount = accounts.find(a => a.platform === 'threads') ?? null;
@@ -1126,7 +1102,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         accountIds,
         collaborators: igSelected ? collaborators : [],
         userTags: igSelected ? userTags : [],
-        radarDraftIds,
       };
 
       await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
@@ -1142,8 +1117,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || images.length !== (post?.imageUrls || []).length
     || JSON.stringify(footerIds) !== JSON.stringify(post?.footerIds || {})
     || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {})
-    || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || [])
-    || JSON.stringify(radarDraftIds) !== JSON.stringify(post?.radarDraftIds || []);
+    || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || []);
 
   const fetchBGGData = async () => {
     if (!bggUrl.trim()) return;
@@ -1245,22 +1219,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
         <div className="editor-layout">
           <div className="editor-body">
-            {!isStory && !isReel && (
-              <div className="editor-toolbar">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setRadarOpen(true)}
-                  title="Build this week's Radar carousel from the queued news"
-                >
-                  <Radar size={14} /> Radar Content
-                </button>
-                {radarDraftIds.length > 0 && (
-                  <span className="editor-toolbar-note">Carries {radarDraftIds.length} Radar news</span>
-                )}
-              </div>
-            )}
-
             {insightsPost && (insightsPost.status === 'published' || insightsPost.status === 'failed') && (
               <InsightsStrip post={insightsPost} onUpdated={setInsightsPost} />
             )}
@@ -1833,7 +1791,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         </div>
       </div>
 
-      {radarOpen && <RadarPicker postId={post?.id} onClose={() => setRadarOpen(false)} onApply={applyRadar} />}
 
       {editingImageIdx !== null && images[editingImageIdx] && (
         <ImageEditor

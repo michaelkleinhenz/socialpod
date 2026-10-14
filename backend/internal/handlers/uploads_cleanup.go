@@ -41,9 +41,6 @@ var uploadReferences = []uploadReference{
 	{func(db *database.MongoDB) *mongo.Collection { return db.Watermarks() }, "url"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "url"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "templateUrls"},
-	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.coverImageUrl"},
-	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.closingImageUrl"},
-	{func(db *database.MongoDB) *mongo.Collection { return db.Teams() }, "growth.radar.fontUrl"},
 }
 
 // uploadFilename maps a stored image URL back to the file it refers to, or

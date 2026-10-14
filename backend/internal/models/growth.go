@@ -7,14 +7,13 @@ import (
 )
 
 // TeamGrowthSettings holds a team's Instagram growth configuration: the
-// follower goal, the weekly content plan, the Instagram caption tone and the
-// "Radar der Woche" carousel layout. Team admins edit it; every member reads it.
+// follower goal, the weekly content plan and the Instagram caption tone. Team
+// admins edit it; every member reads it.
 type TeamGrowthSettings struct {
 	InstagramGoal          *InstagramGoal   `bson:"instagramGoal,omitempty" json:"instagramGoal,omitempty"`
 	WeeklyPlan             []WeeklyPlanSlot `bson:"weeklyPlan,omitempty" json:"weeklyPlan"`
 	MaxSingleImagesPerWeek int              `bson:"maxSingleImagesPerWeek,omitempty" json:"maxSingleImagesPerWeek,omitempty"`
 	InstagramRewritePrompt string           `bson:"instagramRewritePrompt,omitempty" json:"instagramRewritePrompt,omitempty"`
-	Radar                  *RadarSettings   `bson:"radar,omitempty" json:"radar,omitempty"`
 	// MaxAgentDrafts caps the open drafts MCP clients and agents may have
 	// waiting for review at once (posts, news and episode drafts with an
 	// origin); 0 means no limit.
@@ -50,37 +49,6 @@ type WeeklyPlanSlot struct {
 	Time    string `bson:"time,omitempty" json:"time,omitempty"`
 	Format  string `bson:"format" json:"format"`
 	Label   string `bson:"label,omitempty" json:"label,omitempty"`
-}
-
-// RadarSettings shape the "Radar der Woche" carousel. Cover and closing
-// slides are uploaded images; without one the generator draws a plain slide
-// with the title (cover) or the closing text instead. FontURL is an uploaded
-// TrueType/OpenType font every slide text is drawn with (FontName is its
-// original file name, for display); without one the built-in Go fonts are
-// used. The colours are "#rrggbb"; an empty one takes its default
-// (services.DefaultRadar*): AccentColor fills the drawn cover and marks the
-// item header and closing bar, BackgroundColor is the item and closing
-// slides' ground, PanelColor the box behind a game image, TextColor titles
-// and badge labels, MutedColor the position and badge question, and the
-// badge colours the Ja/Nein/Offen pill.
-type RadarSettings struct {
-	Title           string `bson:"title,omitempty" json:"title,omitempty"`
-	BadgeQuestion   string `bson:"badgeQuestion,omitempty" json:"badgeQuestion,omitempty"`
-	CoverImageURL   string `bson:"coverImageUrl,omitempty" json:"coverImageUrl,omitempty"`
-	ClosingImageURL string `bson:"closingImageUrl,omitempty" json:"closingImageUrl,omitempty"`
-	ClosingText     string `bson:"closingText,omitempty" json:"closingText,omitempty"`
-	CaptionIntro    string `bson:"captionIntro,omitempty" json:"captionIntro,omitempty"`
-	CaptionOutro    string `bson:"captionOutro,omitempty" json:"captionOutro,omitempty"`
-	AccentColor     string `bson:"accentColor,omitempty" json:"accentColor,omitempty"`
-	BackgroundColor string `bson:"backgroundColor,omitempty" json:"backgroundColor,omitempty"`
-	PanelColor      string `bson:"panelColor,omitempty" json:"panelColor,omitempty"`
-	TextColor       string `bson:"textColor,omitempty" json:"textColor,omitempty"`
-	MutedColor      string `bson:"mutedColor,omitempty" json:"mutedColor,omitempty"`
-	BadgeYesColor   string `bson:"badgeYesColor,omitempty" json:"badgeYesColor,omitempty"`
-	BadgeNoColor    string `bson:"badgeNoColor,omitempty" json:"badgeNoColor,omitempty"`
-	BadgeOpenColor  string `bson:"badgeOpenColor,omitempty" json:"badgeOpenColor,omitempty"`
-	FontURL         string `bson:"fontUrl,omitempty" json:"fontUrl,omitempty"`
-	FontName        string `bson:"fontName,omitempty" json:"fontName,omitempty"`
 }
 
 // FollowerSnapshot is one day's follower count of an Instagram account. The

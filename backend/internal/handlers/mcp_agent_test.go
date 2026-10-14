@@ -48,7 +48,7 @@ func TestAgentToolsStayUserLevel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, banned := range []string{"UpdateSettings", "UploadRadarFont", "SweepUploads", "/api/team/", "/api/admin/"} {
+		for _, banned := range []string{"UpdateSettings", "SweepUploads", "/api/team/", "/api/admin/"} {
 			if strings.Contains(string(src), banned) {
 				t.Errorf("%s uses %s, which is not a user-level feature", file, banned)
 			}

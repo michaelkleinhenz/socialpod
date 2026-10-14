@@ -108,9 +108,6 @@ type Post struct {
 	// UserTags are Instagram usernames tagged on the image (on the first slide
 	// of a carousel, on the video of a reel).
 	UserTags []string `bson:"userTags,omitempty" json:"userTags,omitempty"`
-	// RadarDraftIDs are the news drafts whose Radar slides this post carries.
-	// Saving the post takes them out of the Radar queue.
-	RadarDraftIDs []primitive.ObjectID `bson:"radarDraftIds,omitempty" json:"radarDraftIds,omitempty"`
 	// SourceURL is the web page or BGG entry the post is about, SourceKey its
 	// normalised form (see handlers.sourceKey) for duplicate checks.
 	SourceURL string `bson:"sourceUrl,omitempty" json:"sourceUrl,omitempty"`

@@ -1182,8 +1182,6 @@ func (h *MCPHandler) toolCreateNewsDraft(c *gin.Context, args map[string]any) (a
 		AccountIDs:       mapStrArg(args, "accountIds"),
 		FirstComment:     strArg(args, "firstComment"),
 		PostType:         models.PostType(strArg(args, "postType")),
-		Radar:            boolArg(args, "radar"),
-		GermanRelease:    normalizeGermanRelease(strArg(args, "germanRelease")),
 		SourceKey:        sourceKey(strArg(args, "articleUrl")),
 		Origin:           mcpOrigin(args),
 		CreatedAt:        time.Now(),
@@ -1314,12 +1312,6 @@ func (h *MCPHandler) toolUpdateNewsDraft(c *gin.Context, args map[string]any) (a
 		if s, ok := v.(string); ok {
 			update["postType"] = s
 		}
-	}
-	if v, ok := args["radar"].(bool); ok {
-		update["radar"] = v
-	}
-	if v, ok := args["germanRelease"].(string); ok {
-		update["germanRelease"] = normalizeGermanRelease(v)
 	}
 	if v, ok := args["status"]; ok {
 		if s, ok := v.(string); ok {
@@ -2511,8 +2503,6 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"tags":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 					"postType":         map[string]any{"type": "string", "enum": []string{"post", "story", "reel"}, "description": "Post type (default: post)"},
 					"firstComment":     map[string]any{"type": "string", "description": "First comment text"},
-					"radar":            map[string]any{"type": "boolean", "description": "Queue this news for the weekly \"Radar der Woche\" carousel"},
-					"germanRelease":    map[string]any{"type": "string", "enum": []string{"ja", "nein", "offen"}, "description": "Badge on the Radar slide: is a German edition coming?"},
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},
@@ -2563,8 +2553,6 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"tags":             map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tags"},
 					"postType":         map[string]any{"type": "string", "description": "Post type"},
 					"firstComment":     map[string]any{"type": "string", "description": "First comment"},
-					"radar":            map[string]any{"type": "boolean", "description": "Queue this news for the weekly \"Radar der Woche\" carousel"},
-					"germanRelease":    map[string]any{"type": "string", "enum": []string{"ja", "nein", "offen"}, "description": "Badge on the Radar slide: is a German edition coming?"},
 					"accountIds":       map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-account ID map"},
 					"footerIds":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-to-footer ID map"},
 					"contentOverrides": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Platform-specific content overrides"},

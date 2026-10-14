@@ -110,7 +110,7 @@ const templateLineHeight = 1.15
 
 // templateFont is the font a text layer is drawn in: its resolved font, else
 // the built-in bold or regular.
-func templateFont(l TemplateLayer, fonts RadarFonts) *opentype.Font {
+func templateFont(l TemplateLayer, fonts Fonts) *opentype.Font {
 	switch {
 	case l.Font != nil:
 		return l.Font
@@ -127,7 +127,7 @@ func templateFont(l TemplateLayer, fonts RadarFonts) *opentype.Font {
 // pixels, as it will be drawn. Replacing a text uses it to keep the layer's
 // alignment point.
 func TemplateTextWidth(l TemplateLayer) float64 {
-	fonts, err := RadarFonts{}.resolve()
+	fonts, err := Fonts{}.resolve()
 	if err != nil || l.FontSize <= 0 {
 		return 0
 	}
@@ -142,7 +142,7 @@ func TemplateTextWidth(l TemplateLayer) float64 {
 
 // drawTemplate draws t's layers onto dst, scaled by s (canvas px per template
 // px).
-func drawTemplate(dst *image.RGBA, t TemplateDesign, s float64, fonts RadarFonts) {
+func drawTemplate(dst *image.RGBA, t TemplateDesign, s float64, fonts Fonts) {
 	for _, l := range t.Layers {
 		switch l.Kind {
 		case "image":
@@ -296,7 +296,7 @@ func strokeRoundedRect(dst *image.RGBA, outer image.Rectangle, radius, width int
 // drawTemplateText draws a text layer like Konva does without a set width:
 // lines split at \n only, each aligned within the widest one, line height
 // 1.15 × the font size, the block's top-left at (x, y) and rotated about it.
-func drawTemplateText(dst *image.RGBA, l TemplateLayer, s float64, fonts RadarFonts) {
+func drawTemplateText(dst *image.RGBA, l TemplateLayer, s float64, fonts Fonts) {
 	if strings.TrimSpace(l.Text) == "" || l.FontSize <= 0 {
 		return
 	}

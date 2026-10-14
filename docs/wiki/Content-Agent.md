@@ -46,13 +46,13 @@ Builds an image on the server and returns its URL plus a preview the agent can l
   "filter": "vivid",
   "layers": [
     {"type": "gradient", "anchor": "bottom", "height": 0.45},
-    {"type": "text", "text": "\"Wingspan\" bekommt eine Asien-Edition", "anchor": "bottom", "margin": 0.08, "fontSize": 0.07, "font": "team"},
+    {"type": "text", "text": "\"Wingspan\" bekommt eine Asien-Edition", "anchor": "bottom", "margin": 0.08, "fontSize": 0.07},
     {"type": "image", "watermarkId": "66e0...", "anchor": "full"}
   ]
 }
 ```
 
-Bases and image layers take `url` (an upload or a public image), `mediaId` or `watermarkId`. Geometry is given in fractions of the canvas. Formats: `1:1`, `4:5` (default), `9:16`, `16:9`, `1.91:1`, `original`. Fits: `cover` (crop, with `focusX`/`focusY`), `contain`, `blur` (letterbox on a blurred copy, good for box art). Text can use the built-in fonts, the team's Radar font (`"font": "team"`) or a font from the media library (`"fontMediaId": "<media id>"`), with outline, shadow or a background box.
+Bases and image layers take `url` (an upload or a public image), `mediaId` or `watermarkId`. Geometry is given in fractions of the canvas. Formats: `1:1`, `4:5` (default), `9:16`, `16:9`, `1.91:1`, `original`. Fits: `cover` (crop, with `focusX`/`focusY`), `contain`, `blur` (letterbox on a blurred copy, good for box art). Text can use the built-in fonts or a font from the media library (`"fontMediaId": "<media id>"`), with outline, shadow or a background box.
 
 #### Templates as the base
 

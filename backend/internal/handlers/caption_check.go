@@ -116,3 +116,23 @@ func checkCaption(text string, blueskyText *string, taggedCount int) []CaptionCh
 	}
 	return checks
 }
+
+// igMentionRe finds @usernames, not the "@" inside an e-mail address.
+var igMentionRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9._@])@([A-Za-z0-9._]{1,30})`)
+
+// extractIGHandles returns the @usernames a text mentions, in order, without
+// duplicates. A trailing full stop belongs to the sentence, not the name.
+func extractIGHandles(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range igMentionRe.FindAllStringSubmatch(text, -1) {
+		h := strings.TrimRight(m[1], ".")
+		key := strings.ToLower(h)
+		if h == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, h)
+	}
+	return out
+}

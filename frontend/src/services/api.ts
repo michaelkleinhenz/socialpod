@@ -865,15 +865,6 @@ class ApiClient {
     return this.request<import('../types').GrowthSettings>('/growth/settings');
   }
 
-  uploadRadarFont(file: File) {
-    const form = new FormData();
-    form.append('font', file);
-    return this.request<{ url: string; name: string }>('/team/growth/font', {
-      method: 'POST',
-      body: form,
-    });
-  }
-
   updateGrowthSettings(data: import('../types').GrowthSettings) {
     return this.request<import('../types').GrowthSettings>('/team/growth', {
       method: 'PUT',
@@ -902,28 +893,6 @@ class ApiClient {
     return this.request<{ text: string }>('/growth/rewrite-instagram', {
       method: 'POST',
       body: JSON.stringify({ text }),
-    });
-  }
-
-  getRadarQueue() {
-    return this.request<import('../types').RadarQueueEntry[]>('/radar/queue');
-  }
-
-  removeFromRadar(draftId: string) {
-    return this.request<{ message: string }>(`/radar/queue/${draftId}`, { method: 'DELETE' });
-  }
-
-  setRadarRelease(draftId: string, germanRelease: import('../types').GermanRelease) {
-    return this.request<{ germanRelease: import('../types').GermanRelease }>(`/radar/queue/${draftId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ germanRelease }),
-    });
-  }
-
-  generateRadar(draftIds: string[]) {
-    return this.request<import('../types').RadarContent>('/radar/generate', {
-      method: 'POST',
-      body: JSON.stringify({ draftIds }),
     });
   }
 

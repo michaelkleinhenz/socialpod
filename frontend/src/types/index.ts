@@ -206,7 +206,6 @@ export interface Post {
   episodeNews?: EpisodeNews;
   collaborators?: string[];
   userTags?: string[];
-  radarDraftIds?: string[];
   /** The page or BGG entry the post is about (set by MCP agents). */
   sourceUrl?: string;
   /** What created the post when not made in the editor: "mcp" or an agent's label. */
@@ -214,8 +213,6 @@ export interface Post {
   createdAt: string;
   updatedAt: string;
 }
-
-export type GermanRelease = 'ja' | 'nein' | 'offen';
 
 export interface NewsDraft {
   id: string;
@@ -236,20 +233,12 @@ export interface NewsDraft {
   accountIds?: Record<string, string>;
   firstComment?: string;
   postType?: PostType;
-  radar?: boolean;
-  germanRelease?: GermanRelease;
-  radarPostId?: string;
   posted?: boolean;
   postedAt?: string;
   /** What created the draft when not made by hand (see Post.origin). */
   origin?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-/** A news draft marked for the Radar, with the unpublished post that already carries its slide. */
-export interface RadarQueueEntry extends NewsDraft {
-  radarPost?: { id: string; status: PostStatus; scheduledAt: string };
 }
 
 export interface EpisodeDraft {
@@ -562,26 +551,6 @@ export interface InstagramGoal {
   halfwayThreshold?: number;
 }
 
-export interface RadarSettings {
-  title?: string;
-  badgeQuestion?: string;
-  coverImageUrl?: string;
-  closingImageUrl?: string;
-  closingText?: string;
-  captionIntro?: string;
-  captionOutro?: string;
-  accentColor?: string;
-  backgroundColor?: string;
-  panelColor?: string;
-  textColor?: string;
-  mutedColor?: string;
-  badgeYesColor?: string;
-  badgeNoColor?: string;
-  badgeOpenColor?: string;
-  fontUrl?: string;
-  fontName?: string;
-}
-
 export interface GrowthSettings {
   instagramGoal?: InstagramGoal;
   weeklyPlan: WeeklyPlanSlot[];
@@ -589,7 +558,6 @@ export interface GrowthSettings {
   instagramRewritePrompt?: string;
   /** Open drafts MCP clients and agents may have waiting for review; 0 = no limit. */
   maxAgentDrafts?: number;
-  radar?: RadarSettings;
 }
 
 export interface GoalWeek {
@@ -676,13 +644,6 @@ export interface GrowthOverview {
   latestSnapshot?: { date: string; followersCount: number; followsCount: number; mediaCount: number; updatedAt: string };
   report: WeeklyReport;
   adCandidates: PostPerformance[];
-}
-
-export interface RadarContent {
-  imageUrls: string[];
-  caption: string;
-  userTags: string[];
-  draftIds: string[];
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────

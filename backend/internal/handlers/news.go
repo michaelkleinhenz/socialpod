@@ -47,17 +47,6 @@ type NewsSubmitInput struct {
 	FirstComment     string            `json:"firstComment,omitempty"`
 	PostType         models.PostType   `json:"postType,omitempty"`
 	DraftID          string            `json:"draftId,omitempty"`
-	Radar            bool              `json:"radar,omitempty"`
-	GermanRelease    string            `json:"germanRelease,omitempty"`
-}
-
-// normalizeGermanRelease keeps only the badge values the Radar knows.
-func normalizeGermanRelease(v string) string {
-	switch v {
-	case "ja", "nein", "offen":
-		return v
-	}
-	return ""
 }
 
 func (h *NewsHandler) Submit(c *gin.Context) {
@@ -176,11 +165,6 @@ func (h *NewsHandler) Submit(c *gin.Context) {
 				cleanupUploads(h.DB, h.UploadDir, previousImages)
 			}
 		}
-	} else if input.Radar {
-		// A news item that was never a draft normally leaves no entry. One
-		// marked for the Radar needs one, or it could never reach the Radar
-		// queue: record it straight into the Posted tab.
-		h.recordPostedRadarNews(ctx, c, &input, webhookImageURLs)
 	}
 
 	resp := gin.H{"message": "News submitted successfully"}
@@ -188,46 +172,6 @@ func (h *NewsHandler) Submit(c *gin.Context) {
 		resp["post"] = post
 	}
 	c.JSON(http.StatusOK, resp)
-}
-
-// recordPostedRadarNews stores a submitted news item as a posted draft so it
-// joins the Radar queue.
-func (h *NewsHandler) recordPostedRadarNews(ctx context.Context, c *gin.Context, input *NewsSubmitInput, imageURLs []string) {
-	userID, _ := c.Get("userId")
-	uid, _ := primitive.ObjectIDFromHex(userID.(string))
-	now := time.Now()
-	draft := models.NewsDraft{
-		UserID:           uid,
-		EpisodeNumber:    input.EpisodeNumber,
-		NewsTagline:      input.NewsTagline,
-		ArticleURL:       input.ArticleURL,
-		Shownotes:        input.Shownotes,
-		ImageURLs:        imageURLs,
-		AddSocialPosting: input.AddSocialPosting,
-		Content:          input.Content,
-		Platforms:        input.Platforms,
-		ScheduledAt:      input.ScheduledAt,
-		Tags:             input.Tags,
-		Status:           input.Status,
-		FooterIDs:        input.FooterIDs,
-		ContentOverrides: input.ContentOverrides,
-		AccountIDs:       input.AccountIDs,
-		FirstComment:     input.FirstComment,
-		PostType:         input.PostType,
-		Radar:            true,
-		GermanRelease:    normalizeGermanRelease(input.GermanRelease),
-		Posted:           true,
-		PostedAt:         &now,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-	}
-	if teamID, ok := c.Get("teamId"); ok {
-		tid, _ := primitive.ObjectIDFromHex(teamID.(string))
-		draft.TeamID = &tid
-	}
-	if _, err := h.DB.NewsDrafts().InsertOne(ctx, draft); err != nil {
-		log.Printf("[NewsCreator] Warning: could not record Radar news: %v", err)
-	}
 }
 
 // sendToN8N forwards the news data as multipart/form-data to the configured n8n webhook URL.
@@ -399,8 +343,6 @@ func newsDraftFields(input *NewsSubmitInput, imageURLs []string) bson.M {
 		"accountIds":       input.AccountIDs,
 		"firstComment":     input.FirstComment,
 		"postType":         input.PostType,
-		"radar":            input.Radar,
-		"germanRelease":    normalizeGermanRelease(input.GermanRelease),
 	}
 }
 
@@ -506,8 +448,6 @@ func (h *NewsHandler) SaveDraft(c *gin.Context) {
 		AccountIDs:       input.AccountIDs,
 		FirstComment:     input.FirstComment,
 		PostType:         input.PostType,
-		Radar:            input.Radar,
-		GermanRelease:    normalizeGermanRelease(input.GermanRelease),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}

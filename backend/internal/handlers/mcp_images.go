@@ -65,7 +65,7 @@ func imageToolDefinitions() []mcpTool {
 			"height":       map[string]any{"type": "number", "description": "Height as a fraction of the canvas height (gradient top/bottom: extent, default 0.45)"},
 			"opacity":      map[string]any{"type": "number", "description": "0 to 1 (default 1)"},
 			"text":         map[string]any{"type": "string", "description": "text: the text; \\n starts a new line, long lines wrap"},
-			"font":         map[string]any{"type": "string", "enum": []string{"bold", "regular", "team"}, "description": "text: built-in bold (default) or regular, or the team's uploaded Radar font"},
+			"font":         map[string]any{"type": "string", "enum": []string{"bold", "regular"}, "description": "text: built-in bold (default) or regular"},
 			"fontMediaId":  map[string]any{"type": "string", "description": "text: a font from the media library (list_media with kind font); overrides font"},
 			"fontSize":     map[string]any{"type": "number", "description": "text: font size as a fraction of the canvas width (default 0.06; headlines 0.07-0.1, captions 0.035-0.05)"},
 			"color":        map[string]any{"type": "string", "description": "text/rect/gradient colour, #rgb, #rrggbb or #rrggbbaa (text default white, gradient default black)"},
@@ -547,7 +547,7 @@ func (h *MCPHandler) toolAddMedia(c *gin.Context, args map[string]any) (any, boo
 			ct = mediaContentTypes[ext]
 		}
 		if isFontContentType(ct) {
-			if _, ct, err = checkRadarFont(src, data); err != nil {
+			if _, ct, err = checkFontUpload(src, data); err != nil {
 				return map[string]string{"error": err.Error()}, true
 			}
 		}
@@ -707,34 +707,13 @@ func colorArg(args map[string]any, key string) (color.RGBA, error) {
 	return c, nil
 }
 
-// teamFont loads the team's uploaded Radar font, or nil.
-func (h *MCPHandler) teamFont(ctx context.Context, c *gin.Context) *opentype.Font {
-	teamID := teamIDFrom(c)
-	if teamID == nil {
-		return nil
-	}
-	settings, err := h.growth().loadGrowthSettings(ctx, *teamID)
-	if err != nil || settings.Radar == nil || settings.Radar.FontURL == "" {
-		return nil
-	}
-	data, err := readImageBytes(ctx, h.DB, h.UploadDir, settings.Radar.FontURL)
-	if err != nil {
-		return nil
-	}
-	fonts, err := services.ParseRadarFont(data)
-	if err != nil {
-		return nil
-	}
-	return fonts.Regular
-}
-
 // mediaFont loads a font from the media library.
 func (h *MCPHandler) mediaFont(ctx context.Context, c *gin.Context, id string) (*opentype.Font, error) {
 	data, _, err := h.loadImageBytes(ctx, c, map[string]any{"mediaId": id})
 	if err != nil {
 		return nil, err
 	}
-	fonts, err := services.ParseRadarFont(data)
+	fonts, err := services.ParseFont(data)
 	if err != nil {
 		return nil, fmt.Errorf("media %s is not a usable font", id)
 	}
@@ -751,7 +730,7 @@ func previewImage(contentType string, data []byte) (image.Image, error) {
 	if !isFontContentType(contentType) {
 		return decodeImage(data)
 	}
-	fonts, err := services.ParseRadarFont(data)
+	fonts, err := services.ParseFont(data)
 	if err != nil {
 		return nil, err
 	}
@@ -806,8 +785,6 @@ func (h *MCPHandler) buildComposeSpec(ctx context.Context, c *gin.Context, args 
 	if len(layers) > 30 {
 		return spec, fmt.Errorf("at most 30 layers")
 	}
-	var teamFont *opentype.Font
-	teamFontLoaded := false
 	mediaFonts := map[string]*opentype.Font{}
 	for i, raw := range layers {
 		la, ok := raw.(map[string]any)
@@ -858,11 +835,6 @@ func (h *MCPHandler) buildComposeSpec(ctx context.Context, c *gin.Context, args 
 					return spec, err
 				}
 				l.Font = f
-			case "team":
-				if !teamFontLoaded {
-					teamFont, teamFontLoaded = h.teamFont(ctx, c), true
-				}
-				l.Font = teamFont // nil falls back to the built-in bold
 			}
 			if id := strArg(la, "fontMediaId"); id != "" {
 				f, ok := mediaFonts[id]
