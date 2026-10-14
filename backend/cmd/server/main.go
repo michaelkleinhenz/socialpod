@@ -148,7 +148,6 @@ func main() {
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 	growthHandler := &handlers.GrowthHandler{DB: db, Scheduler: scheduler, UploadDir: cfg.UploadDir}
-	radarHandler := &handlers.RadarHandler{DB: db, UploadDir: cfg.UploadDir}
 	mediaHandler := &handlers.MediaHandler{DB: db, UploadDir: cfg.UploadDir}
 	handlers.SetAppBaseURL(cfg.AppURL)
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler, Scheduler: scheduler}
@@ -269,16 +268,12 @@ func main() {
 		auth.GET("/bgg/fetch", bggHandler.FetchGame)
 		auth.POST("/dashboard/ai-insights", adminHandler.DashboardInsights)
 
-		// Instagram growth: goal tracker, weekly report, Insights, Radar
+		// Instagram growth: goal tracker, weekly report, Insights
 		auth.GET("/growth/settings", growthHandler.GetSettings)
 		auth.GET("/growth/instagram", growthHandler.Overview)
 		auth.POST("/growth/refresh", growthHandler.RefreshInsights)
 		auth.POST("/growth/rewrite-instagram", growthHandler.RewriteInstagram)
 		auth.POST("/posts/:id/insights", growthHandler.RefreshPostInsights)
-		auth.GET("/radar/queue", radarHandler.Queue)
-		auth.POST("/radar/generate", radarHandler.Generate)
-		auth.DELETE("/radar/queue/:id", radarHandler.Remove)
-		auth.PUT("/radar/queue/:id", radarHandler.SetRelease)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 
 		// Feed
@@ -458,9 +453,8 @@ func main() {
 
 		// Team-scoped BGG settings (GET moved to auth group for sidebar visibility)
 		teamAdmin.PUT("/settings", bggHandler.UpdateTeamSettings)
-		// Instagram growth settings: goal, weekly plan, caption tone, Radar
+		// Instagram growth settings: goal, weekly plan, caption tone
 		teamAdmin.PUT("/growth", growthHandler.UpdateSettings)
-		teamAdmin.POST("/growth/font", growthHandler.UploadRadarFont)
 	}
 
 	// Serve embedded frontend (SPA with index.html fallback)

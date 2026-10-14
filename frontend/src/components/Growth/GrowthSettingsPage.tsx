@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { addWeeks, format } from 'date-fns';
-import { Target, CalendarRange, Wand2, Radar, Plus, Trash2, Save, Upload, X, Bot, RotateCcw } from 'lucide-react';
+import { Target, CalendarRange, Wand2, Plus, Trash2, Save, Bot } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { GrowthSettings, InstagramGoal, SlotFormat, WeeklyPlanSlot } from '../../types';
 import { FORMAT_LABELS } from '../../services/instagramGrowth';
-import { RadarPreview } from './RadarPreview';
-import { RADAR_COLOR_DEFAULTS, RADAR_COLOR_FIELDS, radarColor, useRadarFont } from './radarSettings';
 import './Growth.css';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -38,94 +36,6 @@ function newSlotId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function SlideImagePicker({ label, url, onChange }: { label: string; url?: string; onChange: (url: string) => void }) {
-  const apiUrl = import.meta.env.VITE_API_URL || '';
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const upload = async (file?: File) => {
-    if (!file) return;
-    setUploading(true);
-    try {
-      const res = await api.uploadImage(file);
-      onChange(res.url);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-  return (
-    <div className="form-group">
-      <label>{label}</label>
-      <div className="slide-picker">
-        <div className="slide-preview">
-          {url ? <img src={url.startsWith('/') ? apiUrl + url : url} alt="" /> : 'drawn automatically'}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            <Upload size={14} /> {uploading ? 'Uploading…' : url ? 'Replace' : 'Upload'}
-          </button>
-          {url && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange('')}><X size={14} /> Remove</button>
-          )}
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>1080 × 1350 (4:5) fits exactly;<br />other sizes are cropped to fill.</span>
-        </div>
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
-          onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
-      </div>
-    </div>
-  );
-}
-
-// Extensions plus every MIME type TrueType/OpenType files are reported under,
-// so pickers that filter by type (iOS among them) don't grey the fonts out.
-const FONT_ACCEPT = '.ttf,.otf,font/ttf,font/otf,font/sfnt,application/x-font-ttf,application/x-font-truetype,application/x-font-otf,application/x-font-opentype,application/font-sfnt,application/vnd.ms-opentype';
-
-// RadarFontPicker uploads the TrueType/OpenType font the Radar slides are
-// drawn with and previews it with the Radar title.
-function RadarFontPicker({ url, name, sample, onChange }: {
-  url?: string; name?: string; sample: string; onChange: (font: { url: string; name: string } | null) => void;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const family = useRadarFont(url);
-
-  const upload = async (file?: File) => {
-    if (!file) return;
-    setUploading(true);
-    try {
-      onChange(await api.uploadRadarFont(file));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-  return (
-    <div className="form-group">
-      <label>Font</label>
-      <div className="slide-picker">
-        <div className="font-preview" style={family ? { fontFamily: `"${family}"` } : { color: 'var(--text-muted)', fontSize: 13, fontWeight: 400 }}>
-          {url ? sample : 'built-in font (Go)'}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            <Upload size={14} /> {uploading ? 'Uploading…' : url ? 'Replace' : 'Upload'}
-          </button>
-          {url && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(null)}><X size={14} /> Remove</button>
-          )}
-        </div>
-        <input ref={fileRef} type="file" accept={FONT_ACCEPT} style={{ display: 'none' }}
-          onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
-      </div>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        {name ? `${name}: ` : ''}a .ttf or .otf file, used for all slide text. Pick the bold cut for a punchy title.
-      </span>
-    </div>
-  );
-}
-
 export function GrowthSettingsPage() {
   const [settings, setSettings] = useState<GrowthSettings | null>(null);
   const [goalEnabled, setGoalEnabled] = useState(false);
@@ -149,10 +59,8 @@ export function GrowthSettingsPage() {
     endDate: format(addWeeks(new Date(), 12), 'yyyy-MM-dd'),
     halfwayThreshold: 0.4,
   };
-  const radar = settings.radar ?? {};
 
   const setGoal = (patch: Partial<InstagramGoal>) => setSettings(s => s && ({ ...s, instagramGoal: { ...goal, ...patch } }));
-  const setRadar = (patch: Partial<typeof radar>) => setSettings(s => s && ({ ...s, radar: { ...radar, ...patch } }));
   const setSlot = (id: string, patch: Partial<WeeklyPlanSlot>) =>
     setSettings(s => s && ({ ...s, weeklyPlan: s.weeklyPlan.map(sl => sl.id === id ? { ...sl, ...patch } : sl) }));
   const removeSlot = (id: string) => setSettings(s => s && ({ ...s, weeklyPlan: s.weeklyPlan.filter(sl => sl.id !== id) }));
@@ -291,72 +199,6 @@ export function GrowthSettingsPage() {
             Start from the default
           </button>
         )}
-      </div>
-
-      <div className="card">
-        <h3><Radar size={16} /> Radar der Woche</h3>
-        <p className="hint">The carousel built by “Radar Content” in the post editor: an opening slide, one slide per queued news item with its “Kommt's auf Deutsch?” badge, and a closing slide.</p>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Title</label>
-            <input className="input" value={radar.title ?? ''} onChange={e => setRadar({ title: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label>Badge question</label>
-            <input className="input" value={radar.badgeQuestion ?? ''} onChange={e => setRadar({ badgeQuestion: e.target.value })} />
-          </div>
-        </div>
-        <div className="form-group">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ marginBottom: 0 }}>Colours</label>
-            {RADAR_COLOR_FIELDS.some(c => radarColor(radar, c.key) !== RADAR_COLOR_DEFAULTS[c.key]) && (
-              <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}
-                onClick={() => setRadar({ ...RADAR_COLOR_DEFAULTS })}>
-                <RotateCcw size={14} /> Reset colours
-              </button>
-            )}
-          </div>
-          <div className="radar-colors">
-            {RADAR_COLOR_FIELDS.map(c => (
-              <label key={c.key} className="radar-color" title={c.hint}>
-                <input type="color" value={radarColor(radar, c.key)} onChange={e => setRadar({ [c.key]: e.target.value })} />
-                <span>{c.label}<small>{c.hint}</small></span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className="form-row">
-          <SlideImagePicker label="Opening slide" url={radar.coverImageUrl} onChange={url => setRadar({ coverImageUrl: url || undefined })} />
-          <SlideImagePicker label="Closing slide" url={radar.closingImageUrl} onChange={url => setRadar({ closingImageUrl: url || undefined })} />
-        </div>
-        <RadarFontPicker url={radar.fontUrl} name={radar.fontName} sample={radar.title || 'Radar der Woche'}
-          onChange={font => setRadar({ fontUrl: font?.url, fontName: font?.name })} />
-        {!radar.closingImageUrl && (
-          <div className="form-group">
-            <label>Closing slide text (when there is no closing image)</label>
-            <input className="input" value={radar.closingText ?? ''} placeholder="Welche Neuheit interessiert euch am meisten? Schreibt es in die Kommentare!"
-              onChange={e => setRadar({ closingText: e.target.value })} />
-          </div>
-        )}
-        <div className="form-group">
-          <label>Preview</label>
-          <RadarPreview radar={radar} />
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            A sketch with sample news; the real slides carry the queued games' images and titles.
-            {!radar.fontUrl && ' The built-in font is shown in your system font here.'}
-          </span>
-        </div>
-        <div className="form-group">
-          <label>Caption intro</label>
-          <textarea className="textarea" rows={2} value={radar.captionIntro ?? ''} placeholder="📡 Radar der Woche: die Ankündigungen, die ihr kennen solltet."
-            onChange={e => setRadar({ captionIntro: e.target.value })} />
-        </div>
-        <div className="form-group">
-          <label>Caption outro (question, share prompt, hashtags)</label>
-          <textarea className="textarea" rows={3} value={radar.captionOutro ?? ''}
-            placeholder={'Schickt das eurer Spielerunde! Und: Welche davon landet auf eurer Liste? 👇\n\n#brettspiele #brettspielneuheiten #boardgames'}
-            onChange={e => setRadar({ captionOutro: e.target.value })} />
-        </div>
       </div>
     </div>
   );

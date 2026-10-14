@@ -153,7 +153,7 @@ func ComposeImage(spec ComposeSpec) (*image.RGBA, error) {
 	if spec.Width > MaxComposeSide || spec.Height > MaxComposeSide {
 		return nil, fmt.Errorf("width and height are limited to %d px", MaxComposeSide)
 	}
-	fonts, err := RadarFonts{}.resolve()
+	fonts, err := Fonts{}.resolve()
 	if err != nil {
 		return nil, err
 	}
@@ -601,7 +601,7 @@ func Thumbnail(img image.Image, maxSide int) ([]byte, int, int, error) {
 
 // DefaultRegularFont is the built-in regular face.
 func DefaultRegularFont() (*opentype.Font, error) {
-	f, err := RadarFonts{}.resolve()
+	f, err := Fonts{}.resolve()
 	return f.Regular, err
 }
 

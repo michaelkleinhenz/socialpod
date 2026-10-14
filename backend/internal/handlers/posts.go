@@ -54,7 +54,6 @@ type CreatePostInput struct {
 	EpisodeNews      *EpisodeNewsInput `json:"episodeNews,omitempty"`
 	Collaborators    []string          `json:"collaborators,omitempty"`
 	UserTags         []string          `json:"userTags,omitempty"`
-	RadarDraftIDs    []string          `json:"radarDraftIds,omitempty"`
 }
 
 type UpdatePostInput struct {
@@ -69,11 +68,10 @@ type UpdatePostInput struct {
 	Status           *models.PostStatus `json:"status,omitempty"`
 	FooterIDs        map[string]string  `json:"footerIds"`
 	ContentOverrides map[string]string  `json:"contentOverrides"`
-	// Collaborators, UserTags and RadarDraftIDs replace the stored lists
+	// Collaborators and UserTags replace the stored lists
 	// when present (an empty list clears them) and are left alone when absent.
 	Collaborators *[]string `json:"collaborators,omitempty"`
 	UserTags      *[]string `json:"userTags,omitempty"`
-	RadarDraftIDs *[]string `json:"radarDraftIds,omitempty"`
 }
 
 const (
@@ -202,12 +200,8 @@ func (h *PostHandler) Create(c *gin.Context) {
 		ContentOverrides: input.ContentOverrides,
 		Collaborators:    cleanUsernames(input.Collaborators, 3),
 		UserTags:         cleanUsernames(input.UserTags, 20),
-		RadarDraftIDs:    parseObjectIDs(input.RadarDraftIDs),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
-	}
-	if len(post.RadarDraftIDs) == 0 {
-		post.RadarDraftIDs = nil
 	}
 
 	if input.EpisodeNews != nil {
@@ -232,10 +226,6 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	post.ID = result.InsertedID.(primitive.ObjectID)
-
-	if len(post.RadarDraftIDs) > 0 {
-		linkRadarDrafts(ctx, h.DB, newsDraftScopeFilter(c), post.ID, post.RadarDraftIDs)
-	}
 
 	if post.EpisodeNews != nil && post.EpisodeNews.Enabled && post.TeamID != nil {
 		h.sendEpisodeNews(ctx, &post)
@@ -417,11 +407,6 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.UserTags != nil {
 		update["userTags"] = cleanUsernames(*input.UserTags, 20)
 	}
-	var radarDraftIDs []primitive.ObjectID
-	if input.RadarDraftIDs != nil {
-		radarDraftIDs = parseObjectIDs(*input.RadarDraftIDs)
-		update["radarDraftIds"] = radarDraftIDs
-	}
 
 	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
 
@@ -431,9 +416,6 @@ func (h *PostHandler) Update(c *gin.Context) {
 		return
 	}
 	cleanupUploads(h.DB, h.UploadDir, previousImages)
-	if input.RadarDraftIDs != nil {
-		linkRadarDrafts(ctx, h.DB, newsDraftScopeFilter(c), postID, radarDraftIDs)
-	}
 
 	var post models.Post
 	h.DB.Posts().FindOne(ctx, bson.M{"_id": postID}).Decode(&post)
@@ -453,16 +435,12 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var existing models.Post
-	h.DB.Posts().FindOne(ctx, filter).Decode(&existing)
-
 	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.Posts(), filter)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return
 	}
 	cleanupUploads(h.DB, h.UploadDir, urls)
-	releaseRadarDrafts(ctx, h.DB, existing)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Post deleted"})
 }

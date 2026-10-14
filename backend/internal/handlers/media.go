@@ -14,6 +14,7 @@ import (
 
 	"socialmedia/internal/database"
 	"socialmedia/internal/models"
+	"socialmedia/internal/services"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -166,10 +167,10 @@ func addMediaItem(ctx context.Context, c *gin.Context, db *database.MongoDB, upl
 		return models.MediaItem{}, fmt.Errorf("unsupported file type %s", ext)
 	}
 	if isFontContentType(ct) {
-		// Same checks as the team's Radar font: it must parse and draw
-		// Latin text with umlauts. The contents decide .ttf or .otf.
+		// It must parse and draw Latin text with umlauts. The contents
+		// decide .ttf or .otf.
 		var err error
-		if ext, ct, err = checkRadarFont("font"+ext, data); err != nil {
+		if ext, ct, err = checkFontUpload("font"+ext, data); err != nil {
 			return models.MediaItem{}, err
 		}
 	}
@@ -378,4 +379,33 @@ func (h *MediaHandler) Delete(c *gin.Context) {
 	}
 	cleanupUploads(h.DB, h.UploadDir, urls)
 	c.JSON(http.StatusOK, gin.H{"message": "Media deleted"})
+}
+
+// maxFontSize caps an uploaded font; real-world TTF/OTF files of a single
+// style stay well below it.
+const maxFontSize = 10 << 20
+
+// checkFontUpload accepts a TrueType (.ttf) or OpenType (.otf) font the
+// image renderer can draw German text with, and returns the extension and content
+// type to store it under. Those follow the file's contents rather than its
+// name, since .otf files often hold TrueType outlines and vice versa.
+func checkFontUpload(filename string, data []byte) (ext, contentType string, err error) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".ttf", ".otf":
+	default:
+		return "", "", fmt.Errorf("upload a .ttf or .otf font file")
+	}
+	if len(data) > maxFontSize {
+		return "", "", fmt.Errorf("the font file is larger than 10 MB")
+	}
+	if len(data) >= 4 && string(data[:4]) == "ttcf" {
+		return "", "", fmt.Errorf("this is a font collection; upload a single .ttf or .otf font")
+	}
+	if _, err := services.ParseFont(data); err != nil {
+		return "", "", fmt.Errorf("unusable font: %v", err)
+	}
+	if string(data[:4]) == "OTTO" {
+		return ".otf", "font/otf", nil
+	}
+	return ".ttf", "font/ttf", nil
 }
