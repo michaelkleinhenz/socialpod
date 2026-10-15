@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
@@ -482,9 +482,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (l.kind === 'text') setTab('text');
     else if (l.kind === 'shape') setTab('shapes');
     else if (l.kind === 'paint') {
-      // Picked to be moved or removed; Paint adds strokes to it.
+      // From another tab, picked to be moved or removed; on the Brush tab
+      // (from the Objects list) the mode stays, so while painting the next
+      // strokes go into it.
+      if (tab !== 'brush') setBrushMode('move');
       setTab('brush');
-      setBrushMode('move');
     }
     else if (tab !== 'watermark' && tab !== 'media') setTab(l.origin);
   };
@@ -1645,9 +1647,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       }
                       if (l.kind === 'paint') {
                         return (
-                          <Group key={l.id} {...common} x={l.x} y={l.y}>
-                            {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
-                          </Group>
+                          <Fragment key={l.id}>
+                            <Group {...common} x={l.x} y={l.y}>
+                              {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
+                            </Group>
+                            {drawing && l.id === selectedId && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                          </Fragment>
                         );
                       }
                       const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
@@ -1657,7 +1662,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                         </Group>
                       );
                     })}
-                    {drawing && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                    {/* The stroke being painted shows where it will go: in the
+                        selected paint layer's place in the stack (above), or
+                        on top, where a new paint layer is added. */}
+                    {drawing && selected?.kind !== 'paint' && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
                     {guideOverlay && (
                       <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
                     )}
