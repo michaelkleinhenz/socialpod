@@ -5,8 +5,8 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Image as ImageIcon, Stamp, Type } from 'lucide-react';
-import type { EditorLayer } from './editorModel';
+import { Brush, Circle, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
+import { SHAPE_KINDS, type EditorLayer } from './editorModel';
 
 // Rows only move up and down.
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -48,7 +48,7 @@ export function LayerList({ layers, selectedId, background, onSelect, onSelectBa
   return (
     <div className="ie-layers-list">
       {layers.length === 0 && (
-        <p className="ie-hint">Texts, watermarks and images you add are listed here. The top one lies on top.</p>
+        <p className="ie-hint">Texts, images, shapes and paint you add are listed here. The top one lies on top.</p>
       )}
       <DndContext
         sensors={sensors}
@@ -76,9 +76,7 @@ export function LayerList({ layers, selectedId, background, onSelect, onSelectBa
 
 function LayerRow({ layer, selected, onSelect }: { layer: EditorLayer; selected: boolean; onSelect: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: layer.id });
-  const name = layer.kind === 'text'
-    ? (layer.text.trim().split('\n')[0] || 'Empty text')
-    : (layer.origin === 'watermark' ? 'Watermark' : 'Image');
+  const name = layerName(layer);
   return (
     <button
       ref={setNodeRef}
@@ -89,18 +87,56 @@ function LayerRow({ layer, selected, onSelect }: { layer: EditorLayer; selected:
       {...attributes}
       {...listeners}
     >
-      <span className="ie-layer-thumb">
-        {layer.kind === 'text' ? (
-          <span className="ie-layer-text" style={{ fontFamily: layer.fontFamily, color: layer.fill, fontWeight: layer.bold ? 700 : 400 }}>Aa</span>
-        ) : (
-          <img src={layer.img.src} alt="" />
-        )}
-      </span>
+      <span className="ie-layer-thumb">{layerThumb(layer)}</span>
       <span className="ie-layer-name">
-        {layer.kind === 'text' ? <Type size={12} /> : layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />}
+        {layerIcon(layer)}
         <span>{name}</span>
       </span>
       <GripVertical size={14} className="ie-layer-grip" />
     </button>
   );
+}
+
+function layerName(layer: EditorLayer): string {
+  switch (layer.kind) {
+    case 'text': return layer.text.trim().split('\n')[0] || 'Empty text';
+    case 'shape': return SHAPE_KINDS.find(k => k.id === layer.shape)?.label ?? 'Shape';
+    case 'paint': return 'Paint';
+    default: return layer.origin === 'watermark' ? 'Watermark' : 'Image';
+  }
+}
+
+function layerIcon(layer: EditorLayer) {
+  switch (layer.kind) {
+    case 'text': return <Type size={12} />;
+    case 'shape': return layer.shape === 'ellipse' ? <Circle size={12} /> : layer.shape === 'triangle' ? <Triangle size={12} /> : <Square size={12} />;
+    case 'paint': return <Brush size={12} />;
+    default: return layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />;
+  }
+}
+
+function layerThumb(layer: EditorLayer) {
+  switch (layer.kind) {
+    case 'text':
+      return <span className="ie-layer-text" style={{ fontFamily: layer.fontFamily, color: layer.fill, fontWeight: layer.bold ? 700 : 400 }}>Aa</span>;
+    case 'shape':
+      return (
+        <span
+          className="ie-layer-shape"
+          style={{
+            background: layer.fill || 'transparent',
+            border: layer.strokeWidth > 0 ? `2px solid ${layer.stroke}` : undefined,
+            borderRadius: layer.shape === 'ellipse' ? '50%' : `${layer.cornerRadius ?? 0}%`,
+            clipPath: layer.shape === 'triangle' ? 'polygon(50% 0, 100% 100%, 0 100%)' : undefined,
+            opacity: layer.opacity,
+          }}
+        />
+      );
+    case 'paint': {
+      const st = layer.strokes[layer.strokes.length - 1];
+      return <span className="ie-layer-paint" style={{ background: `radial-gradient(circle, ${st?.color ?? '#000000'} 0%, transparent 70%)`, opacity: Math.max(0.4, st?.opacity ?? 1) }} />;
+    }
+    default:
+      return <img src={layer.img.src} alt="" />;
+  }
 }

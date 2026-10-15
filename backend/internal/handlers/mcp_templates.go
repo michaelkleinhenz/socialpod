@@ -30,8 +30,11 @@ type templateLayerInfo struct {
 	Font     string  `json:"font,omitempty"`
 	FontSize float64 `json:"fontSize,omitempty"`
 	Src      string  `json:"src,omitempty"`
-	// The layer's box (image) or top-left corner (text) as fractions of the
-	// canvas, ignoring rotation.
+	// shape: rect, ellipse or triangle, and its fill colour (empty: none).
+	Shape string `json:"shape,omitempty"`
+	Fill  string `json:"fill,omitempty"`
+	// The layer's box (image, shape) or top-left corner (text) as fractions
+	// of the canvas, ignoring rotation; paint (brush strokes) has neither.
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 	Width    float64 `json:"width,omitempty"`
@@ -51,13 +54,20 @@ func templateLayerInfos(raw string) []templateLayerInfo {
 	out := make([]templateLayerInfo, 0, len(t.Layers))
 	for i, l := range t.Layers {
 		info := templateLayerInfo{Index: i, Kind: l.Kind, Rotation: round3(l.Rotation)}
-		if l.Kind == "image" {
-			info.Src = l.Src
+		switch l.Kind {
+		case "paint":
+		case "image", "shape":
+			if l.Kind == "image" {
+				info.Src = l.Src
+			} else {
+				info.Shape = l.Shape
+				info.Fill = l.Fill
+			}
 			info.X = round3((l.X - l.Width/2) / t.Width)
 			info.Y = round3((l.Y - l.Height/2) / t.Height)
 			info.Width = round3(l.Width / t.Width)
 			info.Height = round3(l.Height / t.Height)
-		} else {
+		default:
 			info.Text = l.Text
 			info.Font = l.FontFamily
 			if id := services.MediaFontID(l.FontFamily); id != "" {
@@ -219,6 +229,13 @@ func applyTemplateChanges(t *services.TemplateDesign, rawChanges any, load func(
 				l.X += dx*cos - dy*sin
 				l.Y += dx*sin + dy*cos
 			}
+			if col := strArg(ch, "color"); col != "" {
+				if _, ok := services.ParseColor(col); !ok {
+					return fmt.Errorf("template.layers[%d].color: %q is not a colour", n, col)
+				}
+				l.Fill = col
+			}
+		case "shape":
 			if col := strArg(ch, "color"); col != "" {
 				if _, ok := services.ParseColor(col); !ok {
 					return fmt.Errorf("template.layers[%d].color: %q is not a colour", n, col)

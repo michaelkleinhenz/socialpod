@@ -1,25 +1,40 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import Konva from 'konva';
-import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer } from 'react-konva';
+import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
-  AlignCenter, AlignLeft, AlignRight, Bold, Crop, Crosshair, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet, Plus, Redo2, Search, Sparkles, Stamp,
-  Trash2, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Crop, Crosshair, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
+  Move, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { MediaItem, Watermark } from '../../../types';
 import {
   applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, parseTemplate, renderEdit, resizeText, textLayerAttrs,
-  toTemplate,
-  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorLayer, type EditorTemplate, type ImageLayer, type TextAlign,
-  type TextLayer,
+  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
+  shapeLayerParts, textLayerAttrs, toTemplate,
+  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
+  type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
 import { LayerList } from './LayerList';
 import './ImageEditor.css';
 
-type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'watermark' | 'media' | 'text';
+type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'watermark' | 'media' | 'text' | 'shapes' | 'brush';
+
+const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle };
+
+// The brush's settings; size and feather in pixels of the picture, null
+// until set (they then follow the picture's size).
+interface BrushSettings {
+  size: number | null;
+  feather: number | null;
+  color: string;
+  opacity: number;
+}
+
+// A new brush paints soft and see-through in black: the usual job is to
+// darken a busy background a little behind a text.
+const DEFAULT_BRUSH: BrushSettings = { size: null, feather: null, color: '#000000', opacity: 0.35 };
 
 interface FontOption {
   label: string;
@@ -154,6 +169,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
   });
   const [guides, setGuides] = useState<SnapResult | null>(null);
+  const [brush, setBrush] = useState<BrushSettings>(DEFAULT_BRUSH);
+  // The stroke being painted, in picture pixels, and where the brush is.
+  const [drawing, setDrawing] = useState<PaintStroke | null>(null);
+  const drawingRef = useRef<PaintStroke | null>(null);
+  const [brushAt, setBrushAt] = useState<{ x: number; y: number } | null>(null);
+  // On the Brush tab the pointer paints, or picks and moves layers.
+  const [brushMode, setBrushMode] = useState<'paint' | 'move'>('paint');
   // The object list on the right; open from the start where there is room.
   const [showLayers, setShowLayers] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 768px)').matches);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -255,7 +277,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     let cancelled = false;
     const t = setTimeout(() => {
       setMediaLoading(true);
-      api.getMedia({ q: mediaQuery.trim(), kind: 'image', limit: 100 })
+      // Everything the library returns (its limit is 200), newest first; the
+      // search only narrows it down.
+      api.getMedia({ q: mediaQuery.trim(), kind: 'image', limit: 200 })
         .then(items => { if (!cancelled) setMedia(items.filter(isImageMedia)); })
         .catch(() => { if (!cancelled) { setMedia(m => m ?? []); toast.error('Failed to load the media library'); } })
         .finally(() => { if (!cancelled) setMediaLoading(false); });
@@ -306,12 +330,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   useEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
+    // None while painting: the brush works over the selected paint layer.
     const node = tab === 'crop'
       ? cropRectRef.current
-      : (selectedId ? nodeRefs.current.get(selectedId) ?? null : null);
+      : (selectedId && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [tab, selectedId, layers, source, aspectId]);
+  }, [tab, selectedId, layers, source, aspectId, brushMode]);
 
   // --- Undo -----------------------------------------------------------------
 
@@ -363,7 +388,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   };
 
   // Every change to the edit goes through these, which record the undo step.
-  const updateLayer = (id: string, patch: Partial<ImageLayer> | Partial<TextLayer>, key?: string) => {
+  const updateLayer = (id: string, patch: Partial<ImageLayer> | Partial<TextLayer> | Partial<ShapeLayer> | Partial<PaintLayer>, key?: string) => {
     checkpoint(key);
     setLayers(prev => prev.map(l => (l.id === id ? { ...l, ...patch } as EditorLayer : l)));
   };
@@ -438,15 +463,29 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const switchTab = (t: Tab) => {
     setTab(t);
+    setBrushAt(null);
     if (t === 'crop') setSelectedId(null);
     else if (t === 'text' && selected?.kind !== 'text') setSelectedId(null);
     else if ((t === 'watermark' || t === 'media') && selected?.kind !== 'image') setSelectedId(null);
+    else if (t === 'shapes' && selected?.kind !== 'shape') setSelectedId(null);
+    // The brush paints into the selected paint layer, or starts a new one.
+    else if (t === 'brush') {
+      setBrushMode('paint');
+      if (selected?.kind !== 'paint') setSelectedId(null);
+    }
   };
 
+  // Selecting a layer opens the tab that edits it. An image layer keeps the
+  // tab it is on when that tab handles images too.
   const selectLayer = (l: EditorLayer) => {
     setSelectedId(l.id);
-    // An image layer keeps the tab it is on when that tab handles images too.
     if (l.kind === 'text') setTab('text');
+    else if (l.kind === 'shape') setTab('shapes');
+    else if (l.kind === 'paint') {
+      // Picked to be moved or removed; Paint adds strokes to it.
+      setTab('brush');
+      setBrushMode('move');
+    }
     else if (tab !== 'watermark' && tab !== 'media') setTab(l.origin);
   };
 
@@ -766,7 +805,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // Re-centres the selected layer on the crop, keeping its rotation.
   const centreSelected = () => {
     if (!crop || !selected) return;
-    if (selected.kind === 'image') {
+    if (selected.kind === 'image' || selected.kind === 'shape') {
       updateLayer(selected.id, { x: crop.x + crop.width / 2, y: crop.y + crop.height / 2 });
       return;
     }
@@ -786,15 +825,94 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const sx = node.scaleX();
     const sy = node.scaleY();
     node.setAttrs({ scaleX: 1, scaleY: 1 });
-    if (l.kind === 'image') {
+    if (l.kind === 'image' || l.kind === 'shape') {
       const width = Math.max(4, l.width * sx);
       const height = Math.max(4, l.height * sy);
       node.setAttrs({ offsetX: width / 2, offsetY: height / 2 });
       updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), width, height });
-    } else {
+    } else if (l.kind === 'text') {
       updateLayer(l.id, { x: node.x(), y: node.y(), rotation: node.rotation(), fontSize: Math.max(MIN_FONT_SIZE, Math.round(l.fontSize * sx)) });
     }
   };
+
+  // --- Shapes ---------------------------------------------------------------
+
+  const addShape = (shape: ShapeKind) => {
+    if (!crop) return;
+    const side = Math.round(Math.min(crop.width, crop.height) * 0.4);
+    addLayer({
+      id: newLayerId(), kind: 'shape', shape,
+      x: crop.x + crop.width / 2, y: crop.y + crop.height / 2,
+      width: shape === 'rect' ? Math.round(side * 1.4) : side, height: side, rotation: 0, opacity: 1,
+      fill: '#ffffff', stroke: '#000000', strokeWidth: Math.max(2, Math.round(Math.min(crop.width, crop.height) * 0.01)),
+    });
+  };
+
+  // --- Brush ----------------------------------------------------------------
+
+  const painting = tab === 'brush' && brushMode === 'paint';
+
+  // The brush follows the picture's size until it is set: a tenth of the
+  // shorter side, its edge blurred as far again.
+  const minSide = crop ? Math.min(crop.width, crop.height) : 1000;
+  const maxBrush = Math.max(50, Math.round(minSide * 0.6));
+  const brushSize = brush.size ?? Math.max(1, Math.round(minSide * 0.1));
+  const brushFeather = brush.feather ?? Math.round(minSide * 0.1);
+
+  // The pointer in picture pixels.
+  const pointerInPicture = (stage: Konva.Stage | null) => {
+    const p = stage?.getPointerPosition();
+    return p ? { x: (p.x - gx) / scale, y: (p.y - gy) / scale } : null;
+  };
+
+  const startStroke = (stage: Konva.Stage | null) => {
+    const p = pointerInPicture(stage);
+    if (!p) return;
+    const st: PaintStroke = { points: [p.x, p.y], size: brushSize, feather: brushFeather, color: brush.color, opacity: brush.opacity };
+    drawingRef.current = st;
+    setDrawing(st);
+  };
+
+  const extendStroke = (stage: Konva.Stage | null) => {
+    const p = pointerInPicture(stage);
+    if (!p) return;
+    setBrushAt(p);
+    const st = drawingRef.current;
+    if (!st) return;
+    // Samples closer than a few pixels on screen add nothing but size.
+    const n = st.points.length;
+    if (Math.hypot(p.x - st.points[n - 2], p.y - st.points[n - 1]) < 3 / scale) return;
+    const next = { ...st, points: [...st.points, Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10] };
+    drawingRef.current = next;
+    setDrawing(next);
+  };
+
+  // A finished stroke goes into the selected paint layer, or a new one on top.
+  const finishStroke = () => {
+    const st = drawingRef.current;
+    drawingRef.current = null;
+    setDrawing(null);
+    if (!st) return;
+    const target = selected?.kind === 'paint' ? selected : null;
+    if (target) {
+      const own = { ...st, points: st.points.map((v, i) => v - (i % 2 === 0 ? target.x : target.y)) };
+      updateLayer(target.id, { strokes: [...target.strokes, own] });
+    } else {
+      addLayer({ id: newLayerId(), kind: 'paint', x: 0, y: 0, strokes: [st] });
+    }
+  };
+
+  // A stroke ends wherever the pointer is let go, on the picture or not.
+  useEffect(() => {
+    if (!drawing) return;
+    const end = () => finishStroke();
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    return () => {
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+  });
 
   // --- Corners and borders -------------------------------------------------
 
@@ -841,6 +959,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     if (tab === 'crop') return;
+    if (painting) { startStroke(e.target.getStage()); return; }
     if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) setSelectedId(null);
   };
 
@@ -871,7 +990,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       <input
         type="color"
         className="ie-color"
-        value={value.slice(0, 7)}
+        value={(value || '#000000').slice(0, 7)}
         onChange={e => pick(e.target.value, key)}
         title="Custom colour"
       />
@@ -950,8 +1069,77 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </>
   );
 
+  // Shape, fill, border, corners and opacity of the selected shape.
+  const shapeControls = (l: ShapeLayer) => (
+    <>
+      <span className="ie-label ie-section">Shape</span>
+      <div className="ie-row">
+        <div className="ie-segmented" role="group" aria-label="Shape">
+          {SHAPE_KINDS.map(k => {
+            const Icon = SHAPE_ICONS[k.id];
+            return (
+              <button key={k.id} className={l.shape === k.id ? 'active' : ''} onClick={() => updateLayer(l.id, { shape: k.id })} title={k.label} aria-label={k.label} aria-pressed={l.shape === k.id}>
+                <Icon size={16} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <span className="ie-label">Fill</span>
+      <div className="ie-row">
+        <button className={`ie-chip ${!l.fill ? 'active' : ''}`} onClick={() => updateLayer(l.id, { fill: '' })}>No fill</button>
+      </div>
+      {colorRow(l.fill, (c, key) => updateLayer(l.id, { fill: c }, key), `shape-fill:${l.id}`)}
+      <span className="ie-label">Border</span>
+      <label className="ie-slider">
+        <span>Width</span>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(maxBorder, Math.round(l.strokeWidth))}
+          value={Math.round(l.strokeWidth)}
+          onChange={e => updateLayer(l.id, { strokeWidth: Number(e.target.value) }, `shape-stroke-width:${l.id}`)}
+        />
+        <span className="ie-value">{Math.round(l.strokeWidth)}px</span>
+      </label>
+      {l.strokeWidth > 0 && colorRow(l.stroke, (c, key) => updateLayer(l.id, { stroke: c }, key), `shape-stroke:${l.id}`)}
+      {l.shape === 'rect' && (
+        <label className="ie-slider">
+          <span>Corners</span>
+          <input
+            type="range"
+            min={0}
+            max={50}
+            value={l.cornerRadius ?? 0}
+            onChange={e => updateLayer(l.id, { cornerRadius: Number(e.target.value) }, `shape-corners:${l.id}`)}
+            onDoubleClick={() => updateLayer(l.id, { cornerRadius: 0 })}
+          />
+          <span className="ie-value">{l.cornerRadius ?? 0}%</span>
+        </label>
+      )}
+      <label className="ie-slider">
+        <span>Opacity</span>
+        <input
+          type="range"
+          min={5}
+          max={100}
+          value={Math.round(l.opacity * 100)}
+          onChange={e => updateLayer(l.id, { opacity: Number(e.target.value) / 100 }, `shape-opacity:${l.id}`)}
+        />
+        <span className="ie-value">{Math.round(l.opacity * 100)}%</span>
+      </label>
+      <div className="ie-row ie-scroll">
+        <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
+        <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+      </div>
+    </>
+  );
+
   const anchorSize = isTouch ? 22 : 11;
   const layerTransformer = tab !== 'crop';
+  // Layers are picked and moved on every tab but Crop and a painting Brush,
+  // where the pointer crops or paints.
+  const layersInteractive = tab !== 'crop' && !painting;
   const ratio = aspectRatio(aspectId);
 
   return (
@@ -990,448 +1178,568 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         </button>
       </header>
 
-      <div className="ie-body">
-        <div className="ie-canvas" ref={canvasBoxRef}>
-          {loadError && <div className="ie-message">The image could not be loaded.</div>}
-          {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
-          {ready && crop && size.w > 0 && (
-            <Stage width={size.w} height={size.h} onPointerDown={onStagePointerDown}>
-              <Layer>
-                <Group
-                  ref={contentRef}
-                  x={gx}
-                  y={gy}
-                  scaleX={scale}
-                  scaleY={scale}
-                  {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
-                >
-                  {canvas
-                    ? <Rect ref={backgroundRef} x={0} y={0} width={natW} height={natH} fill={canvas.background} />
-                    : <KImage ref={baseRef} image={source ?? undefined} width={natW} height={natH} />}
-                  {layers.map(l => (l.kind === 'image' ? (() => {
-                    const { group, parts } = imageLayerParts(l);
-                    return (
-                      <Group
-                        key={l.id}
-                        ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                        {...group}
-                        listening={tab !== 'crop'}
-                        draggable={tab !== 'crop'}
-                        onPointerDown={() => selectLayer(l)}
-                        onDragStart={startGesture}
-                        onTransformStart={startGesture}
-                        onDragMove={e => onLayerDragMove(l, e)}
-                        onDragEnd={e => onLayerDragEnd(l, e)}
-                        onTransformEnd={e => onLayerTransformEnd(l, e.currentTarget)}
-                      >
-                        {parts.map((p, i) => (p.kind === 'image'
-                          ? <KImage key={i} {...p.attrs} image={p.attrs.image} />
-                          : <Rect key={i} {...p.attrs} />))}
-                      </Group>
-                    );
-                  })() : (
-                    <KText
-                      key={l.id}
-                      ref={node => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); }}
-                      {...textLayerAttrs(l)}
-                      listening={tab !== 'crop'}
-                      draggable={tab !== 'crop'}
-                      onPointerDown={() => selectLayer(l)}
-                      onDragStart={startGesture}
-                      onTransformStart={startGesture}
-                      onDblClick={() => textAreaRef.current?.focus()}
-                      onDragMove={e => onLayerDragMove(l, e)}
-                      onDragEnd={e => onLayerDragEnd(l, e)}
-                      onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                    />
-                  )))}
-                  {guideOverlay && (
-                    <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
-                  )}
-                </Group>
-
-                {guides && tab !== 'crop' && (
-                  <Group listening={false}>
-                    {guides.guides.map((g, i) => (g.orientation === 'v' ? (
-                      <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                    ) : (
-                      <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                    )))}
-                    {guides.gaps.map((m, i) => {
-                      const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
-                      const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
-                      const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
-                      const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
-                      const [lx, ly] = pt((a + b) / 2, c);
-                      return (
-                        <Group key={`m${i}`}>
-                          <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                          <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                          <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                          <Label x={lx} y={ly}>
-                            <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
-                            <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
-                          </Label>
-                        </Group>
-                      );
-                    })}
-                  </Group>
-                )}
-
-                {tab === 'crop' && (
-                  <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
-                    {/* Shade what the crop leaves out. */}
-                    <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
-                    <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                    <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                    <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                    {[1, 2].map(i => (
-                      <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                    ))}
-                    {[1, 2].map(i => (
-                      <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                    ))}
-                    <Rect
-                      ref={cropRectRef}
-                      x={crop.x}
-                      y={crop.y}
-                      width={crop.width}
-                      height={crop.height}
-                      fill="rgba(0,0,0,0)"
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                      strokeScaleEnabled={false}
-                      draggable
-                      dragBoundFunc={cropDragBound}
-                      onDragStart={startGesture}
-                      onTransformStart={startGesture}
-                      onDragMove={syncCropFromNode}
-                      onDragEnd={syncCropFromNode}
-                      onTransform={syncCropFromNode}
-                      onTransformEnd={syncCropFromNode}
-                    />
-                  </Group>
-                )}
-
-                <Transformer
-                  ref={trRef}
-                  anchorSize={anchorSize}
-                  anchorCornerRadius={anchorSize / 2}
-                  anchorStroke="#6366f1"
-                  anchorFill="#ffffff"
-                  borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
-                  borderStrokeWidth={1.5}
-                  padding={layerTransformer ? 4 : 0}
-                  rotateEnabled={layerTransformer}
-                  rotateAnchorOffset={isTouch ? 36 : 28}
-                  rotationSnaps={[0, 90, 180, 270]}
-                  flipEnabled={false}
-                  ignoreStroke
-                  keepRatio={layerTransformer || ratio !== null}
-                  enabledAnchors={layerTransformer || ratio !== null
-                    ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
-                    : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
-                  boundBoxFunc={(oldBox, newBox) => (layerTransformer
-                    ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
-                    : cropBoundBox(oldBox, newBox))}
-                />
-              </Layer>
-            </Stage>
-          )}
-        </div>
-
-        {showLayers && (
-          <aside className="ie-layers" aria-label="Objects">
-            <div className="ie-layers-title">Objects</div>
-            <LayerList
-              layers={layers}
-              selectedId={selectedId}
-              background={canvas ? { color: canvas.background } : { src: source?.src ?? imageUrl ?? '' }}
-              onSelect={selectLayer}
-              onSelectBackground={() => { setSelectedId(null); if (canvasMode) setTab('canvas'); }}
-              onReorder={reorderLayers}
-            />
-          </aside>
-        )}
-      </div>
-
-      <div className="ie-panel">
-        {tab === 'crop' && (
-          <div className="ie-row ie-scroll">
-            {ASPECTS.map(a => (
-              <button key={a.id} className={`ie-chip ${aspectId === a.id ? 'active' : ''}`} onClick={() => pickAspect(a.id)}>
-                {a.label}
-              </button>
-            ))}
-            <button className="ie-chip" onClick={resetCrop}>Reset</button>
-          </div>
-        )}
-
-        {tab === 'canvas' && canvas && (
-          <>
-            <div className="ie-row ie-scroll">
-              {CANVAS_FORMATS.map(f => (
-                <button
-                  key={f.id}
-                  className={`ie-chip ${canvas.width === f.width && canvas.height === f.height ? 'active' : ''}`}
-                  onClick={() => changeFormat(f.width, f.height)}
-                  title={`${f.width} × ${f.height}`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <span className="ie-label">Background</span>
-            {colorRow(canvas.background, changeBackground, 'background')}
-          </>
-        )}
-
-        {tab === 'templates' && (
-          templates === null ? (
-            <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
-          ) : templates.length === 0 ? (
-            <p className="ie-hint">No templates yet. Create them in the Media Library.</p>
+      {/* Desktop: tool tabs, then their controls, in columns on the left of
+          the picture, so the picture keeps its size whatever the controls
+          hold. Phone: picture, controls, tabs from top to bottom. */}
+      <div className="ie-workspace">
+        <nav className="ie-tabs" aria-label="Tools">
+          {canvasMode ? (
+            <button className={tab === 'canvas' ? 'active' : ''} onClick={() => switchTab('canvas')}><Frame size={20} /><span>Canvas</span></button>
           ) : (
             <>
-              <div className="ie-row ie-scroll">
-                {templates.map(t => (
-                  <button
-                    key={t.id}
-                    className="ie-thumb"
-                    onClick={() => pickTemplate(t)}
-                    disabled={applyingTemplate !== null}
-                    title={t.description ? `${t.name}: ${t.description}` : t.name}
-                  >
-                    <img src={resolveUrl(t.url)} alt="" loading="lazy" />
-                    <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="ie-hint">
-                {canvasMode
-                  ? 'Tap a template to start from it. It replaces the current design.'
-                  : 'Tap a template to lay its texts and images over the picture.'}
-              </p>
+              <button className={tab === 'crop' ? 'active' : ''} onClick={() => switchTab('crop')}><Crop size={20} /><span>Crop</span></button>
+              <button className={tab === 'filters' ? 'active' : ''} onClick={() => switchTab('filters')}><Sparkles size={20} /><span>Filters</span></button>
             </>
-          )
-        )}
-
-        {tab === 'filters' && (
-          <>
+          )}
+          <button className={tab === 'templates' ? 'active' : ''} onClick={() => switchTab('templates')}><LayoutTemplate size={20} /><span>Templates</span></button>
+          <button className={tab === 'watermark' ? 'active' : ''} onClick={() => switchTab('watermark')}><Stamp size={20} /><span>Watermark</span></button>
+          <button className={tab === 'media' ? 'active' : ''} onClick={() => switchTab('media')}><FolderOpen size={20} /><span>Media</span></button>
+          <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>
+          <button className={tab === 'shapes' ? 'active' : ''} onClick={() => switchTab('shapes')}><Shapes size={20} /><span>Shapes</span></button>
+          <button className={tab === 'brush' ? 'active' : ''} onClick={() => switchTab('brush')}><Brush size={20} /><span>Brush</span></button>
+        </nav>
+        <div className="ie-panel">
+          {tab === 'crop' && (
             <div className="ie-row ie-scroll">
-              {FILTER_PRESETS.map(p => (
-                <button
-                  key={p.id}
-                  className={`ie-chip ${adjustments.preset === p.id ? 'active' : ''}`}
-                  onClick={() => changeAdjustments({ preset: p.id })}
-                >
-                  {p.label}
+              {ASPECTS.map(a => (
+                <button key={a.id} className={`ie-chip ${aspectId === a.id ? 'active' : ''}`} onClick={() => pickAspect(a.id)}>
+                  {a.label}
                 </button>
               ))}
+              <button className="ie-chip" onClick={resetCrop}>Reset</button>
             </div>
-            {(['brightness', 'contrast', 'saturation'] as const).map(k => (
-              <label key={k} className="ie-slider">
-                <span>{k[0].toUpperCase() + k.slice(1)}</span>
-                <input
-                  type="range"
-                  min={-100}
-                  max={100}
-                  value={adjustments[k]}
-                  onChange={e => changeAdjustments({ [k]: Number(e.target.value) }, `adjust:${k}`)}
-                  onDoubleClick={() => changeAdjustments({ [k]: 0 })}
-                />
-                <span className="ie-value">{adjustments[k]}</span>
-              </label>
-            ))}
-            {hasAdjustments(adjustments) && (
-              <div className="ie-row">
-                <button className="ie-chip" onClick={() => changeAdjustments(NO_ADJUSTMENTS)}>Reset filters</button>
-              </div>
-            )}
-          </>
-        )}
+          )}
 
-        {tab === 'watermark' && (
-          <>
-            {watermarks.length === 0 ? (
-              <p className="ie-hint">No watermarks yet. Upload them on the Watermarks page.</p>
-            ) : (
-              <div className="ie-row ie-scroll">
-                {watermarks.map(w => (
-                  <button
-                    key={w.id}
-                    className="ie-thumb"
-                    onClick={() => addWatermark(w)}
-                    disabled={addingWatermark !== null}
-                    title={`Add ${w.name || w.filename}`}
-                  >
-                    <img src={resolveUrl(w.url)} alt="" />
-                    <span>{addingWatermark === w.id ? 'Adding…' : (w.name || w.filename)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {selected?.kind === 'image' ? imageLayerControls : watermarks.length > 0 && (
-              <p className="ie-hint">Tap a watermark to add it, then drag it, pull its corners or turn it on the picture.</p>
-            )}
-          </>
-        )}
-
-        {tab === 'media' && (
-          <>
-            <div className="ie-row">
-              <div className="ie-search">
-                <Search size={16} />
-                <input
-                  type="search"
-                  value={mediaQuery}
-                  onChange={e => setMediaQuery(e.target.value)}
-                  placeholder="Search the media library"
-                />
-              </div>
-              <button
-                className="ie-icon-btn"
-                onClick={() => mediaInputRef.current?.click()}
-                disabled={uploadingMedia}
-                title="Add an image to the library"
-              >
-                {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
-              </button>
-            </div>
-            {media === null ? (
-              <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
-            ) : media.length === 0 ? (
-              <p className="ie-hint">
-                {mediaLoading ? 'Searching…' : mediaQuery.trim()
-                  ? 'Nothing in the library matches that.'
-                  : 'The media library has no images yet. Add them here or on the Media Library page.'}
-              </p>
-            ) : (
-              <div className="ie-row ie-scroll">
-                {media.map(m => (
-                  <button
-                    key={m.id}
-                    className="ie-thumb"
-                    onClick={() => addMedia(m)}
-                    disabled={addingMedia !== null}
-                    title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
-                  >
-                    <img src={resolveUrl(m.url)} alt="" loading="lazy" />
-                    <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {selected?.kind === 'image' ? imageLayerControls : media && media.length > 0 && (
-              <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
-            )}
-            <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
-          </>
-        )}
-
-        {tab === 'text' && (
-          selected?.kind === 'text' ? (
+          {tab === 'canvas' && canvas && (
             <>
-              <textarea
-                ref={textAreaRef}
-                className="ie-textarea"
-                rows={2}
-                value={selected.text}
-                onChange={e => updateLayer(selected.id, { text: e.target.value }, `text:${selected.id}`)}
-                placeholder="Text"
-              />
-              <div className="ie-row">
-                <select
-                  className="ie-select"
-                  value={selected.fontFamily}
-                  onChange={e => updateLayer(selected.id, { fontFamily: e.target.value })}
-                >
-                  {fonts.some(f => f.family === selected.fontFamily) ? null : (
-                    <option value={selected.fontFamily}>{selected.fontFamily}</option>
-                  )}
-                  {fonts.map(f => (
-                    <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>{f.label}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  className="ie-number"
-                  min={MIN_FONT_SIZE}
-                  max={MAX_FONT_SIZE}
-                  step={1}
-                  value={fontSizeDraft?.id === selected.id ? fontSizeDraft.value : Math.round(selected.fontSize)}
-                  onChange={e => {
-                    setFontSizeDraft({ id: selected.id, value: e.target.value });
-                    const v = Math.round(Number(e.target.value));
-                    if (v >= MIN_FONT_SIZE && v <= MAX_FONT_SIZE) updateLayer(selected.id, resizeText(selected, v), `font-size:${selected.id}`);
-                  }}
-                  onBlur={() => setFontSizeDraft(null)}
-                  title="Font size in pixels of the picture"
-                  aria-label="Font size"
-                />
-                <span className="ie-unit">px</span>
-                <div className="ie-segmented" role="group" aria-label="Text alignment">
-                  {TEXT_ALIGNS.map(a => (
+              <div className="ie-row ie-scroll">
+                {CANVAS_FORMATS.map(f => (
+                  <button
+                    key={f.id}
+                    className={`ie-chip ${canvas.width === f.width && canvas.height === f.height ? 'active' : ''}`}
+                    onClick={() => changeFormat(f.width, f.height)}
+                    title={`${f.width} × ${f.height}`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ie-label">Background</span>
+              {colorRow(canvas.background, changeBackground, 'background')}
+            </>
+          )}
+
+          {tab === 'templates' && (
+            templates === null ? (
+              <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+            ) : templates.length === 0 ? (
+              <p className="ie-hint">No templates yet. Create them in the Media Library.</p>
+            ) : (
+              <>
+                <p className="ie-hint">
+                  {canvasMode
+                    ? 'Tap a template to start from it. It replaces the current design.'
+                    : 'Tap a template to lay its texts and images over the picture.'}
+                </p>
+                <div className="ie-grid">
+                  {templates.map(t => (
                     <button
-                      key={a.id}
-                      className={(selected.align ?? 'center') === a.id ? 'active' : ''}
-                      onClick={() => updateLayer(selected.id, { align: a.id })}
-                      title={a.label}
-                      aria-label={a.label}
-                      aria-pressed={(selected.align ?? 'center') === a.id}
+                      key={t.id}
+                      className="ie-tile"
+                      onClick={() => pickTemplate(t)}
+                      disabled={applyingTemplate !== null}
+                      title={t.description ? `${t.name}: ${t.description}` : t.name}
                     >
-                      <a.icon size={16} />
+                      <img src={resolveUrl(t.url)} alt="" loading="lazy" />
+                      <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
                     </button>
                   ))}
                 </div>
-              </div>
-              {colorRow(selected.fill, (c, key) => updateLayer(selected.id, { fill: c }, key), `fill:${selected.id}`)}
+              </>
+            )
+          )}
+
+          {tab === 'filters' && (
+            <>
               <div className="ie-row ie-scroll">
-                <button className={`ie-chip ${selected.bold ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { bold: !selected.bold })}>
-                  <Bold size={14} /> Bold
-                </button>
-                <button className={`ie-chip ${selected.outline ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { outline: !selected.outline })}>
-                  Outline
-                </button>
-                <button className={`ie-chip ${selected.shadow ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}>
-                  Shadow
-                </button>
-                <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
-                <button className="ie-chip" onClick={addText}><Plus size={14} /> New</button>
-                <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+                {FILTER_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    className={`ie-chip ${adjustments.preset === p.id ? 'active' : ''}`}
+                    onClick={() => changeAdjustments({ preset: p.id })}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               </div>
+              {(['brightness', 'contrast', 'saturation'] as const).map(k => (
+                <label key={k} className="ie-slider">
+                  <span>{k[0].toUpperCase() + k.slice(1)}</span>
+                  <input
+                    type="range"
+                    min={-100}
+                    max={100}
+                    value={adjustments[k]}
+                    onChange={e => changeAdjustments({ [k]: Number(e.target.value) }, `adjust:${k}`)}
+                    onDoubleClick={() => changeAdjustments({ [k]: 0 })}
+                  />
+                  <span className="ie-value">{adjustments[k]}</span>
+                </label>
+              ))}
+              {hasAdjustments(adjustments) && (
+                <div className="ie-row">
+                  <button className="ie-chip" onClick={() => changeAdjustments(NO_ADJUSTMENTS)}>Reset filters</button>
+                </div>
+              )}
             </>
-          ) : (
+          )}
+
+          {tab === 'watermark' && (
+            <>
+              {selected?.kind === 'image' ? imageLayerControls : watermarks.length > 0 && (
+                <p className="ie-hint">Tap a watermark to add it, then drag it, pull its corners or turn it on the picture.</p>
+              )}
+              {watermarks.length === 0 ? (
+                <p className="ie-hint">No watermarks yet. Upload them on the Watermarks page.</p>
+              ) : (
+                <div className="ie-grid">
+                  {watermarks.map(w => (
+                    <button
+                      key={w.id}
+                      className="ie-tile"
+                      onClick={() => addWatermark(w)}
+                      disabled={addingWatermark !== null}
+                      title={`Add ${w.name || w.filename}`}
+                    >
+                      <img src={resolveUrl(w.url)} alt="" />
+                      <span>{addingWatermark === w.id ? 'Adding…' : (w.name || w.filename)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === 'media' && (
+            <>
+              {selected?.kind === 'image' ? (
+                <>
+                  {imageLayerControls}
+                  <span className="ie-label ie-section">Media library</span>
+                </>
+              ) : media && media.length > 0 && (
+                <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
+              )}
+              <div className="ie-row ie-sticky">
+                <div className="ie-search">
+                  <Search size={16} />
+                  <input
+                    type="search"
+                    value={mediaQuery}
+                    onChange={e => setMediaQuery(e.target.value)}
+                    placeholder="Search the media library"
+                  />
+                </div>
+                <button
+                  className="ie-icon-btn"
+                  onClick={() => mediaInputRef.current?.click()}
+                  disabled={uploadingMedia}
+                  title="Add an image to the library"
+                >
+                  {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
+                </button>
+              </div>
+              {media === null ? (
+                <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+              ) : media.length === 0 ? (
+                <p className="ie-hint">
+                  {mediaLoading ? 'Searching…' : mediaQuery.trim()
+                    ? 'Nothing in the library matches that.'
+                    : 'The media library has no images yet. Add them here or on the Media Library page.'}
+                </p>
+              ) : (
+                <div className="ie-grid">
+                  {media.map(m => (
+                    <button
+                      key={m.id}
+                      className="ie-tile"
+                      onClick={() => addMedia(m)}
+                      disabled={addingMedia !== null}
+                      title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
+                    >
+                      <img src={resolveUrl(m.url)} alt="" loading="lazy" />
+                      <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
+            </>
+          )}
+
+          {tab === 'shapes' && (
+            <>
+              <span className="ie-label">Add a shape</span>
+              <div className="ie-row">
+                {SHAPE_KINDS.map(k => {
+                  const Icon = SHAPE_ICONS[k.id];
+                  return <button key={k.id} className="ie-chip" onClick={() => addShape(k.id)}><Icon size={14} /> {k.label}</button>;
+                })}
+              </div>
+              {selected?.kind === 'shape' ? shapeControls(selected) : (
+                <p className="ie-hint">
+                  {layers.some(l => l.kind === 'shape')
+                    ? 'Tap a shape on the picture to change it.'
+                    : 'Add a shape, then drag it, pull its handles (Shift keeps its proportions) or turn it on the picture.'}
+                </p>
+              )}
+            </>
+          )}
+
+          {tab === 'brush' && (
             <>
               <div className="ie-row">
-                <button className="btn btn-primary" onClick={addText}><Plus size={16} /> Add text</button>
+                <button className={`ie-chip ${brushMode === 'paint' ? 'active' : ''}`} onClick={() => setBrushMode('paint')}><Brush size={14} /> Paint</button>
+                <button className={`ie-chip ${brushMode === 'move' ? 'active' : ''}`} onClick={() => setBrushMode('move')}><Move size={14} /> Move</button>
               </div>
-              <p className="ie-hint">
-                {layers.some(l => l.kind === 'text') ? 'Tap a text on the picture to edit it.' : 'Fonts and colours from the media library are offered alongside the system ones.'}
-              </p>
+              <label className="ie-slider">
+                <span>Size</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={Math.max(maxBrush, brushSize)}
+                  value={brushSize}
+                  onChange={e => setBrush(b => ({ ...b, size: Number(e.target.value) }))}
+                />
+                <span className="ie-value">{brushSize}px</span>
+              </label>
+              <label className="ie-slider">
+                <span>Feather</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(maxBrush, brushFeather)}
+                  value={brushFeather}
+                  onChange={e => setBrush(b => ({ ...b, feather: Number(e.target.value) }))}
+                />
+                <span className="ie-value">{brushFeather}px</span>
+              </label>
+              <label className="ie-slider">
+                <span>Opacity</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={100}
+                  value={Math.round(brush.opacity * 100)}
+                  onChange={e => setBrush(b => ({ ...b, opacity: Number(e.target.value) / 100 }))}
+                />
+                <span className="ie-value">{Math.round(brush.opacity * 100)}%</span>
+              </label>
+              {colorRow(brush.color, c => setBrush(b => ({ ...b, color: c })), 'brush-color')}
+              {selected?.kind === 'paint' ? (
+                <>
+                  <p className="ie-hint">
+                    {brushMode === 'paint'
+                      ? 'New strokes go into the selected paint layer. Start a new layer to keep them apart.'
+                      : 'Drag the paint to move it.'}
+                  </p>
+                  <div className="ie-row">
+                    <button className="ie-chip" onClick={() => { setSelectedId(null); setBrushMode('paint'); }}><Plus size={14} /> New layer</button>
+                    <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove layer</button>
+                  </div>
+                </>
+              ) : (
+                <p className="ie-hint">
+                  {brushMode === 'paint'
+                    ? 'Paint on the picture. A large, soft, see-through black brush darkens a busy background behind a text.'
+                    : 'Tap a layer to pick it, then drag it.'}
+                </p>
+              )}
             </>
-          )
-        )}
+          )}
+
+          {tab === 'text' && (
+            selected?.kind === 'text' ? (
+              <>
+                <textarea
+                  ref={textAreaRef}
+                  className="ie-textarea"
+                  rows={2}
+                  value={selected.text}
+                  onChange={e => updateLayer(selected.id, { text: e.target.value }, `text:${selected.id}`)}
+                  placeholder="Text"
+                />
+                <div className="ie-row">
+                  <select
+                    className="ie-select"
+                    value={selected.fontFamily}
+                    onChange={e => updateLayer(selected.id, { fontFamily: e.target.value })}
+                  >
+                    {fonts.some(f => f.family === selected.fontFamily) ? null : (
+                      <option value={selected.fontFamily}>{selected.fontFamily}</option>
+                    )}
+                    {fonts.map(f => (
+                      <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>{f.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    className="ie-number"
+                    min={MIN_FONT_SIZE}
+                    max={MAX_FONT_SIZE}
+                    step={1}
+                    value={fontSizeDraft?.id === selected.id ? fontSizeDraft.value : Math.round(selected.fontSize)}
+                    onChange={e => {
+                      setFontSizeDraft({ id: selected.id, value: e.target.value });
+                      const v = Math.round(Number(e.target.value));
+                      if (v >= MIN_FONT_SIZE && v <= MAX_FONT_SIZE) updateLayer(selected.id, resizeText(selected, v), `font-size:${selected.id}`);
+                    }}
+                    onBlur={() => setFontSizeDraft(null)}
+                    title="Font size in pixels of the picture"
+                    aria-label="Font size"
+                  />
+                  <span className="ie-unit">px</span>
+                  <div className="ie-segmented" role="group" aria-label="Text alignment">
+                    {TEXT_ALIGNS.map(a => (
+                      <button
+                        key={a.id}
+                        className={(selected.align ?? 'center') === a.id ? 'active' : ''}
+                        onClick={() => updateLayer(selected.id, { align: a.id })}
+                        title={a.label}
+                        aria-label={a.label}
+                        aria-pressed={(selected.align ?? 'center') === a.id}
+                      >
+                        <a.icon size={16} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {colorRow(selected.fill, (c, key) => updateLayer(selected.id, { fill: c }, key), `fill:${selected.id}`)}
+                <div className="ie-row ie-scroll">
+                  <button className={`ie-chip ${selected.bold ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { bold: !selected.bold })}>
+                    <Bold size={14} /> Bold
+                  </button>
+                  <button className={`ie-chip ${selected.outline ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { outline: !selected.outline })}>
+                    Outline
+                  </button>
+                  <button className={`ie-chip ${selected.shadow ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}>
+                    Shadow
+                  </button>
+                  <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
+                  <button className="ie-chip" onClick={addText}><Plus size={14} /> New</button>
+                  <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="ie-row">
+                  <button className="btn btn-primary" onClick={addText}><Plus size={16} /> Add text</button>
+                </div>
+                <p className="ie-hint">
+                  {layers.some(l => l.kind === 'text') ? 'Tap a text on the picture to edit it.' : 'Fonts and colours from the media library are offered alongside the system ones.'}
+                </p>
+              </>
+            )
+          )}
+        </div>
+        <div className="ie-body">
+          <div className={`ie-canvas ${painting ? 'ie-painting' : ''}`} ref={canvasBoxRef}>
+            {loadError && <div className="ie-message">The image could not be loaded.</div>}
+            {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
+            {ready && crop && size.w > 0 && (
+              <Stage
+                width={size.w}
+                height={size.h}
+                onPointerDown={onStagePointerDown}
+                onPointerMove={e => { if (painting) extendStroke(e.target.getStage()); }}
+                onPointerLeave={() => setBrushAt(null)}
+              >
+                <Layer>
+                  <Group
+                    ref={contentRef}
+                    x={gx}
+                    y={gy}
+                    scaleX={scale}
+                    scaleY={scale}
+                    {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
+                  >
+                    {canvas
+                      ? <Rect ref={backgroundRef} x={0} y={0} width={natW} height={natH} fill={canvas.background} />
+                      : <KImage ref={baseRef} image={source ?? undefined} width={natW} height={natH} />}
+                    {layers.map(l => {
+                      const common = {
+                        ref: (node: Konva.Node | null) => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); },
+                        listening: layersInteractive,
+                        draggable: layersInteractive,
+                        onPointerDown: () => selectLayer(l),
+                        onDragStart: startGesture,
+                        onTransformStart: startGesture,
+                        onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragMove(l, e),
+                        onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragEnd(l, e),
+                      };
+                      if (l.kind === 'text') {
+                        return (
+                          <KText
+                            key={l.id}
+                            {...common}
+                            {...textLayerAttrs(l)}
+                            onDblClick={() => textAreaRef.current?.focus()}
+                            onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                          />
+                        );
+                      }
+                      if (l.kind === 'paint') {
+                        return (
+                          <Group key={l.id} {...common} x={l.x} y={l.y}>
+                            {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
+                          </Group>
+                        );
+                      }
+                      const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
+                      return (
+                        <Group key={l.id} {...common} {...group} onTransformEnd={e => onLayerTransformEnd(l, e.currentTarget)}>
+                          {parts.map(renderPart)}
+                        </Group>
+                      );
+                    })}
+                    {drawing && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                    {guideOverlay && (
+                      <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
+                    )}
+                  </Group>
+
+                  {guides && tab !== 'crop' && (
+                    <Group listening={false}>
+                      {guides.guides.map((g, i) => (g.orientation === 'v' ? (
+                        <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                      ) : (
+                        <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                      )))}
+                      {guides.gaps.map((m, i) => {
+                        const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
+                        const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
+                        const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
+                        const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
+                        const [lx, ly] = pt((a + b) / 2, c);
+                        return (
+                          <Group key={`m${i}`}>
+                            <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                            <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                            <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                            <Label x={lx} y={ly}>
+                              <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
+                              <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
+                            </Label>
+                          </Group>
+                        );
+                      })}
+                    </Group>
+                  )}
+
+                  {painting && brushAt && (
+                    <Group listening={false}>
+                      <Circle x={gx + brushAt.x * scale} y={gy + brushAt.y * scale} radius={Math.max(1, (brushSize / 2) * scale)} stroke="#ffffff" strokeWidth={1.5} shadowColor="#000000" shadowBlur={2} shadowOpacity={0.8} />
+                      {brushFeather > 0 && (
+                        <Circle x={gx + brushAt.x * scale} y={gy + brushAt.y * scale} radius={(brushSize / 2 + brushFeather) * scale} stroke="rgba(255,255,255,0.6)" strokeWidth={1} dash={[4, 4]} />
+                      )}
+                    </Group>
+                  )}
+
+                  {tab === 'crop' && (
+                    <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
+                      {/* Shade what the crop leaves out. */}
+                      <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
+                      <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                      <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                      <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                      {[1, 2].map(i => (
+                        <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                      ))}
+                      {[1, 2].map(i => (
+                        <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                      ))}
+                      <Rect
+                        ref={cropRectRef}
+                        x={crop.x}
+                        y={crop.y}
+                        width={crop.width}
+                        height={crop.height}
+                        fill="rgba(0,0,0,0)"
+                        stroke="#ffffff"
+                        strokeWidth={2}
+                        strokeScaleEnabled={false}
+                        draggable
+                        dragBoundFunc={cropDragBound}
+                        onDragStart={startGesture}
+                        onTransformStart={startGesture}
+                        onDragMove={syncCropFromNode}
+                        onDragEnd={syncCropFromNode}
+                        onTransform={syncCropFromNode}
+                        onTransformEnd={syncCropFromNode}
+                      />
+                    </Group>
+                  )}
+
+                  <Transformer
+                    ref={trRef}
+                    anchorSize={anchorSize}
+                    anchorCornerRadius={anchorSize / 2}
+                    anchorStroke="#6366f1"
+                    anchorFill="#ffffff"
+                    borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
+                    borderStrokeWidth={1.5}
+                    padding={layerTransformer ? 4 : 0}
+                    rotateEnabled={layerTransformer && selected?.kind !== 'paint'}
+                    rotateAnchorOffset={isTouch ? 36 : 28}
+                    rotationSnaps={[0, 90, 180, 270]}
+                    flipEnabled={false}
+                    ignoreStroke
+                    // Shapes stretch freely (Shift keeps their proportions);
+                    // paint is moved only.
+                    keepRatio={layerTransformer ? selected?.kind !== 'shape' : ratio !== null}
+                    enabledAnchors={layerTransformer && selected?.kind === 'paint'
+                      ? []
+                      : (layerTransformer && selected?.kind !== 'shape') || (!layerTransformer && ratio !== null)
+                        ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                        : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+                    boundBoxFunc={(oldBox, newBox) => (layerTransformer
+                      ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
+                      : cropBoundBox(oldBox, newBox))}
+                  />
+                </Layer>
+              </Stage>
+            )}
+          </div>
+
+          {showLayers && (
+            <aside className="ie-layers" aria-label="Objects">
+              <div className="ie-layers-title">Objects</div>
+              <LayerList
+                layers={layers}
+                selectedId={selectedId}
+                background={canvas ? { color: canvas.background } : { src: source?.src ?? imageUrl ?? '' }}
+                onSelect={selectLayer}
+                onSelectBackground={() => { setSelectedId(null); if (canvasMode) setTab('canvas'); }}
+                onReorder={reorderLayers}
+              />
+            </aside>
+          )}
+        </div>
       </div>
 
       <input ref={placeInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={pickPlaceFile} />
-
-      <nav className="ie-tabs">
-        {canvasMode ? (
-          <button className={tab === 'canvas' ? 'active' : ''} onClick={() => switchTab('canvas')}><Frame size={20} /><span>Canvas</span></button>
-        ) : (
-          <>
-            <button className={tab === 'crop' ? 'active' : ''} onClick={() => switchTab('crop')}><Crop size={20} /><span>Crop</span></button>
-            <button className={tab === 'filters' ? 'active' : ''} onClick={() => switchTab('filters')}><Sparkles size={20} /><span>Filters</span></button>
-          </>
-        )}
-        <button className={tab === 'templates' ? 'active' : ''} onClick={() => switchTab('templates')}><LayoutTemplate size={20} /><span>Templates</span></button>
-        <button className={tab === 'watermark' ? 'active' : ''} onClick={() => switchTab('watermark')}><Stamp size={20} /><span>Watermark</span></button>
-        <button className={tab === 'media' ? 'active' : ''} onClick={() => switchTab('media')}><FolderOpen size={20} /><span>Media</span></button>
-        <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>
-      </nav>
     </div>
   );
+}
+
+// One part of an image or shape layer's group.
+function renderPart(p: ImagePart, i: number) {
+  switch (p.kind) {
+    case 'image': return <KImage key={i} {...p.attrs} image={p.attrs.image} />;
+    case 'ellipse': return <Ellipse key={i} {...p.attrs} />;
+    case 'line': return <Line key={i} {...p.attrs} />;
+    default: return <Rect key={i} {...p.attrs} />;
+  }
 }
 
 interface BoxLike {

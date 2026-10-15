@@ -1,6 +1,7 @@
-/* Full-screen image editor. One layout for every width: picture on top,
-   the current tool's controls under it, the tool tabs at the bottom where a
-   thumb reaches them. */
+/* Full-screen image editor. On a phone: picture on top, the current tool's
+   controls under it, the tool tabs at the bottom where a thumb reaches them.
+   Above 768px the tabs and the controls are columns on the left of the
+   picture instead, so the picture keeps its size whatever the controls hold. */
 .ie-root {
   position: fixed;
   inset: 0;
@@ -63,11 +64,19 @@
   color: var(--accent-hover);
 }
 
+.ie-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .ie-body {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+  order: 1;
 }
 
 .ie-canvas {
@@ -79,6 +88,10 @@
   /* A checkerboard shows through transparent parts of the picture. */
   background:
     repeating-conic-gradient(#111827 0% 25%, #0b1220 0% 50%) 50% / 24px 24px;
+}
+
+.ie-canvas.ie-painting {
+  cursor: none;
 }
 
 /* The object list on the right edge, top of the stack first. */
@@ -187,6 +200,17 @@
   height: 100%;
 }
 
+.ie-layer-shape {
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+}
+
+.ie-layer-paint {
+  width: 100%;
+  height: 100%;
+}
+
 .ie-layer-text {
   font-size: 18px;
   line-height: 1;
@@ -242,6 +266,7 @@
 }
 
 .ie-panel {
+  order: 2;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -328,46 +353,6 @@
 .ie-value {
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.ie-thumb {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  width: 84px;
-  padding: 6px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.ie-thumb img {
-  width: 64px;
-  height: 64px;
-  object-fit: contain;
-  background: repeating-conic-gradient(#475569 0% 25%, #334155 0% 50%) 50% / 12px 12px;
-  border-radius: 4px;
-}
-
-.ie-thumb span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ie-thumb:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.ie-thumb:disabled {
-  opacity: 0.6;
-  cursor: wait;
 }
 
 .ie-textarea {
@@ -465,14 +450,24 @@
 }
 
 .ie-tabs {
+  order: 3;
   display: flex;
-  justify-content: center;
+  /* Not centred: a row too long for a phone would overflow on both sides
+     and cut off the first tab. The tabs grow to fill it anyway. */
+  justify-content: flex-start;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ie-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .ie-tabs button {
   flex: 1;
+  min-width: 52px;
   max-width: 160px;
   display: flex;
   flex-direction: column;
@@ -544,4 +539,119 @@
 .ie-segmented button.active {
   background: var(--accent);
   color: #ffffff;
+}
+
+/* A title above a group of controls, set off from what comes before. */
+.ie-section {
+  margin-top: 6px;
+}
+
+/* Stays at the top of the panel while the library under it scrolls. */
+.ie-sticky {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  padding-top: 12px;
+  padding-bottom: 4px;
+  background: var(--bg-secondary);
+}
+
+.ie-sticky:first-child {
+  margin-top: -12px;
+}
+
+/* Watermarks, templates and the media library: every entry at once, as
+   small previews in a grid that scrolls with the panel. */
+.ie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.ie-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ie-tile img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: repeating-conic-gradient(#475569 0% 25%, #334155 0% 50%) 50% / 12px 12px;
+  border-radius: 4px;
+}
+
+.ie-tile span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.ie-tile:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ie-tile:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+@media (min-width: 769px) {
+  .ie-workspace {
+    flex-direction: row;
+  }
+
+  .ie-tabs {
+    order: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 76px;
+    flex-shrink: 0;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .ie-tabs button {
+    flex: none;
+    max-width: none;
+    padding: 12px 4px;
+  }
+
+  .ie-panel {
+    order: 0;
+    width: 316px;
+    flex-shrink: 0;
+    max-height: none;
+    border-top: none;
+    border-right: 1px solid var(--border);
+  }
+
+  /* The column scrolls as a whole; nothing in it is squeezed to fit. */
+  .ie-panel > * {
+    max-width: none;
+    flex-shrink: 0;
+  }
+
+  /* There is no thumb to swipe a row sideways here: rows wrap instead. */
+  .ie-panel .ie-scroll {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  /* Two columns of small previews in the panel. */
+  .ie-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

@@ -78,7 +78,57 @@ export interface TextLayer {
   rotation: number;
 }
 
-export type EditorLayer = ImageLayer | TextLayer;
+export type ShapeKind = 'rect' | 'ellipse' | 'triangle';
+
+export const SHAPE_KINDS: { id: ShapeKind; label: string }[] = [
+  { id: 'rect', label: 'Box' },
+  { id: 'ellipse', label: 'Circle' },
+  { id: 'triangle', label: 'Triangle' },
+];
+
+// A box, circle (an ellipse in its box) or triangle, positioned by its centre
+// like an image. Its border is drawn on the outline, half inside and half
+// outside, with round joins (the server draws it the same way).
+export interface ShapeLayer {
+  id: string;
+  kind: 'shape';
+  shape: ShapeKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  // Fill colour; empty for none.
+  fill: string;
+  // Border colour and width in source-image pixels; no border at width 0.
+  stroke: string;
+  strokeWidth: number;
+  // Boxes only: corner rounding in percent of the shorter side.
+  cornerRadius?: number;
+}
+
+// One brush stroke: a path through points (x0, y0, x1, y1, ...) relative to
+// its layer, painted size wide and blurred feather pixels at its edges.
+export interface PaintStroke {
+  points: number[];
+  size: number;
+  feather: number;
+  color: string;
+  opacity: number;
+}
+
+// Brush strokes painted onto the picture, e.g. a soft dark patch behind a
+// text. (x, y) moves them all; they are not scaled or turned.
+export interface PaintLayer {
+  id: string;
+  kind: 'paint';
+  x: number;
+  y: number;
+  strokes: PaintStroke[];
+}
+
+export type EditorLayer = ImageLayer | TextLayer | ShapeLayer | PaintLayer;
 
 // A blank canvas the editor draws on instead of a photo.
 export interface EditorCanvas {
@@ -90,7 +140,7 @@ export interface EditorCanvas {
 // A saved design: a canvas and its layers, images by URL. The media library
 // stores these as templates (JSON); the server reads only the outline and the
 // image layers' src.
-export type TemplateLayer = Omit<ImageLayer, 'id' | 'img'> | Omit<TextLayer, 'id'>;
+export type TemplateLayer = Omit<ImageLayer, 'id' | 'img'> | Omit<TextLayer, 'id'> | Omit<ShapeLayer, 'id'> | Omit<PaintLayer, 'id'>;
 
 export interface EditorTemplate {
   version: 1;
@@ -193,7 +243,9 @@ export function applyAdjustments(node: Konva.Image, a: Adjustments, pixelRatio: 
 
 export type ImagePart =
   | { kind: 'image'; attrs: Konva.ImageConfig }
-  | { kind: 'rect'; attrs: Konva.RectConfig };
+  | { kind: 'rect'; attrs: Konva.RectConfig }
+  | { kind: 'ellipse'; attrs: Konva.EllipseConfig }
+  | { kind: 'line'; attrs: Konva.LineConfig };
 
 // An image layer is a group, positioned and turned about its centre, holding
 // the image and whatever its border draws. The editor's stage and renderEdit
@@ -251,10 +303,133 @@ export function imageLayerParts(l: ImageLayer): { group: Konva.GroupConfig; part
   };
 }
 
-export function buildImageLayerNode(l: ImageLayer): Konva.Group {
-  const { group, parts } = imageLayerParts(l);
+// A shape layer is a group like an image layer, holding the one shape drawn
+// over its box.
+export function shapeLayerParts(l: ShapeLayer): { group: Konva.GroupConfig; parts: ImagePart[] } {
+  const { width: w, height: h } = l;
+  const sw = Math.max(0, l.strokeWidth);
+  const paint = {
+    fill: l.fill || undefined,
+    fillEnabled: !!l.fill,
+    stroke: sw > 0 ? l.stroke : undefined,
+    strokeWidth: sw,
+    strokeEnabled: sw > 0,
+    lineJoin: 'round' as const,
+  };
+  let part: ImagePart;
+  switch (l.shape) {
+    case 'ellipse':
+      part = { kind: 'ellipse', attrs: { x: w / 2, y: h / 2, radiusX: w / 2, radiusY: h / 2, ...paint } };
+      break;
+    case 'triangle':
+      part = { kind: 'line', attrs: { points: [w / 2, 0, w, h, 0, h], closed: true, ...paint } };
+      break;
+    default:
+      part = {
+        kind: 'rect',
+        attrs: { x: 0, y: 0, width: w, height: h, cornerRadius: (clamp(l.cornerRadius ?? 0, 0, 50) / 100) * Math.min(w, h), ...paint },
+      };
+  }
+  return {
+    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity },
+    parts: [part],
+  };
+}
+
+function partNode(p: ImagePart): Konva.Shape {
+  switch (p.kind) {
+    case 'image': return new Konva.Image(p.attrs);
+    case 'ellipse': return new Konva.Ellipse(p.attrs);
+    case 'line': return new Konva.Line(p.attrs);
+    default: return new Konva.Rect(p.attrs);
+  }
+}
+
+export function buildImageLayerNode(l: ImageLayer | ShapeLayer): Konva.Group {
+  const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
   const g = new Konva.Group(group);
-  for (const p of parts) g.add(p.kind === 'image' ? new Konva.Image(p.attrs) : new Konva.Rect(p.attrs));
+  for (const p of parts) g.add(partNode(p));
+  return g;
+}
+
+// A brush stroke as a Konva shape. A feathered edge is a blur, which the
+// canvas draws fastest (and at any strength) as a shadow: the stroke itself
+// is drawn off the canvas and only its shadow, shifted back, lands on the
+// picture. The shape's box is the stroke's, so selecting and snapping see
+// where the paint is.
+export function paintStrokeAttrs(st: PaintStroke): Konva.ShapeConfig {
+  const pts = st.points.length >= 4 ? st.points : [st.points[0] ?? 0, st.points[1] ?? 0, (st.points[0] ?? 0) + 0.01, st.points[1] ?? 0];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) {
+    minX = Math.min(minX, pts[i]);
+    maxX = Math.max(maxX, pts[i]);
+    minY = Math.min(minY, pts[i + 1]);
+    maxY = Math.max(maxY, pts[i + 1]);
+  }
+  const pad = st.size / 2 + st.feather / 2;
+  const ox = minX - pad;
+  const oy = minY - pad;
+  const local = pts.map((v, i) => v - (i % 2 === 0 ? ox : oy));
+  const trace = (ctx: { moveTo(x: number, y: number): void; lineTo(x: number, y: number): void; quadraticCurveTo(a: number, b: number, c: number, d: number): void }, p: number[]) => {
+    ctx.moveTo(p[0], p[1]);
+    // Through the midpoints, so the stroke bends smoothly between samples.
+    for (let i = 2; i < p.length - 2; i += 2) {
+      ctx.quadraticCurveTo(p[i], p[i + 1], (p[i] + p[i + 2]) / 2, (p[i + 1] + p[i + 3]) / 2);
+    }
+    ctx.lineTo(p[p.length - 2], p[p.length - 1]);
+  };
+  return {
+    x: ox,
+    y: oy,
+    width: maxX - minX + pad * 2,
+    height: maxY - minY + pad * 2,
+    // For hit detection only; the scene is drawn by sceneFunc.
+    stroke: st.color,
+    strokeWidth: Math.max(st.size, 4),
+    lineCap: 'round',
+    lineJoin: 'round',
+    perfectDrawEnabled: false,
+    sceneFunc: (context) => {
+      const c = context._context as CanvasRenderingContext2D;
+      const m = c.getTransform();
+      const s = Math.hypot(m.a, m.b);
+      // The stroke in device pixels.
+      const dev = local.map((v, i) => (i % 2 === 0 ? m.a * v + m.c * local[i + 1] + m.e : m.b * local[i - 1] + m.d * v + m.f));
+      const lw = Math.max(0.5, st.size * s);
+      let right = -Infinity;
+      for (let i = 0; i < dev.length; i += 2) right = Math.max(right, dev[i]);
+      // Far enough left that the stroke itself is never on the canvas.
+      const shift = Math.max(0, right) + lw + 10;
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.beginPath();
+      trace(c, dev.map((v, i) => (i % 2 === 0 ? v - shift : v)));
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      c.lineWidth = lw;
+      c.strokeStyle = st.color;
+      c.globalAlpha *= clamp(st.opacity, 0, 1);
+      c.shadowColor = st.color;
+      c.shadowBlur = Math.max(0, st.feather * s);
+      c.shadowOffsetX = shift;
+      c.shadowOffsetY = 0;
+      c.stroke();
+      c.restore();
+    },
+    hitFunc: (context, shape) => {
+      context.beginPath();
+      trace(context, local);
+      context.strokeShape(shape);
+    },
+  };
+}
+
+export function buildPaintLayerNode(l: PaintLayer): Konva.Group {
+  const g = new Konva.Group({ x: l.x, y: l.y });
+  for (const st of l.strokes) g.add(new Konva.Shape(paintStrokeAttrs(st)));
   return g;
 }
 
@@ -359,7 +534,9 @@ export async function renderEdit({ source, background = '#ffffff', crop, adjustm
     }
 
     for (const l of layers) {
-      group.add(l.kind === 'image' ? buildImageLayerNode(l) : new Konva.Text(textLayerAttrs(l)));
+      if (l.kind === 'text') group.add(new Konva.Text(textLayerAttrs(l)));
+      else if (l.kind === 'paint') group.add(buildPaintLayerNode(l));
+      else group.add(buildImageLayerNode(l));
     }
 
     const canvas = group.toCanvas({ x: 0, y: 0, width, height, pixelRatio: 1 });
@@ -380,6 +557,23 @@ export function fitLayers<L extends EditorLayer | TemplateLayer>(layers: L[], fr
   const s = Math.min(sx, sy);
   if (sx === 1 && sy === 1 && from.x === to.x && from.y === to.y) return layers;
   return layers.map(l => {
+    if (l.kind === 'shape') {
+      const sl = l as ShapeLayer;
+      return {
+        ...l, x: to.x + (sl.x - from.x) * sx, y: to.y + (sl.y - from.y) * sy, width: sl.width * s, height: sl.height * s, strokeWidth: sl.strokeWidth * s,
+      };
+    }
+    if (l.kind === 'paint') {
+      // The strokes move into place and the layer's own shift is folded in.
+      const pl = l as PaintLayer;
+      return {
+        ...l, x: 0, y: 0,
+        strokes: pl.strokes.map(st => ({
+          ...st, size: st.size * s, feather: st.feather * s,
+          points: st.points.map((v, i) => (i % 2 === 0 ? to.x + (v + pl.x - from.x) * sx : to.y + (v + pl.y - from.y) * sy)),
+        })),
+      };
+    }
     if (l.kind === 'image') {
       const il = l as ImageLayer;
       return {
@@ -408,6 +602,21 @@ export function toTemplate(crop: CropBox, layers: EditorLayer[], background: str
     layers: layers.map((l): TemplateLayer => {
       const x = l.x - crop.x;
       const y = l.y - crop.y;
+      if (l.kind === 'shape') {
+        return {
+          kind: 'shape', shape: l.shape, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
+          fill: l.fill, stroke: l.stroke, strokeWidth: l.strokeWidth,
+          ...(l.shape === 'rect' && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+        };
+      }
+      if (l.kind === 'paint') {
+        // A tenth of a pixel is plenty, and keeps long strokes small.
+        const r = (v: number) => Math.round(v * 10) / 10;
+        return {
+          kind: 'paint', x: r(x), y: r(y),
+          strokes: l.strokes.map(st => ({ ...st, points: st.points.map(r), size: r(st.size), feather: r(st.feather) })),
+        };
+      }
       if (l.kind === 'image') {
         return {
           kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
@@ -445,6 +654,8 @@ export async function instantiateTemplate(
   let missing = 0;
   const loaded = await Promise.all(fitted.map(async (l): Promise<EditorLayer | null> => {
     if (l.kind === 'text') return { ...(l as Omit<TextLayer, 'id'>), id: newLayerId() };
+    if (l.kind === 'shape') return { ...(l as Omit<ShapeLayer, 'id'>), id: newLayerId() };
+    if (l.kind === 'paint') return { ...(l as Omit<PaintLayer, 'id'>), id: newLayerId() };
     const il = l as Omit<ImageLayer, 'id' | 'img'>;
     try {
       const img = await loadImage(resolve(il.src));
