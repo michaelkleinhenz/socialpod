@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
-import type { ImageDraft, MediaItem, Watermark } from '../../../types';
+import type { ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
   instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
@@ -19,7 +19,7 @@ import { snapBox, type SnapResult } from './snapping';
 import { LayerList } from './LayerList';
 import './ImageEditor.css';
 
-type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'watermark' | 'media' | 'text' | 'shapes' | 'brush';
+type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush';
 
 const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle };
 
@@ -109,8 +109,6 @@ interface Props {
   template?: EditorTemplate;
   // Header title; "Edit image" by default.
   title?: string;
-  // The team's watermarks, offered on the Watermark tab.
-  watermarks?: Watermark[];
   // An overlay drawn over the crop area for reference but left out of the
   // output, for images whose overlay is composited later (convention queues
   // stamp theirs when the item is posted).
@@ -127,7 +125,7 @@ const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
-export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
+export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, onSave, onCancel }: Props) {
   // The photo being edited; a draft restored here can bring its own, or
   // none (a blank canvas).
   const [photoUrl, setPhotoUrl] = useState(imageUrl || undefined);
@@ -150,10 +148,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [fonts, setFonts] = useState<FontOption[]>(BUILTIN_FONTS);
   // Colour entries of the media library, offered before the built-in swatches.
   const [libraryColors, setLibraryColors] = useState<MediaItem[]>([]);
-  const [addingWatermark, setAddingWatermark] = useState<string | null>(null);
-  // The team's media library, loaded when the Media tab is first opened.
+  // The team's media library, loaded when the Media tab is first opened;
+  // the Watermarks filter narrows it to the images marked as watermarks.
   const [media, setMedia] = useState<MediaItem[] | null>(null);
   const [mediaQuery, setMediaQuery] = useState('');
+  const [watermarksOnly, setWatermarksOnly] = useState(false);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -300,13 +299,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setMediaLoading(true);
       // Everything the library returns (its limit is 200), newest first; the
       // search only narrows it down.
-      api.getMedia({ q: mediaQuery.trim(), kind: 'image', limit: 200 })
+      api.getMedia({ q: mediaQuery.trim(), kind: watermarksOnly ? 'watermark' : 'image', limit: 200 })
         .then(items => { if (!cancelled) setMedia(items.filter(isImageMedia)); })
         .catch(() => { if (!cancelled) { setMedia(m => m ?? []); toast.error('Failed to load the media library'); } })
         .finally(() => { if (!cancelled) setMediaLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [mediaOpened, mediaQuery]);
+  }, [mediaOpened, mediaQuery, watermarksOnly]);
 
   // Stage size follows the canvas area.
   useLayoutEffect(() => {
@@ -495,7 +494,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setBrushAt(null);
     if (t === 'crop') setSelectedId(null);
     else if (t === 'text' && selected?.kind !== 'text') setSelectedId(null);
-    else if ((t === 'watermark' || t === 'media') && selected?.kind !== 'image') setSelectedId(null);
+    else if (t === 'media' && selected?.kind !== 'image') setSelectedId(null);
     else if (t === 'shapes' && selected?.kind !== 'shape') setSelectedId(null);
     // The brush paints into the selected paint layer, or starts a new one.
     else if (t === 'brush') {
@@ -517,7 +516,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       if (tab !== 'brush') setBrushMode('move');
       setTab('brush');
     }
-    else if (tab !== 'watermark' && tab !== 'media') setTab(l.origin);
+    else setTab('media');
   };
 
   // --- Crop -----------------------------------------------------------------
@@ -746,42 +745,6 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }
   };
 
-  // --- Watermarks -----------------------------------------------------------
-
-  const addWatermark = async (wm: Watermark) => {
-    if (!crop) return;
-    setAddingWatermark(wm.id);
-    try {
-      const img = await loadImage(resolveUrl(wm.url));
-      const wmRatio = img.naturalWidth / img.naturalHeight;
-      const cropRatio = crop.width / crop.height;
-      let width: number;
-      let height: number;
-      let cx: number;
-      let cy: number;
-      if (Math.abs(wmRatio - cropRatio) / cropRatio < 0.03) {
-        // A frame made for this shape covers the whole picture.
-        width = crop.width;
-        height = crop.height;
-        cx = crop.x + crop.width / 2;
-        cy = crop.y + crop.height / 2;
-      } else {
-        // A logo goes small into the bottom-right corner.
-        const side = Math.min(crop.width, crop.height) * 0.3;
-        width = wmRatio >= 1 ? side : side * wmRatio;
-        height = width / wmRatio;
-        const margin = Math.min(crop.width, crop.height) * 0.04;
-        cx = crop.x + crop.width - margin - width / 2;
-        cy = crop.y + crop.height - margin - height / 2;
-      }
-      addLayer({ id: newLayerId(), kind: 'image', origin: 'watermark', src: wm.url, img, x: cx, y: cy, width, height, rotation: 0, opacity: 1 });
-    } catch {
-      toast.error('Failed to load that watermark');
-    } finally {
-      setAddingWatermark(null);
-    }
-  };
-
   // --- Media ----------------------------------------------------------------
 
   const addMedia = async (item: MediaItem) => {
@@ -792,14 +755,29 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       const r = img.naturalWidth / img.naturalHeight;
       const cropRatio = crop.width / crop.height;
       // A picture of the crop's own shape fills it, as a background or a
-      // frame would; anything else goes in the middle at about half size,
-      // ready to be placed.
-      const share = Math.abs(r - cropRatio) / cropRatio < 0.03 ? 1 : 0.5;
+      // frame would.
+      const fills = Math.abs(r - cropRatio) / cropRatio < 0.03;
+      if (item.watermark && !fills) {
+        // A watermark logo goes small into the bottom-right corner.
+        const side = Math.min(crop.width, crop.height) * 0.3;
+        const width = r >= 1 ? side : side * r;
+        const height = width / r;
+        const margin = Math.min(crop.width, crop.height) * 0.04;
+        addLayer({
+          id: newLayerId(), kind: 'image', origin: 'watermark', src: item.url, img,
+          x: crop.x + crop.width - margin - width / 2, y: crop.y + crop.height - margin - height / 2,
+          width, height, rotation: 0, opacity: 1,
+        });
+        return;
+      }
+      // Anything else goes in the middle at about half size, ready to be
+      // placed.
+      const share = fills ? 1 : 0.5;
       let width = crop.width * share;
       let height = width / r;
       if (height > crop.height * share) { height = crop.height * share; width = height * r; }
       addLayer({
-        id: newLayerId(), kind: 'image', origin: 'media', src: item.url, img,
+        id: newLayerId(), kind: 'image', origin: item.watermark ? 'watermark' : 'media', src: item.url, img,
         x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
       });
     } catch {
@@ -816,7 +794,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (!file) return;
     setUploadingMedia(true);
     try {
-      const item = await api.uploadMedia(file);
+      // An upload in the Watermarks view is marked as one, as on the Media
+      // Library page.
+      const item = await api.uploadMedia(file, { watermark: watermarksOnly });
       setMedia(prev => [item, ...(prev ?? []).filter(m => m.id !== item.id)]);
       await addMedia(item);
     } catch (err) {
@@ -867,7 +847,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         id: newLayerId(), kind: 'image', origin: 'media', src: url, img,
         x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
       });
-      if (tab !== 'watermark' && tab !== 'media') setTab('media');
+      if (tab !== 'media') setTab('media');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add the image');
     } finally {
@@ -1207,7 +1187,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   );
 
   // Opacity, corners, border, fit, centre, replace and remove for the
-  // selected watermark or media image.
+  // selected image layer.
   const imageLayerControls = selected?.kind === 'image' && (
     <>
       <label className="ie-slider">
@@ -1411,7 +1391,6 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             </>
           )}
           <button className={tab === 'templates' ? 'active' : ''} onClick={() => switchTab('templates')}><LayoutTemplate size={20} /><span>Templates</span></button>
-          <button className={tab === 'watermark' ? 'active' : ''} onClick={() => switchTab('watermark')}><Stamp size={20} /><span>Watermark</span></button>
           <button className={tab === 'media' ? 'active' : ''} onClick={() => switchTab('media')}><FolderOpen size={20} /><span>Media</span></button>
           <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>
           <button className={tab === 'shapes' ? 'active' : ''} onClick={() => switchTab('shapes')}><Shapes size={20} /><span>Shapes</span></button>
@@ -1539,32 +1518,6 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             </>
           )}
 
-          {tab === 'watermark' && (
-            <>
-              {selected?.kind === 'image' ? imageLayerControls : watermarks.length > 0 && (
-                <p className="ie-hint">Tap a watermark to add it, then drag it, pull its corners or turn it on the picture.</p>
-              )}
-              {watermarks.length === 0 ? (
-                <p className="ie-hint">No watermarks yet. Mark images as watermarks in the Media Library.</p>
-              ) : (
-                <div className="ie-grid">
-                  {watermarks.map(w => (
-                    <button
-                      key={w.id}
-                      className="ie-tile"
-                      onClick={() => addWatermark(w)}
-                      disabled={addingWatermark !== null}
-                      title={`Add ${w.name}`}
-                    >
-                      <img src={resolveUrl(w.url)} alt="" />
-                      <span>{addingWatermark === w.id ? 'Adding…' : (w.name)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
           {tab === 'media' && (
             <>
               {selected?.kind === 'image' ? (
@@ -1575,6 +1528,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               ) : media && media.length > 0 && (
                 <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
               )}
+              <div className="ie-row">
+                <button className={`ie-chip ${!watermarksOnly ? 'active' : ''}`} onClick={() => setWatermarksOnly(false)}>All images</button>
+                <button className={`ie-chip ${watermarksOnly ? 'active' : ''}`} onClick={() => setWatermarksOnly(true)}><Stamp size={14} /> Watermarks</button>
+              </div>
               <div className="ie-row ie-sticky">
                 <div className="ie-search">
                   <Search size={16} />
@@ -1600,7 +1557,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 <p className="ie-hint">
                   {mediaLoading ? 'Searching…' : mediaQuery.trim()
                     ? 'Nothing in the library matches that.'
-                    : 'The media library has no images yet. Add them here or on the Media Library page.'}
+                    : watermarksOnly
+                      ? 'No watermarks yet. Upload one here, or mark images as watermarks in the Media Library.'
+                      : 'The media library has no images yet. Add them here or on the Media Library page.'}
                 </p>
               ) : (
                 <div className="ie-grid">
@@ -1614,6 +1573,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                     >
                       <img src={resolveUrl(m.url)} alt="" loading="lazy" />
                       <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
+                      {m.watermark && !watermarksOnly && <Stamp size={14} className="ie-tile-badge" aria-label="Watermark" />}
                     </button>
                   ))}
                 </div>

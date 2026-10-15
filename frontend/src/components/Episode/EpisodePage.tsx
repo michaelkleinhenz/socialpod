@@ -1483,7 +1483,6 @@ export function EpisodePage() {
             <ImageEditor
               canvas={{ width: 1080, height: 1080, background: '#ffffff' }}
               title="Create image"
-              watermarks={watermarks}
               onCancel={() => setCreatingImage(false)}
               onSave={blob => {
                 setCreatingImage(false);

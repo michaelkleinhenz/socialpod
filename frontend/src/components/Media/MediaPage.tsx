@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Brush, Check, Film, FolderOpen, LayoutTemplate, Palette, Pencil, Search, Stamp, Trash2, Type, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
-import type { MediaItem, MediaKind, Watermark } from '../../types';
+import type { MediaItem, MediaKind } from '../../types';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { parseTemplate, type EditorTemplate } from '../Common/ImageEditor/editorModel';
 import { ColorField, ColorFormModal } from './ColorFormModal';
@@ -94,8 +94,6 @@ export function MediaPage() {
   const [addingColor, setAddingColor] = useState(false);
   const [newTemplate, setNewTemplate] = useState(false);
   const [designing, setDesigning] = useState<Designing | null>(null);
-  // For the editor's Watermark tab, loaded when a template is first opened.
-  const [watermarks, setWatermarks] = useState<Watermark[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
@@ -129,7 +127,6 @@ export function MediaPage() {
         await api.uploadMedia(file, { tags: parseTags(uploadTags), watermark: kind === 'watermark' });
         done++;
       }
-      if (kind === 'watermark') setWatermarks(null);
       toast.success(done === 1 ? 'File added' : `${done} files added`);
       load();
     } catch (err) {
@@ -164,7 +161,6 @@ export function MediaPage() {
         ...(item.color ? { color: editColor.trim() } : {}),
         ...(isImage(item) && editWatermark !== !!item.watermark ? { watermark: editWatermark } : {}),
       });
-      if (!!updated.watermark !== !!item.watermark) setWatermarks(null);
       setItems(prev => (kind === 'watermark' && !updated.watermark
         ? prev.filter(i => i.id !== id)
         : prev.map(i => (i.id === id ? updated : i))));
@@ -181,7 +177,6 @@ export function MediaPage() {
     if (!window.confirm(question)) return;
     try {
       await api.deleteMedia(item.id);
-      if (item.watermark) setWatermarks(null);
       setItems(prev => prev.filter(i => i.id !== item.id));
     } catch {
       toast.error('Failed to delete');
@@ -190,7 +185,6 @@ export function MediaPage() {
 
   const openDesign = (d: Designing) => {
     setDesigning(d);
-    if (watermarks === null) api.getWatermarks().then(setWatermarks).catch(() => setWatermarks([]));
   };
 
   const editDesign = (item: MediaItem) => {
@@ -413,7 +407,6 @@ export function MediaPage() {
             : undefined}
           template={designing.kind === 'edit' ? designing.template : undefined}
           title={designing.kind === 'new' ? `New template: ${designing.info.name}` : `Template: ${designing.item.name}`}
-          watermarks={watermarks ?? []}
           onSave={saveDesign}
           onCancel={() => setDesigning(null)}
         />

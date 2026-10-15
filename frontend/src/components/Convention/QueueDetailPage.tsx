@@ -1087,7 +1087,6 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
       {editingImage && (
         <ImageEditor
           imageUrl={itemImageUrl(editingImage)}
-          watermarks={watermarks}
           guideOverlay={overlayImg}
           onSave={handleImageEditSave}
           onCancel={() => setEditingImage(null)}

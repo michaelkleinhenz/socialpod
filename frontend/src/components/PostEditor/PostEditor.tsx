@@ -1826,7 +1826,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       {editingImageIdx !== null && images[editingImageIdx] && (
         <ImageEditor
           imageUrl={previewUrl(images[editingImageIdx])}
-          watermarks={watermarks}
           onCancel={() => setEditingImageIdx(null)}
           onSave={blob => {
             const idx = editingImageIdx;
@@ -1849,7 +1848,6 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         <ImageEditor
           canvas={{ width: 1080, height: isStory ? 1920 : 1350, background: '#ffffff' }}
           title={isStory ? 'Create story image' : 'Create image'}
-          watermarks={watermarks}
           onCancel={() => setCreatingImage(false)}
           onSave={blob => {
             const file = new File([blob], 'created.jpg', { type: 'image/jpeg' });
