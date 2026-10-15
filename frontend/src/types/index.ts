@@ -104,6 +104,22 @@ export interface MediaItem {
   updatedAt: string;
 }
 
+/** Image editor work saved to be finished later; the user's own. */
+export interface ImageDraft {
+  id: string;
+  userId: string;
+  teamId?: string;
+  name: string;
+  /** A rendered preview. */
+  url: string;
+  /** The edit as JSON (EditorDraft); only GET /image-drafts/:id carries it. */
+  design?: string;
+  width?: number;
+  height?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BGGGameData {
   gameId: string;
   title: string;

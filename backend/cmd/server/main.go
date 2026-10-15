@@ -303,6 +303,13 @@ func main() {
 		auth.PUT("/media/:id", mediaHandler.Update)
 		auth.DELETE("/media/:id", mediaHandler.Delete)
 
+		// Image editor drafts: unfinished work, the user's own.
+		auth.GET("/image-drafts", mediaHandler.ListImageDrafts)
+		auth.GET("/image-drafts/:id", mediaHandler.GetImageDraft)
+		auth.POST("/image-drafts", mediaHandler.CreateImageDraft)
+		auth.PUT("/image-drafts/:id", mediaHandler.UpdateImageDraft)
+		auth.DELETE("/image-drafts/:id", mediaHandler.DeleteImageDraft)
+
 		// Footers (team/user scoped)
 		auth.GET("/footers", footerHandler.List)
 		auth.POST("/footers", footerHandler.Create)

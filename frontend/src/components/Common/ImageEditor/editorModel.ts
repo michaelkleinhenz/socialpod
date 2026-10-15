@@ -38,6 +38,9 @@ export interface ImageLayer {
   // absent. Set when an image takes a placeholder's place, so it fills the
   // placeholder's frame instead of changing its shape.
   srcCrop?: CropBox;
+  // Came with a template: a pasted image takes its place. Images the user
+  // added are left alone by a paste. Not stored in a template.
+  placeholder?: boolean;
 }
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
@@ -148,6 +151,30 @@ export interface EditorTemplate {
   height: number;
   background: string;
   layers: TemplateLayer[];
+}
+
+// Unfinished work saved to come back to (an image draft): the design as a
+// template in the picture's own pixels (the photo's, or the canvas's), and for
+// an edited photo the photo, its crop, aspect and filters. Unlike a template
+// it is restored exactly as it was, not fitted to another picture.
+export interface EditorDraft {
+  version: 1;
+  template: EditorTemplate;
+  photo?: { src: string; crop: CropBox; aspectId: string; adjustments: Adjustments };
+}
+
+// Reads a stored draft; null if it is not one.
+export function parseDraft(raw: string | undefined): EditorDraft | null {
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as EditorDraft;
+    if (!d || typeof d !== 'object' || !d.template || !Array.isArray(d.template.layers)) return null;
+    if (!(d.template.width > 0) || !(d.template.height > 0)) return null;
+    if (d.photo && (typeof d.photo.src !== 'string' || !d.photo.crop)) return null;
+    return d;
+  } catch {
+    return null;
+  }
 }
 
 // What a blank canvas starts as when nothing else is given.
@@ -648,7 +675,7 @@ export function parseTemplate(raw: string | undefined): EditorTemplate | null {
 // Turns a template's layers into editor layers on the box target, loading its
 // images. Images that fail to load are left out and counted.
 export async function instantiateTemplate(
-  t: EditorTemplate, target: CropBox, resolve: (url: string) => string,
+  t: EditorTemplate, target: CropBox, resolve: (url: string) => string, { placeholders = true } = {},
 ): Promise<{ layers: EditorLayer[]; missing: number }> {
   const fitted = fitLayers(t.layers, { x: 0, y: 0, width: t.width, height: t.height }, target);
   let missing = 0;
@@ -659,7 +686,7 @@ export async function instantiateTemplate(
     const il = l as Omit<ImageLayer, 'id' | 'img'>;
     try {
       const img = await loadImage(resolve(il.src));
-      return { ...il, id: newLayerId(), img };
+      return { ...il, id: newLayerId(), img, ...(placeholders ? { placeholder: true } : {}) };
     } catch {
       missing++;
       return null;

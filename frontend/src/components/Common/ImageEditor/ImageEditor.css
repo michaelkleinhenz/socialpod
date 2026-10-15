@@ -606,6 +606,55 @@
   cursor: wait;
 }
 
+/* A draft's tile, with its delete button in the corner. */
+.ie-tile-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.ie-tile-wrap .ie-tile {
+  flex: 1;
+}
+
+.ie-tile-wrap.current .ie-tile {
+  border-color: var(--accent);
+}
+
+.ie-tile-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+
+.ie-tile-delete:hover {
+  background: var(--danger, #dc2626);
+}
+
+.ie-draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  /* Room for the title on a phone: the icon alone. */
+  .ie-draft span {
+    display: none;
+  }
+}
+
 @media (min-width: 769px) {
   .ie-workspace {
     flex-direction: row;

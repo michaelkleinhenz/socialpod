@@ -1,4 +1,4 @@
-import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, MediaItem, MediaKind, Watermark } from '../types';
+import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, ImageDraft, MediaItem, MediaKind, Watermark } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -619,6 +619,29 @@ class ApiClient {
     form.append('preview', preview, 'preview.jpg');
     form.append('template', JSON.stringify(template));
     return this.request<MediaItem>(`/media/templates/${id}`, { method: 'PUT', body: form });
+  }
+
+  // Image editor drafts: the edit as JSON plus a rendered preview image.
+  getImageDrafts() {
+    return this.request<ImageDraft[]>('/image-drafts');
+  }
+
+  getImageDraft(id: string) {
+    return this.request<ImageDraft>(`/image-drafts/${id}`);
+  }
+
+  saveImageDraft(id: string | null, preview: Blob, design: object, name?: string) {
+    const form = new FormData();
+    form.append('preview', preview, 'preview.jpg');
+    form.append('design', JSON.stringify(design));
+    if (name) form.append('name', name);
+    return id
+      ? this.request<ImageDraft>(`/image-drafts/${id}`, { method: 'PUT', body: form })
+      : this.request<ImageDraft>('/image-drafts', { method: 'POST', body: form });
+  }
+
+  deleteImageDraft(id: string) {
+    return this.request<{ message: string }>(`/image-drafts/${id}`, { method: 'DELETE' });
   }
 
   updateMedia(id: string, data: { name?: string; description?: string; color?: string; tags?: string[]; watermark?: boolean }) {

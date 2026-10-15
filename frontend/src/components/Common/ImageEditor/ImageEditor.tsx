@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
-  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Crop, Crosshair, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
+  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Crop, Crosshair, FilePen, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
-import type { MediaItem, Watermark } from '../../../types';
+import type { ImageDraft, MediaItem, Watermark } from '../../../types';
 import {
   applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
+  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
   shapeLayerParts, textLayerAttrs, toTemplate,
-  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
+  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
@@ -128,7 +128,10 @@ const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
 export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, watermarks = [], guideOverlay, onSave, onCancel }: Props) {
-  const canvasMode = !imageUrl;
+  // The photo being edited; a draft restored here can bring its own, or
+  // none (a blank canvas).
+  const [photoUrl, setPhotoUrl] = useState(imageUrl || undefined);
+  const canvasMode = !photoUrl;
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [loadError, setLoadError] = useState(false);
   // The blank canvas, in canvas mode; null on a photo.
@@ -164,6 +167,18 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [templates, setTemplates] = useState<MediaItem[] | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Image drafts: the user's saved work, listed on the Templates tab; the
+  // one this edit was saved as or restored from, which Save draft updates;
+  // and whether nothing changed since.
+  const [drafts, setDrafts] = useState<ImageDraft[] | null>(null);
+  const [draft, setDraft] = useState<{ id: string; name: string } | null>(null);
+  const [draftClean, setDraftClean] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [restoringDraft, setRestoringDraft] = useState<string | null>(null);
+  const restoredPhoto = useRef<string | null>(null);
+  // A local photo (a fresh pick, a blob URL) uploaded for a draft, so later
+  // saves reuse it.
+  const storedPhoto = useRef<{ from: string; url: string } | null>(null);
   // Smart guides while a layer is moved; Alt (Option) skips them for one drag.
   const [snapOn, setSnapOn] = useState(() => {
     try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
@@ -202,10 +217,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // Source image.
   useEffect(() => {
-    if (!imageUrl) return;
+    if (!photoUrl) return;
+    // A restored draft has loaded its photo and set its crop already.
+    if (restoredPhoto.current === photoUrl) { restoredPhoto.current = null; return; }
     let cancelled = false;
     setLoadError(false);
-    loadImage(imageUrl)
+    loadImage(photoUrl)
       .then(img => {
         if (cancelled) return;
         setSource(img);
@@ -213,7 +230,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       })
       .catch(() => { if (!cancelled) setLoadError(true); });
     return () => { cancelled = true; };
-  }, [imageUrl]);
+  }, [photoUrl]);
 
   // The media library's fonts are offered first, then the system fonts.
   // A font file the browser cannot load is left out.
@@ -258,14 +275,18 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   useEffect(() => {
     if (!templatesOpened || templates !== null) return;
     let cancelled = false;
-    api.getMedia({ kind: 'template', limit: 200 })
-      .then(items => {
+    Promise.all([
+      api.getMedia({ kind: 'template', limit: 200 }),
+      api.getImageDrafts().catch(() => [] as ImageDraft[]),
+    ])
+      .then(([items, saved]) => {
         if (cancelled) return;
         setTemplates(items);
+        setDrafts(saved);
         // With nothing to start from, a new canvas opens on its own settings.
-        if (items.length === 0 && canvasMode) setTab(t => (t === 'templates' ? 'canvas' : t));
+        if (items.length === 0 && saved.length === 0 && canvasMode) setTab(t => (t === 'templates' ? 'canvas' : t));
       })
-      .catch(() => { if (!cancelled) { setTemplates([]); toast.error('Failed to load the templates'); } });
+      .catch(() => { if (!cancelled) { setTemplates([]); setDrafts(d => d ?? []); toast.error('Failed to load the templates'); } });
     return () => { cancelled = true; };
   }, [templatesOpened, templates, canvasMode]);
 
@@ -355,6 +376,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const snap: Snapshot = { canvas, crop, aspectId, adjustments, layers };
     setUndoStack(stack => [...stack.slice(-(HISTORY_LIMIT - 1)), snap]);
     setRedoStack([]);
+    setDraftClean(false);
   };
 
   // A new drag or resize always starts its own step, however soon after the
@@ -369,6 +391,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setLayers(snap.layers);
     if (selectedId && !snap.layers.some(l => l.id === selectedId)) setSelectedId(null);
     lastChange.current = null;
+    setDraftClean(false);
   };
 
   const undo = () => {
@@ -423,7 +446,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setSelectedId(null);
   };
 
-  const dirty = canvasMode
+  // Just saved as a draft, or restored from one, nothing is lost by leaving.
+  const dirty = draftClean ? false : canvasMode
     ? undoStack.length > 0
     : layers.length > 0 || hasAdjustments(adjustments) || (!!crop && !!source
       && (crop.x !== 0 || crop.y !== 0 || crop.width !== natW || crop.height !== natH));
@@ -443,6 +467,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
+      if (mod && k === 's') {
+        e.preventDefault();
+        void saveDraft();
+        return;
+      }
       if (mod && !typing && (k === 'z' || k === 'y')) {
         e.preventDefault();
         if (k === 'y' || e.shiftKey) redo();
@@ -482,9 +511,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (l.kind === 'text') setTab('text');
     else if (l.kind === 'shape') setTab('shapes');
     else if (l.kind === 'paint') {
-      // Picked to be moved or removed; Paint adds strokes to it.
+      // From another tab, picked to be moved or removed; on the Brush tab
+      // (from the Objects list) the mode stays, so while painting the next
+      // strokes go into it.
+      if (tab !== 'brush') setBrushMode('move');
       setTab('brush');
-      setBrushMode('move');
     }
     else if (tab !== 'watermark' && tab !== 'media') setTab(l.origin);
   };
@@ -591,6 +622,130 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }
   };
 
+  // --- Drafts ---------------------------------------------------------------
+
+  // The photo as the server stores it: our own uploads by their path, a local
+  // file (a blob URL) uploaded first.
+  const draftPhotoUrl = async (src: string): Promise<string> => {
+    for (const origin of [apiBase, window.location.origin]) {
+      if (origin && src.startsWith(origin + '/api/uploads/')) return src.slice(origin.length);
+    }
+    if (!src.startsWith('blob:') && !src.startsWith('data:')) return src;
+    if (storedPhoto.current?.from === src) return storedPhoto.current.url;
+    const blob = await (await fetch(src)).blob();
+    const ext = ({ 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' } as Record<string, string>)[blob.type] ?? 'jpg';
+    const { url } = await api.uploadImage(new File([blob], `photo.${ext}`, { type: blob.type || 'image/jpeg' }));
+    storedPhoto.current = { from: src, url };
+    return url;
+  };
+
+  // Saves the whole edit to come back to: as a new draft the first time
+  // (asking for a name), then over the same one.
+  const saveDraft = async () => {
+    if (!ready || !crop || saving || savingDraft) return;
+    let name: string | undefined;
+    if (!draft) {
+      const fallback = `Draft ${new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+      const answer = window.prompt('Name this draft', fallback);
+      if (answer === null) return;
+      name = answer.trim() || fallback;
+    }
+    setSavingDraft(true);
+    try {
+      // Layers stay in the picture's own pixels, so the draft comes back
+      // exactly as it was.
+      const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff');
+      const design: EditorDraft = canvasMode
+        ? { version: 1, template }
+        : { version: 1, template, photo: { src: await draftPhotoUrl(photoUrl!), crop, aspectId, adjustments } };
+      const preview = await renderEdit({
+        source: canvasMode ? null : source,
+        background: canvas?.background,
+        crop,
+        adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
+        layers,
+        maxSide: 1080,
+        quality: 0.85,
+      });
+      let saved: ImageDraft;
+      try {
+        saved = await api.saveImageDraft(draft?.id ?? null, preview, design, name);
+      } catch (err) {
+        // Deleted meanwhile (another tab): keep the work as a new one.
+        if (!draft || !(err instanceof Error) || !/not found/i.test(err.message)) throw err;
+        saved = await api.saveImageDraft(null, preview, design, draft.name);
+      }
+      setDraft({ id: saved.id, name: saved.name });
+      setDraftClean(true);
+      setDrafts(prev => (prev === null ? prev : [saved, ...prev.filter(d => d.id !== saved.id)]));
+      toast.success(`Saved as draft "${saved.name}". Find it under Templates.`);
+    } catch (err) {
+      const e = err instanceof Error ? err : null;
+      toast.error(e?.name === 'SecurityError'
+        ? 'This image cannot be saved (it was loaded from another site)'
+        : (e?.message || 'Failed to save the draft'));
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // Puts a draft back exactly as it was saved, photo, crop and filters
+  // included, replacing the current edit. Undo starts afresh from it.
+  const restoreDraft = async (item: ImageDraft) => {
+    if (restoringDraft) return;
+    if ((dirty || layers.length > 0) && !window.confirm('Replace what you are working on with this draft?')) return;
+    setRestoringDraft(item.id);
+    try {
+      const full = await api.getImageDraft(item.id);
+      const d = parseDraft(full.design);
+      if (!d) { toast.error('This draft cannot be read'); return; }
+      await fontsReady.current;
+      const box = { x: 0, y: 0, width: d.template.width, height: d.template.height };
+      const img = d.photo ? await loadImage(resolveUrl(d.photo.src)) : null;
+      const { layers: restored, missing } = await instantiateTemplate(d.template, box, resolveUrl, { placeholders: false });
+      if (d.photo && img) {
+        if (d.photo.src !== photoUrl) restoredPhoto.current = d.photo.src;
+        setPhotoUrl(d.photo.src);
+        setSource(img);
+        setLoadError(false);
+        setCanvas(null);
+        setCrop(d.photo.crop);
+        setAspectId(d.photo.aspectId || 'free');
+        setAdjustments({ ...NO_ADJUSTMENTS, ...d.photo.adjustments });
+      } else {
+        setPhotoUrl(undefined);
+        setSource(null);
+        setCanvas({ width: box.width, height: box.height, background: d.template.background });
+        setCrop(box);
+        setAspectId('free');
+        setAdjustments(NO_ADJUSTMENTS);
+      }
+      setLayers(restored);
+      setSelectedId(null);
+      setUndoStack([]);
+      setRedoStack([]);
+      lastChange.current = null;
+      setDraft({ id: full.id, name: full.name });
+      setDraftClean(missing === 0);
+      if (missing) toast.error(missing === 1 ? 'One image of the draft could not be loaded' : `${missing} images of the draft could not be loaded`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to open the draft');
+    } finally {
+      setRestoringDraft(null);
+    }
+  };
+
+  const deleteDraft = async (item: ImageDraft) => {
+    if (!window.confirm(`Delete the draft "${item.name}"?`)) return;
+    try {
+      await api.deleteImageDraft(item.id);
+      setDrafts(prev => prev?.filter(d => d.id !== item.id) ?? prev);
+      if (draft?.id === item.id) { setDraft(null); setDraftClean(false); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete the draft');
+    }
+  };
+
   // --- Watermarks -----------------------------------------------------------
 
   const addWatermark = async (wm: Watermark) => {
@@ -685,14 +840,14 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // --- Pasted images --------------------------------------------------------
 
-  // Puts an image file on the picture. With an image layer selected (a
-  // template's placeholder, say) it takes that layer's place: same frame,
-  // corners and border, the image cropped to fill it. Otherwise it goes in
-  // the middle like a media image. The file is uploaded first, so a design
-  // saved as a template refers to it by URL.
-  const placeImageFile = async (file: File) => {
+  // Puts an image file on the picture. With `replace` and an image layer
+  // selected it takes that layer's place: same frame, corners and border,
+  // the image cropped to fill it. Otherwise it goes in the middle like a
+  // media image, whole. The file is uploaded first, so a design saved as a
+  // template refers to it by URL.
+  const placeImageFile = async (file: File, { replace }: { replace: boolean }) => {
     if (!crop || placingImage) return;
-    const target = selected?.kind === 'image' ? selected : null;
+    const target = replace && selected?.kind === 'image' ? selected : null;
     setPlacingImage(true);
     try {
       const { url } = await api.uploadImage(file);
@@ -723,7 +878,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const pickPlaceFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (file) void placeImageFile(file);
+    // The Replace button: always the selected layer's place.
+    if (file) void placeImageFile(file, { replace: true });
   };
 
   // Ctrl/Cmd+V with an image on the clipboard. Caught before the page below
@@ -738,7 +894,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         if (!file) continue;
         e.preventDefault();
         e.stopImmediatePropagation();
-        void placeImageFile(file);
+        // Only a template's placeholder is swapped out by a paste; an image
+        // the user added, still selected from adding it, stays and the
+        // paste becomes a layer of its own.
+        void placeImageFile(file, { replace: selected?.kind === 'image' && !!selected.placeholder });
         return;
       }
     };
@@ -957,6 +1116,56 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // --- Render ---------------------------------------------------------------
 
+  // The selected layer's node, when the pointer is inside it: its own box,
+  // rotation included, whatever lies on top of it.
+  const selectedNodeAtPointer = (stage: Konva.Stage | null): Konva.Node | null => {
+    const node = selectedId ? nodeRefs.current.get(selectedId) : undefined;
+    const pos = stage?.getPointerPosition();
+    if (!node || !pos) return null;
+    const p = node.getAbsoluteTransform().copy().invert().point(pos);
+    const r = node.getClientRect({ skipTransform: true });
+    return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height ? node : null;
+  };
+
+  // A press inside the selected layer keeps it selected and drags it, even
+  // where another layer covers it (a full-frame image on top, say), so a
+  // layer picked in the Objects list can be moved on the picture. The layer
+  // on top must not drag meanwhile; the drag starts once the pointer moves,
+  // so a plain click changes nothing.
+  const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent) => {
+    cover.draggable(false);
+    const stage = node.getStage();
+    const pressedAt = stage?.getPointerPosition();
+    const move = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - start.clientX, ev.clientY - start.clientY) < 3) return;
+      window.removeEventListener('pointermove', move);
+      // Catch up with the pointer first, so the layer stays under the point
+      // it was pressed at.
+      if (stage && pressedAt) {
+        stage.setPointersPositions(ev);
+        const now = stage.getPointerPosition();
+        const at = node.getAbsolutePosition();
+        if (now) node.setAbsolutePosition({ x: at.x + now.x - pressedAt.x, y: at.y + now.y - pressedAt.y });
+      }
+      node.startDrag();
+    };
+    const end = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      cover.draggable(true);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
+
+  const onLayerPointerDown = (l: EditorLayer, e: Konva.KonvaEventObject<PointerEvent>) => {
+    const held = l.id !== selectedId ? selectedNodeAtPointer(e.target.getStage()) : null;
+    if (held) { holdSelected(held, e.currentTarget, e.evt); return; }
+    selectLayer(l);
+  };
+
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     if (tab === 'crop') return;
     if (painting) { startStroke(e.target.getStage()); return; }
@@ -1065,7 +1274,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         </button>
         <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
       </div>
-      <p className="ie-hint">Paste an image (Ctrl+V) to put it in this one's place, filling its frame.</p>
+      {selected.placeholder && <p className="ie-hint">Paste an image (Ctrl+V) to put it in this one's place, filling its frame.</p>}
+      {selected.srcCrop && <p className="ie-hint">Only part of this image is shown. Fit shows all of it again.</p>}
     </>
   );
 
@@ -1173,6 +1383,15 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <LayersIcon size={18} />
         </button>
+        <button
+          className="btn btn-secondary ie-draft"
+          onClick={() => void saveDraft()}
+          disabled={!ready || saving || savingDraft}
+          title={draft ? `Save your work to the draft "${draft.name}" (Ctrl+S)` : 'Keep your work as a draft to finish later (Ctrl+S)'}
+        >
+          {savingDraft ? <Loader2 size={16} className="ie-spin" /> : <FilePen size={16} />}
+          <span>{draftClean ? 'Draft saved' : 'Save draft'}</span>
+        </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
           {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
         </button>
@@ -1226,6 +1445,32 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               </div>
               <span className="ie-label">Background</span>
               {colorRow(canvas.background, changeBackground, 'background')}
+            </>
+          )}
+
+          {tab === 'templates' && drafts !== null && drafts.length > 0 && (
+            <>
+              <span className="ie-label">Your drafts</span>
+              <p className="ie-hint">Tap a draft to carry on with it. It replaces what you are working on.</p>
+              <div className="ie-grid">
+                {drafts.map(d => (
+                  <div key={d.id} className={`ie-tile-wrap ${draft?.id === d.id ? 'current' : ''}`}>
+                    <button
+                      className="ie-tile"
+                      onClick={() => void restoreDraft(d)}
+                      disabled={restoringDraft !== null}
+                      title={`${d.name}, saved ${new Date(d.updatedAt).toLocaleString()}`}
+                    >
+                      <img src={resolveUrl(d.url)} alt="" loading="lazy" />
+                      <span>{restoringDraft === d.id ? 'Loading…' : d.name}</span>
+                    </button>
+                    <button className="ie-tile-delete" onClick={() => void deleteDraft(d)} title="Delete this draft" aria-label={`Delete the draft ${d.name}`}>
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <span className="ie-label ie-section">Templates</span>
             </>
           )}
 
@@ -1571,7 +1816,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                         ref: (node: Konva.Node | null) => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); },
                         listening: layersInteractive,
                         draggable: layersInteractive,
-                        onPointerDown: () => selectLayer(l),
+                        onPointerDown: (e: Konva.KonvaEventObject<PointerEvent>) => onLayerPointerDown(l, e),
                         onDragStart: startGesture,
                         onTransformStart: startGesture,
                         onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragMove(l, e),
@@ -1590,9 +1835,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       }
                       if (l.kind === 'paint') {
                         return (
-                          <Group key={l.id} {...common} x={l.x} y={l.y}>
-                            {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
-                          </Group>
+                          <Fragment key={l.id}>
+                            <Group {...common} x={l.x} y={l.y}>
+                              {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
+                            </Group>
+                            {drawing && l.id === selectedId && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                          </Fragment>
                         );
                       }
                       const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
@@ -1602,7 +1850,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                         </Group>
                       );
                     })}
-                    {drawing && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                    {/* The stroke being painted shows where it will go: in the
+                        selected paint layer's place in the stack (above), or
+                        on top, where a new paint layer is added. */}
+                    {drawing && selected?.kind !== 'paint' && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
                     {guideOverlay && (
                       <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
                     )}
@@ -1717,7 +1968,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               <LayerList
                 layers={layers}
                 selectedId={selectedId}
-                background={canvas ? { color: canvas.background } : { src: source?.src ?? imageUrl ?? '' }}
+                background={canvas ? { color: canvas.background } : { src: source?.src ?? photoUrl ?? '' }}
                 onSelect={selectLayer}
                 onSelectBackground={() => { setSelectedId(null); if (canvasMode) setTab('canvas'); }}
                 onReorder={reorderLayers}

@@ -57,6 +57,8 @@ func TestUploadReferencesCoverOwningCollections(t *testing.T) {
 		"watermarks.url",
 		"media.url",
 		"media.templateUrls",
+		"image_drafts.url",
+		"image_drafts.designUrls",
 	}
 	for _, w := range want {
 		if !got[w] {
