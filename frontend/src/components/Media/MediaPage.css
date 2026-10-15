@@ -129,9 +129,47 @@
   font-family: monospace;
 }
 
-/* A template shows its whole design, not a crop of it. */
-.media-template img {
+/* A template shows its whole design and a watermark its whole overlay, on
+   the checkerboard, not a crop of it. */
+.media-contain img {
   object-fit: contain;
+}
+
+.media-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.media-kind {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.media-kind:hover {
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.media-kind.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.media-watermark-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
 }
 
 .media-badge {

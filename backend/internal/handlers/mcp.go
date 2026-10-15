@@ -1048,17 +1048,12 @@ func (h *MCPHandler) toolDeleteWatermark(c *gin.Context, args map[string]any) (a
 		return map[string]string{"error": "Invalid watermark ID"}, true
 	}
 
-	filter := mcpScopeFilter(c)
-	filter["_id"] = wmID
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	urls, err := deleteOneAndCollectUploadURLs(ctx, h.DB.Watermarks(), filter)
-	if err != nil {
+	if err := deleteWatermark(ctx, h.DB, h.UploadDir, mcpScopeFilter(c), wmID); err != nil {
 		return map[string]string{"error": "Watermark not found"}, true
 	}
-	cleanupUploads(h.DB, h.UploadDir, urls)
 	return map[string]string{"message": "Watermark deleted"}, false
 }
 
@@ -1936,8 +1931,8 @@ func (h *MCPHandler) loadEpisodeOverlay(c *gin.Context, episodeType string) imag
 		return nil
 	}
 
-	var wm models.Watermark
-	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *overlayID}).Decode(&wm); err != nil {
+	wm, err := findMediaItem(ctx, h.DB, *overlayID)
+	if err != nil {
 		return nil
 	}
 
@@ -1974,8 +1969,8 @@ func (h *MCPHandler) loadNewsOverlay(c *gin.Context) image.Image {
 		return nil
 	}
 
-	var wm models.Watermark
-	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *team.NewsCreatorWatermarkID}).Decode(&wm); err != nil {
+	wm, err := findMediaItem(ctx, h.DB, *team.NewsCreatorWatermarkID)
+	if err != nil {
 		return nil
 	}
 
@@ -2451,7 +2446,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 		},
 		{
 			Name: "list_watermarks",
-			Description: "List the team's watermark images with their description, size, what the team uses each for (roles, e.g. BGG cover overlay) " +
+			Description: "List the team's watermarks (media library images marked as watermarks; the id also works as a mediaId) with their description, size, what the team uses each for (roles, e.g. BGG cover overlay) " +
 				"and fullCanvas, which marks overlays meant to cover the whole image (frames, banners: use anchor full in compose_image) as opposed to small logos. " +
 				"With preview=true a thumbnail of each (on grey) is attached.",
 			InputSchema: map[string]any{
@@ -2463,7 +2458,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "delete_watermark",
-			Description: "Delete a watermark by its ID.",
+			Description: "Delete a watermark by its ID. This removes the image from the media library; to keep it as an ordinary image, unmark it with update_media instead.",
 			InputSchema: map[string]any{
 				"type":     "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Watermark ID"}},

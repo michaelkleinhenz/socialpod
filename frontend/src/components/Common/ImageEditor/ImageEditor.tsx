@@ -1300,7 +1300,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 <p className="ie-hint">Tap a watermark to add it, then drag it, pull its corners or turn it on the picture.</p>
               )}
               {watermarks.length === 0 ? (
-                <p className="ie-hint">No watermarks yet. Upload them on the Watermarks page.</p>
+                <p className="ie-hint">No watermarks yet. Mark images as watermarks in the Media Library.</p>
               ) : (
                 <div className="ie-grid">
                   {watermarks.map(w => (
@@ -1309,10 +1309,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       className="ie-tile"
                       onClick={() => addWatermark(w)}
                       disabled={addingWatermark !== null}
-                      title={`Add ${w.name || w.filename}`}
+                      title={`Add ${w.name}`}
                     >
                       <img src={resolveUrl(w.url)} alt="" />
-                      <span>{addingWatermark === w.id ? 'Adding…' : (w.name || w.filename)}</span>
+                      <span>{addingWatermark === w.id ? 'Adding…' : (w.name)}</span>
                     </button>
                   ))}
                 </div>

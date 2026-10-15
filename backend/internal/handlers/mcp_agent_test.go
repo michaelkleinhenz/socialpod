@@ -180,6 +180,9 @@ func TestMediaListFilter(t *testing.T) {
 	if f := mediaListFilter(scope, "", nil, "audio"); f["contentType"] != nil {
 		t.Error("unknown kind should not filter")
 	}
+	if f := mediaListFilter(scope, "", nil, "watermark"); f["watermark"] != true || f["contentType"] != nil {
+		t.Errorf("kind watermark: filter = %v", f)
+	}
 }
 
 func TestNormalizeColor(t *testing.T) {

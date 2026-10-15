@@ -38,6 +38,8 @@ var uploadReferences = []uploadReference{
 	{func(db *database.MongoDB) *mongo.Collection { return db.EpisodeDrafts() }, "imageUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.ConventionQueueItems() }, "imageUrl"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.ConventionQueueItems() }, "imageUrls"},
+	// The former watermarks collection, until its documents have moved into
+	// the media library (MigrateWatermarksToMedia).
 	{func(db *database.MongoDB) *mongo.Collection { return db.Watermarks() }, "url"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "url"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.Media() }, "templateUrls"},

@@ -166,6 +166,9 @@ curl -X DELETE http://localhost:8080/api/footers/{id} \
 
 ## Watermarks & Media Library
 
+Watermarks are media library images marked as watermarks. `/api/watermarks` is the media library narrowed to them;
+`/api/media?kind=watermark` lists the same entries, and `PUT /api/media/{id}` with `{"watermark": true|false}` marks or unmarks an image.
+
 ```bash
 # List watermarks
 curl http://localhost:8080/api/watermarks \
@@ -178,7 +181,7 @@ curl -X PUT http://localhost:8080/api/watermarks/{id} \
   -d '{"description":"Full-size frame with the news banner at the bottom"}'
 
 # Search the media library (q: words in name/description/tags, tags: comma-separated, all required,
-# kind: image, video, font or color)
+# kind: image, video, font, color, template or watermark)
 curl "http://localhost:8080/api/media?q=wingspan&tags=cover" \
   -H "Authorization: Bearer sm_..."
 
@@ -187,6 +190,7 @@ curl -X POST http://localhost:8080/api/media \
   -H "Authorization: Bearer sm_..." \
   -F "file=@box.jpg" -F "name=Wingspan box" \
   -F "description=Front of the box, birds on a branch" -F "tags=wingspan,cover"
+# (add -F "watermark=true" to add an image as a watermark)
 
 # Add a colour, with a description of how to use it
 curl -X POST http://localhost:8080/api/media/colors \

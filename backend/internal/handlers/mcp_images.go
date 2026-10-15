@@ -98,7 +98,8 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "list_media",
 			Description: "Search the team's media library: uploaded photos, artwork, logos, backgrounds and fonts, and the team's colours, each with a name, a description and tags. " +
-				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts, colours or templates. " +
+				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts, colours, templates or watermarks. " +
+				"Watermarks are library images marked watermark (logos and overlays; list_watermarks also tells what the team uses each for). " +
 				"A font's id goes into fontMediaId of a compose_image text layer. A colour entry has no file: its color (#rrggbb or #rrggbbaa) goes into any colour field of compose_image, " +
 				"and its description says how and where the team uses it; follow that. " +
 				"A template is a design of the team's image editor: its templateLayers list each layer by index (texts with their wording, images and shapes with their frame, paint as brush strokes), " +
@@ -109,7 +110,7 @@ func imageToolDefinitions() []mcpTool {
 				"properties": map[string]any{
 					"query":   map[string]any{"type": "string", "description": "Words to search for"},
 					"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required tags"},
-					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color", "template"}, "description": "Only this kind of entry (default all). A template is a design for the image editor; its url is a preview image"},
+					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color", "template", "watermark"}, "description": "Only this kind of entry (default all). A template is a design for the image editor; its url is a preview image. watermark: the images marked as watermarks"},
 					"limit":   map[string]any{"type": "number", "description": "Maximum results (default 50, max 200)"},
 					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
 				},
@@ -134,8 +135,9 @@ func imageToolDefinitions() []mcpTool {
 			},
 		},
 		{
-			Name:        "update_media",
-			Description: "Change a media library entry's name, description or tags, or a colour entry's color. Only provided fields are changed; tags replaces the whole list.",
+			Name: "update_media",
+			Description: "Change a media library entry's name, description or tags, a colour entry's color, or whether an image is a watermark (an overlay offered by the cropper, image editor and team overlay settings). " +
+				"Only provided fields are changed; tags replaces the whole list.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -144,6 +146,7 @@ func imageToolDefinitions() []mcpTool {
 					"description": map[string]any{"type": "string"},
 					"color":       map[string]any{"type": "string", "description": "Colour entries only: the new colour"},
 					"tags":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"watermark":   map[string]any{"type": "boolean", "description": "Images only: mark (true) or unmark (false) it as a watermark"},
 				},
 				"required": []string{"id"},
 			},
@@ -258,8 +261,9 @@ func (h *MCPHandler) loadImageBytes(ctx context.Context, c *gin.Context, ref map
 		}
 		filter := mcpScopeFilter(c)
 		filter["_id"] = oid
-		var wm models.Watermark
-		if err := h.DB.Watermarks().FindOne(ctx, filter).Decode(&wm); err != nil {
+		filter["watermark"] = true
+		var wm models.MediaItem
+		if err := h.DB.Media().FindOne(ctx, filter).Decode(&wm); err != nil {
 			return nil, "", fmt.Errorf("watermark %s not found", id)
 		}
 		data, err := readImageBytes(ctx, h.DB, h.UploadDir, wm.URL)
@@ -373,7 +377,7 @@ func (h *MCPHandler) watermarkRoles(ctx context.Context, c *gin.Context) map[pri
 }
 
 type watermarkInfo struct {
-	models.Watermark
+	models.MediaItem
 	AbsoluteURL string   `json:"absoluteUrl"`
 	Roles       []string `json:"roles,omitempty"`
 	Width       int      `json:"width,omitempty"`
@@ -386,20 +390,16 @@ type watermarkInfo struct {
 func (h *MCPHandler) toolListWatermarks(c *gin.Context, args map[string]any) (any, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cursor, err := h.DB.Watermarks().Find(ctx, mcpScopeFilter(c))
+	watermarks, err := listWatermarks(ctx, h.DB, mcpScopeFilter(c))
 	if err != nil {
 		return map[string]string{"error": "Failed to fetch watermarks"}, true
-	}
-	var watermarks []models.Watermark
-	if err := cursor.All(ctx, &watermarks); err != nil {
-		return map[string]string{"error": "Failed to decode watermarks"}, true
 	}
 	roles := h.watermarkRoles(ctx, c)
 	preview := boolArg(args, "preview")
 	out := []watermarkInfo{}
 	var images []mcpImage
 	for _, wm := range watermarks {
-		info := watermarkInfo{Watermark: wm, AbsoluteURL: absoluteURL(c, wm.URL), Roles: roles[wm.ID]}
+		info := watermarkInfo{MediaItem: wm, AbsoluteURL: absoluteURL(c, wm.URL), Roles: roles[wm.ID]}
 		if data, err := readImageBytes(ctx, h.DB, h.UploadDir, wm.URL); err == nil {
 			if img, err := decodeImage(data); err == nil {
 				b := img.Bounds()
@@ -453,7 +453,9 @@ func (h *MCPHandler) toolUpdateWatermark(c *gin.Context, args map[string]any) (a
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	wm, err := updateWatermark(ctx, h.DB, mcpScopeFilter(c), id, name, desc)
+	scope := mcpScopeFilter(c)
+	scope["watermark"] = true
+	wm, err := updateMediaItem(ctx, h.DB, scope, id, mediaUpdate{Name: name, Description: desc})
 	if err != nil {
 		return map[string]string{"error": "Watermark not found"}, true
 	}
@@ -579,8 +581,12 @@ func (h *MCPHandler) toolUpdateMedia(c *gin.Context, args map[string]any) (any, 
 		return map[string]string{"error": "Invalid media ID"}, true
 	}
 	var name, desc, hex *string
+	var watermark *bool
 	if v, ok := args["color"].(string); ok {
 		hex = &v
+	}
+	if v, ok := args["watermark"].(bool); ok {
+		watermark = &v
 	}
 	if v, ok := args["name"].(string); ok {
 		name = &v
@@ -588,10 +594,14 @@ func (h *MCPHandler) toolUpdateMedia(c *gin.Context, args map[string]any) (any, 
 	if v, ok := args["description"].(string); ok {
 		desc = &v
 	}
-	_, setTags := args["tags"]
+	var tags *[]string
+	if _, ok := args["tags"]; ok {
+		t := strSliceArg(args, "tags")
+		tags = &t
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, name, desc, hex, strSliceArg(args, "tags"), setTags)
+	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, mediaUpdate{Name: name, Description: desc, Color: hex, Tags: tags, Watermark: watermark})
 	if err == mongo.ErrNoDocuments {
 		return map[string]string{"error": "Media not found"}, true
 	}

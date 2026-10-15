@@ -6,12 +6,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// MediaItem is an entry of the team's media library: an uploaded image,
-// video or font with a name, a description of what it shows and tags, so
-// people and agents can find material to build post images from. The file
-// itself is an ordinary upload, referenced by URL. A colour entry has no file:
-// it carries Color (#rrggbb or #rrggbbaa, ContentType MediaColorType) and its
-// description says how to use it.
 // MediaColorType is the content type of a colour entry.
 const MediaColorType = "color/hex"
 
@@ -21,6 +15,14 @@ const MediaColorType = "color/hex"
 // uploads its image layers use, so they stay while the template does.
 const MediaTemplateType = "template/socialpod"
 
+// MediaItem is an entry of the team's media library: an uploaded image,
+// video or font with a name, a description of what it shows and tags, so
+// people and agents can find material to build post images from. The file
+// itself is an ordinary upload, referenced by URL. A colour entry has no file:
+// it carries Color (#rrggbb or #rrggbbaa, ContentType MediaColorType) and its
+// description says how to use it. An image with Watermark set is a watermark:
+// an overlay offered by the cropper, the image editor, convention queues and
+// the team's overlay settings, which refer to it by its ID.
 type MediaItem struct {
 	ID       primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
 	UserID   primitive.ObjectID  `bson:"userId" json:"userId"`
@@ -28,6 +30,8 @@ type MediaItem struct {
 	URL      string              `bson:"url" json:"url"`
 	Color    string              `bson:"color,omitempty" json:"color,omitempty"`
 	Template string              `bson:"template,omitempty" json:"template,omitempty"`
+	// Watermark marks an image as an overlay.
+	Watermark bool `bson:"watermark,omitempty" json:"watermark,omitempty"`
 	// TemplateURLs lists the uploads Template's image layers point at.
 	TemplateURLs []string  `bson:"templateUrls,omitempty" json:"-"`
 	Name         string    `bson:"name" json:"name"`

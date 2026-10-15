@@ -1576,8 +1576,8 @@ func (h *ConventionHandler) loadQueueWatermark(ctx context.Context, wmID *primit
 	if wmID == nil {
 		return nil
 	}
-	var wm models.Watermark
-	if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *wmID}).Decode(&wm); err != nil {
+	wm, err := findMediaItem(ctx, h.DB, *wmID)
+	if err != nil {
 		return nil
 	}
 	data, _, err := h.readImageData(ctx, wm.URL)

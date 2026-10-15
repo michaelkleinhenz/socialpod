@@ -1,4 +1,4 @@
-import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, MediaItem, Watermark } from '../types';
+import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, MediaItem, MediaKind, Watermark } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -528,25 +528,9 @@ class ApiClient {
     return this.request<any[]>(`/inbox/feed${qs ? '?' + qs : ''}`);
   }
 
-  // Watermarks
+  // Watermarks: the media library's images marked as watermarks.
   getWatermarks() {
-    return this.request<any[]>('/watermarks');
-  }
-
-  uploadWatermark(name: string, file: File, description = '') {
-    const form = new FormData();
-    form.append('name', name);
-    if (description) form.append('description', description);
-    form.append('image', file);
-    return this.request<any>('/watermarks', { method: 'POST', body: form });
-  }
-
-  deleteWatermark(id: string) {
-    return this.request<any>(`/watermarks/${id}`, { method: 'DELETE' });
-  }
-
-  updateWatermark(id: string, data: { name?: string; description?: string }) {
-    return this.request<Watermark>(`/watermarks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+    return this.request<Watermark[]>('/watermarks');
   }
 
   // Agents
@@ -595,7 +579,7 @@ class ApiClient {
   }
 
   // Media library
-  getMedia(params: { q?: string; tags?: string[]; kind?: 'image' | 'video' | 'font' | 'color' | 'template'; limit?: number } = {}) {
+  getMedia(params: { q?: string; tags?: string[]; kind?: MediaKind; limit?: number } = {}) {
     const query = new URLSearchParams();
     if (params.q) query.set('q', params.q);
     if (params.kind) query.set('kind', params.kind);
@@ -605,12 +589,13 @@ class ApiClient {
     return this.request<MediaItem[]>(`/media${qs ? '?' + qs : ''}`);
   }
 
-  uploadMedia(file: File, data: { name?: string; description?: string; tags?: string[] } = {}) {
+  uploadMedia(file: File, data: { name?: string; description?: string; tags?: string[]; watermark?: boolean } = {}) {
     const form = new FormData();
     form.append('file', file);
     if (data.name) form.append('name', data.name);
     if (data.description) form.append('description', data.description);
     if (data.tags?.length) form.append('tags', data.tags.join(','));
+    if (data.watermark) form.append('watermark', 'true');
     return this.request<MediaItem>('/media', { method: 'POST', body: form });
   }
 
@@ -636,7 +621,7 @@ class ApiClient {
     return this.request<MediaItem>(`/media/templates/${id}`, { method: 'PUT', body: form });
   }
 
-  updateMedia(id: string, data: { name?: string; description?: string; color?: string; tags?: string[] }) {
+  updateMedia(id: string, data: { name?: string; description?: string; color?: string; tags?: string[]; watermark?: boolean }) {
     return this.request<MediaItem>(`/media/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 

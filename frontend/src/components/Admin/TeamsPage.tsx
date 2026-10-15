@@ -423,7 +423,7 @@ export function TeamsPage() {
             </select>
             {watermarks.length === 0 && (
               <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
-                No watermarks uploaded yet. Add watermarks on the Watermarks page first.
+                No watermarks uploaded yet. Mark images as watermarks in the Media Library first.
               </span>
             )}
           </div>
