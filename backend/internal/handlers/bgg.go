@@ -113,7 +113,7 @@ var (
 	multiNLRe   = regexp.MustCompile(`\n{3,}`)
 )
 
-// FetchGame handles GET /api/bgg/fetch?url=...&episodeType=review
+// FetchGame handles GET /api/bgg/fetch?url=...&episodeType=review[&imageOnly=true]
 func (h *BGGHandler) FetchGame(c *gin.Context) {
 	rawURL := c.Query("url")
 	if rawURL == "" {
@@ -121,6 +121,9 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		return
 	}
 	episodeType := c.Query("episodeType")
+	// imageOnly skips the AI text, hashtags and handle lookup: the caller
+	// only wants the processed cover (PostEditor's "Image only" import).
+	imageOnly := c.Query("imageOnly") == "true"
 
 	m := bggGameIDRe.FindStringSubmatch(rawURL)
 	if m == nil {
@@ -168,6 +171,21 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		}
 	}
 
+	if imageOnly {
+		imageBase64, imageFilename := h.fetchCoverImage(ctx, c, item, gameID, episodeType)
+		if imageBase64 == "" {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Could not fetch the cover image from BGG"})
+			return
+		}
+		c.JSON(http.StatusOK, BGGGameResponse{
+			GameID:        gameID,
+			Title:         title,
+			ImageBase64:   imageBase64,
+			ImageFilename: imageFilename,
+		})
+		return
+	}
+
 	description := cleanBGGText(item.Desc)
 
 	// Generate AI one-sentence summary (best-effort; omitted if not configured)
@@ -187,21 +205,7 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 	}
 
 	// Download and process cover image (best-effort)
-	imageBase64 := ""
-	imageFilename := ""
-	imgURL := strings.TrimSpace(item.Image)
-	if imgURL == "" {
-		imgURL = strings.TrimSpace(item.Thumbnail)
-	}
-	if imgURL != "" {
-		if strings.HasPrefix(imgURL, "//") {
-			imgURL = "https:" + imgURL
-		}
-		if data, err := h.downloadAndProcess(ctx, c, imgURL, episodeType); err == nil {
-			imageBase64 = base64.StdEncoding.EncodeToString(data)
-			imageFilename = fmt.Sprintf("bgg-%s.jpg", gameID)
-		}
-	}
+	imageBase64, imageFilename := h.fetchCoverImage(ctx, c, item, gameID, episodeType)
 
 	baseContent := buildPostContent(title, designers, artists, publishers, item, aiSummary, settings.AILanguage, nil)
 
@@ -265,6 +269,26 @@ func (h *BGGHandler) FetchGame(c *gin.Context) {
 		PublisherInstagramHandles:  publisherIG,
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// fetchCoverImage downloads the game's cover (or its thumbnail) and runs it
+// through the letterbox + overlay pipeline. Empty strings when it fails.
+func (h *BGGHandler) fetchCoverImage(ctx context.Context, c *gin.Context, item bggItem, gameID, episodeType string) (string, string) {
+	imgURL := strings.TrimSpace(item.Image)
+	if imgURL == "" {
+		imgURL = strings.TrimSpace(item.Thumbnail)
+	}
+	if imgURL == "" {
+		return "", ""
+	}
+	if strings.HasPrefix(imgURL, "//") {
+		imgURL = "https:" + imgURL
+	}
+	data, err := h.downloadAndProcess(ctx, c, imgURL, episodeType)
+	if err != nil {
+		return "", ""
+	}
+	return base64.StdEncoding.EncodeToString(data), fmt.Sprintf("bgg-%s.jpg", gameID)
 }
 
 func fetchBGGItem(ctx context.Context, gameID string, token string) (bggItem, error) {
