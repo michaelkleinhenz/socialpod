@@ -474,8 +474,7 @@ func (h *BGGHandler) loadTeamBGGConfig(ctx context.Context, c *gin.Context, epis
 	}
 
 	if overlayID != nil {
-		var wm models.Watermark
-		if err := h.DB.Watermarks().FindOne(ctx, bson.M{"_id": *overlayID}).Decode(&wm); err == nil {
+		if wm, err := findMediaItem(ctx, h.DB, *overlayID); err == nil {
 			if data, _, err := uploadstore.Read(ctx, h.DB, h.UploadDir, filepath.Base(wm.URL)); err == nil {
 				if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
 					cfg.watermark = img

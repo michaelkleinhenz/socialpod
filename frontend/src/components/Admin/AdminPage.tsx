@@ -552,11 +552,11 @@ export function AdminPage() {
           </>
         )}
 
-        <Link to="/watermarks" className="admin-link-card">
+        <Link to="/media?kind=watermark" className="admin-link-card">
           <Image size={24} />
           <div>
             <h3>Watermarks</h3>
-            <p>Image editor gallery</p>
+            <p>In the Media Library</p>
           </div>
         </Link>
 

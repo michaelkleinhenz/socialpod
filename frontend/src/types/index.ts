@@ -74,19 +74,13 @@ export const AVAILABLE_PLUGINS: Plugin[] = [
   },
 ];
 
-export interface Watermark {
-  id: string;
-  userId: string;
-  teamId?: string;
-  name: string;
-  /** What it looks like and what it is for; agents pick watermarks by it. */
-  description?: string;
-  filename: string;
-  url: string;
-  createdAt: string;
-}
+/** A watermark is a media library image marked as one (MediaItem.watermark). */
+export type Watermark = MediaItem;
 
 /** An entry of the team's media library (uploaded material for post images). */
+/** The kinds the media library's list can be narrowed to. */
+export type MediaKind = 'image' | 'video' | 'font' | 'color' | 'template' | 'watermark';
+
 export interface MediaItem {
   id: string;
   userId: string;
@@ -97,6 +91,8 @@ export interface MediaItem {
   color?: string;
   /** An image editor design as JSON (EditorTemplate), template entries only; url is its preview. */
   template?: string;
+  /** Images only: offered as an overlay by the cropper, the image editor, convention queues and the team settings. */
+  watermark?: boolean;
   name: string;
   description?: string;
   tags?: string[];

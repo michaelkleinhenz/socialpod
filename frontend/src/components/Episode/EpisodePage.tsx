@@ -1485,7 +1485,7 @@ export function EpisodePage() {
                   >
                     <option value="">None</option>
                     {watermarks.map(w => (
-                      <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                      <option key={w.id} value={w.id}>{w.name}</option>
                     ))}
                   </select>
                 </div>

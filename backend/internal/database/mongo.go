@@ -70,11 +70,6 @@ func (m *MongoDB) EnsureIndexes() {
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
 	})
 
-	m.Watermarks().Indexes().CreateMany(ctx, []mongo.IndexModel{
-		{Keys: bson.D{{Key: "userId", Value: 1}}},
-		{Keys: bson.D{{Key: "teamId", Value: 1}}},
-	})
-
 	m.Posts().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "sourceKey", Value: 1}}},
 		{Keys: bson.D{{Key: "origin", Value: 1}, {Key: "status", Value: 1}}},
@@ -192,6 +187,8 @@ func (m *MongoDB) Footers() *mongo.Collection {
 	return m.Database.Collection("footers")
 }
 
+// Watermarks is the former watermarks collection, read only to move its
+// documents into the media library, where watermarks live now.
 func (m *MongoDB) Watermarks() *mongo.Collection {
 	return m.Database.Collection("watermarks")
 }

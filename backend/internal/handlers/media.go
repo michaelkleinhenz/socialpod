@@ -43,7 +43,8 @@ var mediaContentTypes = map[string]string{
 
 func isFontContentType(ct string) bool { return strings.HasPrefix(ct, "font/") }
 
-// mediaKindPrefixes maps a list filter kind to the content type prefix.
+// mediaKindPrefixes maps a list filter kind to the content type prefix; kind
+// watermark is the images flagged as watermarks.
 var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/", "color": "color/", "template": "template/"}
 
 var hexColorPattern = regexp.MustCompile(`^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$`)
@@ -117,15 +118,18 @@ func splitTags(s string) []string {
 
 // mediaListFilter builds the scoped query for a library search: words of
 // query must all appear in the name, description, tags or colour value; every
-// tag given must be present; kind (image, video, font, color, template; empty = all)
-// limits the content type.
+// tag given must be present; kind (image, video, font, color, template,
+// watermark; empty = all) limits the content type.
 func mediaListFilter(scope bson.M, query string, tags []string, kind string) bson.M {
 	filter := bson.M{}
 	for k, v := range scope {
 		filter[k] = v
 	}
-	if prefix, ok := mediaKindPrefixes[strings.ToLower(strings.TrimSpace(kind))]; ok {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	if prefix, ok := mediaKindPrefixes[kind]; ok {
 		filter["contentType"] = primitive.Regex{Pattern: "^" + regexp.QuoteMeta(prefix)}
+	} else if kind == "watermark" {
+		filter["watermark"] = true
 	}
 	var and []bson.M
 	for _, w := range strings.Fields(query) {
@@ -223,38 +227,64 @@ func recordMediaItem(ctx context.Context, c *gin.Context, db *database.MongoDB, 
 // errNotAColor is returned when a colour is set on an entry that is a file.
 var errNotAColor = fmt.Errorf("only a colour entry has a colour to change")
 
-// updateMediaItem changes the given fields of a library entry; nil leaves a
-// field as is. hex changes a colour entry's colour.
-func updateMediaItem(ctx context.Context, db *database.MongoDB, scope bson.M, id primitive.ObjectID, name, description, hex *string, tags []string, setTags bool) (models.MediaItem, error) {
+// errNotAnImage is returned when a watermark flag is set on an entry that is
+// not an image.
+var errNotAnImage = fmt.Errorf("only an image can be a watermark")
+
+// mediaUpdate holds the fields of a library entry to change; nil leaves a
+// field as is. Color changes a colour entry's colour, Watermark marks an
+// image as a watermark or unmarks it.
+type mediaUpdate struct {
+	Name, Description, Color *string
+	Tags                     *[]string
+	Watermark                *bool
+}
+
+func updateMediaItem(ctx context.Context, db *database.MongoDB, scope bson.M, id primitive.ObjectID, u mediaUpdate) (models.MediaItem, error) {
 	set := bson.M{"updatedAt": time.Now()}
+	update := bson.M{"$set": set}
 	filter := bson.M{"_id": id}
-	if hex != nil {
-		norm, err := normalizeColor(*hex)
+	var errMismatch error
+	if u.Color != nil {
+		norm, err := normalizeColor(*u.Color)
 		if err != nil {
 			return models.MediaItem{}, err
 		}
 		set["color"] = norm
 		filter["contentType"] = models.MediaColorType
+		errMismatch = errNotAColor
 	}
-	if name != nil && strings.TrimSpace(*name) != "" {
-		set["name"] = strings.TrimSpace(*name)
+	if u.Watermark != nil {
+		if *u.Watermark {
+			if u.Color != nil {
+				return models.MediaItem{}, errNotAnImage
+			}
+			set["watermark"] = true
+			filter["contentType"] = primitive.Regex{Pattern: "^image/"}
+			errMismatch = errNotAnImage
+		} else {
+			update["$unset"] = bson.M{"watermark": ""}
+		}
 	}
-	if description != nil {
-		set["description"] = strings.TrimSpace(*description)
+	if u.Name != nil && strings.TrimSpace(*u.Name) != "" {
+		set["name"] = strings.TrimSpace(*u.Name)
 	}
-	if setTags {
-		set["tags"] = normalizeTags(tags)
+	if u.Description != nil {
+		set["description"] = strings.TrimSpace(*u.Description)
+	}
+	if u.Tags != nil {
+		set["tags"] = normalizeTags(*u.Tags)
 	}
 	for k, v := range scope {
 		filter[k] = v
 	}
 	var item models.MediaItem
-	err := db.Media().FindOneAndUpdate(ctx, filter, bson.M{"$set": set},
+	err := db.Media().FindOneAndUpdate(ctx, filter, update,
 		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&item)
-	if err == mongo.ErrNoDocuments && hex != nil {
+	if err == mongo.ErrNoDocuments && errMismatch != nil {
 		delete(filter, "contentType")
 		if n, _ := db.Media().CountDocuments(ctx, filter); n > 0 {
-			return item, errNotAColor
+			return item, errMismatch
 		}
 	}
 	return item, err
@@ -274,7 +304,8 @@ func (h *MediaHandler) List(c *gin.Context) {
 }
 
 // Create takes a multipart upload: file (image, video, or a .ttf/.otf font),
-// plus optional name, description and comma-separated tags.
+// plus optional name, description, comma-separated tags and watermark=true to
+// add an image as a watermark.
 func (h *MediaHandler) Create(c *gin.Context) {
 	fh, err := c.FormFile("file")
 	if err != nil {
@@ -298,7 +329,15 @@ func (h *MediaHandler) Create(c *gin.Context) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	watermark := c.PostForm("watermark") == "true"
+	if watermark && !strings.HasPrefix(mediaContentTypes[strings.ToLower(filepath.Ext(fh.Filename))], "image/") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errNotAnImage.Error()})
+		return
+	}
 	item, err := addMediaItem(ctx, c, h.DB, h.UploadDir, data, filepath.Ext(fh.Filename), name, c.PostForm("description"), splitTags(c.PostForm("tags")))
+	if err == nil && watermark {
+		item, err = markWatermark(ctx, h.DB, item)
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -339,6 +378,7 @@ func (h *MediaHandler) Update(c *gin.Context) {
 		Description *string   `json:"description"`
 		Color       *string   `json:"color"`
 		Tags        *[]string `json:"tags"`
+		Watermark   *bool     `json:"watermark"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -346,11 +386,9 @@ func (h *MediaHandler) Update(c *gin.Context) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var tags []string
-	if input.Tags != nil {
-		tags = *input.Tags
-	}
-	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, input.Name, input.Description, input.Color, tags, input.Tags != nil)
+	item, err := updateMediaItem(ctx, h.DB, mcpScopeFilter(c), id, mediaUpdate{
+		Name: input.Name, Description: input.Description, Color: input.Color, Tags: input.Tags, Watermark: input.Watermark,
+	})
 	if err == mongo.ErrNoDocuments {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
 		return

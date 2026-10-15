@@ -16,7 +16,6 @@ import { TeamsPage } from './components/Admin/TeamsPage';
 import { TeamAccountsPage } from './components/Admin/TeamAccountsPage';
 import { TeamInfoPage } from './components/Admin/TeamInfoPage';
 import { PublisherHandlesPage } from './components/Admin/PublisherHandlesPage';
-import { WatermarksPage } from './components/Admin/WatermarksPage';
 import { MediaPage } from './components/Media/MediaPage';
 import { AgentsPage } from './components/Agents/AgentsPage';
 import { ProfilePage } from './components/Auth/ProfilePage';
@@ -97,7 +96,7 @@ function AppRoutes() {
       <Route path="/admin/team-accounts" element={<ProtectedRoute teamAdminOnly><Layout><TeamAccountsPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/my-team" element={<ProtectedRoute teamAdminOnly><Layout><TeamInfoPage /></Layout></ProtectedRoute>} />
       <Route path="/admin/publisher-handles" element={<ProtectedRoute adminOnly><Layout><PublisherHandlesPage /></Layout></ProtectedRoute>} />
-      <Route path="/watermarks" element={<ProtectedRoute><Layout><WatermarksPage /></Layout></ProtectedRoute>} />
+      <Route path="/watermarks" element={<Navigate to="/media?kind=watermark" replace />} />
       <Route path="/media" element={<ProtectedRoute><Layout><MediaPage /></Layout></ProtectedRoute>} />
       <Route path="/agents" element={<ProtectedRoute><Layout><AgentsPage /></Layout></ProtectedRoute>} />
       {/* Convention mode */}

@@ -483,6 +483,11 @@ func (h *SystemBackupHandler) restoreFrom(c *gin.Context, f *os.File, size int64
 		return
 	}
 	h.DB.EnsureIndexes()
+	// A backup from before the media library held the watermarks brings
+	// their old collection back.
+	if n, err := MigrateWatermarksToMedia(rctx, h.DB, h.UploadDir); err != nil {
+		log.Printf("[Backup] moving restored watermarks into the media library: %v (%d moved)", err, n)
+	}
 	if err := pruneUploadCache(rctx, h.DB, h.UploadDir); err != nil {
 		log.Printf("[Backup] pruning %s after restore: %v", h.UploadDir, err)
 	}

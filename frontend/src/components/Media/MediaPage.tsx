@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Brush, Check, Film, FolderOpen, LayoutTemplate, Palette, Pencil, Search, Trash2, Type, Upload, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Brush, Check, Film, FolderOpen, LayoutTemplate, Palette, Pencil, Search, Stamp, Trash2, Type, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
-import type { MediaItem, Watermark } from '../../types';
+import type { MediaItem, MediaKind, Watermark } from '../../types';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { parseTemplate, type EditorTemplate } from '../Common/ImageEditor/editorModel';
 import { ColorField, ColorFormModal } from './ColorFormModal';
@@ -20,6 +21,22 @@ function parseTags(s: string): string[] {
 
 const isFont = (item: MediaItem) => !!item.contentType?.startsWith('font/');
 const isTemplate = (item: MediaItem) => !!item.contentType?.startsWith('template/');
+const isImage = (item: MediaItem) => !!item.contentType?.startsWith('image/');
+
+// The kind filter, kept in the URL (?kind=watermark is where the old
+// Watermarks page now leads).
+const KINDS: { kind: MediaKind | ''; label: string }[] = [
+  { kind: '', label: 'All' },
+  { kind: 'image', label: 'Images' },
+  { kind: 'watermark', label: 'Watermarks' },
+  { kind: 'video', label: 'Videos' },
+  { kind: 'font', label: 'Fonts' },
+  { kind: 'color', label: 'Colours' },
+  { kind: 'template', label: 'Templates' },
+];
+
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
+const ANY_ACCEPT = `${IMAGE_ACCEPT},video/mp4,video/quicktime,.ttf,.otf,font/ttf,font/otf`;
 
 // The template open in the image editor: a new one, or a library entry.
 type Designing = { kind: 'new'; info: NewTemplate } | { kind: 'edit'; item: MediaItem; template: EditorTemplate };
@@ -54,9 +71,14 @@ function FontPreview({ item }: { item: MediaItem }) {
 /**
  * The team's media library: photos, artwork, logos and backgrounds with a
  * description and tags. People upload material here; MCP agents search it
- * (list_media) and build post images from it (compose_image).
+ * (list_media) and build post images from it (compose_image). Images marked
+ * as watermarks are the overlays the cropper, the image editor, convention
+ * queues and the team settings offer.
  */
 export function MediaPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const kindParam = searchParams.get('kind') || '';
+  const kind = KINDS.some(k => k.kind === kindParam) ? (kindParam as MediaKind | '') : '';
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -68,6 +90,7 @@ export function MediaPage() {
   const [editDescription, setEditDescription] = useState('');
   const [editTags, setEditTags] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editWatermark, setEditWatermark] = useState(false);
   const [addingColor, setAddingColor] = useState(false);
   const [newTemplate, setNewTemplate] = useState(false);
   const [designing, setDesigning] = useState<Designing | null>(null);
@@ -77,11 +100,19 @@ export function MediaPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.getMedia({ q: query.trim(), tags: tagFilter, limit: 200 })
+    api.getMedia({ q: query.trim(), tags: tagFilter, kind: kind || undefined, limit: 200 })
       .then(setItems)
       .catch(() => toast.error('Failed to load media'))
       .finally(() => setLoading(false));
-  }, [query, tagFilter]);
+  }, [query, tagFilter, kind]);
+
+  const setKind = (k: MediaKind | '') => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (k) next.set('kind', k); else next.delete('kind');
+      return next;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -94,9 +125,11 @@ export function MediaPage() {
     let done = 0;
     try {
       for (const file of Array.from(files)) {
-        await api.uploadMedia(file, { tags: parseTags(uploadTags) });
+        // Uploaded in the Watermarks view, an image becomes a watermark.
+        await api.uploadMedia(file, { tags: parseTags(uploadTags), watermark: kind === 'watermark' });
         done++;
       }
+      if (kind === 'watermark') setWatermarks(null);
       toast.success(done === 1 ? 'File added' : `${done} files added`);
       load();
     } catch (err) {
@@ -114,6 +147,7 @@ export function MediaPage() {
     setEditDescription(item.description || '');
     setEditTags((item.tags || []).join(', '));
     setEditColor(item.color || '');
+    setEditWatermark(!!item.watermark);
   };
 
   const saveEdit = async (item: MediaItem) => {
@@ -128,19 +162,27 @@ export function MediaPage() {
         description: editDescription.trim(),
         tags: parseTags(editTags),
         ...(item.color ? { color: editColor.trim() } : {}),
+        ...(isImage(item) && editWatermark !== !!item.watermark ? { watermark: editWatermark } : {}),
       });
-      setItems(prev => prev.map(i => (i.id === id ? updated : i)));
+      if (!!updated.watermark !== !!item.watermark) setWatermarks(null);
+      setItems(prev => (kind === 'watermark' && !updated.watermark
+        ? prev.filter(i => i.id !== id)
+        : prev.map(i => (i.id === id ? updated : i))));
       setEditing(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Remove this file from the media library?')) return;
+  const handleDelete = async (item: MediaItem) => {
+    const question = item.watermark
+      ? 'Remove this watermark from the media library? Team settings and convention queues using it lose their overlay.'
+      : 'Remove this file from the media library?';
+    if (!window.confirm(question)) return;
     try {
-      await api.deleteMedia(id);
-      setItems(prev => prev.filter(i => i.id !== id));
+      await api.deleteMedia(item.id);
+      if (item.watermark) setWatermarks(null);
+      setItems(prev => prev.filter(i => i.id !== item.id));
     } catch {
       toast.error('Failed to delete');
     }
@@ -186,10 +228,12 @@ export function MediaPage() {
 
       <p className="watermarks-description">
         Photos, artwork, logos, backgrounds and fonts for post images. Describe what each file shows and tag it: MCP agents
-        search the library by name, description and tags and compose post images from it together with the watermarks,
-        setting their text in the fonts uploaded here (.ttf or .otf) and following the team colours: say in each
-        colour's description how and where to use it. Templates are designs for the image editor, which posts and stories
-        can start from when an image is created.
+        search the library by name, description and tags and compose post images from it, setting their text in the fonts
+        uploaded here (.ttf or .otf) and following the team colours: say in each colour's description how and where to use
+        it. Images marked as watermarks are the overlays offered by the cropper, the image editor, convention queues and
+        the team settings; describe what each looks like and what it is for, e.g. "round logo for a corner" or "full-size
+        frame with a banner at the bottom". Templates are designs for the image editor, which posts and stories can start
+        from when an image is created.
       </p>
 
       <div className="media-toolbar">
@@ -212,12 +256,12 @@ export function MediaPage() {
           ref={fileRef}
           type="file"
           multiple
-          accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,.ttf,.otf,font/ttf,font/otf"
+          accept={kind === 'watermark' ? IMAGE_ACCEPT : ANY_ACCEPT}
           style={{ display: 'none' }}
           onChange={e => handleUpload(e.target.files)}
         />
         <button className="btn btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
-          <Upload size={16} /> {uploading ? 'Uploading...' : 'Upload'}
+          <Upload size={16} /> {uploading ? 'Uploading...' : kind === 'watermark' ? 'Upload Watermark' : 'Upload'}
         </button>
         <button className="btn btn-secondary" onClick={() => setAddingColor(true)}>
           <Palette size={16} /> Add Colour
@@ -225,6 +269,20 @@ export function MediaPage() {
         <button className="btn btn-secondary" onClick={() => setNewTemplate(true)}>
           <LayoutTemplate size={16} /> New Template
         </button>
+      </div>
+
+      <div className="media-kinds" role="tablist">
+        {KINDS.map(k => (
+          <button
+            key={k.kind || 'all'}
+            role="tab"
+            aria-selected={kind === k.kind}
+            className={`media-kind${kind === k.kind ? ' active' : ''}`}
+            onClick={() => setKind(k.kind)}
+          >
+            {k.label}
+          </button>
+        ))}
       </div>
 
       {tagFilter.length > 0 && (
@@ -240,13 +298,21 @@ export function MediaPage() {
       {!loading && items.length === 0 ? (
         <div className="empty-state">
           <FolderOpen size={32} />
-          <p>{query || tagFilter.length ? 'Nothing matches the search.' : 'No media yet. Upload material, add colours or design templates to build post images from.'}</p>
+          <p>
+            {query || tagFilter.length
+              ? 'Nothing matches the search.'
+              : kind === 'watermark'
+                ? 'No watermarks yet. Upload one here, or mark an image as a watermark with its edit button.'
+                : kind
+                  ? 'Nothing of this kind yet.'
+                  : 'No media yet. Upload material, add colours or design templates to build post images from.'}
+          </p>
         </div>
       ) : (
         <div className="watermark-grid">
           {items.map(item => (
             <div key={item.id} className="watermark-card">
-              <div className={`watermark-preview media-preview${isTemplate(item) ? ' media-template' : ''}`}>
+              <div className={`watermark-preview media-preview${isTemplate(item) || item.watermark ? ' media-contain' : ''}`}>
                 {item.color ? (
                   <div className="media-color-swatch" style={{ background: item.color }}>
                     <span>{item.color}</span>
@@ -261,6 +327,9 @@ export function MediaPage() {
                 {isTemplate(item) && (
                   <span className="media-badge"><LayoutTemplate size={12} /> Template</span>
                 )}
+                {item.watermark && (
+                  <span className="media-badge"><Stamp size={12} /> Watermark</span>
+                )}
               </div>
               {editing === item.id ? (
                 <div className="watermark-edit">
@@ -274,6 +343,12 @@ export function MediaPage() {
                     placeholder={item.color ? 'How to use this colour' : 'What the file shows'}
                   />
                   <input className="input" value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="Tags, comma-separated" />
+                  {isImage(item) && (
+                    <label className="media-watermark-toggle" title="Offered as an overlay by the cropper, the image editor, convention queues and the team settings">
+                      <input type="checkbox" checked={editWatermark} onChange={e => setEditWatermark(e.target.checked)} />
+                      Watermark
+                    </label>
+                  )}
                   <div className="watermark-edit-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} title="Cancel">
                       <X size={14} />
@@ -296,7 +371,7 @@ export function MediaPage() {
                       <button className="btn btn-ghost btn-sm" onClick={() => startEdit(item)} title="Edit">
                         <Pencil size={14} />
                       </button>
-                      <button className="btn btn-ghost btn-sm btn-danger-text" onClick={() => handleDelete(item.id)} title="Delete">
+                      <button className="btn btn-ghost btn-sm btn-danger-text" onClick={() => handleDelete(item)} title="Delete">
                         <Trash2 size={14} />
                       </button>
                     </span>

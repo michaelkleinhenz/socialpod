@@ -956,7 +956,7 @@ export function TeamManagePage() {
                   >
                     <option value="">None</option>
                     {watermarks.map(w => (
-                      <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                      <option key={w.id} value={w.id}>{w.name}</option>
                     ))}
                   </select>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -1010,7 +1010,7 @@ export function TeamManagePage() {
                   >
                     <option value="">None</option>
                     {watermarks.map(w => (
-                      <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                      <option key={w.id} value={w.id}>{w.name}</option>
                     ))}
                   </select>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -1039,7 +1039,7 @@ export function TeamManagePage() {
                         >
                           <option value="">Use default</option>
                           {watermarks.map(w => (
-                            <option key={w.id} value={w.id}>{w.name || w.filename}</option>
+                            <option key={w.id} value={w.id}>{w.name}</option>
                           ))}
                         </select>
                       </div>

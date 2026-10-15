@@ -90,6 +90,14 @@ func main() {
 		log.Println("WARNING: upload storage: no S3 bucket configured (set AWS_S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY); uploads are stored in MongoDB")
 	}
 
+	// Watermarks used to have a collection of their own; they are media
+	// library images now.
+	if n, err := handlers.MigrateWatermarksToMedia(context.Background(), db, cfg.UploadDir); err != nil {
+		log.Printf("WARNING: moving watermarks into the media library: %v (%d moved, the rest are retried on the next start)", err, n)
+	} else if n > 0 {
+		log.Printf("Moved %d watermarks into the media library", n)
+	}
+
 	// Start scheduler
 	scheduler := services.NewScheduler(db, cfg.UploadDir)
 	scheduler.Start()
@@ -279,11 +287,12 @@ func main() {
 		// Feed
 		auth.GET("/inbox/feed", inboxHandler.GetFeed)
 
-		// Watermarks (team/user scoped)
-		auth.GET("/watermarks", adminHandler.ListWatermarks)
-		auth.POST("/watermarks", adminHandler.UploadWatermark)
-		auth.PUT("/watermarks/:id", adminHandler.UpdateWatermark)
-		auth.DELETE("/watermarks/:id", adminHandler.DeleteWatermark)
+		// Watermarks: the media library's images marked as watermarks,
+		// kept as their own endpoints for API clients.
+		auth.GET("/watermarks", mediaHandler.ListWatermarks)
+		auth.POST("/watermarks", mediaHandler.UploadWatermark)
+		auth.PUT("/watermarks/:id", mediaHandler.UpdateWatermark)
+		auth.DELETE("/watermarks/:id", mediaHandler.DeleteWatermark)
 
 		// Media library
 		auth.GET("/media", mediaHandler.List)
