@@ -16,7 +16,8 @@ import (
 // Templates from the media library, drawn on the server: the image editor's
 // designs (components/Common/ImageEditor/editorModel.ts) rendered without a
 // browser, so compose_image can use one as its base. The geometry follows the
-// editor's Konva stage: image layers sit by their centre and rotate about it,
+// editor's Konva stage: image and shape layers sit by their centre and rotate
+// about it, paint layers are brush strokes (compose_paint.go),
 // text layers sit by their top-left corner and rotate about that. Fonts the
 // server does not have (the editor's system fonts) fall back to the built-in
 // Go fonts; dashed and dotted borders are drawn solid and a glow as a soft
@@ -61,6 +62,15 @@ type TemplateLayer struct {
 	Shadow     bool    `json:"shadow,omitempty"`
 	Align      string  `json:"align,omitempty"`
 
+	// shape (also Width, Height, Opacity, CornerRadius and Fill; an empty
+	// Fill is none)
+	Shape       string  `json:"shape,omitempty"`
+	Stroke      string  `json:"stroke,omitempty"`
+	StrokeWidth float64 `json:"strokeWidth,omitempty"`
+
+	// paint: brush strokes, moved by (x, y)
+	Strokes []TemplateStroke `json:"strokes,omitempty"`
+
 	Image image.Image    `json:"-"`
 	Font  *opentype.Font `json:"-"`
 }
@@ -90,7 +100,9 @@ func ParseTemplateDesign(raw string) (TemplateDesign, error) {
 		return t, fmt.Errorf("the template has no canvas size")
 	}
 	for i, l := range t.Layers {
-		if l.Kind != "image" && l.Kind != "text" {
+		switch l.Kind {
+		case "image", "text", "shape", "paint":
+		default:
 			return t, fmt.Errorf("template layer %d has an unknown kind %q", i, l.Kind)
 		}
 	}
@@ -149,6 +161,10 @@ func drawTemplate(dst *image.RGBA, t TemplateDesign, s float64, fonts Fonts) {
 			drawTemplateImage(dst, l, s)
 		case "text":
 			drawTemplateText(dst, l, s, fonts)
+		case "shape":
+			drawTemplateShape(dst, l, s)
+		case "paint":
+			drawTemplatePaint(dst, l, s)
 		}
 	}
 }

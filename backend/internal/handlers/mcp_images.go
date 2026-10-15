@@ -101,7 +101,7 @@ func imageToolDefinitions() []mcpTool {
 				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts, colours or templates. " +
 				"A font's id goes into fontMediaId of a compose_image text layer. A colour entry has no file: its color (#rrggbb or #rrggbbaa) goes into any colour field of compose_image, " +
 				"and its description says how and where the team uses it; follow that. " +
-				"A template is a design of the team's image editor: its templateLayers list each layer by index (texts with their wording, images with their frame), " +
+				"A template is a design of the team's image editor: its templateLayers list each layer by index (texts with their wording, images and shapes with their frame, paint as brush strokes), " +
 				"and compose_image with template draws it with the texts and images you swap in. " +
 				"With preview=true a small thumbnail of each hit (up to 12) is attached; for a font, a text sample set in it; for a template, its preview.",
 			InputSchema: map[string]any{
@@ -201,7 +201,7 @@ func imageToolDefinitions() []mcpTool {
 										"hide":        map[string]any{"type": "boolean", "description": "Leave the layer out"},
 										"text":        map[string]any{"type": "string", "description": "text layer: the new text (\\n starts a new line; lines do not wrap). It keeps the layer's font, size, colour and alignment point"},
 										"fontScale":   map[string]any{"type": "number", "description": "text layer: multiply the font size, e.g. 0.8 for a longer text"},
-										"color":       map[string]any{"type": "string", "description": "text layer: new text colour"},
+										"color":       map[string]any{"type": "string", "description": "text layer: new text colour; shape layer: new fill colour"},
 										"url":         map[string]any{"type": "string", "description": "image layer: replace the image (upload or public URL); it is cropped to fill the layer's frame, corners and border kept"},
 										"mediaId":     map[string]any{"type": "string", "description": "image layer: replace the image with a media library image"},
 										"watermarkId": map[string]any{"type": "string", "description": "image layer: replace the image with a team watermark"},

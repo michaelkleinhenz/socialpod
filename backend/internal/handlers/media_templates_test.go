@@ -12,7 +12,9 @@ func TestCheckTemplate(t *testing.T) {
 		{"kind":"text","text":"Hi"},
 		{"kind":"image","src":"/api/uploads/a.png"},
 		{"kind":"image","src":"https://example.com/b.png"},
-		{"kind":"image","src":"/api/uploads/c.jpg"}
+		{"kind":"image","src":"/api/uploads/c.jpg"},
+		{"kind":"shape","shape":"ellipse","fill":"#000000"},
+		{"kind":"paint","strokes":[{"points":[1,2,3,4],"size":10,"feather":20,"color":"#000000","opacity":0.4}]}
 	]}`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

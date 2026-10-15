@@ -60,7 +60,7 @@ func checkTemplate(raw string) (width, height int, urls []string, err error) {
 	urls = []string{}
 	for i, l := range t.Layers {
 		switch l.Kind {
-		case "text":
+		case "text", "shape", "paint":
 		case "image":
 			if strings.TrimSpace(l.Src) == "" {
 				return 0, 0, nil, fmt.Errorf("image layer %d has no src", i+1)
