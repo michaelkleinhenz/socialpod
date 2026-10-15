@@ -2974,6 +2974,3 @@ func (h *AdminHandler) DashboardStats(c *gin.Context) {
 		"successRate":         successRate,
 	})
 }
-
-// Watermark gallery management
-
