@@ -35,8 +35,14 @@ const (
 // the uploads its image layers use. Only the outline is checked; the editor
 // owns the layer format.
 func checkTemplate(raw string) (width, height int, urls []string, err error) {
-	if len(raw) == 0 || len(raw) > maxTemplateJSON {
-		return 0, 0, nil, fmt.Errorf("template is empty or larger than %d KB", maxTemplateJSON/1024)
+	return checkDesign(raw, maxTemplateJSON, maxTemplateSide)
+}
+
+// checkDesign is checkTemplate with its limits as arguments: an image draft
+// on a photo takes the photo's crop as its canvas, which can be larger.
+func checkDesign(raw string, maxJSON, maxSide int) (width, height int, urls []string, err error) {
+	if len(raw) == 0 || len(raw) > maxJSON {
+		return 0, 0, nil, fmt.Errorf("template is empty or larger than %d KB", maxJSON/1024)
 	}
 	var t struct {
 		Width      float64 `json:"width"`
@@ -50,8 +56,8 @@ func checkTemplate(raw string) (width, height int, urls []string, err error) {
 	if err := json.Unmarshal([]byte(raw), &t); err != nil {
 		return 0, 0, nil, fmt.Errorf("template is not valid JSON: %v", err)
 	}
-	if t.Width < 1 || t.Height < 1 || t.Width > maxTemplateSide || t.Height > maxTemplateSide {
-		return 0, 0, nil, fmt.Errorf("template size must be between 1 and %d pixels a side", maxTemplateSide)
+	if t.Width < 1 || t.Height < 1 || t.Width > float64(maxSide) || t.Height > float64(maxSide) {
+		return 0, 0, nil, fmt.Errorf("template size must be between 1 and %d pixels a side", maxSide)
 	}
 	if len(t.Layers) > maxTemplateLayers {
 		return 0, 0, nil, fmt.Errorf("a template holds at most %d layers", maxTemplateLayers)

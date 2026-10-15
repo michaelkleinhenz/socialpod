@@ -84,6 +84,10 @@ func (m *MongoDB) EnsureIndexes() {
 		{Keys: bson.D{{Key: "tags", Value: 1}}},
 	})
 
+	m.ImageDrafts().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "userId", Value: 1}, {Key: "updatedAt", Value: -1}}},
+	})
+
 	m.Mentions().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
@@ -249,6 +253,11 @@ func (m *MongoDB) OAuthTokens() *mongo.Collection {
 
 func (m *MongoDB) OAuthKeys() *mongo.Collection {
 	return m.Database.Collection("oauth_keys")
+}
+
+// ImageDrafts holds image editor work saved to be finished later.
+func (m *MongoDB) ImageDrafts() *mongo.Collection {
+	return m.Database.Collection("image_drafts")
 }
 
 func (m *MongoDB) Agents() *mongo.Collection {
