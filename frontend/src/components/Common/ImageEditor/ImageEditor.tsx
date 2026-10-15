@@ -961,6 +961,56 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // --- Render ---------------------------------------------------------------
 
+  // The selected layer's node, when the pointer is inside it: its own box,
+  // rotation included, whatever lies on top of it.
+  const selectedNodeAtPointer = (stage: Konva.Stage | null): Konva.Node | null => {
+    const node = selectedId ? nodeRefs.current.get(selectedId) : undefined;
+    const pos = stage?.getPointerPosition();
+    if (!node || !pos) return null;
+    const p = node.getAbsoluteTransform().copy().invert().point(pos);
+    const r = node.getClientRect({ skipTransform: true });
+    return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height ? node : null;
+  };
+
+  // A press inside the selected layer keeps it selected and drags it, even
+  // where another layer covers it (a full-frame image on top, say), so a
+  // layer picked in the Objects list can be moved on the picture. The layer
+  // on top must not drag meanwhile; the drag starts once the pointer moves,
+  // so a plain click changes nothing.
+  const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent) => {
+    cover.draggable(false);
+    const stage = node.getStage();
+    const pressedAt = stage?.getPointerPosition();
+    const move = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - start.clientX, ev.clientY - start.clientY) < 3) return;
+      window.removeEventListener('pointermove', move);
+      // Catch up with the pointer first, so the layer stays under the point
+      // it was pressed at.
+      if (stage && pressedAt) {
+        stage.setPointersPositions(ev);
+        const now = stage.getPointerPosition();
+        const at = node.getAbsolutePosition();
+        if (now) node.setAbsolutePosition({ x: at.x + now.x - pressedAt.x, y: at.y + now.y - pressedAt.y });
+      }
+      node.startDrag();
+    };
+    const end = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      cover.draggable(true);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
+
+  const onLayerPointerDown = (l: EditorLayer, e: Konva.KonvaEventObject<PointerEvent>) => {
+    const held = l.id !== selectedId ? selectedNodeAtPointer(e.target.getStage()) : null;
+    if (held) { holdSelected(held, e.currentTarget, e.evt); return; }
+    selectLayer(l);
+  };
+
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     if (tab === 'crop') return;
     if (painting) { startStroke(e.target.getStage()); return; }
@@ -1576,7 +1626,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                         ref: (node: Konva.Node | null) => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); },
                         listening: layersInteractive,
                         draggable: layersInteractive,
-                        onPointerDown: () => selectLayer(l),
+                        onPointerDown: (e: Konva.KonvaEventObject<PointerEvent>) => onLayerPointerDown(l, e),
                         onDragStart: startGesture,
                         onTransformStart: startGesture,
                         onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragMove(l, e),
