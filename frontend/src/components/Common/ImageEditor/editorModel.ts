@@ -38,6 +38,9 @@ export interface ImageLayer {
   // absent. Set when an image takes a placeholder's place, so it fills the
   // placeholder's frame instead of changing its shape.
   srcCrop?: CropBox;
+  // Came with a template: a pasted image takes its place. Images the user
+  // added are left alone by a paste. Not stored in a template.
+  placeholder?: boolean;
 }
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
@@ -659,7 +662,7 @@ export async function instantiateTemplate(
     const il = l as Omit<ImageLayer, 'id' | 'img'>;
     try {
       const img = await loadImage(resolve(il.src));
-      return { ...il, id: newLayerId(), img };
+      return { ...il, id: newLayerId(), img, placeholder: true };
     } catch {
       missing++;
       return null;

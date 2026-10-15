@@ -685,14 +685,14 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // --- Pasted images --------------------------------------------------------
 
-  // Puts an image file on the picture. With an image layer selected (a
-  // template's placeholder, say) it takes that layer's place: same frame,
-  // corners and border, the image cropped to fill it. Otherwise it goes in
-  // the middle like a media image. The file is uploaded first, so a design
-  // saved as a template refers to it by URL.
-  const placeImageFile = async (file: File) => {
+  // Puts an image file on the picture. With `replace` and an image layer
+  // selected it takes that layer's place: same frame, corners and border,
+  // the image cropped to fill it. Otherwise it goes in the middle like a
+  // media image, whole. The file is uploaded first, so a design saved as a
+  // template refers to it by URL.
+  const placeImageFile = async (file: File, { replace }: { replace: boolean }) => {
     if (!crop || placingImage) return;
-    const target = selected?.kind === 'image' ? selected : null;
+    const target = replace && selected?.kind === 'image' ? selected : null;
     setPlacingImage(true);
     try {
       const { url } = await api.uploadImage(file);
@@ -723,7 +723,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const pickPlaceFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (file) void placeImageFile(file);
+    // The Replace button: always the selected layer's place.
+    if (file) void placeImageFile(file, { replace: true });
   };
 
   // Ctrl/Cmd+V with an image on the clipboard. Caught before the page below
@@ -738,7 +739,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         if (!file) continue;
         e.preventDefault();
         e.stopImmediatePropagation();
-        void placeImageFile(file);
+        // Only a template's placeholder is swapped out by a paste; an image
+        // the user added, still selected from adding it, stays and the
+        // paste becomes a layer of its own.
+        void placeImageFile(file, { replace: selected?.kind === 'image' && !!selected.placeholder });
         return;
       }
     };
@@ -1065,7 +1069,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         </button>
         <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
       </div>
-      <p className="ie-hint">Paste an image (Ctrl+V) to put it in this one's place, filling its frame.</p>
+      {selected.placeholder && <p className="ie-hint">Paste an image (Ctrl+V) to put it in this one's place, filling its frame.</p>}
+      {selected.srcCrop && <p className="ie-hint">Only part of this image is shown. Fit shows all of it again.</p>}
     </>
   );
 
