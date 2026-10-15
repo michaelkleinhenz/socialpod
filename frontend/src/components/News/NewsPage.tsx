@@ -49,8 +49,6 @@ export function NewsPage() {
   const [croppedSize, setCroppedSize] = useState<number | null>(null);
   // The image editor on a blank square canvas, to make an image instead of uploading one.
   const [creatingImage, setCreatingImage] = useState(false);
-  // The team's watermarks, offered as layers in the image editor.
-  const [editorWatermarks, setEditorWatermarks] = useState<Watermark[] | null>(null);
 
   // Watermark
   const [watermark, setWatermark] = useState<Watermark | null>(null);
@@ -233,7 +231,6 @@ export function NewsPage() {
   };
 
   const openImageCreator = () => {
-    if (editorWatermarks === null) api.getWatermarks().then(setEditorWatermarks).catch(() => setEditorWatermarks([]));
     setCreatingImage(true);
   };
 
@@ -1256,7 +1253,6 @@ export function NewsPage() {
             <ImageEditor
               canvas={{ width: 1080, height: 1080, background: '#ffffff' }}
               title="Create image"
-              watermarks={editorWatermarks ?? []}
               onCancel={() => setCreatingImage(false)}
               onSave={blob => {
                 setCreatingImage(false);
