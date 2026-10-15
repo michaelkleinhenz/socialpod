@@ -501,6 +501,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [bggUrl, setBggUrl] = useState('');
   const [fetchingBgg, setFetchingBgg] = useState(false);
   const [bggError, setBggError] = useState('');
+  const [bggImageOnly, setBggImageOnly] = useState(false);
   const [bggEnabled, setBggEnabled] = useState(false);
   const [bggSuggestedByPlatform, setBggSuggestedByPlatform] = useState<Record<string, string>>({});
   const [bggHashtagSuffix, setBggHashtagSuffix] = useState('');
@@ -1119,18 +1120,34 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {})
     || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || []);
 
+  // An image-only import leaves the texts alone, so they stay usable meanwhile.
+  const fetchingBggText = fetchingBgg && !(bggImageOnly && !isReel);
+
+  const bggImageFile = (base64: string, filename?: string) => {
+    const byteStr = atob(base64);
+    const arr = new Uint8Array(byteStr.length);
+    for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+    return new File([arr], filename || 'bgg-cover.jpg', { type: 'image/jpeg' });
+  };
+
   const fetchBGGData = async () => {
     if (!bggUrl.trim()) return;
     setFetchingBgg(true);
     setBggError('');
     try {
-      const data = await api.fetchBGGGame(bggUrl.trim());
+      const imageOnly = bggImageOnly && !isReel;
+      const data = await api.fetchBGGGame(bggUrl.trim(), undefined, imageOnly);
+      if (imageOnly) {
+        // Only the cover: it takes the first image's place, text and
+        // everything else stay as they are.
+        if (!data.imageBase64) throw new Error('No cover image found on BGG');
+        const file = bggImageFile(data.imageBase64, data.imageFilename);
+        setImages(prev => prev.length > 0 ? [{ kind: 'file', file }, ...prev.slice(1)] : [{ kind: 'file', file }]);
+        toast.success(images.length > 0 ? 'Image replaced with the BGG cover' : 'BGG cover image added');
+        return;
+      }
       if (data.imageBase64) {
-        const byteStr = atob(data.imageBase64);
-        const arr = new Uint8Array(byteStr.length);
-        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-        const blob = new Blob([arr], { type: 'image/jpeg' });
-        const file = new File([blob], data.imageFilename || 'bgg-cover.jpg', { type: 'image/jpeg' });
+        const file = bggImageFile(data.imageBase64, data.imageFilename);
         setImages(prev => [{ kind: 'file', file }, ...prev]);
       }
       // The publishers are the natural collab partners for a game post.
@@ -1329,6 +1346,20 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     >
                       {fetchingBgg ? <><Loader size={14} className="post-editor-spin" /> Importing…</> : 'Import'}
                     </button>
+                    {!isReel && (
+                      <label
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap', margin: 0, cursor: 'pointer' }}
+                        title="Import only the processed cover image; all other fields stay untouched"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={bggImageOnly}
+                          onChange={e => setBggImageOnly(e.target.checked)}
+                          disabled={fetchingBgg}
+                        />
+                        Image only
+                      </label>
+                    )}
                   </div>
                   {bggError && (
                     <span style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--danger)', display: 'block' }}>{bggError}</span>
@@ -1409,9 +1440,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
                   {customizePerPlatform && platforms.length > 1 ? (
                     <>
-                      {(preparingPlatforms || fetchingBgg) && (
+                      {(preparingPlatforms || fetchingBggText) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                          <Loader size={14} className="post-editor-spin" /> {fetchingBgg ? 'Importing and adapting text…' : 'Shortening text for platforms…'}
+                          <Loader size={14} className="post-editor-spin" /> {fetchingBggText ? 'Importing and adapting text…' : 'Shortening text for platforms…'}
                         </div>
                       )}
                       {platforms.map(platform => {
@@ -1420,7 +1451,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                         const platformCount = overrideVal.length;
                         const platformOver = platformCount > platformLimit;
                         const platformClass = platformOver ? 'danger' : platformCount > platformLimit * 0.9 ? 'warning' : '';
-                        const textsBusy = preparingPlatforms || fetchingBgg;
+                        const textsBusy = preparingPlatforms || fetchingBggText;
                         const isPreparing = textsBusy && generating === platform;
                         return (
                           <div key={platform} style={{ marginBottom: 8, opacity: textsBusy ? 0.6 : 1, transition: 'opacity 0.2s' }}>

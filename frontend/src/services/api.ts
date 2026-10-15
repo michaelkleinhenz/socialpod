@@ -754,9 +754,10 @@ class ApiClient {
   }
 
   // BGG integration
-  fetchBGGGame(url: string, episodeType?: string) {
+  fetchBGGGame(url: string, episodeType?: string, imageOnly = false) {
     let endpoint = `/bgg/fetch?url=${encodeURIComponent(url)}`;
     if (episodeType) endpoint += `&episodeType=${encodeURIComponent(episodeType)}`;
+    if (imageOnly) endpoint += '&imageOnly=true';
     return this.request<import('../types').BGGGameData>(endpoint);
   }
 
