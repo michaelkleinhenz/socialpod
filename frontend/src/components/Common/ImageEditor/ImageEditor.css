@@ -93,6 +93,11 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  /* No callout or text selection on a long press: iOS cancels the touch
+     for them, which would cut a drag or resize short. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   /* A checkerboard shows through transparent parts of the picture. */
   background:
     repeating-conic-gradient(#111827 0% 25%, #0b1220 0% 50%) 50% / 24px 24px;

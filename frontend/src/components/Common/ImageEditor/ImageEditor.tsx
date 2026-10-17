@@ -1072,13 +1072,35 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const shift = { x: (t.mid.x - p.mid.x) / scale, y: (t.mid.y - p.mid.y) / scale };
     updateLayer(p.id, pinchedLayer(p.from, s, turn, shift), `gesture:pinch:${p.id}`);
   };
-  const onStageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+  const endPinch = () => {
     const p = pinch.current;
-    if (!p || e.evt.touches.length >= 2) return;
+    if (!p) return;
     pinch.current = null;
     nodeRefs.current.get(p.id)?.draggable(true);
     setMoving(false);
   };
+  const onStageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    if (e.evt.touches.length < 2) endPinch();
+  };
+
+  // A phone cancels a touch it takes over (an edge swipe, a long press, a
+  // notification). Konva's Transformer only ends a resize or turn on
+  // touchend, so after a cancel it would go on transforming: the next
+  // finger anywhere resized the object by the old handle, and the hit areas
+  // were no longer redrawn, so taps landed where handles had been. A pinch
+  // left the object undraggable the same way.
+  useEffect(() => {
+    const onCancel = () => {
+      if (trRef.current?.isTransforming()) trRef.current.stopTransform();
+      endPinch();
+    };
+    window.addEventListener('touchcancel', onCancel, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    return () => {
+      window.removeEventListener('touchcancel', onCancel, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+    };
+  });
 
   // --- Crop -----------------------------------------------------------------
 
@@ -3307,6 +3329,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       padding={layerTransformer ? 4 : 0}
                       rotateEnabled={layerTransformer && selected?.kind !== 'paint'}
                       rotateAnchorOffset={isTouch ? 36 : 28}
+                      // A finger that misses the small turn handle lands on
+                      // the background and deselects: on touch its hit area
+                      // is widened to about 46px.
+                      anchorStyleFunc={isTouch ? (a: Konva.Rect) => { if (a.hasName('rotater')) a.hitStrokeWidth(24); } : undefined}
                       rotationSnaps={[0, 90, 180, 270]}
                       flipEnabled={false}
                       ignoreStroke
