@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette, Clapperboard } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette, Clapperboard, Download } from 'lucide-react';
 import { CaptionChecker, InsightsStrip, InstagramPeople } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -426,6 +426,34 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
   const igHandle = instagramAccount?.accountName || 'yourhandle';
   const igAvatarUrl = instagramAccount?.avatarUrl;
   const src = videoUrl.startsWith('/') ? apiUrl + videoUrl : videoUrl;
+  const [downloading, setDownloading] = useState(false);
+
+  // Fetched into a blob first: the download attribute is ignored for a
+  // cross-origin URL, which the API's upload URLs can be.
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      let href = src;
+      let revoke = false;
+      if (!src.startsWith('blob:')) {
+        const res = await fetch(src);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        href = URL.createObjectURL(await res.blob());
+        revoke = true;
+      }
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `reel-${format(new Date(), 'yyyy-MM-dd-HHmm')}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (revoke) setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch (err) {
+      toast.error(`Download failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="preview-cards">
@@ -450,6 +478,11 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
           )}
         </div>
         <div className="preview-platform-badge instagram" style={{ marginTop: 8, alignSelf: 'center' }}>Instagram Reel</div>
+        {videoUrl && (
+          <button type="button" className="btn btn-secondary btn-sm preview-reel-download" onClick={handleDownload} disabled={downloading}>
+            {downloading ? <Loader size={14} className="post-editor-spin" /> : <Download size={14} />} Download
+          </button>
+        )}
       </div>
     </div>
   );
