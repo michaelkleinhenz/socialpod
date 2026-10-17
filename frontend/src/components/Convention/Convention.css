@@ -1086,3 +1086,86 @@
 @media (max-width: 720px) {
   .qr-body { padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 }
+
+.qr-trim { display: flex; flex-direction: column; gap: 8px; }
+
+.qr-trim-video { max-height: 40vh; cursor: pointer; }
+
+.qr-trim-bar { display: flex; align-items: center; gap: 8px; }
+
+.qr-trim-play { flex: none; width: 40px; height: 56px; justify-content: center; padding: 0; }
+
+.qr-trim-strip {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 56px;
+  margin: 0 10px;
+  touch-action: none;
+  user-select: none;
+  cursor: pointer;
+}
+
+.qr-trim-thumbs {
+  display: flex;
+  height: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+
+.qr-trim-thumb { flex: 1; background-size: cover; background-position: center; }
+
+.qr-trim-shade { position: absolute; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); pointer-events: none; }
+
+.qr-trim-window {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  border-top: 3px solid var(--accent);
+  border-bottom: 3px solid var(--accent);
+  cursor: grab;
+}
+
+.qr-trim-handle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 20px;
+  background: var(--accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.qr-trim-handle.start { transform: translateX(-100%); border-radius: 6px 0 0 6px; }
+
+.qr-trim-handle.end { border-radius: 0 6px 6px 0; }
+
+.qr-trim-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: #fff;
+  transform: translate(-50%, -50%);
+}
+
+.qr-trim-handle:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+
+.qr-trim-playhead {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.qr-trim-times { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.qr-trim-times strong { color: var(--text-primary); }
