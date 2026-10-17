@@ -914,10 +914,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   }, [phone, canvasMode, template, templates, drafts]);
 
   // The media sheet closes once what was picked (or uploaded) is on the
-  // picture.
+  // picture, and the video sheet once an uploaded clip is.
   const layerCount = useRef(layers.length);
   useEffect(() => {
-    if (sheet === 'media' && layers.length > layerCount.current) setSheet(null);
+    if ((sheet === 'media' || sheet === 'video') && layers.length > layerCount.current) setSheet(null);
     layerCount.current = layers.length;
   }, [layers.length, sheet]);
 
@@ -2401,7 +2401,6 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         </div>
       )}
       <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
-      <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
     </>
   );
 
@@ -2439,6 +2438,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           ? 'Pick an object on the picture or in the timeline to set when it shows and how it comes in and goes out. Drag its bar in the timeline to move it in time.'
           : 'Add texts, images and shapes, then animate them here. Each shows the whole video until you change it.'}
       </p>
+      <span className="ie-label ie-section"><Film size={14} /> Clips</span>
+      <p className="ie-hint">Put a video clip on the picture at the playhead, from a file (mp4, mov, webm) or from the library under Media. An upload is kept for this video only, unless you keep uploads in the media library below.</p>
+      <div className="ie-row">
+        <button className="ie-chip" onClick={() => clipInputRef.current?.click()} disabled={uploadingMedia || addingMedia !== null}>
+          {uploadingMedia ? <Loader2 size={14} className="ie-spin" /> : <Upload size={14} />} Upload a clip
+        </button>
+      </div>
       {musicControls()}
     </>
   );
@@ -3240,6 +3246,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       )}
 
       <input ref={placeInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={pickPlaceFile} />
+      <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
     </div>
   );
 }
