@@ -9,7 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed dist/*
+// all: keeps files starting with _ or . (Vite emits chunks such as
+// __vite-browser-external-*.js), which a plain pattern leaves out.
+//
+//go:embed all:dist
 var frontendFS embed.FS
 
 func serveFrontend(r *gin.Engine) {
