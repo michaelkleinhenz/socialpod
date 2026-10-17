@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type Ref } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref } from 'react';
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Music, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
+  ALargeSmall, Blend, CaseSensitive, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
@@ -23,10 +24,23 @@ import {
 } from './animation';
 import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
+import { BottomSheet, MiniToolbar, PhoneBar, PhoneTray, type BarItem, type TraySub } from './PhoneParts';
 import { canExportVideo, renderVideo } from './videoExport';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush' | 'animate';
+
+// Where the editor switches to its phone layout (PhoneParts.tsx).
+const PHONE_QUERY = '(max-width: 768px)';
+
+// The size of the selected object's toolbar on a phone, for placing it.
+const MINI_TOOLBAR = { width: 216, height: 48 };
+
+// What a bottom sheet on a phone holds.
+type PhoneSheet = 'templates' | 'media' | 'layers' | 'video';
+
+// The parts of a layer's animation, one at a time in the phone's tray.
+type AnimPart = 'timing' | 'in' | 'loop' | 'out';
 
 const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle };
 
@@ -103,6 +117,9 @@ interface Snapshot {
 
 // How close, in screen pixels, a moved layer has to come to snap.
 const SNAP_PX = 6;
+// How far, in screen pixels, a tap may miss a layer on a touch screen and
+// still pick it.
+const TOUCH_SLOP = 16;
 const GUIDE_COLOR = '#ff2d95';
 const SNAP_STORAGE_KEY = 'socialpod.imageEditor.snap';
 
@@ -238,7 +255,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // On the Brush tab the pointer paints, or picks and moves layers.
   const [brushMode, setBrushMode] = useState<'paint' | 'move'>('paint');
   // The object list on the right; open from the start where there is room.
-  const [showLayers, setShowLayers] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 768px)').matches);
+  const [showLayers, setShowLayers] = useState(() => typeof window === 'undefined' || !window.matchMedia(PHONE_QUERY).matches);
+  // The phone layout: the tool open in the tray (and which of its controls),
+  // the sheet that is open, and where the selected object's toolbar goes.
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches);
+  const [phoneTool, setPhoneTool] = useState<string | null>(null);
+  const [phoneSub, setPhoneSub] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<PhoneSheet | null>(null);
+  const [miniPos, setMiniPos] = useState<{ left: number; top: number } | null>(null);
+  // A layer being dragged, resized, turned or pinched.
+  const [moving, setMoving] = useState(false);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [undoStack, setUndoStack] = useState<Snapshot[]>([]);
   const [redoStack, setRedoStack] = useState<Snapshot[]>([]);
@@ -262,6 +288,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   const isTouch = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY);
+    const onChange = () => setPhone(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // Source image.
   useEffect(() => {
@@ -781,6 +814,14 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const selectLayer = (l: EditorLayer) => {
     if (editingTextId && editingTextId !== l.id) finishTextEdit();
     setSelectedId(l.id);
+    // A phone has no tabs: the bar follows the selection, and an open tool
+    // stays only where the new object has it too.
+    if (phone) {
+      if (video) seekInto(l);
+      if (phoneTool && !phoneToolIds(l).includes(phoneTool)) closePhoneTool();
+      if (tab === 'crop') setTab(restTab);
+      return;
+    }
     if (video) {
       seekInto(l);
       // The Animate tab stays, to set the timing of one layer after another.
@@ -796,6 +837,213 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setTab('brush');
     }
     else setTab('media');
+  };
+
+  // --- Phone ----------------------------------------------------------------
+
+  // The tab the stage rests on while no tool is open: one that neither crops
+  // nor paints.
+  const restTab: Tab = canvasMode ? 'canvas' : 'filters';
+
+  // The tray's tools for the selected object, or for none.
+  const phoneToolIds = (l: EditorLayer | null): string[] => {
+    if (!l) return ['crop', 'filters', 'canvas', 'shapes', 'brush'];
+    switch (l.kind) {
+      case 'text': return ['font', 'size', 'color', 'align', 'style', 'animate'];
+      case 'image': return ['clip', 'opacity', 'corners', 'border', 'animate'];
+      case 'shape': return ['shape', 'fill', 'border', 'corners', 'opacity', 'animate'];
+      default: return ['brush', 'animate'];
+    }
+  };
+
+  const closePhoneTool = () => {
+    setPhoneTool(null);
+    setPhoneSub(null);
+    setBrushAt(null);
+    if (tab === 'crop' || tab === 'brush') setTab(restTab);
+  };
+
+  // Opens a tool in the tray, or puts it away when it is open already.
+  const openPhoneTool = (id: string, sub: string | null = null) => {
+    if (phoneTool === id) { closePhoneTool(); return; }
+    setPhoneTool(id);
+    setPhoneSub(sub);
+    if (id === 'crop') {
+      setSelectedId(null);
+      setTab('crop');
+    } else if (id === 'brush') {
+      setTab('brush');
+      setBrushMode('paint');
+      if (selected?.kind !== 'paint') setSelectedId(null);
+    } else if (tab === 'crop' || tab === 'brush') {
+      setTab(restTab);
+    }
+  };
+
+  // The tab behind a sheet loads what it lists.
+  const openSheet = (s: PhoneSheet) => {
+    if (editingTextId) finishTextEdit();
+    setPhoneTool(null);
+    setPhoneSub(null);
+    setSheet(s);
+    setTab(s === 'templates' ? 'templates' : s === 'media' ? 'media' : s === 'video' ? 'animate' : restTab);
+    if (s === 'video') setSelectedId(null);
+  };
+
+  const closeSheet = () => {
+    setSheet(null);
+    setTab(restTab);
+  };
+
+  // Leaving the phone layout, or losing the object a tool was for, puts the
+  // tool away; the stage never crops or paints without its tool open.
+  useEffect(() => {
+    if (phoneTool && (!phone || !phoneToolIds(selected).includes(phoneTool))) closePhoneTool();
+    else if (phone && ((tab === 'crop' && phoneTool !== 'crop') || (tab === 'brush' && phoneTool !== 'brush'))) setTab(restTab);
+    if (!phone && sheet) setSheet(null);
+    // The helpers it calls are new on every render; what they read is listed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, phoneTool, selected, tab, sheet]);
+
+  // A blank canvas opens on the templates, when there are any.
+  const templatesShown = useRef(false);
+  useEffect(() => {
+    if (templatesShown.current || !phone || !canvasMode || template || templates === null) return;
+    templatesShown.current = true;
+    if (templates.length > 0 || (drafts?.length ?? 0) > 0) setSheet('templates');
+  }, [phone, canvasMode, template, templates, drafts]);
+
+  // The media sheet closes once what was picked (or uploaded) is on the
+  // picture.
+  const layerCount = useRef(layers.length);
+  useEffect(() => {
+    if (sheet === 'media' && layers.length > layerCount.current) setSheet(null);
+    layerCount.current = layers.length;
+  }, [layers.length, sheet]);
+
+  // A copy of the selected object, a little offset, right above it. A clip
+  // is not copied: two layers cannot play one video.
+  const canDuplicate = !!selected && !(selected.kind === 'image' && selected.clip);
+  const duplicateSelected = () => {
+    if (!crop || !selected || !canDuplicate) return;
+    const off = Math.round(Math.min(crop.width, crop.height) * 0.03);
+    const copy = { ...selected, id: newLayerId(), x: selected.x + off, y: selected.y + off } as EditorLayer;
+    checkpoint();
+    setLayers(prev => {
+      const i = prev.findIndex(l => l.id === selected.id);
+      return [...prev.slice(0, i + 1), copy, ...prev.slice(i + 1)];
+    });
+    setSelectedId(copy.id);
+  };
+
+  // Moves the selected object one place up (1) or down (-1) the stack.
+  const selectedIndex = selected ? layers.indexOf(selected) : -1;
+  const restackSelected = (dir: 1 | -1) => {
+    const i = selectedIndex;
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= layers.length) return;
+    const next = [...layers];
+    [next[i], next[j]] = [next[j], next[i]];
+    reorderLayers(next);
+  };
+
+  // The selected object's toolbar sits under it, or above it where there is
+  // no room below (clear of the rotate handle on top), and hides while
+  // anything else is going on. It runs after every render: the object moves
+  // with its layer, the crop, the zoom and a video's playhead alike; it
+  // settles once the position stops changing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const show = phone && selected && !phoneTool && !moving && !playing && !editingTextId && tab !== 'crop' && !painting && size.w > 0;
+    const node = show ? nodeRefs.current.get(selected.id) : undefined;
+    let next: { left: number; top: number } | null = null;
+    if (node) {
+      const r = node.getClientRect();
+      const { width: mw, height: mh } = MINI_TOOLBAR;
+      const left = Math.round(clamp(r.x + r.width / 2 - mw / 2, 8, Math.max(8, size.w - mw - 8)));
+      let top = r.y + r.height + 14;
+      if (top + mh > size.h - 8) top = r.y - mh - 56;
+      if (top < 8) top = 8;
+      next = { left, top: Math.round(top) };
+    }
+    if (next?.left !== miniPos?.left || next?.top !== miniPos?.top) setMiniPos(next);
+  });
+
+  // Every layer whose box holds a point of the stage, top one first.
+  const layersUnderPoint = (pos: { x: number; y: number }): EditorLayer[] => layers.filter(l => {
+    const node = nodeRefs.current.get(l.id);
+    if (!node || !node.isVisible()) return false;
+    const p = node.getAbsoluteTransform().copy().invert().point(pos);
+    const r = node.getClientRect({ skipTransform: true });
+    return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
+  }).reverse();
+
+  // On a touch screen a second tap on the same spot, after a pause (a quick
+  // one is a double tap), selects the next object down under it, so one
+  // covered by another can be reached on the picture.
+  const press = useRef<{ x: number; y: number; wasSelected: boolean } | null>(null);
+  const lastTap = useRef<{ x: number; y: number; at: number } | null>(null);
+  const onStagePointerUp = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    const p = press.current;
+    press.current = null;
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (!p || !pos || !isTouch || Math.hypot(pos.x - p.x, pos.y - p.y) > 8) return;
+    const now = Date.now();
+    const last = lastTap.current;
+    lastTap.current = { x: pos.x, y: pos.y, at: now };
+    if (!p.wasSelected || !last || now - last.at < 400 || now - last.at > 1500 || Math.hypot(pos.x - last.x, pos.y - last.y) > 14) return;
+    const under = layersUnderPoint(pos);
+    if (under.length < 2) return;
+    const i = under.findIndex(l => l.id === selectedId);
+    selectLayer(under[(i + 1) % under.length]);
+  };
+
+  // Two fingers on the picture resize and turn the selected object, and move
+  // it with them.
+  const pinch = useRef<{ id: string; dist: number; angle: number; mid: { x: number; y: number }; from: EditorLayer } | null>(null);
+  const touchPoints = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const box = e.target.getStage()?.container().getBoundingClientRect();
+    if (!box) return null;
+    const [a, b] = [e.evt.touches[0], e.evt.touches[1]];
+    if (!a || !b) return null;
+    const pa = { x: a.clientX - box.left, y: a.clientY - box.top };
+    const pb = { x: b.clientX - box.left, y: b.clientY - box.top };
+    return {
+      dist: Math.hypot(pb.x - pa.x, pb.y - pa.y),
+      angle: Math.atan2(pb.y - pa.y, pb.x - pa.x),
+      mid: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
+    };
+  };
+  const onStageTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    if (e.evt.touches.length !== 2 || !selected || selected.kind === 'paint' || !layersInteractive) return;
+    const t = touchPoints(e);
+    if (!t || t.dist < 10) return;
+    const node = nodeRefs.current.get(selected.id);
+    if (node?.isDragging()) node.stopDrag();
+    node?.draggable(false);
+    trRef.current?.stopTransform();
+    startGesture();
+    setGuides(null);
+    setMoving(true);
+    pinch.current = { id: selected.id, ...t, from: selected };
+  };
+  const onStageTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const p = pinch.current;
+    if (!p) return;
+    const t = touchPoints(e);
+    if (!t) return;
+    e.evt.preventDefault();
+    const s = t.dist / p.dist;
+    const turn = ((t.angle - p.angle) * 180) / Math.PI;
+    const shift = { x: (t.mid.x - p.mid.x) / scale, y: (t.mid.y - p.mid.y) / scale };
+    updateLayer(p.id, pinchedLayer(p.from, s, turn, shift), `gesture:pinch:${p.id}`);
+  };
+  const onStageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    const p = pinch.current;
+    if (!p || e.evt.touches.length >= 2) return;
+    pinch.current = null;
+    nodeRefs.current.get(p.id)?.draggable(true);
+    setMoving(false);
   };
 
   // --- Crop -----------------------------------------------------------------
@@ -1224,7 +1472,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setGuides(r.guides.length || r.gaps.length ? r : null);
   };
 
+  const startMove = () => {
+    startGesture();
+    setMoving(true);
+  };
+
   const onLayerDragEnd = (l: EditorLayer, e: Konva.KonvaEventObject<DragEvent>) => {
+    setMoving(false);
     setGuides(null);
     updateLayer(l.id, { x: e.target.x(), y: e.target.y() });
   };
@@ -1309,6 +1563,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // Folds a finished resize into the layer itself: an image's size, a text's
   // font size, so the text stays crisp and the size controls stay true.
   const onLayerTransformEnd = (l: EditorLayer, node: Konva.Node) => {
+    setMoving(false);
     const sx = node.scaleX();
     const sy = node.scaleY();
     node.setAttrs({ scaleX: 1, scaleY: 1 });
@@ -1494,14 +1749,17 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // A press inside the selected layer keeps it selected and drags it, even
   // where another layer covers it (a full-frame image on top, say), so a
   // layer picked in the Objects list can be moved on the picture. The layer
-  // on top must not drag meanwhile; the drag starts once the pointer moves,
-  // so a plain click changes nothing.
-  const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent) => {
+  // on top must not drag meanwhile; the drag starts once the pointer moves.
+  // A plain tap or click selects the layer on top after all, or nothing
+  // inside a large selected layer could be picked on the picture.
+  const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent, tapped: EditorLayer) => {
     cover.draggable(false);
     const stage = node.getStage();
     const pressedAt = stage?.getPointerPosition();
+    let moved = false;
     const move = (ev: PointerEvent) => {
-      if (Math.hypot(ev.clientX - start.clientX, ev.clientY - start.clientY) < 3) return;
+      if (Math.hypot(ev.clientX - start.clientX, ev.clientY - start.clientY) < (isTouch ? 8 : 3)) return;
+      moved = true;
       window.removeEventListener('pointermove', move);
       // Catch up with the pointer first, so the layer stays under the point
       // it was pressed at.
@@ -1513,11 +1771,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       }
       node.startDrag();
     };
-    const end = () => {
+    const end = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
       cover.draggable(true);
+      if (!moved && ev.type === 'pointerup') selectLayer(tapped);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
@@ -1525,15 +1784,38 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   };
 
   const onLayerPointerDown = (l: EditorLayer, e: Konva.KonvaEventObject<PointerEvent>) => {
+    // A second finger pinches; it picks nothing.
+    if (!e.evt.isPrimary) return;
+    const pos = e.target.getStage()?.getPointerPosition();
+    press.current = pos ? { ...pos, wasSelected: l.id === selectedId } : null;
     const held = l.id !== selectedId ? selectedNodeAtPointer(e.target.getStage()) : null;
-    if (held) { holdSelected(held, e.currentTarget, e.evt); return; }
+    if (held) { holdSelected(held, e.currentTarget, e.evt, l); return; }
     selectLayer(l);
   };
 
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
-    if (tab === 'crop') return;
+    if (tab === 'crop' || !e.evt.isPrimary) return;
     if (painting) { startStroke(e.target.getStage()); return; }
-    if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) setSelectedId(null);
+    if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) {
+      const near = isTouch && layersInteractive ? layerNearPointer(e.target.getStage()) : undefined;
+      if (near) selectLayer(near);
+      else setSelectedId(null);
+    }
+  };
+
+  // A finger is wider than a thin text, an outline or a brush stroke: a tap
+  // that hits nothing takes the topmost layer whose box, widened by
+  // TOUCH_SLOP screen pixels, holds the point.
+  const layerNearPointer = (stage: Konva.Stage | null): EditorLayer | undefined => {
+    const pos = stage?.getPointerPosition();
+    if (!pos) return undefined;
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const node = nodeRefs.current.get(layers[i].id);
+      if (!node || !node.isVisible()) continue;
+      const r = node.getClientRect();
+      if (pos.x >= r.x - TOUCH_SLOP && pos.x <= r.x + r.width + TOUCH_SLOP && pos.y >= r.y - TOUCH_SLOP && pos.y <= r.y + r.height + TOUCH_SLOP) return layers[i];
+    }
+    return undefined;
   };
 
   // The library's colours, the built-in swatches and a custom picker. The
@@ -1570,8 +1852,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </div>
   );
 
-  // When the selected layer shows, and its effects in, while and out.
-  const animateControls = (l: EditorLayer) => {
+  // When the selected layer shows, and its effects in, while and out; all of
+  // it, or one part (the phone's tray, which names the parts itself).
+  const animateControls = (l: EditorLayer, part?: AnimPart) => {
     const a = layerAnim(l);
     const { start, end } = layerSpan(l, duration);
     const secondsField = (value: number, min: number, max: number, set: (v: number) => void, label: string) => (
@@ -1593,51 +1876,71 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         <span className="ie-value">{formatTime(value)}</span>
       </label>
     );
+    const shows = (p: AnimPart) => !part || part === p;
     return (
       <>
-        <span className="ie-label">Shows</span>
-        <div className="ie-row">
-          <span className="ie-unit">from</span>
-          {secondsField(start, 0, Math.max(0, end - 0.1), v => updateAnim(l, { start: v }, `anim-start:${l.id}`), 'Shows from, in seconds')}
-          <span className="ie-unit">to</span>
-          {secondsField(end, start + 0.1, duration, v => updateAnim(l, { end: v >= duration ? undefined : v }, `anim-end:${l.id}`), 'Shows until, in seconds')}
-          <span className="ie-unit">s</span>
-        </div>
-        <div className="ie-row">
-          <button className="ie-chip" onClick={() => updateAnim(l, { start: 0, end: undefined })} disabled={start === 0 && end === duration}>Whole video</button>
-          <button className="ie-chip" onClick={() => updateAnim(l, { start: Math.min(Math.round(time * 10) / 10, end - 0.1) })} title="Start at the playhead">Start here</button>
-          <button className="ie-chip" onClick={() => updateAnim(l, { end: time >= duration ? undefined : Math.max(Math.round(time * 10) / 10, start + 0.1) })} title="End at the playhead">End here</button>
-        </div>
-        <span className="ie-label ie-section">Comes in</span>
-        <div className="ie-row">
-          {ENTER_EFFECTS.filter(f => !f.textOnly || l.kind === 'text').map(f => (
-            <button key={f.id} className={`ie-chip ${a.enter === f.id ? 'active' : ''}`} onClick={() => { updateAnim(l, { enter: f.id }); playFrom(start); }}>{f.label}</button>
-          ))}
-        </div>
-        {a.enter !== 'none' && durationSlider(a.enterDuration, v => updateAnim(l, { enterDuration: v }, `anim-enter:${l.id}`))}
-        <span className="ie-label ie-section">While it shows</span>
-        <div className="ie-row">
-          {LOOP_EFFECTS.map(f => (
-            <button key={f.id} className={`ie-chip ${a.loop === f.id ? 'active' : ''}`} onClick={() => updateAnim(l, { loop: f.id })}>{f.label}</button>
-          ))}
-        </div>
-        <span className="ie-label ie-section">Goes out</span>
-        <div className="ie-row">
-          {EXIT_EFFECTS.map(f => (
-            <button
-              key={f.id}
-              className={`ie-chip ${a.exit === f.id ? 'active' : ''}`}
-              onClick={() => { updateAnim(l, { exit: f.id }); playFrom(Math.max(start, end - a.exitDuration - 0.5)); }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        {a.exit !== 'none' && durationSlider(a.exitDuration, v => updateAnim(l, { exitDuration: v }, `anim-exit:${l.id}`))}
-        {a.exit !== 'none' && end >= duration && <p className="ie-hint">It shows to the end of the video, so it goes out as the video ends.</p>}
-        <div className="ie-row">
-          <button className="ie-chip" onClick={() => { playFrom(start); }}><Clapperboard size={14} /> Preview</button>
-        </div>
+        {shows('timing') && (
+          <>
+            {!part && <span className="ie-label">Shows</span>}
+            <div className="ie-row">
+              <span className="ie-unit">from</span>
+              {secondsField(start, 0, Math.max(0, end - 0.1), v => updateAnim(l, { start: v }, `anim-start:${l.id}`), 'Shows from, in seconds')}
+              <span className="ie-unit">to</span>
+              {secondsField(end, start + 0.1, duration, v => updateAnim(l, { end: v >= duration ? undefined : v }, `anim-end:${l.id}`), 'Shows until, in seconds')}
+              <span className="ie-unit">s</span>
+            </div>
+            <div className={`ie-row ${part ? 'ie-scroll' : ''}`}>
+              <button className="ie-chip" onClick={() => updateAnim(l, { start: 0, end: undefined })} disabled={start === 0 && end === duration}>Whole video</button>
+              <button className="ie-chip" onClick={() => updateAnim(l, { start: Math.min(Math.round(time * 10) / 10, end - 0.1) })} title="Start at the playhead">Start here</button>
+              <button className="ie-chip" onClick={() => updateAnim(l, { end: time >= duration ? undefined : Math.max(Math.round(time * 10) / 10, start + 0.1) })} title="End at the playhead">End here</button>
+              {part && <button className="ie-chip" onClick={() => { playFrom(start); }}><Clapperboard size={14} /> Preview</button>}
+            </div>
+          </>
+        )}
+        {shows('in') && (
+          <>
+            {!part && <span className="ie-label ie-section">Comes in</span>}
+            <div className={`ie-row ${part ? 'ie-scroll' : ''}`}>
+              {ENTER_EFFECTS.filter(f => !f.textOnly || l.kind === 'text').map(f => (
+                <button key={f.id} className={`ie-chip ${a.enter === f.id ? 'active' : ''}`} onClick={() => { updateAnim(l, { enter: f.id }); playFrom(start); }}>{f.label}</button>
+              ))}
+            </div>
+            {a.enter !== 'none' && durationSlider(a.enterDuration, v => updateAnim(l, { enterDuration: v }, `anim-enter:${l.id}`))}
+          </>
+        )}
+        {shows('loop') && (
+          <>
+            {!part && <span className="ie-label ie-section">While it shows</span>}
+            <div className={`ie-row ${part ? 'ie-scroll' : ''}`}>
+              {LOOP_EFFECTS.map(f => (
+                <button key={f.id} className={`ie-chip ${a.loop === f.id ? 'active' : ''}`} onClick={() => updateAnim(l, { loop: f.id })}>{f.label}</button>
+              ))}
+            </div>
+          </>
+        )}
+        {shows('out') && (
+          <>
+            {!part && <span className="ie-label ie-section">Goes out</span>}
+            <div className={`ie-row ${part ? 'ie-scroll' : ''}`}>
+              {EXIT_EFFECTS.map(f => (
+                <button
+                  key={f.id}
+                  className={`ie-chip ${a.exit === f.id ? 'active' : ''}`}
+                  onClick={() => { updateAnim(l, { exit: f.id }); playFrom(Math.max(start, end - a.exitDuration - 0.5)); }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {a.exit !== 'none' && durationSlider(a.exitDuration, v => updateAnim(l, { exitDuration: v }, `anim-exit:${l.id}`))}
+            {a.exit !== 'none' && end >= duration && <p className="ie-hint">It shows to the end of the video, so it goes out as the video ends.</p>}
+          </>
+        )}
+        {!part && (
+          <div className="ie-row">
+            <button className="ie-chip" onClick={() => { playFrom(start); }}><Clapperboard size={14} /> Preview</button>
+          </div>
+        )}
       </>
     );
   };
@@ -1773,6 +2076,34 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </>
   );
 
+  const borderStyleChips = (l: ImageLayer) => (
+    <>
+      <button className={`ie-chip ${!l.border ? 'active' : ''}`} onClick={() => setBorderStyle(l, null)}>None</button>
+      {BORDER_STYLES.map(b => (
+        <button
+          key={b.id}
+          className={`ie-chip ${l.border?.style === b.id ? 'active' : ''}`}
+          onClick={() => setBorderStyle(l, b.id)}
+        >
+          {b.label}
+        </button>
+      ))}
+    </>
+  );
+
+  const shapeKindButtons = (l: ShapeLayer) => (
+    <div className="ie-segmented" role="group" aria-label="Shape">
+      {SHAPE_KINDS.map(k => {
+        const Icon = SHAPE_ICONS[k.id];
+        return (
+          <button key={k.id} className={l.shape === k.id ? 'active' : ''} onClick={() => updateLayer(l.id, { shape: k.id })} title={k.label} aria-label={k.label} aria-pressed={l.shape === k.id}>
+            <Icon size={16} />
+          </button>
+        );
+      })}
+    </div>
+  );
+
   // Opacity, corners, border, fit, centre, replace and remove for the
   // selected image layer.
   const imageLayerControls = selected?.kind === 'image' && (
@@ -1803,16 +2134,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       </label>
       <span className="ie-label">Border</span>
       <div className="ie-row ie-scroll">
-        <button className={`ie-chip ${!selected.border ? 'active' : ''}`} onClick={() => setBorderStyle(selected, null)}>None</button>
-        {BORDER_STYLES.map(b => (
-          <button
-            key={b.id}
-            className={`ie-chip ${selected.border?.style === b.id ? 'active' : ''}`}
-            onClick={() => setBorderStyle(selected, b.id)}
-          >
-            {b.label}
-          </button>
-        ))}
+        {borderStyleChips(selected)}
       </div>
       {selected.border && (
         <>
@@ -1852,16 +2174,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     <>
       <span className="ie-label ie-section">Shape</span>
       <div className="ie-row">
-        <div className="ie-segmented" role="group" aria-label="Shape">
-          {SHAPE_KINDS.map(k => {
-            const Icon = SHAPE_ICONS[k.id];
-            return (
-              <button key={k.id} className={l.shape === k.id ? 'active' : ''} onClick={() => updateLayer(l.id, { shape: k.id })} title={k.label} aria-label={k.label} aria-pressed={l.shape === k.id}>
-                <Icon size={16} />
-              </button>
-            );
-          })}
-        </div>
+        {shapeKindButtons(l)}
       </div>
       <span className="ie-label">Fill</span>
       <div className="ie-row">
@@ -1923,6 +2236,471 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const layersInteractive = tab !== 'crop' && !painting && !playing;
   const ratio = aspectRatio(aspectId);
 
+  // --- Controls shared by the desktop panel and the phone's tray and sheets
+
+  // The crop's aspect presets.
+  const cropControls = (
+    <div className="ie-row ie-scroll">
+      {ASPECTS.map(a => (
+        <button key={a.id} className={`ie-chip ${aspectId === a.id ? 'active' : ''}`} onClick={() => pickAspect(a.id)}>
+          {a.label}
+        </button>
+      ))}
+      <button className="ie-chip" onClick={resetCrop}>Reset</button>
+    </div>
+  );
+
+  // A blank canvas's formats.
+  const formatChips = canvas && (
+    <div className="ie-row ie-scroll">
+      {CANVAS_FORMATS.map(f => (
+        <button
+          key={f.id}
+          className={`ie-chip ${canvas.width === f.width && canvas.height === f.height ? 'active' : ''}`}
+          onClick={() => changeFormat(f.width, f.height)}
+          title={`${f.width} × ${f.height}`}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // The user's drafts and the library's templates.
+  const templateList = (
+    <>
+      {drafts !== null && drafts.length > 0 && (
+        <>
+          <span className="ie-label">Your drafts</span>
+          <p className="ie-hint">Tap a draft to carry on with it. It replaces what you are working on.</p>
+          <div className="ie-grid">
+            {drafts.map(d => (
+              <div key={d.id} className={`ie-tile-wrap ${draft?.id === d.id ? 'current' : ''}`}>
+                <button
+                  className="ie-tile"
+                  onClick={() => void restoreDraft(d).then(() => { if (phone) closeSheet(); })}
+                  disabled={restoringDraft !== null}
+                  title={`${d.name}, saved ${new Date(d.updatedAt).toLocaleString()}`}
+                >
+                  <img src={resolveUrl(d.url)} alt="" loading="lazy" />
+                  <span>{restoringDraft === d.id ? 'Loading…' : d.name}</span>
+                </button>
+                <button className="ie-tile-delete" onClick={() => void deleteDraft(d)} title="Delete this draft" aria-label={`Delete the draft ${d.name}`}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <span className="ie-label ie-section">Templates</span>
+        </>
+      )}
+      {templates === null ? (
+        <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+      ) : templates.length === 0 ? (
+        <p className="ie-hint">No templates yet. Create them in the Media Library.</p>
+      ) : (
+        <>
+          <p className="ie-hint">
+            {canvasMode
+              ? 'Tap a template to start from it. It replaces the current design.'
+              : 'Tap a template to lay its texts and images over the picture.'}
+          </p>
+          <div className="ie-grid">
+            {templates.map(t => (
+              <button
+                key={t.id}
+                className="ie-tile"
+                onClick={() => void pickTemplate(t).then(() => { if (phone) closeSheet(); })}
+                disabled={applyingTemplate !== null}
+                title={t.description ? `${t.name}: ${t.description}` : t.name}
+              >
+                <img src={resolveUrl(t.url)} alt="" loading="lazy" />
+                <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+
+  const filterPresets = (
+    <div className="ie-row ie-scroll">
+      {FILTER_PRESETS.map(p => (
+        <button
+          key={p.id}
+          className={`ie-chip ${adjustments.preset === p.id ? 'active' : ''}`}
+          onClick={() => changeAdjustments({ preset: p.id })}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // The media library (and in a video its clips): filters, search, upload
+  // and the grid to add from.
+  const mediaLibrary = (
+    <>
+      <div className="ie-row">
+        <button className={`ie-chip ${!watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(false); setClipsView(false); }}>All images</button>
+        <button className={`ie-chip ${watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(true); setClipsView(false); }}><Stamp size={14} /> Watermarks</button>
+        {video && (
+          <button className={`ie-chip ${clipsView ? 'active' : ''}`} onClick={() => { setClipsView(true); setWatermarksOnly(false); }}><Film size={14} /> Clips</button>
+        )}
+      </div>
+      {clipsView && keepInLibraryToggle}
+      <div className="ie-row ie-sticky">
+        <div className="ie-search">
+          <Search size={16} />
+          <input
+            type="search"
+            value={mediaQuery}
+            onChange={e => setMediaQuery(e.target.value)}
+            placeholder="Search the media library"
+          />
+        </div>
+        <button
+          className="ie-icon-btn"
+          onClick={() => (clipsView ? clipInputRef : mediaInputRef).current?.click()}
+          disabled={uploadingMedia}
+          title={clipsView ? (keepInLibrary ? 'Upload a clip into the library' : 'Upload a clip for this video') : 'Add an image to the library'}
+        >
+          {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
+        </button>
+      </div>
+      {media === null ? (
+        <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+      ) : media.length === 0 ? (
+        <p className="ie-hint">
+          {mediaLoading ? 'Searching…' : mediaQuery.trim()
+            ? 'Nothing in the library matches that.'
+            : clipsView
+              ? 'No clips in the library yet. Upload one with the button: it is kept for this video only, unless you keep it in the library.'
+              : watermarksOnly
+              ? 'No watermarks yet. Upload one here, or mark images as watermarks in the Media Library.'
+              : 'The media library has no images yet. Add them here or on the Media Library page.'}
+        </p>
+      ) : (
+        <div className="ie-grid">
+          {media.map(m => (
+            <button
+              key={m.id}
+              className="ie-tile"
+              onClick={() => (clipsView ? addClip(m.url, m.id) : addMedia(m))}
+              disabled={addingMedia !== null}
+              title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
+            >
+              {clipsView
+                ? <video src={resolveUrl(m.url)} muted preload="metadata" />
+                : <img src={resolveUrl(m.url)} alt="" loading="lazy" />}
+              <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
+              {m.watermark && !watermarksOnly && <Stamp size={14} className="ie-tile-badge" aria-label="Watermark" />}
+            </button>
+          ))}
+        </div>
+      )}
+      <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
+      <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
+    </>
+  );
+
+  const addShapeChips = (
+    <div className="ie-row">
+      {SHAPE_KINDS.map(k => {
+        const Icon = SHAPE_ICONS[k.id];
+        return <button key={k.id} className="ie-chip" onClick={() => addShape(k.id)}><Icon size={14} /> {k.label}</button>;
+      })}
+    </div>
+  );
+
+  // A video's length and music, with nothing selected.
+  const videoSettings = (
+    <>
+      <span className="ie-label">Video length</span>
+      <div className="ie-row ie-scroll">
+        {DURATION_PRESETS.map(d => (
+          <button key={d} className={`ie-chip ${duration === d ? 'active' : ''}`} onClick={() => changeDuration(d)}>{d}s</button>
+        ))}
+        <input
+          type="number"
+          className="ie-number"
+          min={MIN_DURATION}
+          max={MAX_DURATION}
+          step={0.5}
+          value={duration}
+          onChange={e => { const v = Number(e.target.value); if (v >= MIN_DURATION && v <= MAX_DURATION) changeDuration(v, 'duration'); }}
+          aria-label="Video length in seconds"
+        />
+        <span className="ie-unit">s</span>
+      </div>
+      <p className="ie-hint">
+        {layers.length > 0
+          ? 'Pick an object on the picture or in the timeline to set when it shows and how it comes in and goes out. Drag its bar in the timeline to move it in time.'
+          : 'Add texts, images and shapes, then animate them here. Each shows the whole video until you change it.'}
+      </p>
+      {musicControls()}
+    </>
+  );
+
+  const alignButtons = (l: TextLayer) => (
+    <div className="ie-segmented" role="group" aria-label="Text alignment">
+      {TEXT_ALIGNS.map(a => (
+        <button
+          key={a.id}
+          className={(l.align ?? 'center') === a.id ? 'active' : ''}
+          onClick={() => updateLayer(l.id, { align: a.id })}
+          title={a.label}
+          aria-label={a.label}
+          aria-pressed={(l.align ?? 'center') === a.id}
+        >
+          <a.icon size={16} />
+        </button>
+      ))}
+    </div>
+  );
+
+  const textStyleChips = (l: TextLayer) => (
+    <>
+      <button className={`ie-chip ${l.bold ? 'active' : ''}`} onClick={() => updateLayer(l.id, { bold: !l.bold })}>
+        <Bold size={14} /> Bold
+      </button>
+      <button className={`ie-chip ${l.outline ? 'active' : ''}`} onClick={() => updateLayer(l.id, { outline: !l.outline })}>
+        Outline
+      </button>
+      <button className={`ie-chip ${l.shadow ? 'active' : ''}`} onClick={() => updateLayer(l.id, { shadow: !l.shadow })}>
+        Shadow
+      </button>
+    </>
+  );
+
+
+  // --- Phone layout ---------------------------------------------------------
+
+  const traySlider = (label: string, min: number, max: number, value: number, onChange: (v: number) => void, shown: string) => (
+    <label className="ie-slider">
+      <span>{label}</span>
+      <input type="range" min={min} max={max} value={value} onChange={e => onChange(Number(e.target.value))} />
+      <span className="ie-value">{shown}</span>
+    </label>
+  );
+
+  // A tool opens in the tray (on its first control, or sub); an action acts.
+  const toolItem = (id: string, label: string, icon: LucideIcon, sub: string | null = null): BarItem => (
+    { id, label, icon, active: phoneTool === id, onClick: () => openPhoneTool(id, sub) }
+  );
+  const actionItem = (id: string, label: string, icon: LucideIcon, onClick: () => void, disabled = false): BarItem => (
+    { id, label, icon, onClick, disabled }
+  );
+
+  const deselect = () => {
+    if (editingTextId) finishTextEdit();
+    setSelectedId(null);
+  };
+
+  // The add tools with nothing selected; the selected object's tools
+  // otherwise.
+  const phoneBarItems = (): BarItem[] => {
+    const l = selected;
+    const animate = video ? [toolItem('animate', 'Animate', Clapperboard, 'timing')] : [];
+    const centre = actionItem('centre', 'Centre', Crosshair, centreSelected);
+    if (!l) {
+      return [
+        ...(canvasMode
+          ? [toolItem('canvas', 'Canvas', Frame, 'format')]
+          : [toolItem('crop', 'Crop', Crop), toolItem('filters', 'Filters', Sparkles, 'presets')]),
+        actionItem('templates', 'Templates', LayoutTemplate, () => openSheet('templates')),
+        actionItem('media', 'Media', FolderOpen, () => openSheet('media')),
+        actionItem('text', 'Text', Type, addText),
+        toolItem('shapes', 'Shapes', Shapes),
+        toolItem('brush', 'Brush', Brush, 'size'),
+        ...(video ? [actionItem('video', 'Video', Film, () => openSheet('video'))] : []),
+      ];
+    }
+    switch (l.kind) {
+      case 'text':
+        return [
+          actionItem('edit', 'Edit', Pencil, () => startTextEdit(l.id)),
+          toolItem('font', 'Font', CaseSensitive),
+          toolItem('size', 'Size', ALargeSmall),
+          toolItem('color', 'Colour', Palette),
+          toolItem('align', 'Align', AlignCenter),
+          toolItem('style', 'Style', Bold),
+          ...animate,
+          centre,
+        ];
+      case 'image':
+        return [
+          actionItem('replace', 'Replace', Replace, () => placeInputRef.current?.click(), placingImage),
+          ...(l.clip ? [toolItem('clip', 'Clip', Volume2, 'volume')] : []),
+          toolItem('opacity', 'Opacity', Blend),
+          toolItem('corners', 'Corners', SquareRoundCorner),
+          toolItem('border', 'Border', SquareDashed, 'style'),
+          actionItem('fit', 'Fit', Maximize, fitSelectedImage),
+          ...animate,
+          centre,
+        ];
+      case 'shape':
+        return [
+          toolItem('shape', 'Shape', Shapes),
+          toolItem('fill', 'Fill', PaintBucket),
+          toolItem('border', 'Border', SquareDashed, 'width'),
+          ...(l.shape === 'rect' ? [toolItem('corners', 'Corners', SquareRoundCorner)] : []),
+          toolItem('opacity', 'Opacity', Blend),
+          ...animate,
+          centre,
+        ];
+      default:
+        return [toolItem('brush', 'Brush', Brush, 'size'), ...animate];
+    }
+  };
+
+  // What the tray shows for the open tool: the control, the chips that pick
+  // one of several (subs), and controls ahead of those (lead).
+  const phoneTray = (): { subs?: TraySub[]; lead?: ReactNode; body: ReactNode } | null => {
+    const l = selected;
+    const pick = (subs: TraySub[]) => (phoneSub && subs.some(x => x.id === phoneSub) ? phoneSub : subs[0].id);
+    switch (phoneTool) {
+      case 'crop':
+        return { body: cropControls };
+      case 'filters': {
+        const subs = [
+          { id: 'presets', label: 'Presets' }, { id: 'brightness', label: 'Brightness' },
+          { id: 'contrast', label: 'Contrast' }, { id: 'saturation', label: 'Saturation' },
+        ];
+        const sub = pick(subs);
+        if (sub === 'presets') return { subs, body: filterPresets };
+        const k = sub as 'brightness' | 'contrast' | 'saturation';
+        return { subs, body: traySlider(subs.find(x => x.id === k)!.label, -100, 100, adjustments[k], v => changeAdjustments({ [k]: v }, `adjust:${k}`), String(adjustments[k])) };
+      }
+      case 'canvas': {
+        if (!canvas) return null;
+        const subs = [{ id: 'format', label: 'Format' }, { id: 'background', label: 'Background' }];
+        return { subs, body: pick(subs) === 'background' ? colorRow(canvas.background, changeBackground, 'background') : formatChips };
+      }
+      case 'shapes':
+        return { body: addShapeChips };
+      case 'brush': {
+        const subs = [{ id: 'size', label: 'Size' }, { id: 'feather', label: 'Feather' }, { id: 'opacity', label: 'Opacity' }, { id: 'colour', label: 'Colour' }];
+        const sub = pick(subs);
+        const lead = (
+          <>
+            <button className={`ie-tray-sub ${brushMode === 'paint' ? 'active' : ''}`} onClick={() => setBrushMode('paint')} aria-pressed={brushMode === 'paint'}><Brush size={13} /> Paint</button>
+            <button className={`ie-tray-sub ${brushMode === 'move' ? 'active' : ''}`} onClick={() => setBrushMode('move')} aria-pressed={brushMode === 'move'}><Move size={13} /> Move</button>
+            {l?.kind === 'paint' && (
+              <button className="ie-tray-sub" onClick={() => { setSelectedId(null); setBrushMode('paint'); }} title="Keep the next strokes apart"><Plus size={13} /> New layer</button>
+            )}
+            <span className="ie-tray-divider" />
+          </>
+        );
+        const body = sub === 'size'
+          ? traySlider('Size', 1, Math.max(maxBrush, brushSize), brushSize, v => setBrush(b => ({ ...b, size: v })), `${brushSize}px`)
+          : sub === 'feather'
+            ? traySlider('Feather', 0, Math.max(maxBrush, brushFeather), brushFeather, v => setBrush(b => ({ ...b, feather: v })), `${brushFeather}px`)
+            : sub === 'opacity'
+              ? traySlider('Opacity', 2, 100, Math.round(brush.opacity * 100), v => setBrush(b => ({ ...b, opacity: v / 100 })), `${Math.round(brush.opacity * 100)}%`)
+              : colorRow(brush.color, c => setBrush(b => ({ ...b, color: c })), 'brush-color');
+        return { lead, subs, body };
+      }
+    }
+    if (!l) return null;
+    if (phoneTool === 'animate') {
+      const subs = [{ id: 'timing', label: 'Timing' }, { id: 'in', label: 'Comes in' }, { id: 'loop', label: 'While shown' }, { id: 'out', label: 'Goes out' }];
+      return { subs, body: animateControls(l, pick(subs) as AnimPart) };
+    }
+    if (l.kind === 'text') {
+      switch (phoneTool) {
+        case 'font':
+          return {
+            body: (
+              <div className="ie-row ie-scroll">
+                {fonts.map(f => (
+                  <button key={f.family} className={`ie-chip ${l.fontFamily === f.family ? 'active' : ''}`} style={{ fontFamily: f.family }} onClick={() => updateLayer(l.id, { fontFamily: f.family })}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            ),
+          };
+        case 'size': {
+          const max = Math.max(Math.round(minSide * 0.5), 200, Math.round(l.fontSize));
+          return { body: traySlider('Size', MIN_FONT_SIZE, max, Math.round(l.fontSize), v => updateLayer(l.id, resizeText(l, v), `font-size:${l.id}`), `${Math.round(l.fontSize)}px`) };
+        }
+        case 'color':
+          return { body: colorRow(l.fill, (c, key) => updateLayer(l.id, { fill: c }, key), `fill:${l.id}`) };
+        case 'align':
+          return { body: <div className="ie-row">{alignButtons(l)}</div> };
+        case 'style':
+          return { body: <div className="ie-row ie-scroll">{textStyleChips(l)}</div> };
+      }
+    }
+    if (l.kind === 'image') {
+      switch (phoneTool) {
+        case 'opacity':
+          return { body: traySlider('Opacity', 10, 100, Math.round(l.opacity * 100), v => updateLayer(l.id, { opacity: v / 100 }, `opacity:${l.id}`), `${Math.round(l.opacity * 100)}%`) };
+        case 'corners':
+          return { body: traySlider('Corners', 0, 50, l.cornerRadius ?? 0, v => updateLayer(l.id, { cornerRadius: v }, `corners:${l.id}`), `${l.cornerRadius ?? 0}%`) };
+        case 'border': {
+          const subs = l.border ? [{ id: 'style', label: 'Style' }, { id: 'width', label: 'Width' }, { id: 'colour', label: 'Colour' }] : [{ id: 'style', label: 'Style' }];
+          const sub = pick(subs);
+          const border = l.border;
+          const body = !border || sub === 'style'
+            ? <div className="ie-row ie-scroll">{borderStyleChips(l)}</div>
+            : sub === 'width'
+              ? traySlider('Width', 1, Math.max(maxBorder, Math.round(border.width)), Math.round(border.width), v => updateLayer(l.id, { border: { ...border, width: v } }, `border-width:${l.id}`), `${Math.round(border.width)}px`)
+              : colorRow(border.color, (c, key) => updateLayer(l.id, { border: { ...border, color: c } }, key), `border-color:${l.id}`);
+          return { subs, body };
+        }
+        case 'clip': {
+          const c = l.clip;
+          if (!c) return null;
+          const subs = c.duration > 0 ? [{ id: 'volume', label: 'Volume' }, { id: 'start', label: 'Start at' }] : [{ id: 'volume', label: 'Volume' }];
+          const body = pick(subs) === 'start'
+            ? traySlider('Start at', 0, Math.max(0, Math.floor((c.duration - 0.1) * 10)), Math.round(c.trimStart * 10), v => updateLayer(l.id, { clip: { ...c, trimStart: v / 10 } }, `clip-trim:${l.id}`), formatTime(c.trimStart))
+            : (
+              <div className="ie-row ie-tray-line">
+                {traySlider('Volume', 0, 100, Math.round(c.volume * 100), v => updateLayer(l.id, { clip: { ...c, volume: v / 100 } }, `clip-volume:${l.id}`), `${Math.round(c.volume * 100)}%`)}
+                <button className="ie-chip" onClick={() => updateLayer(l.id, { clip: { ...c, volume: c.volume > 0 ? 0 : 1 } })}>{c.volume > 0 ? 'Mute' : 'Unmute'}</button>
+              </div>
+            );
+          return { subs, body };
+        }
+      }
+    }
+    if (l.kind === 'shape') {
+      switch (phoneTool) {
+        case 'shape':
+          return { body: <div className="ie-row">{shapeKindButtons(l)}</div> };
+        case 'fill':
+          return {
+            body: (
+              <>
+                <div className="ie-row"><button className={`ie-chip ${!l.fill ? 'active' : ''}`} onClick={() => updateLayer(l.id, { fill: '' })}>No fill</button></div>
+                {colorRow(l.fill, (c, key) => updateLayer(l.id, { fill: c }, key), `shape-fill:${l.id}`)}
+              </>
+            ),
+          };
+        case 'border': {
+          const subs = [{ id: 'width', label: 'Width' }, { id: 'colour', label: 'Colour' }];
+          const body = pick(subs) === 'width'
+            ? traySlider('Width', 0, Math.max(maxBorder, Math.round(l.strokeWidth)), Math.round(l.strokeWidth), v => updateLayer(l.id, { strokeWidth: v }, `shape-stroke-width:${l.id}`), `${Math.round(l.strokeWidth)}px`)
+            : l.strokeWidth > 0
+              ? colorRow(l.stroke, (c, key) => updateLayer(l.id, { stroke: c }, key), `shape-stroke:${l.id}`)
+              : <p className="ie-hint">Give the border a width first.</p>;
+          return { subs, body };
+        }
+        case 'corners':
+          return { body: traySlider('Corners', 0, 50, l.cornerRadius ?? 0, v => updateLayer(l.id, { cornerRadius: v }, `shape-corners:${l.id}`), `${l.cornerRadius ?? 0}%`) };
+        case 'opacity':
+          return { body: traySlider('Opacity', 5, 100, Math.round(l.opacity * 100), v => updateLayer(l.id, { opacity: v / 100 }, `shape-opacity:${l.id}`), `${Math.round(l.opacity * 100)}%`) };
+      }
+    }
+    return null;
+  };
+  const tray = phone && phoneTool ? phoneTray() : null;
+
+  const sheetTitles: Record<PhoneSheet, string> = { templates: 'Templates', media: video ? 'Media and clips' : 'Media', layers: 'Objects', video: 'Video' };
+
   return (
     <div className="ie-root" role="dialog" aria-label="Edit image">
       <header className="ie-header">
@@ -1946,11 +2724,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           <Magnet size={18} />
         </button>
         <button
-          className={`ie-icon-btn ${showLayers ? 'active' : ''}`}
-          onClick={() => setShowLayers(v => !v)}
-          title={showLayers ? 'Hide the object list' : 'Show the object list'}
+          className={`ie-icon-btn ${(phone ? sheet === 'layers' : showLayers) ? 'active' : ''}`}
+          onClick={() => (phone ? openSheet('layers') : setShowLayers(v => !v))}
+          title={phone ? 'Objects' : showLayers ? 'Hide the object list' : 'Show the object list'}
           aria-label="Objects"
-          aria-pressed={showLayers}
+          aria-pressed={phone ? sheet === 'layers' : showLayers}
         >
           <LayersIcon size={18} />
         </button>
@@ -1974,6 +2752,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           the picture, so the picture keeps its size whatever the controls
           hold. Phone: picture, controls, tabs from top to bottom. */}
       <div className="ie-workspace">
+        {!phone && (
+        <>
         <nav className="ie-tabs" aria-label="Tools">
           {canvasMode ? (
             <button className={tab === 'canvas' ? 'active' : ''} onClick={() => switchTab('canvas')}><Frame size={20} /><span>Canvas</span></button>
@@ -1993,105 +2773,21 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           )}
         </nav>
         <div className="ie-panel">
-          {tab === 'crop' && (
-            <div className="ie-row ie-scroll">
-              {ASPECTS.map(a => (
-                <button key={a.id} className={`ie-chip ${aspectId === a.id ? 'active' : ''}`} onClick={() => pickAspect(a.id)}>
-                  {a.label}
-                </button>
-              ))}
-              <button className="ie-chip" onClick={resetCrop}>Reset</button>
-            </div>
-          )}
+          {tab === 'crop' && cropControls}
 
           {tab === 'canvas' && canvas && (
             <>
-              <div className="ie-row ie-scroll">
-                {CANVAS_FORMATS.map(f => (
-                  <button
-                    key={f.id}
-                    className={`ie-chip ${canvas.width === f.width && canvas.height === f.height ? 'active' : ''}`}
-                    onClick={() => changeFormat(f.width, f.height)}
-                    title={`${f.width} × ${f.height}`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
+              {formatChips}
               <span className="ie-label">Background</span>
               {colorRow(canvas.background, changeBackground, 'background')}
             </>
           )}
 
-          {tab === 'templates' && drafts !== null && drafts.length > 0 && (
-            <>
-              <span className="ie-label">Your drafts</span>
-              <p className="ie-hint">Tap a draft to carry on with it. It replaces what you are working on.</p>
-              <div className="ie-grid">
-                {drafts.map(d => (
-                  <div key={d.id} className={`ie-tile-wrap ${draft?.id === d.id ? 'current' : ''}`}>
-                    <button
-                      className="ie-tile"
-                      onClick={() => void restoreDraft(d)}
-                      disabled={restoringDraft !== null}
-                      title={`${d.name}, saved ${new Date(d.updatedAt).toLocaleString()}`}
-                    >
-                      <img src={resolveUrl(d.url)} alt="" loading="lazy" />
-                      <span>{restoringDraft === d.id ? 'Loading…' : d.name}</span>
-                    </button>
-                    <button className="ie-tile-delete" onClick={() => void deleteDraft(d)} title="Delete this draft" aria-label={`Delete the draft ${d.name}`}>
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <span className="ie-label ie-section">Templates</span>
-            </>
-          )}
-
-          {tab === 'templates' && (
-            templates === null ? (
-              <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
-            ) : templates.length === 0 ? (
-              <p className="ie-hint">No templates yet. Create them in the Media Library.</p>
-            ) : (
-              <>
-                <p className="ie-hint">
-                  {canvasMode
-                    ? 'Tap a template to start from it. It replaces the current design.'
-                    : 'Tap a template to lay its texts and images over the picture.'}
-                </p>
-                <div className="ie-grid">
-                  {templates.map(t => (
-                    <button
-                      key={t.id}
-                      className="ie-tile"
-                      onClick={() => pickTemplate(t)}
-                      disabled={applyingTemplate !== null}
-                      title={t.description ? `${t.name}: ${t.description}` : t.name}
-                    >
-                      <img src={resolveUrl(t.url)} alt="" loading="lazy" />
-                      <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )
-          )}
+          {tab === 'templates' && templateList}
 
           {tab === 'filters' && (
             <>
-              <div className="ie-row ie-scroll">
-                {FILTER_PRESETS.map(p => (
-                  <button
-                    key={p.id}
-                    className={`ie-chip ${adjustments.preset === p.id ? 'active' : ''}`}
-                    onClick={() => changeAdjustments({ preset: p.id })}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+              {filterPresets}
               {(['brightness', 'contrast', 'saturation'] as const).map(k => (
                 <label key={k} className="ie-slider">
                   <span>{k[0].toUpperCase() + k.slice(1)}</span>
@@ -2126,78 +2822,14 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               ) : media && media.length > 0 && (
                 <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
               )}
-              <div className="ie-row">
-                <button className={`ie-chip ${!watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(false); setClipsView(false); }}>All images</button>
-                <button className={`ie-chip ${watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(true); setClipsView(false); }}><Stamp size={14} /> Watermarks</button>
-                {video && (
-                  <button className={`ie-chip ${clipsView ? 'active' : ''}`} onClick={() => { setClipsView(true); setWatermarksOnly(false); }}><Film size={14} /> Clips</button>
-                )}
-              </div>
-              {clipsView && keepInLibraryToggle}
-              <div className="ie-row ie-sticky">
-                <div className="ie-search">
-                  <Search size={16} />
-                  <input
-                    type="search"
-                    value={mediaQuery}
-                    onChange={e => setMediaQuery(e.target.value)}
-                    placeholder="Search the media library"
-                  />
-                </div>
-                <button
-                  className="ie-icon-btn"
-                  onClick={() => (clipsView ? clipInputRef : mediaInputRef).current?.click()}
-                  disabled={uploadingMedia}
-                  title={clipsView ? (keepInLibrary ? 'Upload a clip into the library' : 'Upload a clip for this video') : 'Add an image to the library'}
-                >
-                  {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
-                </button>
-              </div>
-              {media === null ? (
-                <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
-              ) : media.length === 0 ? (
-                <p className="ie-hint">
-                  {mediaLoading ? 'Searching…' : mediaQuery.trim()
-                    ? 'Nothing in the library matches that.'
-                    : clipsView
-                      ? 'No clips in the library yet. Upload one with the button: it is kept for this video only, unless you keep it in the library.'
-                      : watermarksOnly
-                      ? 'No watermarks yet. Upload one here, or mark images as watermarks in the Media Library.'
-                      : 'The media library has no images yet. Add them here or on the Media Library page.'}
-                </p>
-              ) : (
-                <div className="ie-grid">
-                  {media.map(m => (
-                    <button
-                      key={m.id}
-                      className="ie-tile"
-                      onClick={() => (clipsView ? addClip(m.url, m.id) : addMedia(m))}
-                      disabled={addingMedia !== null}
-                      title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
-                    >
-                      {clipsView
-                        ? <video src={resolveUrl(m.url)} muted preload="metadata" />
-                        : <img src={resolveUrl(m.url)} alt="" loading="lazy" />}
-                      <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
-                      {m.watermark && !watermarksOnly && <Stamp size={14} className="ie-tile-badge" aria-label="Watermark" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
-              <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
+              {mediaLibrary}
             </>
           )}
 
           {tab === 'shapes' && (
             <>
               <span className="ie-label">Add a shape</span>
-              <div className="ie-row">
-                {SHAPE_KINDS.map(k => {
-                  const Icon = SHAPE_ICONS[k.id];
-                  return <button key={k.id} className="ie-chip" onClick={() => addShape(k.id)}><Icon size={14} /> {k.label}</button>;
-                })}
-              </div>
+              {addShapeChips}
               {selected?.kind === 'shape' ? shapeControls(selected) : (
                 <p className="ie-hint">
                   {layers.some(l => l.kind === 'shape')
@@ -2270,33 +2902,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             </>
           )}
 
-          {tab === 'animate' && (selected ? animateControls(selected) : (
-            <>
-              <span className="ie-label">Video length</span>
-              <div className="ie-row ie-scroll">
-                {DURATION_PRESETS.map(d => (
-                  <button key={d} className={`ie-chip ${duration === d ? 'active' : ''}`} onClick={() => changeDuration(d)}>{d}s</button>
-                ))}
-                <input
-                  type="number"
-                  className="ie-number"
-                  min={MIN_DURATION}
-                  max={MAX_DURATION}
-                  step={0.5}
-                  value={duration}
-                  onChange={e => { const v = Number(e.target.value); if (v >= MIN_DURATION && v <= MAX_DURATION) changeDuration(v, 'duration'); }}
-                  aria-label="Video length in seconds"
-                />
-                <span className="ie-unit">s</span>
-              </div>
-              <p className="ie-hint">
-                {layers.length > 0
-                  ? 'Pick an object on the picture or in the timeline to set when it shows and how it comes in and goes out. Drag its bar in the timeline to move it in time.'
-                  : 'Add texts, images and shapes, then animate them here. Each shows the whole video until you change it.'}
-              </p>
-              {musicControls()}
-            </>
-          ))}
+          {tab === 'animate' && (selected ? animateControls(selected) : videoSettings)}
 
           {tab === 'text' && (
             selected?.kind === 'text' ? (
@@ -2341,32 +2947,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                     aria-label="Font size"
                   />
                   <span className="ie-unit">px</span>
-                  <div className="ie-segmented" role="group" aria-label="Text alignment">
-                    {TEXT_ALIGNS.map(a => (
-                      <button
-                        key={a.id}
-                        className={(selected.align ?? 'center') === a.id ? 'active' : ''}
-                        onClick={() => updateLayer(selected.id, { align: a.id })}
-                        title={a.label}
-                        aria-label={a.label}
-                        aria-pressed={(selected.align ?? 'center') === a.id}
-                      >
-                        <a.icon size={16} />
-                      </button>
-                    ))}
-                  </div>
+                  {alignButtons(selected)}
                 </div>
                 {colorRow(selected.fill, (c, key) => updateLayer(selected.id, { fill: c }, key), `fill:${selected.id}`)}
                 <div className="ie-row ie-scroll">
-                  <button className={`ie-chip ${selected.bold ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { bold: !selected.bold })}>
-                    <Bold size={14} /> Bold
-                  </button>
-                  <button className={`ie-chip ${selected.outline ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { outline: !selected.outline })}>
-                    Outline
-                  </button>
-                  <button className={`ie-chip ${selected.shadow ? 'active' : ''}`} onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}>
-                    Shadow
-                  </button>
+                  {textStyleChips(selected)}
                   <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
                   <button className="ie-chip" onClick={addText}><Plus size={14} /> New</button>
                   <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
@@ -2384,8 +2969,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             )
           )}
         </div>
+        </>
+        )}
         <div className="ie-body">
-          <div className="ie-main">
+          <div className={`ie-main ${(phone ? phoneTool === 'animate' : tab === 'animate') ? 'ie-animating' : ''}`}>
             <div className={`ie-canvas ${painting ? 'ie-painting' : ''}`} ref={canvasBoxRef}>
               {loadError && <div className="ie-message">The image could not be loaded.</div>}
               {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
@@ -2394,6 +2981,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   width={size.w}
                   height={size.h}
                   onPointerDown={onStagePointerDown}
+                  onPointerUp={onStagePointerUp}
+                  onTouchStart={onStageTouchStart}
+                  onTouchMove={onStageTouchMove}
+                  onTouchEnd={onStageTouchEnd}
                   onPointerMove={e => { if (painting) extendStroke(e.target.getStage()); }}
                   onPointerLeave={() => setBrushAt(null)}
                 >
@@ -2419,8 +3010,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                           listening: layersInteractive,
                           draggable: layersInteractive,
                           onPointerDown: (e: Konva.KonvaEventObject<PointerEvent>) => onLayerPointerDown(l, e),
-                          onDragStart: startGesture,
-                          onTransformStart: startGesture,
+                          onDragStart: startMove,
+                          onTransformStart: startMove,
                           onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragMove(l, e),
                           onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragEnd(l, e),
                         };
@@ -2574,6 +3165,25 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   onDone={finishTextEdit}
                 />
               )}
+              {tray && (
+                <PhoneTray subs={tray.subs} sub={phoneSub ?? tray.subs?.[0]?.id} onSub={setPhoneSub} lead={tray.lead} onDone={closePhoneTool}>
+                  {tray.body}
+                </PhoneTray>
+              )}
+              {phone && miniPos && selected && (
+                <MiniToolbar
+                  left={miniPos.left}
+                  top={miniPos.top}
+                  canDuplicate={canDuplicate}
+                  canForward={selectedIndex < layers.length - 1}
+                  canBackward={selectedIndex > 0}
+                  onDuplicate={duplicateSelected}
+                  onForward={() => restackSelected(1)}
+                  onBackward={() => restackSelected(-1)}
+                  onLayers={() => openSheet('layers')}
+                  onDelete={deleteSelected}
+                />
+              )}
             </div>
             {video && (
               <Timeline
@@ -2589,12 +3199,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 onDragStart={startGesture}
                 audio={audio}
                 onMusicStart={(start, key) => { if (audio) changeAudio({ ...audio, start }, key); }}
-                onSelectMusic={() => { setPlaying(false); setSelectedId(null); setTab('animate'); }}
+                onSelectMusic={() => { setPlaying(false); setSelectedId(null); if (phone) openSheet('video'); else setTab('animate'); }}
               />
             )}
           </div>
 
-          {showLayers && (
+          {showLayers && !phone && (
             <aside className="ie-layers" aria-label="Objects">
               <div className="ie-layers-title">Objects</div>
               <LayerList
@@ -2608,11 +3218,53 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             </aside>
           )}
         </div>
+        {phone && <PhoneBar items={phoneBarItems()} back={selected ? deselect : undefined} />}
       </div>
+
+      {phone && sheet && (
+        <BottomSheet title={sheetTitles[sheet]} onClose={closeSheet}>
+          {sheet === 'templates' && templateList}
+          {sheet === 'media' && mediaLibrary}
+          {sheet === 'video' && videoSettings}
+          {sheet === 'layers' && (
+            <LayerList
+              layers={layers}
+              selectedId={selectedId}
+              background={canvas ? { color: canvas.background } : { src: source?.src ?? photoUrl ?? '' }}
+              onSelect={l => { closeSheet(); selectLayer(l); }}
+              onSelectBackground={() => { closeSheet(); setSelectedId(null); if (canvasMode) openPhoneTool('canvas', 'background'); }}
+              onReorder={reorderLayers}
+            />
+          )}
+        </BottomSheet>
+      )}
 
       <input ref={placeInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={pickPlaceFile} />
     </div>
   );
+}
+
+// A layer pinched with two fingers, from how it was when the pinch began:
+// scaled by s and turned by turn degrees about its centre, and moved by
+// shift. A text is scaled through its font size.
+function pinchedLayer(l: EditorLayer, s: number, turn: number, shift: { x: number; y: number }): Partial<ImageLayer> | Partial<ShapeLayer> | Partial<TextLayer> {
+  if (l.kind === 'image' || l.kind === 'shape') {
+    return { x: l.x + shift.x, y: l.y + shift.y, width: Math.max(4, l.width * s), height: Math.max(4, l.height * s), rotation: l.rotation + turn };
+  }
+  if (l.kind !== 'text') return {};
+  const fontSize = clamp(Math.round(l.fontSize * s), MIN_FONT_SIZE, MAX_FONT_SIZE);
+  // A text turns about its corner: its centre is the corner plus half its
+  // size, turned with it.
+  const half = (deg: number, w: number, h: number) => {
+    const rad = (deg * Math.PI) / 180;
+    return { x: (w / 2) * Math.cos(rad) - (h / 2) * Math.sin(rad), y: (w / 2) * Math.sin(rad) + (h / 2) * Math.cos(rad) };
+  };
+  const a = measureText(l);
+  const b = measureText({ ...l, fontSize });
+  const from = half(l.rotation, a.width, a.height);
+  const rotation = l.rotation + turn;
+  const to = half(rotation, b.width, b.height);
+  return { fontSize, rotation, x: l.x + from.x + shift.x - to.x, y: l.y + from.y + shift.y - to.y };
 }
 
 // One part of an image or shape layer's group.
