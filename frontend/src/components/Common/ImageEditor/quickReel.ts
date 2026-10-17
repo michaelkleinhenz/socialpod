@@ -66,11 +66,14 @@ export interface QuickReelInput {
   template: EditorTemplate;
   // The uploaded clip, a stored URL (/api/uploads/...).
   clipUrl: string;
+  // The part of the clip the reel shows, in seconds of the clip; all of it
+  // when absent.
+  trim?: { start: number; end: number };
   onProgress?: (share: number) => void;
   signal?: AbortSignal;
 }
 
-export async function renderQuickReel({ template, clipUrl, onProgress, signal }: QuickReelInput): Promise<Blob> {
+export async function renderQuickReel({ template, clipUrl, trim, onProgress, signal }: QuickReelInput): Promise<Blob> {
   const box = { x: 0, y: 0, width: template.width, height: template.height };
   if (!(await canExportVideo(box))) {
     throw new Error('This browser cannot make videos. Use a current Chrome, Edge or Safari.');
@@ -82,12 +85,14 @@ export async function renderQuickReel({ template, clipUrl, onProgress, signal }:
   ]);
   const own = sourceSize(video);
   const length = Number.isFinite(video.duration) ? video.duration : 0;
-  // The clip sets the reel's length. The template plays over its own length
-  // and then holds its last frame while the clip runs on.
-  const duration = clamp(length || (template.duration ?? 0), MIN_DURATION, MAX_DURATION);
+  const trimStart = clamp(trim?.start ?? 0, 0, length);
+  const trimEnd = clamp(trim?.end ?? length, trimStart, length);
+  // The clip's kept part sets the reel's length. The template plays over its
+  // own length and then holds its last frame while the clip runs on.
+  const duration = clamp(trimEnd - trimStart || (template.duration ?? 0), MIN_DURATION, MAX_DURATION);
   const designLength = template.duration ?? duration;
 
-  // The clip fills its frame, cropped to its shape, from its start.
+  // The clip fills its frame, cropped to its shape, from its lead in.
   const i = clipTarget(layers, box.width, box.height);
   const clipId = i >= 0 ? layers[i].id : newLayerId();
   if (i >= 0) {
@@ -98,14 +103,14 @@ export async function renderQuickReel({ template, clipUrl, onProgress, signal }:
     layers[i] = {
       ...target, img: video, src: clipUrl, origin: 'media', anim,
       srcCrop: centredCrop(own.width, own.height, target.width / target.height),
-      clip: { trimStart: 0, volume: target.clip?.volume ?? 1, duration: length },
+      clip: { trimStart, volume: target.clip?.volume ?? 1, duration: length },
     };
   } else {
     layers.unshift({
       id: clipId, kind: 'image', origin: 'media', src: clipUrl, img: video,
       x: box.width / 2, y: box.height / 2, width: box.width, height: box.height, rotation: 0, opacity: 1,
       srcCrop: centredCrop(own.width, own.height, box.width / box.height),
-      clip: { trimStart: 0, volume: 1, duration: length },
+      clip: { trimStart, volume: 1, duration: length },
     });
   }
 

@@ -7,6 +7,8 @@ import type { ConventionQueue } from '../../types';
 import { Modal } from '../Common/Modal';
 import { parseTemplate, type EditorTemplate } from '../Common/ImageEditor/editorModel';
 import { renderQuickReel } from '../Common/ImageEditor/quickReel';
+import { MAX_DURATION } from '../Common/ImageEditor/animation';
+import { ClipTrimmer, type ClipRange } from './ClipTrimmer';
 import './Convention.css';
 
 const INSTAGRAM_LIMIT = 2200;
@@ -14,8 +16,9 @@ const REEL_DELAY_MS = 30 * 60 * 1000;
 
 // Quick Reel, for a convention floor with no time to spare: pick a clip, say
 // in a few words what it shows, and the queue's reel template is rendered
-// around it while the AI writes the Instagram caption. The reel itself is
-// only previewed, never edited; the caption can be. It is scheduled for
+// around it while the AI writes the Instagram caption. The only edit to the
+// reel is where it cuts into the clip and out of it (ClipTrimmer); the reel
+// itself is only previewed, and the caption can be edited. It is scheduled for
 // Instagram half an hour after the clip was uploaded, or kept as a draft to
 // finish in the PostEditor.
 
@@ -44,6 +47,12 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
   const [uploadShare, setUploadShare] = useState(0);
   const [clipUrl, setClipUrl] = useState('');
   const [uploadedAt, setUploadedAt] = useState<Date | null>(null);
+  // The picked file, played from here for trimming rather than from the server.
+  const [clipFile, setClipFile] = useState<File | null>(null);
+  const [localUrl, setLocalUrl] = useState('');
+  const localUrlRef = useRef('');
+  const [clipLength, setClipLength] = useState(0);
+  const [range, setRange] = useState<ClipRange | null>(null);
   const [hints, setHints] = useState('');
   const [renderShare, setRenderShare] = useState(0);
   const [reel, setReel] = useState<Blob | null>(null);
@@ -94,8 +103,19 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
       uploadAbortRef.current?.abort();
       releaseClip();
       if (reelUrlRef.current) URL.revokeObjectURL(reelUrlRef.current);
+      if (localUrlRef.current) URL.revokeObjectURL(localUrlRef.current);
     };
   }, []);
+
+  // The clip's length, read from the local file while it uploads.
+  const readLength = (url: string) => new Promise<number>(resolve => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    v.onloadedmetadata = () => resolve(Number.isFinite(v.duration) ? v.duration : 0);
+    v.onerror = () => resolve(0);
+    v.src = url;
+  });
 
   const pickClip = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -107,6 +127,11 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
     }
     setUploadShare(0);
     setStep('uploading');
+    if (localUrlRef.current) URL.revokeObjectURL(localUrlRef.current);
+    localUrlRef.current = URL.createObjectURL(file);
+    setLocalUrl(localUrlRef.current);
+    setClipFile(file);
+    const length = readLength(localUrlRef.current);
     const controller = new AbortController();
     uploadAbortRef.current = controller;
     try {
@@ -117,6 +142,10 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
         return;
       }
       clipRef.current = url;
+      const seconds = await length;
+      setClipLength(seconds);
+      // All of the clip to start with, up to a reel's longest.
+      setRange(seconds > 0 ? { start: 0, end: Math.min(seconds, MAX_DURATION) } : null);
       setClipUrl(url);
       setUploadedAt(new Date());
       setStep('hints');
@@ -152,7 +181,7 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
     abortRef.current = controller;
     const captionDone = writeCaption();
     try {
-      const blob = await renderQuickReel({ template, clipUrl, onProgress: setRenderShare, signal: controller.signal });
+      const blob = await renderQuickReel({ template, clipUrl, trim: range ?? undefined, onProgress: setRenderShare, signal: controller.signal });
       await captionDone;
       if (reelUrlRef.current) URL.revokeObjectURL(reelUrlRef.current);
       reelUrlRef.current = URL.createObjectURL(blob);
@@ -224,6 +253,12 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
         {step === 'hints' && (
           <>
             <p className="qr-done">Clip uploaded{publishAt && <> · posts at <strong>{format(publishAt, 'HH:mm')}</strong></>}</p>
+            {clipFile && range && clipLength > 0 && (
+              <>
+                <span className="qr-label">Lead in and lead out</span>
+                <ClipTrimmer file={clipFile} src={localUrl} duration={clipLength} range={range} onChange={setRange} />
+              </>
+            )}
             <label className="qr-label" htmlFor="qr-hints">What is in the clip?</label>
             <textarea
               id="qr-hints"
@@ -232,7 +267,6 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
               onChange={e => setHints(e.target.value)}
               placeholder="A few words for the AI: game, publisher, people, what is going on"
               rows={3}
-              autoFocus
             />
             <button className="btn btn-primary qr-main" onClick={createReel} disabled={!hints.trim()}>
               <Clapperboard size={16} /> Create reel
