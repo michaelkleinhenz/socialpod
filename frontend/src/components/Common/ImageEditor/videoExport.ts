@@ -18,6 +18,11 @@ export interface VideoInput {
   duration: number;
   // The music under the clips' own sound.
   audio?: AudioTrack | null;
+  // Holds the design at its frame at hold.at (seconds) from then on: its
+  // layers' timing and effects run over hold.at as if that were the video's
+  // length, and its clips pause there, except the layer hold.playOn names,
+  // which runs the whole video. The music plays on.
+  hold?: { at: number; playOn: string };
   // Turns a stored URL (/api/uploads/...) into one to fetch.
   resolve: (url: string) => string;
   // Longest side of the video; 1920 is Instagram's own size for a reel.
@@ -28,6 +33,16 @@ export interface VideoInput {
 
 // The sample rate of the sound track.
 const SAMPLE_RATE = 48000;
+
+// The time and length layer l is animated by at time t of the video:
+// clamped to the hold for a held layer.
+type Clock = (l: EditorLayer, t: number) => { t: number; duration: number };
+const plainClock = (duration: number): Clock => (_l, t) => ({ t, duration });
+function holdClock(duration: number, hold: VideoInput['hold']): Clock {
+  if (!hold) return plainClock(duration);
+  const at = Math.min(hold.at, duration);
+  return (l, t) => (l.id === hold.playOn ? { t, duration } : { t: Math.min(t, at), duration: at });
+}
 
 // The video's size: the crop scaled to fit maxSide, both sides even, as
 // H.264 in 4:2:0 needs.
@@ -89,7 +104,7 @@ function fetcher(resolve: (url: string) => string, signal?: AbortSignal) {
 // it: each clip from its trim point while its layer shows, faded with the
 // layer's in and out effects, the music with its own fades. Null when there
 // is nothing to hear.
-async function mixAudio(layers: EditorLayer[], audio: AudioTrack | null | undefined, duration: number, load: (src: string) => Promise<Blob>): Promise<AudioBuffer | null> {
+async function mixAudio(layers: EditorLayer[], audio: AudioTrack | null | undefined, duration: number, clock: Clock, load: (src: string) => Promise<Blob>): Promise<AudioBuffer | null> {
   const ctx = new OfflineAudioContext(2, Math.ceil(duration * SAMPLE_RATE), SAMPLE_RATE);
   // Decoding needs its own copy: decodeAudioData takes the buffer over.
   const decode = async (src: string) => {
@@ -125,7 +140,8 @@ async function mixAudio(layers: EditorLayer[], audio: AudioTrack | null | undefi
     if (!isClip(l) || l.clip.volume <= 0) continue;
     const buffer = await decode(l.src);
     if (!buffer) continue;
-    const { start, end } = layerSpan(l, duration);
+    // A held clip falls silent where it pauses.
+    const { start, end } = layerSpan(l, clock(l, duration).duration);
     any = play(buffer, start, l.clip.trimStart, end - start, l.clip.volume, clipFadeIn(l, start, end), clipFadeOut(l, start, end)) || any;
   }
   if (audio) {
@@ -140,15 +156,15 @@ async function mixAudio(layers: EditorLayer[], audio: AudioTrack | null | undefi
 // A clip's frames for the video, one per frame in which its layer shows, in
 // order: decoded from the file itself, so they are exact whatever the
 // browser's video element would show.
-async function clipFrames(l: ImageLayer, duration: number, frames: number, load: (src: string) => Promise<Blob>) {
+async function clipFrames(l: ImageLayer, frames: number, clock: Clock, load: (src: string) => Promise<Blob>) {
   const input = new Input({ source: new BlobSource(await load(l.src)), formats: ALL_FORMATS });
   const track = await input.getPrimaryVideoTrack();
   if (!track) throw new Error('A clip has no video in it');
   const first = await track.getFirstTimestamp();
-  const { start, end } = layerSpan(l, duration);
   const times: number[] = [];
   for (let i = 0; i < frames; i++) {
-    const t = i / FPS;
+    const { t, duration } = clock(l, i / FPS);
+    const { start, end } = layerSpan(l, duration);
     if (t >= start && t <= end) times.push(first + clipTimeAt(l, t, duration));
   }
   const sink = new CanvasSink(track, { poolSize: 2 });
@@ -160,13 +176,14 @@ async function clipFrames(l: ImageLayer, duration: number, frames: number, load:
 // when a clip or the music has sound. Frames are drawn offline, one after the
 // other, so the video is exact however slow the machine is.
 export async function renderVideo({
-  source, background = '#ffffff', crop, adjustments, layers, duration, audio, resolve, maxSide = 1920, onProgress, signal,
+  source, background = '#ffffff', crop, adjustments, layers, duration, audio, hold, resolve, maxSide = 1920, onProgress, signal,
 }: VideoInput): Promise<Blob> {
   const { width, height, scale } = videoSize(crop, maxSide);
   const frames = Math.max(1, Math.round(duration * FPS));
   const load = fetcher(resolve, signal);
+  const clock = holdClock(duration, hold);
 
-  const sound = await mixAudio(layers, audio, duration, load);
+  const sound = await mixAudio(layers, audio, duration, clock, load);
   if (sound && !(await canEncodeAac())) {
     throw new Error('This browser cannot encode the sound (AAC). Use a current Chrome, Edge or Safari.');
   }
@@ -178,7 +195,7 @@ export async function renderVideo({
   let started = false;
   try {
     for (const l of layers) {
-      if (isClip(l)) clips.set(l.id, await clipFrames(l, duration, frames, load));
+      if (isClip(l)) clips.set(l.id, await clipFrames(l, frames, clock, load));
     }
 
     const layer = new Konva.Layer({ listening: false });
@@ -221,10 +238,11 @@ export async function renderVideo({
     const lastFrame = new Map<string, WrappedCanvas>();
     for (let i = 0; i < frames; i++) {
       if (signal?.aborted) throw new DOMException('Export cancelled', 'AbortError');
-      const t = i / FPS;
+      const time = i / FPS;
       frameLayers.destroyChildren();
       for (const l of layers) {
-        const { start, end } = layerSpan(l, duration);
+        const { t, duration: length } = clock(l, time);
+        const { start, end } = layerSpan(l, length);
         const clip = clips.get(l.id);
         let drawn: EditorLayer = l;
         if (clip && t >= start && t <= end) {
@@ -235,13 +253,13 @@ export async function renderVideo({
             drawn = { ...l, img: frame.canvas } as ImageLayer;
           }
         }
-        const s = animStateAt(l, t, duration, crop);
+        const s = animStateAt(l, t, length, crop);
         if (s.visible) frameLayers.add(buildAnimatedLayerNode(drawn, s));
       }
       layer.draw();
       ctx.clearRect(0, 0, width, height);
       ctx.drawImage(layer.getCanvas()._canvas, 0, 0);
-      await videoSource.add(t, 1 / FPS);
+      await videoSource.add(time, 1 / FPS);
       onProgress?.((i + 1) / frames);
     }
     videoSource.close();

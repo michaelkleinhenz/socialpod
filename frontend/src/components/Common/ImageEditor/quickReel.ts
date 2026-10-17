@@ -82,20 +82,27 @@ export async function renderQuickReel({ template, clipUrl, onProgress, signal }:
   ]);
   const own = sourceSize(video);
   const length = Number.isFinite(video.duration) ? video.duration : 0;
-  const duration = clamp(template.duration ?? length, MIN_DURATION, MAX_DURATION);
+  // The clip sets the reel's length. The template plays over its own length
+  // and then holds its last frame while the clip runs on.
+  const duration = clamp(length || (template.duration ?? 0), MIN_DURATION, MAX_DURATION);
+  const designLength = template.duration ?? duration;
 
   // The clip fills its frame, cropped to its shape, from its start.
   const i = clipTarget(layers, box.width, box.height);
+  const clipId = i >= 0 ? layers[i].id : newLayerId();
   if (i >= 0) {
     const target = layers[i] as ImageLayer;
+    // A frame that lasts to the template's end lasts to the clip's.
+    const anim = target.anim && target.anim.end !== undefined && target.anim.end >= designLength - 0.05
+      ? { ...target.anim, end: undefined } : target.anim;
     layers[i] = {
-      ...target, img: video, src: clipUrl, origin: 'media',
+      ...target, img: video, src: clipUrl, origin: 'media', anim,
       srcCrop: centredCrop(own.width, own.height, target.width / target.height),
       clip: { trimStart: 0, volume: target.clip?.volume ?? 1, duration: length },
     };
   } else {
     layers.unshift({
-      id: newLayerId(), kind: 'image', origin: 'media', src: clipUrl, img: video,
+      id: clipId, kind: 'image', origin: 'media', src: clipUrl, img: video,
       x: box.width / 2, y: box.height / 2, width: box.width, height: box.height, rotation: 0, opacity: 1,
       srcCrop: centredCrop(own.width, own.height, box.width / box.height),
       clip: { trimStart: 0, volume: 1, duration: length },
@@ -111,6 +118,7 @@ export async function renderQuickReel({ template, clipUrl, onProgress, signal }:
       layers,
       duration,
       audio: template.audio ?? null,
+      hold: { at: designLength, playOn: clipId },
       resolve: resolveUrl,
       onProgress,
       signal,
