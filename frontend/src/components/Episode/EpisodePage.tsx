@@ -1379,24 +1379,24 @@ export function EpisodePage() {
                   <Upload size={28} style={{ marginBottom: 8, opacity: 0.5 }} />
                   <div>Drop an image here, click to browse, or paste from clipboard</div>
                 </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={openImageCreator}
-                  style={{ alignSelf: 'flex-start' }}
-                  title="Design an image, from scratch or a template"
-                >
-                  <Palette size={14} /> Create Image
-                </button>
-                {adobeClientId && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={launchAdobeExpress}
-                    disabled={adobeLoading}
-                    style={{ alignSelf: 'flex-start' }}
+                    onClick={openImageCreator}
+                    title="Design an image, from scratch or a template"
                   >
-                    <Wand2 size={14} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                    <Palette size={14} /> Create Image
                   </button>
-                )}
+                  {adobeClientId && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={launchAdobeExpress}
+                      disabled={adobeLoading}
+                    >
+                      <Wand2 size={14} /> {adobeLoading ? 'Opening...' : 'Create Design'}
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div>

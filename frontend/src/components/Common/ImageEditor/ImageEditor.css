@@ -276,6 +276,9 @@
   flex-direction: column;
   gap: 3px;
   max-height: 150px;
+  /* overflow-y alone would make x auto too, and the playhead at the very
+     end reaches 1px past its lane. */
+  overflow-x: hidden;
   overflow-y: auto;
   touch-action: pan-y;
 }
