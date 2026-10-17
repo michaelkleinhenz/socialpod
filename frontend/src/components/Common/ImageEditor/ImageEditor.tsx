@@ -103,6 +103,9 @@ interface Snapshot {
 
 // How close, in screen pixels, a moved layer has to come to snap.
 const SNAP_PX = 6;
+// How far, in screen pixels, a tap may miss a layer on a touch screen and
+// still pick it.
+const TOUCH_SLOP = 16;
 const GUIDE_COLOR = '#ff2d95';
 const SNAP_STORAGE_KEY = 'socialpod.imageEditor.snap';
 
@@ -1494,14 +1497,17 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // A press inside the selected layer keeps it selected and drags it, even
   // where another layer covers it (a full-frame image on top, say), so a
   // layer picked in the Objects list can be moved on the picture. The layer
-  // on top must not drag meanwhile; the drag starts once the pointer moves,
-  // so a plain click changes nothing.
-  const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent) => {
+  // on top must not drag meanwhile; the drag starts once the pointer moves.
+  // A plain tap or click selects the layer on top after all, or nothing
+  // inside a large selected layer could be picked on the picture.
+  const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent, tapped: EditorLayer) => {
     cover.draggable(false);
     const stage = node.getStage();
     const pressedAt = stage?.getPointerPosition();
+    let moved = false;
     const move = (ev: PointerEvent) => {
-      if (Math.hypot(ev.clientX - start.clientX, ev.clientY - start.clientY) < 3) return;
+      if (Math.hypot(ev.clientX - start.clientX, ev.clientY - start.clientY) < (isTouch ? 8 : 3)) return;
+      moved = true;
       window.removeEventListener('pointermove', move);
       // Catch up with the pointer first, so the layer stays under the point
       // it was pressed at.
@@ -1513,11 +1519,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       }
       node.startDrag();
     };
-    const end = () => {
+    const end = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
       cover.draggable(true);
+      if (!moved && ev.type === 'pointerup') selectLayer(tapped);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
@@ -1526,14 +1533,33 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const onLayerPointerDown = (l: EditorLayer, e: Konva.KonvaEventObject<PointerEvent>) => {
     const held = l.id !== selectedId ? selectedNodeAtPointer(e.target.getStage()) : null;
-    if (held) { holdSelected(held, e.currentTarget, e.evt); return; }
+    if (held) { holdSelected(held, e.currentTarget, e.evt, l); return; }
     selectLayer(l);
   };
 
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     if (tab === 'crop') return;
     if (painting) { startStroke(e.target.getStage()); return; }
-    if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) setSelectedId(null);
+    if (e.target === e.target.getStage() || e.target === baseRef.current || e.target === backgroundRef.current) {
+      const near = isTouch && layersInteractive ? layerNearPointer(e.target.getStage()) : undefined;
+      if (near) selectLayer(near);
+      else setSelectedId(null);
+    }
+  };
+
+  // A finger is wider than a thin text, an outline or a brush stroke: a tap
+  // that hits nothing takes the topmost layer whose box, widened by
+  // TOUCH_SLOP screen pixels, holds the point.
+  const layerNearPointer = (stage: Konva.Stage | null): EditorLayer | undefined => {
+    const pos = stage?.getPointerPosition();
+    if (!pos) return undefined;
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const node = nodeRefs.current.get(layers[i].id);
+      if (!node || !node.isVisible()) continue;
+      const r = node.getClientRect();
+      if (pos.x >= r.x - TOUCH_SLOP && pos.x <= r.x + r.width + TOUCH_SLOP && pos.y >= r.y - TOUCH_SLOP && pos.y <= r.y + r.height + TOUCH_SLOP) return layers[i];
+    }
+    return undefined;
   };
 
   // The library's colours, the built-in swatches and a custom picker. The
@@ -2385,7 +2411,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           )}
         </div>
         <div className="ie-body">
-          <div className="ie-main">
+          <div className={`ie-main ${tab === 'animate' ? 'ie-animating' : ''}`}>
             <div className={`ie-canvas ${painting ? 'ie-painting' : ''}`} ref={canvasBoxRef}>
               {loadError && <div className="ie-message">The image could not be loaded.</div>}
               {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
