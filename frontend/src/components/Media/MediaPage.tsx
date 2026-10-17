@@ -416,6 +416,8 @@ export function MediaPage() {
           template={designing.kind === 'edit' ? designing.template : undefined}
           title={designing.kind === 'new' ? `New template: ${designing.info.name}` : `Template: ${designing.item.name}`}
           video={designing.kind === 'new' ? designing.info.video : !!designing.template.duration}
+          // A 9:16 template is mostly a reel (video) or a story (still).
+          safeZone={(designing.kind === 'new' ? designing.info.video : !!designing.template.duration) ? 'reel' : 'story'}
           designOnly
           onSave={saveDesign}
           onCancel={() => setDesigning(null)}

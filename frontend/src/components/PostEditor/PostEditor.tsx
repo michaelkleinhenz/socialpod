@@ -1875,6 +1875,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       {editingImageIdx !== null && images[editingImageIdx] && (
         <ImageEditor
           imageUrl={previewUrl(images[editingImageIdx])}
+          safeZone={isStory ? 'story' : undefined}
           onCancel={() => setEditingImageIdx(null)}
           onSave={blob => {
             const idx = editingImageIdx;
@@ -1896,6 +1897,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       {creatingImage && (
         <ImageEditor
           canvas={{ width: 1080, height: isStory ? 1920 : 1350, background: '#ffffff' }}
+          safeZone={isStory ? 'story' : undefined}
           title={isStory ? 'Create story image' : 'Create image'}
           onCancel={() => setCreatingImage(false)}
           onSave={blob => {

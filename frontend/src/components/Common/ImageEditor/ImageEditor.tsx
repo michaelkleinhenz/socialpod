@@ -1536,6 +1536,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (!isTouch) startTextEdit(base.id, { selectAll: true });
   };
 
+  // Instagram's interface covers a full-screen 9:16 frame only, so the zone
+  // (and its switch) shows while the crop or canvas has that shape.
+  const zone = safeZone && crop && Math.abs(crop.width * 16 - crop.height * 9) <= crop.height * 0.2 ? safeZone : undefined;
+
   const toggleSafeZone = () => {
     setShowSafeZone(on => {
       try { localStorage.setItem(SAFE_ZONE_STORAGE_KEY, on ? 'off' : 'on'); } catch { /* per-viewer convenience only */ }
@@ -2879,11 +2883,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <Magnet size={18} />
         </button>
-        {safeZone && !phone && (
+        {zone && !phone && (
           <button
             className={`ie-icon-btn ${showSafeZone ? 'active' : ''}`}
             onClick={toggleSafeZone}
-            title={showSafeZone ? `Hide the ${safeZone} safe zone` : `Show the ${safeZone} safe zone (where Instagram's text and icons cover the video)`}
+            title={showSafeZone ? `Hide the ${zone} safe zone` : `Show the ${zone} safe zone (where Instagram's text and icons cover the frame)`}
             aria-label="Safe zone"
             aria-pressed={showSafeZone}
           >
@@ -3239,9 +3243,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       )}
                     </Group>
 
-                    {safeZone && (showSafeZone || phone) && tab !== 'crop' && (
+                    {zone && (showSafeZone || phone) && tab !== 'crop' && (
                       <Group listening={false}>
-                        {safeZoneRects(safeZone, { x: gx + crop.x * scale, y: gy + crop.y * scale, width: crop.width * scale, height: crop.height * scale }).map((z, i) => (
+                        {safeZoneRects(zone, { x: gx + crop.x * scale, y: gy + crop.y * scale, width: crop.width * scale, height: crop.height * scale }).map((z, i) => (
                           <Group key={`sz${i}`}>
                             <Rect x={z.x} y={z.y} width={z.width} height={z.height} fill={SAFE_ZONE_FILL} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={1} dash={[4, 4]} />
                             {z.width > 60 && (
