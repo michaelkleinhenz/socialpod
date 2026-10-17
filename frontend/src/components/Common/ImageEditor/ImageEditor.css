@@ -257,6 +257,10 @@
   padding: 8px 12px;
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
+  /* Scrubbing and dragging bars must not select the ruler's numbers or the
+     names as text. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ie-timeline-bar {

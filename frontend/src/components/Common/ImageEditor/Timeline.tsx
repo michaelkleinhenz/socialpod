@@ -105,6 +105,8 @@ export function Timeline({ layers, duration, time, playing, loop, selectedId, on
 
   // A press on the ruler or an empty part of a lane moves the playhead.
   const seekAt = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // Nor start a text selection while dragging.
+    e.preventDefault();
     const lane = e.currentTarget.getBoundingClientRect();
     const to = (x: number) => clamp(((x - lane.left) / lane.width) * duration, 0, duration);
     onSeek(to(e.clientX));
