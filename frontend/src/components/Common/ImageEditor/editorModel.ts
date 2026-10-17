@@ -49,6 +49,7 @@ export interface ImageLayer {
   // A video clip instead of a picture: src is the video, and it plays (with
   // its sound) while the layer shows.
   clip?: ClipInfo;
+  blend?: BlendMode;
 }
 
 export type LayerSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas;
@@ -81,6 +82,41 @@ export function sourceSize(img: LayerSource): { width: number; height: number } 
   if (img instanceof HTMLImageElement) return { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height };
   if (img instanceof HTMLVideoElement) return { width: img.videoWidth || 1, height: img.videoHeight || 1 };
   return { width: img.width, height: img.height };
+}
+
+// How a layer mixes with what lies under it, as the canvas (and CSS) blend
+// modes do; normal (drawn over it) when absent. The server's template
+// renderer (services/compose_blend.go) knows the same modes.
+export type BlendMode =
+  | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn'
+  | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity';
+
+export const BLEND_MODES: { id: BlendMode; label: string }[] = [
+  { id: 'normal', label: 'Normal' },
+  { id: 'multiply', label: 'Multiply' },
+  { id: 'screen', label: 'Screen' },
+  { id: 'overlay', label: 'Overlay' },
+  { id: 'darken', label: 'Darken' },
+  { id: 'lighten', label: 'Lighten' },
+  { id: 'color-dodge', label: 'Colour dodge' },
+  { id: 'color-burn', label: 'Colour burn' },
+  { id: 'hard-light', label: 'Hard light' },
+  { id: 'soft-light', label: 'Soft light' },
+  { id: 'difference', label: 'Difference' },
+  { id: 'exclusion', label: 'Exclusion' },
+  { id: 'hue', label: 'Hue' },
+  { id: 'saturation', label: 'Saturation' },
+  { id: 'color', label: 'Colour' },
+  { id: 'luminosity', label: 'Luminosity' },
+];
+
+// The attribute that blends a layer's node. Set on the layer's own node (the
+// group of an image, shape or paint layer, a text itself), whose shapes then
+// draw with it onto the picture below; normal is spelled out so a layer
+// switched back really stops blending.
+export function blendAttrs(l: { blend?: BlendMode }): { globalCompositeOperation: Konva.NodeConfig['globalCompositeOperation'] } {
+  const b = l.blend && l.blend !== 'normal' && BLEND_MODES.some(m => m.id === l.blend) ? l.blend : 'source-over';
+  return { globalCompositeOperation: b };
 }
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
@@ -120,6 +156,7 @@ export interface TextLayer {
   y: number;
   rotation: number;
   anim?: LayerAnim;
+  blend?: BlendMode;
 }
 
 export type ShapeKind = 'rect' | 'ellipse' | 'triangle';
@@ -151,6 +188,7 @@ export interface ShapeLayer {
   // Boxes only: corner rounding in percent of the shorter side.
   cornerRadius?: number;
   anim?: LayerAnim;
+  blend?: BlendMode;
 }
 
 // One brush stroke: a path through points (x0, y0, x1, y1, ...) relative to
@@ -172,6 +210,7 @@ export interface PaintLayer {
   y: number;
   strokes: PaintStroke[];
   anim?: LayerAnim;
+  blend?: BlendMode;
 }
 
 export type EditorLayer = ImageLayer | TextLayer | ShapeLayer | PaintLayer;
@@ -373,7 +412,7 @@ export function imageLayerParts(l: ImageLayer): { group: Konva.GroupConfig; part
   }
 
   return {
-    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity },
+    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity, ...blendAttrs(l) },
     parts,
   };
 }
@@ -406,7 +445,7 @@ export function shapeLayerParts(l: ShapeLayer): { group: Konva.GroupConfig; part
       };
   }
   return {
-    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity },
+    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity, ...blendAttrs(l) },
     parts: [part],
   };
 }
@@ -503,7 +542,7 @@ export function paintStrokeAttrs(st: PaintStroke): Konva.ShapeConfig {
 }
 
 export function buildPaintLayerNode(l: PaintLayer): Konva.Group {
-  const g = new Konva.Group({ x: l.x, y: l.y });
+  const g = new Konva.Group({ x: l.x, y: l.y, ...blendAttrs(l) });
   for (const st of l.strokes) g.add(new Konva.Shape(paintStrokeAttrs(st)));
   return g;
 }
@@ -539,6 +578,7 @@ export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
     shadowOpacity: 0.6,
     shadowOffsetX: l.fontSize * 0.03,
     shadowOffsetY: l.fontSize * 0.03,
+    ...blendAttrs(l),
   };
 }
 
@@ -689,7 +729,11 @@ export function toTemplate(crop: CropBox, layers: EditorLayer[], background: str
     ...(duration ? { duration } : {}),
     ...(duration && audio ? { audio } : {}),
     // Everything but the id and the loaded image.
-    layers: layers.map((l): TemplateLayer => ({ ...templateLayer(l, crop), ...(duration && l.anim ? { anim: l.anim } : {}) })),
+    layers: layers.map((l): TemplateLayer => ({
+      ...templateLayer(l, crop),
+      ...(l.blend && l.blend !== 'normal' ? { blend: l.blend } : {}),
+      ...(duration && l.anim ? { anim: l.anim } : {}),
+    })),
   };
 }
 
