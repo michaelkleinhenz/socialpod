@@ -913,8 +913,8 @@
     display: none;
   }
 
-  /* The picture gets the room: the timeline's bars only on the Animate
-     tab (play and scrub stay), a slimmer header, tabs and controls. */
+  /* The picture gets the room: the timeline's bars only while animating
+     (play and scrub stay), and a slimmer header. */
   .ie-main:not(.ie-animating) .ie-tracks {
     display: none;
   }
@@ -927,26 +927,6 @@
   .ie-icon-btn {
     width: 36px;
     height: 36px;
-  }
-
-  /* A fixed height: one that followed the controls would resize the
-     picture on every selection, moving what the next tap aims at. */
-  .ie-panel {
-    height: 30vh;
-    max-height: 30vh;
-    gap: 8px;
-    padding: 8px 12px;
-  }
-
-  .ie-tabs button {
-    gap: 1px;
-    padding: 6px 2px;
-    font-size: 10px;
-  }
-
-  .ie-tabs button svg {
-    width: 18px;
-    height: 18px;
   }
 
   .ie-timeline {
@@ -1001,5 +981,276 @@
   /* Two columns of small previews in the panel. */
   .ie-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* --- Phone layout (PhoneParts.tsx; rendered at 768px and below only) ---- */
+
+/* The bottom bar: the add tools, or the selected object's tools. */
+.ie-mbar {
+  order: 3;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.ie-mbar::-webkit-scrollbar {
+  display: none;
+}
+
+.ie-mbar button {
+  flex: 1 0 auto;
+  min-width: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 6px 6px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.ie-mbar button.active {
+  color: var(--accent-hover);
+}
+
+.ie-mbar button:disabled {
+  opacity: 0.4;
+}
+
+.ie-mbar .ie-mbar-back {
+  flex: 0 0 auto;
+  min-width: 52px;
+  border-right: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+/* One control at a time, over the bottom of the picture: the picture keeps
+   its size whatever is open. */
+.ie-tray {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 96%, transparent);
+  border-top: 1px solid var(--border);
+  animation: ie-rise 0.16s ease-out;
+}
+
+.ie-tray-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.ie-tray-main .ie-slider {
+  min-height: 40px;
+}
+
+.ie-tray-line > .ie-slider {
+  flex: 1;
+  min-width: 0;
+}
+
+.ie-tray-subs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  flex-shrink: 0;
+}
+
+.ie-tray-subs::-webkit-scrollbar {
+  display: none;
+}
+
+.ie-tray-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ie-tray-sub.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.ie-tray-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.ie-tray-done {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+/* The selected object's quick actions, next to it on the picture. */
+.ie-mini {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.ie-mini button {
+  width: 40px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ie-mini button:disabled {
+  opacity: 0.35;
+}
+
+.ie-mini button.danger {
+  color: var(--danger, #ef4444);
+}
+
+/* Templates, media, objects and the video's settings: a sheet from the
+   bottom, half the screen or, dragged up, nearly all of it. */
+.ie-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.ie-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  height: 52%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  background: var(--bg-secondary);
+  animation: ie-rise 0.2s ease-out;
+  transition: height 0.2s ease-out;
+}
+
+.ie-sheet.full {
+  height: 92%;
+}
+
+.ie-sheet.dragging {
+  transition: none;
+}
+
+.ie-sheet-grab {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 6px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ie-sheet-grab span {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border-light);
+}
+
+.ie-sheet-head {
+  padding: 0 16px 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ie-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 16px;
+  touch-action: pan-y;
+}
+
+.ie-sheet-body > * {
+  flex-shrink: 0;
+}
+
+.ie-sheet-body .ie-sticky {
+  top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.ie-sheet-body .ie-layers-list {
+  padding: 0;
+}
+
+@keyframes ie-rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ie-tray,
+  .ie-sheet {
+    animation: none;
+    transition: none;
   }
 }
