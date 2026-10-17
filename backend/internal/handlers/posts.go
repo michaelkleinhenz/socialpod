@@ -84,22 +84,48 @@ const (
 func contentLimit(platforms []models.Platform) int {
 	limit := linkedInCharLimit
 	for _, p := range platforms {
-		var platformLimit int
-		switch p {
-		case models.PlatformBluesky:
-			platformLimit = blueskyCharLimit
-		case models.PlatformThreads:
-			platformLimit = threadsCharLimit
-		case models.PlatformInstagram:
-			platformLimit = instagramCharLimit
-		default:
-			continue
-		}
-		if platformLimit < limit {
-			limit = platformLimit
+		if l := platformCharLimit(p); l != 0 && l < limit {
+			limit = l
 		}
 	}
 	return limit
+}
+
+func platformCharLimit(p models.Platform) int {
+	switch p {
+	case models.PlatformBluesky:
+		return blueskyCharLimit
+	case models.PlatformThreads:
+		return threadsCharLimit
+	case models.PlatformInstagram:
+		return instagramCharLimit
+	}
+	return 0
+}
+
+// contentLimitError checks the text each platform will actually publish: its
+// override when one is set, the shared content otherwise. The shared content
+// is not checked against a platform that has its own text, so a long caption
+// meant for Instagram does not trip Bluesky's limit when Bluesky has an
+// override. It returns "" when every text fits.
+func contentLimitError(content string, overrides map[string]string, platforms []models.Platform) string {
+	for _, p := range platforms {
+		limit := platformCharLimit(p)
+		if limit == 0 {
+			continue
+		}
+		text := content
+		if o := overrides[string(p)]; o != "" {
+			text = o
+		}
+		if len([]rune(text)) > limit {
+			if o := overrides[string(p)]; o != "" {
+				return fmt.Sprintf("Content for %s exceeds %d character limit", p, limit)
+			}
+			return fmt.Sprintf("Content exceeds %d character limit", limit)
+		}
+	}
+	return ""
 }
 
 // cleanUsernames trims and de-duplicates Instagram usernames and drops the
@@ -146,10 +172,10 @@ func (h *PostHandler) Create(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	if input.Content != "" {
-		limit := contentLimit(input.Platforms)
-		if len([]rune(input.Content)) > limit {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Content exceeds %d character limit", limit)})
+	// Drafts are not checked, like in the editor: they may be unfinished.
+	if input.Status != models.PostStatusDraft {
+		if msg := contentLimitError(input.Content, input.ContentOverrides, input.Platforms); msg != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 			return
 		}
 	}
@@ -321,24 +347,31 @@ func (h *PostHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// Validate content length against platform limits
-	if input.Content != nil || input.Platforms != nil {
-		platforms := input.Platforms
-		if platforms == nil {
-			// Fetch existing post to get current platforms
-			ctx0, cancel0 := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel0()
-			pf := postFilter(c)
-			pf["_id"] = postID
-			var existing models.Post
-			if err := h.DB.Posts().FindOne(ctx0, pf).Decode(&existing); err == nil {
-				platforms = existing.Platforms
-			}
+	// Validate content length against platform limits, filling in whatever
+	// the update leaves out from the stored post. Drafts are not checked.
+	if input.Content != nil || input.Platforms != nil || input.ContentOverrides != nil || input.Status != nil {
+		ctx0, cancel0 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel0()
+		pf := postFilter(c)
+		pf["_id"] = postID
+		var existing models.Post
+		_ = h.DB.Posts().FindOne(ctx0, pf).Decode(&existing)
+		content, platforms, overrides, status := existing.Content, existing.Platforms, existing.ContentOverrides, existing.Status
+		if input.Content != nil {
+			content = *input.Content
 		}
-		if input.Content != nil && platforms != nil {
-			limit := contentLimit(platforms)
-			if len([]rune(*input.Content)) > limit {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Content exceeds %d character limit", limit)})
+		if input.Platforms != nil {
+			platforms = input.Platforms
+		}
+		if input.ContentOverrides != nil {
+			overrides = input.ContentOverrides
+		}
+		if input.Status != nil {
+			status = *input.Status
+		}
+		if status != models.PostStatusDraft {
+			if msg := contentLimitError(content, overrides, platforms); msg != "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 				return
 			}
 		}
