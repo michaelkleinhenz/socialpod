@@ -306,7 +306,8 @@ type draftQueue struct {
 
 func (h *MCPHandler) loadDraftQueue(ctx context.Context, c *gin.Context) (draftQueue, error) {
 	q := draftQueue{ByOrigin: map[string]int{}, ByKind: map[string]int{}, Remaining: -1}
-	hasOrigin := bson.M{"$exists": true, "$ne": ""}
+	// Quick Reel drafts carry an origin too, but a person made them.
+	hasOrigin := bson.M{"$exists": true, "$nin": bson.A{"", quickReelOrigin}}
 	proj := options.Find().SetProjection(bson.M{"origin": 1})
 
 	postFilter := mcpScopeFilter(c)

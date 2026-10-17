@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { Clapperboard, Loader, RefreshCw, Send, Upload, X } from 'lucide-react';
+import { Clapperboard, FileText, Loader, RefreshCw, Send, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { ConventionQueue } from '../../types';
@@ -16,7 +16,8 @@ const REEL_DELAY_MS = 30 * 60 * 1000;
 // in a few words what it shows, and the queue's reel template is rendered
 // around it while the AI writes the Instagram caption. The reel itself is
 // only previewed, never edited; the caption can be. It is scheduled for
-// Instagram half an hour after the clip was uploaded.
+// Instagram half an hour after the clip was uploaded, or kept as a draft to
+// finish in the PostEditor.
 
 type Step = 'pick' | 'uploading' | 'hints' | 'working' | 'review' | 'publishing';
 
@@ -52,6 +53,7 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
   const [captionBusy, setCaptionBusy] = useState(false);
   const [captionError, setCaptionError] = useState('');
   const [publishShare, setPublishShare] = useState(0);
+  const [savingDraft, setSavingDraft] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const clipRef = useRef('');
@@ -170,16 +172,18 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
     ? new Date(Math.max(uploadedAt.getTime() + REEL_DELAY_MS, Date.now()))
     : null;
 
-  const publish = async () => {
-    if (!reel || !uploadedAt || !caption.trim()) return;
+  // A draft may be unfinished: it needs no caption and is not checked.
+  const publish = async (draft: boolean) => {
+    if (!reel || !uploadedAt || (!draft && !caption.trim())) return;
     setPublishShare(0);
+    setSavingDraft(draft);
     setStep('publishing');
     try {
-      const post = await api.publishQuickReel(queue.id, reel, caption.trim(), uploadedAt, setPublishShare);
-      toast.success(`Reel scheduled for ${format(new Date(post.scheduledAt), 'HH:mm')}`);
+      const post = await api.publishQuickReel(queue.id, reel, caption.trim(), uploadedAt, setPublishShare, draft);
+      toast.success(draft ? 'Reel saved as draft' : `Reel scheduled for ${format(new Date(post.scheduledAt), 'HH:mm')}`);
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to schedule the reel');
+      toast.error(err instanceof Error ? err.message : draft ? 'Failed to save the draft' : 'Failed to schedule the reel');
       setStep('review');
     }
   };
@@ -266,15 +270,20 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
             />
             <p className={`qr-count ${captionLength > INSTAGRAM_LIMIT ? 'over' : ''}`}>{captionLength}/{INSTAGRAM_LIMIT}</p>
             {step === 'publishing' ? (
-              <ProgressBar share={publishShare} label="Uploading the reel" />
+              <ProgressBar share={publishShare} label={savingDraft ? 'Saving the draft' : 'Uploading the reel'} />
             ) : (
-              <button
-                className="btn btn-primary qr-main"
-                onClick={publish}
-                disabled={!caption.trim() || captionLength > INSTAGRAM_LIMIT || captionBusy}
-              >
-                <Send size={16} /> Publish{publishAt && <> at {format(publishAt, 'HH:mm')}</>}
-              </button>
+              <div className="qr-actions">
+                <button className="btn btn-secondary qr-main" onClick={() => publish(true)} disabled={captionBusy}>
+                  <FileText size={16} /> Save as draft
+                </button>
+                <button
+                  className="btn btn-primary qr-main"
+                  onClick={() => publish(false)}
+                  disabled={!caption.trim() || captionLength > INSTAGRAM_LIMIT || captionBusy}
+                >
+                  <Send size={16} /> Publish{publishAt && <> at {format(publishAt, 'HH:mm')}</>}
+                </button>
+              </div>
             )}
           </>
         )}

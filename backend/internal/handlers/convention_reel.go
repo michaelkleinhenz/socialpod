@@ -23,6 +23,10 @@ import (
 // quickReelDelay is how long after the clip's upload the reel goes out.
 const quickReelDelay = 30 * time.Minute
 
+// quickReelOrigin marks the posts Quick Reel creates. Its drafts are a
+// person's, not an agent's, so the agent draft queue leaves them out.
+const quickReelOrigin = "quick-reel"
+
 // quickReelHintsMax caps the hints sent to the model.
 const quickReelHintsMax = 500
 
@@ -129,8 +133,9 @@ func quickReelTime(uploadedAt, now time.Time) time.Time {
 }
 
 // PublishQuickReel stores the rendered reel and schedules it as an Instagram
-// reel on the queue's Instagram account and footer.
-// POST /api/convention/queues/:id/reel (multipart: video, caption, uploadedAt)
+// reel on the queue's Instagram account and footer, or with draft=true keeps
+// it as a draft (at the same suggested time) to finish in the PostEditor.
+// POST /api/convention/queues/:id/reel (multipart: video, caption, uploadedAt, draft)
 func (h *ConventionHandler) PublishQuickReel(c *gin.Context) {
 	_, fh, err := c.Request.FormFile("video")
 	if err != nil {
@@ -141,12 +146,14 @@ func (h *ConventionHandler) PublishQuickReel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "The reel must be an MP4"})
 		return
 	}
+	draft := c.PostForm("draft") == "true"
 	caption := strings.TrimSpace(c.PostForm("caption"))
-	if caption == "" {
+	// Drafts are not checked, like in the editor: they may be unfinished.
+	if caption == "" && !draft {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "The reel needs a caption"})
 		return
 	}
-	if n := len([]rune(caption)); n > instagramCharLimit {
+	if n := len([]rune(caption)); n > instagramCharLimit && !draft {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("The caption is %d characters long, Instagram allows %d", n, instagramCharLimit)})
 		return
 	}
@@ -175,6 +182,10 @@ func (h *ConventionHandler) PublishQuickReel(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	uid, _ := primitive.ObjectIDFromHex(userID.(string))
 	now := time.Now()
+	status := models.PostStatusScheduled
+	if draft {
+		status = models.PostStatusDraft
+	}
 	post := models.Post{
 		UserID:      uid,
 		TeamID:      queue.TeamID,
@@ -183,8 +194,8 @@ func (h *ConventionHandler) PublishQuickReel(c *gin.Context) {
 		ImageURLs:   []string{videoURL},
 		Platforms:   []models.Platform{models.PlatformInstagram},
 		ScheduledAt: quickReelTime(uploadedAt, now),
-		Status:      models.PostStatusScheduled,
-		Origin:      "quick-reel",
+		Status:      status,
+		Origin:      quickReelOrigin,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -198,7 +209,7 @@ func (h *ConventionHandler) PublishQuickReel(c *gin.Context) {
 	res, err := h.DB.Posts().InsertOne(ctx, post)
 	if err != nil {
 		cleanupUploads(h.DB, h.UploadDir, []string{videoURL})
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule the reel"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save the reel"})
 		return
 	}
 	post.ID = res.InsertedID.(primitive.ObjectID)

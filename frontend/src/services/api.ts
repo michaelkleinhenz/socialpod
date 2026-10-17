@@ -835,11 +835,13 @@ class ApiClient {
 
   // Quick Reel: schedules the rendered reel for Instagram, half an hour after
   // uploadedAt (the clip's upload).
-  publishQuickReel(queueId: string, video: Blob, caption: string, uploadedAt: Date, onProgress?: (share: number) => void) {
+  // Schedules the reel, or with draft keeps it as a draft.
+  publishQuickReel(queueId: string, video: Blob, caption: string, uploadedAt: Date, onProgress?: (share: number) => void, draft = false) {
     const form = new FormData();
     form.append('video', video, 'reel.mp4');
     form.append('caption', caption);
     form.append('uploadedAt', uploadedAt.toISOString());
+    if (draft) form.append('draft', 'true');
     return this.uploadWithProgress<import('../types').Post>(`/convention/queues/${queueId}/reel`, form, onProgress);
   }
 
