@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { MediaItem, MediaKind } from '../../types';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
-import { parseTemplate, type EditorTemplate } from '../Common/ImageEditor/editorModel';
+import { isVideoTemplate, parseTemplate, type EditorTemplate } from '../Common/ImageEditor/editorModel';
 import { ColorField, ColorFormModal } from './ColorFormModal';
 import { TemplateFormModal, type NewTemplate } from './TemplateFormModal';
 import { HEX_COLOR } from './mediaColor';
@@ -228,7 +228,8 @@ export function MediaPage() {
         it. Images marked as watermarks are the overlays offered by the cropper, the image editor, convention queues and
         the team settings; describe what each looks like and what it is for, e.g. "round logo for a corner" or "full-size
         frame with a banner at the bottom". Templates are designs for the image editor, which posts and stories can start
-        from when an image is created.
+        from when an image is created; video templates, with their length, music and animations, are offered when a
+        video is created.
       </p>
 
       <div className="media-toolbar">
@@ -325,9 +326,9 @@ export function MediaPage() {
                 ) : (
                   <img src={src(item.url)} alt={item.name} loading="lazy" />
                 )}
-                {isTemplate(item) && (
-                  <span className="media-badge"><LayoutTemplate size={12} /> Template</span>
-                )}
+                {isTemplate(item) && (isVideoTemplate(item.template)
+                  ? <span className="media-badge"><Film size={12} /> Video template</span>
+                  : <span className="media-badge"><LayoutTemplate size={12} /> Template</span>)}
                 {item.watermark && (
                   <span className="media-badge"><Stamp size={12} /> Watermark</span>
                 )}
@@ -414,6 +415,8 @@ export function MediaPage() {
             : undefined}
           template={designing.kind === 'edit' ? designing.template : undefined}
           title={designing.kind === 'new' ? `New template: ${designing.info.name}` : `Template: ${designing.item.name}`}
+          video={designing.kind === 'new' ? designing.info.video : !!designing.template.duration}
+          designOnly
           onSave={saveDesign}
           onCancel={() => setDesigning(null)}
         />

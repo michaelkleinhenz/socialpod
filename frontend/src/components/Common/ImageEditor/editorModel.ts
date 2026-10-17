@@ -782,6 +782,12 @@ export function parseTemplate(raw: string | undefined): EditorTemplate | null {
   }
 }
 
+// Whether a media library template is a video design (it has a length);
+// a video editor offers them, a still one does not.
+export function isVideoTemplate(raw: string | undefined): boolean {
+  return !!parseTemplate(raw)?.duration;
+}
+
 // Turns a template's layers into editor layers on the box target, loading its
 // images. Images that fail to load are left out and counted.
 export async function instantiateTemplate(

@@ -33,6 +33,9 @@ type TemplateDesign struct {
 	Height     float64         `json:"height"`
 	Background string          `json:"background"`
 	Layers     []TemplateLayer `json:"layers"`
+	// A video design's length in seconds (0 for a still); compose_image
+	// draws it as a still.
+	Duration float64 `json:"duration,omitempty"`
 }
 
 // TemplateLayer is one editor layer, in template pixels. Image and Font are
