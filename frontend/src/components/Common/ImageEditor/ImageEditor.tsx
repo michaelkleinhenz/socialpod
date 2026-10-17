@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type Ref } from 'react';
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
@@ -167,6 +167,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // Bumped to restart the playback from the playhead while it plays.
   const [playRun, setPlayRun] = useState(0);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
+  // The text layer being typed into on the picture itself.
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const editingTextRef = useRef<string | null>(null);
   const [fonts, setFonts] = useState<FontOption[]>(BUILTIN_FONTS);
   // Colour entries of the media library, offered before the built-in swatches.
   const [libraryColors, setLibraryColors] = useState<MediaItem[]>([]);
@@ -375,10 +378,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // None while painting: the brush works over the selected paint layer.
     const node = tab === 'crop'
       ? cropRectRef.current
-      : (selectedId && !playing && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
+      : (selectedId && !playing && selectedId !== editingTextId && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [tab, selectedId, layers, source, aspectId, brushMode, playing]);
+  }, [tab, selectedId, layers, source, aspectId, brushMode, playing, editingTextId]);
 
   // --- Undo -----------------------------------------------------------------
 
@@ -546,9 +549,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     onCancel();
   }, [dirty, saving, onCancel]);
 
-  // Keyboard: Escape leaves, Delete removes the selected layer, Ctrl/Cmd+Z
-  // and Ctrl/Cmd+Shift+Z (or Ctrl+Y) undo and redo — unless typing, where
-  // those keys belong to the field.
+  // Keyboard: Escape leaves, Delete removes the selected layer, the arrow
+  // keys move it (Shift for bigger steps), Enter types into a selected text,
+  // Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z (or Ctrl+Y) undo and redo — unless
+  // typing, where those keys belong to the field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -572,11 +576,19 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         return;
       }
       if (e.key === 'Escape') {
-        if (selectedId) setSelectedId(null);
+        // Ends typing on the picture, keeping the text selected.
+        if (editingTextId) finishTextEdit();
+        else if (selectedId) setSelectedId(null);
         else handleCancel();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && selectedId) {
         e.preventDefault();
         deleteSelected();
+      } else if (e.key.startsWith('Arrow') && !typing && !mod && selected && tab !== 'crop' && !painting) {
+        e.preventDefault();
+        nudgeSelected(e.key, e.shiftKey);
+      } else if (e.key === 'Enter' && !typing && t?.tagName !== 'BUTTON' && !mod && selected?.kind === 'text' && tab !== 'crop' && !painting) {
+        e.preventDefault();
+        startTextEdit(selected.id);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -600,6 +612,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // Selecting a layer opens the tab that edits it. An image layer keeps the
   // tab it is on when that tab handles images too.
   const selectLayer = (l: EditorLayer) => {
+    if (editingTextId && editingTextId !== l.id) finishTextEdit();
     setSelectedId(l.id);
     if (video) {
       seekInto(l);
@@ -1011,11 +1024,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     };
     const m = measureText(base);
     addLayer({ ...base, x: crop.x + (crop.width - m.width) / 2, y: crop.y + (crop.height - m.height) / 2 });
-    // Select the placeholder so typing replaces it. Not on touch: the
-    // keyboard would cover the picture straight away.
-    if (!isTouch) {
-      setTimeout(() => { textAreaRef.current?.focus(); textAreaRef.current?.select(); }, 0);
-    }
+    // Type straight onto the picture, the placeholder selected so typing
+    // replaces it. Not on touch: the keyboard would cover the picture
+    // straight away.
+    if (!isTouch) startTextEdit(base.id, { selectAll: true });
   };
 
   const toggleSnap = () => {
@@ -1063,6 +1075,66 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       y: selected.y + (crop.y + crop.height / 2) - (box.y + box.height / 2),
     });
   };
+
+  // Moves the selected layer by one screen pixel per arrow key press, ten
+  // with Shift, whatever the zoom. Held or repeated presses are one undo step.
+  const nudgeSelected = (key: string, big: boolean) => {
+    if (!selected) return;
+    const step = (big ? 10 : 1) / scale;
+    const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0;
+    const dy = key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0;
+    if (!dx && !dy) return;
+    updateLayer(selected.id, { x: selected.x + dx, y: selected.y + dy }, `nudge:${selected.id}`);
+  };
+
+  // Typing on the picture: the text is swapped for a field drawn in its
+  // place, in its font, size, colour and angle. One edit is one undo step.
+  const startTextEdit = (id: string, { selectAll = false } = {}) => {
+    startGesture();
+    editingTextRef.current = id;
+    setEditingTextId(id);
+    setTimeout(() => {
+      const el = textAreaRef.current;
+      if (!el) return;
+      el.focus();
+      if (selectAll) el.select();
+      else el.setSelectionRange(el.value.length, el.value.length);
+    }, 0);
+  };
+
+  // New text keeps the point its lines are aligned on (a centred text grows
+  // to both sides), the first line staying where it is.
+  const retypeText = (l: TextLayer, text: string): Pick<TextLayer, 'text' | 'x' | 'y'> => {
+    const align = l.align ?? 'center';
+    const share = align === 'left' ? 0 : align === 'right' ? 1 : 0.5;
+    const grow = (measureText({ ...l, text }).width - measureText(l).width) * share;
+    const rad = (l.rotation * Math.PI) / 180;
+    return { text, x: l.x - grow * Math.cos(rad), y: l.y - grow * Math.sin(rad) };
+  };
+
+  // A text left empty is removed, within the same undo step.
+  const finishTextEdit = () => {
+    // Escape and the field's blur can both end the same edit.
+    const id = editingTextRef.current;
+    if (!id) return;
+    editingTextRef.current = null;
+    setEditingTextId(null);
+    const l = layers.find(x => x.id === id);
+    if (l?.kind === 'text' && !l.text.trim()) {
+      checkpoint(`gesture:text:${id}`);
+      setLayers(prev => prev.filter(x => x.id !== id));
+      setSelectedId(s => (s === id ? null : s));
+    }
+    startGesture();
+  };
+
+  // An undo or a delete can take the text away while it is typed into.
+  useEffect(() => {
+    if (editingTextId && !layers.some(l => l.id === editingTextId)) {
+      editingTextRef.current = null;
+      setEditingTextId(null);
+    }
+  }, [editingTextId, layers]);
 
   // Folds a finished resize into the layer itself: an image's size, a text's
   // font size, so the text stays crisp and the size controls stay true.
@@ -1537,6 +1609,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </>
   );
 
+  const editingText = layers.find((l): l is TextLayer => l.id === editingTextId && l.kind === 'text') ?? null;
+
   const anchorSize = isTouch ? 22 : 11;
   const layerTransformer = tab !== 'crop';
   // Layers are picked and moved on every tab but Crop and a painting Brush,
@@ -1911,14 +1985,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           {tab === 'text' && (
             selected?.kind === 'text' ? (
               <>
-                <textarea
-                  ref={textAreaRef}
-                  className="ie-textarea"
-                  rows={2}
-                  value={selected.text}
-                  onChange={e => updateLayer(selected.id, { text: e.target.value }, `text:${selected.id}`)}
-                  placeholder="Text"
-                />
+                <p className="ie-hint">
+                  {editingTextId === selected.id
+                    ? 'Type on the picture. Enter starts a new line; Esc or a click outside finishes.'
+                    : 'Double-click the text (or press Enter) to type on the picture. Arrow keys move it, Shift in bigger steps.'}
+                </p>
+                {editingTextId !== selected.id && (
+                  <div className="ie-row">
+                    <button className="ie-chip" onClick={() => startTextEdit(selected.id)}><Type size={14} /> Edit text</button>
+                  </div>
+                )}
                 <div className="ie-row">
                   <select
                     className="ie-select"
@@ -2038,7 +2114,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                               key={l.id}
                               {...common}
                               {...(anim ? animatedTextAttrs(l, anim) : textLayerAttrs(l))}
-                              onDblClick={() => textAreaRef.current?.focus()}
+                              visible={editingTextId !== l.id}
+                              onDblClick={() => startTextEdit(l.id)}
+                              onDblTap={() => startTextEdit(l.id)}
                               onTransformEnd={e => onLayerTransformEnd(l, e.target)}
                             />,
                           );
@@ -2170,6 +2248,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   </Layer>
                 </Stage>
               )}
+              {editingText && (
+                <InlineTextEditor
+                  ref={textAreaRef}
+                  layer={editingText}
+                  scale={scale}
+                  origin={{ x: gx, y: gy }}
+                  onChange={text => updateLayer(editingText.id, retypeText(editingText, text), `gesture:text:${editingText.id}`)}
+                  onDone={finishTextEdit}
+                />
+              )}
             </div>
             {video && (
               <Timeline
@@ -2183,6 +2271,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 onSelect={l => { setPlaying(false); selectLayer(l); }}
                 onTiming={(l, a, key) => updateLayer(l.id, { anim: a }, key)}
                 onDragStart={startGesture}
+              />
+            )}
+            {editingText && (
+              <InlineTextEditor
+                ref={textAreaRef}
+                layer={editingText}
+                scale={scale}
+                origin={{ x: gx, y: gy }}
+                onChange={text => updateLayer(editingText.id, retypeText(editingText, text), `gesture:text:${editingText.id}`)}
+                onDone={finishTextEdit}
               />
             )}
           </div>
@@ -2224,4 +2322,59 @@ interface BoxLike {
   width: number;
   height: number;
   rotation: number;
+}
+
+// The field a text is typed into on the picture: laid over the text layer it
+// edits (hidden meanwhile) in its font, size, colour, outline, shadow and
+// angle, and grown with what is typed, so the text looks as it will once
+// done. Ctrl/Cmd+Enter or a click outside finishes; Escape is the editor's.
+function InlineTextEditor({ ref, layer, scale, origin, onChange, onDone }: {
+  ref: Ref<HTMLTextAreaElement>;
+  layer: TextLayer;
+  scale: number;
+  origin: { x: number; y: number };
+  onChange: (text: string) => void;
+  onDone: () => void;
+}) {
+  const a = textLayerAttrs(layer);
+  // An empty text still needs a line to put the caret on.
+  const m = measureText(layer.text ? layer : { ...layer, text: ' ' });
+  const fontSize = layer.fontSize * scale;
+  // The browser may set the letters a little wider than the canvas does;
+  // room so they never wrap or clip, taken from the side the alignment
+  // leaves free.
+  const room = Math.ceil(fontSize * 0.5) + 2;
+  const align = layer.align ?? 'center';
+  const shift = align === 'left' ? 0 : align === 'right' ? room : room / 2;
+  return (
+    <textarea
+      ref={ref}
+      className="ie-inline-text"
+      value={layer.text}
+      onChange={e => onChange(e.target.value)}
+      onBlur={onDone}
+      onKeyDown={e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onDone(); }
+      }}
+      spellCheck={false}
+      aria-label="Text"
+      style={{
+        left: origin.x + layer.x * scale,
+        top: origin.y + layer.y * scale,
+        width: m.width * scale + room,
+        height: m.height * scale,
+        transform: `rotate(${layer.rotation}deg) translateX(${-shift}px)`,
+        fontFamily: layer.fontFamily,
+        fontSize,
+        fontWeight: layer.bold ? 'bold' : 'normal',
+        textAlign: align,
+        color: layer.fill,
+        caretColor: layer.fill,
+        WebkitTextStroke: layer.outline ? `${(a.strokeWidth ?? 0) * scale}px ${a.stroke as string}` : undefined,
+        textShadow: layer.shadow
+          ? `${(a.shadowOffsetX ?? 0) * scale}px ${(a.shadowOffsetY ?? 0) * scale}px ${(a.shadowBlur ?? 0) * scale}px rgba(0, 0, 0, 0.6)`
+          : undefined,
+      }}
+    />
+  );
 }
