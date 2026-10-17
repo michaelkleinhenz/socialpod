@@ -1072,13 +1072,35 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const shift = { x: (t.mid.x - p.mid.x) / scale, y: (t.mid.y - p.mid.y) / scale };
     updateLayer(p.id, pinchedLayer(p.from, s, turn, shift), `gesture:pinch:${p.id}`);
   };
-  const onStageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+  const endPinch = () => {
     const p = pinch.current;
-    if (!p || e.evt.touches.length >= 2) return;
+    if (!p) return;
     pinch.current = null;
     nodeRefs.current.get(p.id)?.draggable(true);
     setMoving(false);
   };
+  const onStageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    if (e.evt.touches.length < 2) endPinch();
+  };
+
+  // A phone cancels a touch it takes over (an edge swipe, a long press, a
+  // notification). Konva's Transformer only ends a resize or turn on
+  // touchend, so after a cancel it would go on transforming: the next
+  // finger anywhere resized the object by the old handle, and the hit areas
+  // were no longer redrawn, so taps landed where handles had been. A pinch
+  // left the object undraggable the same way.
+  useEffect(() => {
+    const onCancel = () => {
+      if (trRef.current?.isTransforming()) trRef.current.stopTransform();
+      endPinch();
+    };
+    window.addEventListener('touchcancel', onCancel, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    return () => {
+      window.removeEventListener('touchcancel', onCancel, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+    };
+  });
 
   // --- Crop -----------------------------------------------------------------
 
@@ -1828,6 +1850,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // on top must not drag meanwhile; the drag starts once the pointer moves.
   // A plain tap or click selects the layer on top after all, or nothing
   // inside a large selected layer could be picked on the picture.
+  // The layer last picked in the Objects list, while it stays selected.
+  const pickedInList = useRef<string | null>(null);
+  const pickInList = (l: EditorLayer) => {
+    selectLayer(l);
+    pickedInList.current = l.id;
+  };
+
   const holdSelected = (node: Konva.Node, cover: Konva.Node, start: PointerEvent, tapped: EditorLayer) => {
     cover.draggable(false);
     const stage = node.getStage();
@@ -1852,7 +1881,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
       cover.draggable(true);
-      if (!moved && ev.type === 'pointerup') selectLayer(tapped);
+      if (!moved && ev.type === 'pointerup') {
+        pickedInList.current = null;
+        selectLayer(tapped);
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
@@ -1864,8 +1896,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (!e.evt.isPrimary) return;
     const pos = e.target.getStage()?.getPointerPosition();
     press.current = pos ? { ...pos, wasSelected: l.id === selectedId } : null;
-    const held = l.id !== selectedId ? selectedNodeAtPointer(e.target.getStage()) : null;
+    // On a touch screen only a layer picked in the Objects list is held: one
+    // selected on the picture (or just added, like a full-frame clip) would
+    // otherwise take every drag meant for the objects on top of it.
+    const holds = l.id !== selectedId && (!isTouch || pickedInList.current === selectedId);
+    const held = holds ? selectedNodeAtPointer(e.target.getStage()) : null;
     if (held) { holdSelected(held, e.currentTarget, e.evt, l); return; }
+    pickedInList.current = null;
     selectLayer(l);
   };
 
@@ -2825,9 +2862,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         <button className="ie-icon-btn" onClick={undo} title="Undo" aria-label="Undo" disabled={saving || undoStack.length === 0}>
           <Undo2 size={18} />
         </button>
-        <button className="ie-icon-btn" onClick={redo} title="Redo" aria-label="Redo" disabled={saving || redoStack.length === 0}>
-          <Redo2 size={18} />
-        </button>
+        {/* A phone's header has room for the essentials only: no redo and
+            no safe-zone switch (the zone always shows there). */}
+        {!phone && (
+          <button className="ie-icon-btn" onClick={redo} title="Redo" aria-label="Redo" disabled={saving || redoStack.length === 0}>
+            <Redo2 size={18} />
+          </button>
+        )}
         <button
           className={`ie-icon-btn ${snapOn ? 'active' : ''}`}
           onClick={toggleSnap}
@@ -2837,7 +2878,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <Magnet size={18} />
         </button>
-        {safeZone && (
+        {safeZone && !phone && (
           <button
             className={`ie-icon-btn ${showSafeZone ? 'active' : ''}`}
             onClick={toggleSafeZone}
@@ -2879,8 +2920,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
           {saving
-            ? <><Loader2 size={16} className="ie-spin" /> {exportProgress !== null ? `Exporting ${exportProgress}%` : 'Saving…'}</>
-            : video && !designOnly ? 'Export video' : 'Save'}
+            ? <><Loader2 size={16} className="ie-spin" /> {exportProgress !== null ? (phone ? `${exportProgress}%` : `Exporting ${exportProgress}%`) : 'Saving…'}</>
+            : video && !designOnly ? (phone ? 'Export' : 'Export video') : 'Save'}
         </button>
       </header>
 
@@ -3192,7 +3233,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       )}
                     </Group>
 
-                    {safeZone && showSafeZone && tab !== 'crop' && (
+                    {safeZone && (showSafeZone || phone) && tab !== 'crop' && (
                       <Group listening={false}>
                         {safeZoneRects(safeZone, { x: gx + crop.x * scale, y: gy + crop.y * scale, width: crop.width * scale, height: crop.height * scale }).map((z, i) => (
                           <Group key={`sz${i}`}>
@@ -3288,6 +3329,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       padding={layerTransformer ? 4 : 0}
                       rotateEnabled={layerTransformer && selected?.kind !== 'paint'}
                       rotateAnchorOffset={isTouch ? 36 : 28}
+                      // A finger that misses the small turn handle lands on
+                      // the background and deselects: on touch its hit area
+                      // is widened to about 46px.
+                      anchorStyleFunc={isTouch ? (a: Konva.Rect) => { if (a.hasName('rotater')) a.hitStrokeWidth(24); } : undefined}
                       rotationSnaps={[0, 90, 180, 270]}
                       flipEnabled={false}
                       ignoreStroke
@@ -3364,7 +3409,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 layers={layers}
                 selectedId={selectedId}
                 background={canvas ? { color: canvas.background } : { src: source?.src ?? photoUrl ?? '' }}
-                onSelect={selectLayer}
+                onSelect={pickInList}
                 onSelectBackground={() => { setSelectedId(null); if (canvasMode) setTab('canvas'); }}
                 onReorder={reorderLayers}
               />
@@ -3384,7 +3429,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               layers={layers}
               selectedId={selectedId}
               background={canvas ? { color: canvas.background } : { src: source?.src ?? photoUrl ?? '' }}
-              onSelect={l => { closeSheet(); selectLayer(l); }}
+              onSelect={l => { closeSheet(); pickInList(l); }}
               onSelectBackground={() => { closeSheet(); setSelectedId(null); if (canvasMode) openPhoneTool('canvas', 'background'); }}
               onReorder={reorderLayers}
             />
