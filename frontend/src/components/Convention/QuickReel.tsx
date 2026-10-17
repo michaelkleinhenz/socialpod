@@ -55,6 +55,8 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const clipRef = useRef('');
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const closedRef = useRef(false);
 
   // The queue's template, looked up in the media library.
   useEffect(() => {
@@ -71,11 +73,26 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
   }, [queue.reelTemplateId]);
 
   // The uploaded clip is temporary: once the reel is rendered and published
-  // nothing needs it, so it is let go when the dialog closes.
-  useEffect(() => () => {
-    abortRef.current?.abort();
-    if (clipRef.current) void api.releaseTemp([clipRef.current]).catch(() => {});
-    if (reelUrlRef.current) URL.revokeObjectURL(reelUrlRef.current);
+  // nothing needs it, so it is let go when the dialog closes, or when the
+  // page is left with the dialog open (closing the tab unmounts nothing).
+  // Whatever slips through (no connection at the time) the server's hourly
+  // cleanup frees a day later.
+  const releaseClip = () => {
+    if (!clipRef.current) return;
+    void api.releaseTemp([clipRef.current]).catch(() => {});
+    clipRef.current = '';
+  };
+  useEffect(() => {
+    const onPageHide = (e: PageTransitionEvent) => { if (!e.persisted) releaseClip(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      closedRef.current = true;
+      abortRef.current?.abort();
+      uploadAbortRef.current?.abort();
+      releaseClip();
+      if (reelUrlRef.current) URL.revokeObjectURL(reelUrlRef.current);
+    };
   }, []);
 
   const pickClip = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,15 +105,25 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
     }
     setUploadShare(0);
     setStep('uploading');
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
     try {
-      const { url } = await api.uploadTempWithProgress(file, setUploadShare);
+      const { url } = await api.uploadTempWithProgress(file, setUploadShare, controller.signal);
+      // Closed while the server was storing it: nothing will use it.
+      if (closedRef.current) {
+        void api.releaseTemp([url]).catch(() => {});
+        return;
+      }
       clipRef.current = url;
       setClipUrl(url);
       setUploadedAt(new Date());
       setStep('hints');
     } catch (err) {
+      if (closedRef.current) return;
       toast.error(err instanceof Error ? err.message : 'Upload failed');
       setStep('pick');
+    } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
     }
   };
 
