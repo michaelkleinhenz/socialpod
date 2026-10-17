@@ -925,9 +925,25 @@
 }
 
 @media (max-width: 768px) {
-  /* Room for the title on a phone: the icon alone. */
+  /* Room for the title on a phone: the icon alone, in a button as small
+     as the icon buttons, so the whole header fits a 360px screen. */
   .ie-draft span {
     display: none;
+  }
+
+  .ie-draft {
+    flex-shrink: 0;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+
+  .ie-save {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   /* The picture gets the room: the timeline's bars only while animating
