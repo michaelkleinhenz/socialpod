@@ -30,6 +30,9 @@ type templateLayerInfo struct {
 	Font     string  `json:"font,omitempty"`
 	FontSize float64 `json:"fontSize,omitempty"`
 	Src      string  `json:"src,omitempty"`
+	// A video clip of a reel template: a still leaves it out unless an image
+	// is swapped in for it.
+	Clip bool `json:"clip,omitempty"`
 	// shape: rect, ellipse or triangle, and its fill colour (empty: none).
 	Shape string `json:"shape,omitempty"`
 	Fill  string `json:"fill,omitempty"`
@@ -59,6 +62,7 @@ func templateLayerInfos(raw string) []templateLayerInfo {
 		case "image", "shape":
 			if l.Kind == "image" {
 				info.Src = l.Src
+				info.Clip = len(l.Clip) > 0
 			} else {
 				info.Shape = l.Shape
 				info.Fill = l.Fill
@@ -265,7 +269,9 @@ func applyTemplateChanges(t *services.TemplateDesign, rawChanges any, load func(
 
 	kept := t.Layers[:0]
 	for i, l := range t.Layers {
-		if !hide[i] {
+		// A video clip cannot be drawn on a still; an image swapped in for it
+		// can.
+		if !hide[i] && (len(l.Clip) == 0 || l.Image != nil) {
 			kept = append(kept, l)
 		}
 	}

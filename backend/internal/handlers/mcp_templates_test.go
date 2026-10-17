@@ -106,6 +106,26 @@ func TestApplyTemplateChanges(t *testing.T) {
 		t.Errorf("after hide %+v", design.Layers)
 	}
 
+	// A reel template's video clip is left out of a still, unless an image
+	// is swapped in for it.
+	design, _ = services.ParseTemplateDesign(`{"width":100,"height":100,"layers":[
+		{"kind":"image","src":"/api/uploads/clip.mp4","width":50,"height":50,"clip":{"trimStart":0,"volume":1,"duration":4}},
+		{"kind":"text","text":"Hi"}]}`)
+	if err := applyTemplateChanges(&design, nil, load); err != nil {
+		t.Fatal(err)
+	}
+	if len(design.Layers) != 1 || design.Layers[0].Kind != "text" {
+		t.Errorf("clip kept on a still: %+v", design.Layers)
+	}
+	design, _ = services.ParseTemplateDesign(`{"width":100,"height":100,"layers":[
+		{"kind":"image","src":"/api/uploads/clip.mp4","width":50,"height":50,"clip":{"trimStart":0,"volume":1,"duration":4}}]}`)
+	if err := applyTemplateChanges(&design, []any{map[string]any{"index": float64(0), "mediaId": "abc"}}, load); err != nil {
+		t.Fatal(err)
+	}
+	if len(design.Layers) != 1 || design.Layers[0].Image == nil {
+		t.Errorf("image swapped in for a clip left out: %+v", design.Layers)
+	}
+
 	for _, bad := range [][]any{
 		{map[string]any{"index": float64(3), "text": "x"}},
 		{map[string]any{"index": 1.5, "text": "x"}},

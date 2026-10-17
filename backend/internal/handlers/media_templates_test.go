@@ -26,6 +26,18 @@ func TestCheckTemplate(t *testing.T) {
 		t.Errorf("urls = %v, want %v", urls, want)
 	}
 
+	// A reel: its clips are image layers, its music track a file too.
+	_, _, urls, err = checkTemplate(`{"version":1,"width":1080,"height":1920,"background":"#000000","duration":10,"layers":[
+		{"kind":"image","src":"/api/uploads/clip.mp4","clip":{"trimStart":1,"volume":1,"duration":8},"anim":{"start":0,"end":5}},
+		{"kind":"text","text":"Hi","anim":{"start":2}}
+	],"audio":{"src":"/api/uploads/music.mp3","start":0,"trimStart":0,"volume":0.8,"fadeIn":1,"fadeOut":2}}`)
+	if err != nil {
+		t.Fatalf("reel: unexpected error: %v", err)
+	}
+	if want := []string{"/api/uploads/clip.mp4", "/api/uploads/music.mp3"}; !reflect.DeepEqual(urls, want) {
+		t.Errorf("reel urls = %v, want %v", urls, want)
+	}
+
 	bad := map[string]string{
 		"empty":         ``,
 		"not json":      `{`,

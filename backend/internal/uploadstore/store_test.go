@@ -3,6 +3,7 @@ package uploadstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,5 +74,16 @@ func TestListBucket(t *testing.T) {
 	}
 	if len(objs) != 1 || objs["a.jpg"].Size != 1 {
 		t.Fatalf("ListBucket: %+v", objs)
+	}
+}
+
+// Videos and sounds never go into a database record: without a bucket they
+// are refused before anything is stored.
+func TestSaveRefusesMediaWithoutBucket(t *testing.T) {
+	Configure(nil)
+	for _, ct := range []string{"video/mp4", "video/quicktime", "audio/mpeg"} {
+		if err := Save(context.Background(), nil, t.TempDir(), "1.bin", ct, []byte("x")); !errors.Is(err, ErrNeedsBucket) {
+			t.Errorf("%s: err = %v, want ErrNeedsBucket", ct, err)
+		}
 	}
 }

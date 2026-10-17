@@ -52,6 +52,11 @@ func checkDesign(raw string, maxJSON, maxSide int) (width, height int, urls []st
 			Kind string `json:"kind"`
 			Src  string `json:"src"`
 		} `json:"layers"`
+		// A video design's music track (image layers with a clip are its
+		// video clips, by src like any image).
+		Audio *struct {
+			Src string `json:"src"`
+		} `json:"audio"`
 	}
 	if err := json.Unmarshal([]byte(raw), &t); err != nil {
 		return 0, 0, nil, fmt.Errorf("template is not valid JSON: %v", err)
@@ -77,6 +82,11 @@ func checkDesign(raw string, maxJSON, maxSide int) (width, height int, urls []st
 			}
 		default:
 			return 0, 0, nil, fmt.Errorf("layer %d has an unknown kind %q", i+1, l.Kind)
+		}
+	}
+	if t.Audio != nil {
+		if uploadFilename(t.Audio.Src) != "" && !seen[t.Audio.Src] {
+			urls = append(urls, t.Audio.Src)
 		}
 	}
 	return int(t.Width + 0.5), int(t.Height + 0.5), urls, nil

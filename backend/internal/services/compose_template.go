@@ -51,6 +51,9 @@ type TemplateLayer struct {
 	CornerRadius float64         `json:"cornerRadius,omitempty"`
 	Border       *TemplateBorder `json:"border,omitempty"`
 	SrcCrop      *TemplateCrop   `json:"srcCrop,omitempty"`
+	// A video clip (a template made for a reel): only the editor plays it,
+	// so a still leaves it out unless an image takes its place.
+	Clip json.RawMessage `json:"clip,omitempty"`
 
 	// text
 	Text       string  `json:"text,omitempty"`
