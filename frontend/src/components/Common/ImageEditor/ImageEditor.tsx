@@ -17,6 +17,7 @@ import {
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
+import { geometricHitTest } from './hitTest';
 import { safeZoneRects, type SafeZoneKind } from './safeZones';
 import { LayerList } from './LayerList';
 import {
@@ -2898,25 +2899,30 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <LayersIcon size={18} />
         </button>
+        {/* On a phone the draft and template buttons are icon buttons like
+            the others: a labelled button with its label hidden came out
+            empty in Safari. */}
         {video && (
           <button
-            className="btn btn-secondary ie-draft"
+            className={phone ? 'ie-icon-btn' : 'btn btn-secondary ie-draft'}
             onClick={() => void saveAsTemplate()}
             disabled={!ready || saving || savingTemplate}
             title="Keep this design in the media library as a template for other videos"
+            aria-label="Save template"
           >
-            {savingTemplate ? <Loader2 size={16} className="ie-spin" /> : <LayoutTemplate size={16} />}
-            <span>Save template</span>
+            {savingTemplate ? <Loader2 size={phone ? 18 : 16} className="ie-spin" /> : <LayoutTemplate size={phone ? 18 : 16} />}
+            {!phone && <span>Save template</span>}
           </button>
         )}
         <button
-          className="btn btn-secondary ie-draft"
+          className={phone ? `ie-icon-btn ${draftClean ? 'active' : ''}` : 'btn btn-secondary ie-draft'}
           onClick={() => void saveDraft()}
           disabled={!ready || saving || savingDraft}
           title={draft ? `Save your work to the draft "${draft.name}" (Ctrl+S)` : 'Keep your work as a draft to finish later (Ctrl+S)'}
+          aria-label={draftClean ? 'Draft saved' : 'Save draft'}
         >
-          {savingDraft ? <Loader2 size={16} className="ie-spin" /> : <FilePen size={16} />}
-          <span>{draftClean ? 'Draft saved' : 'Save draft'}</span>
+          {savingDraft ? <Loader2 size={phone ? 18 : 16} className="ie-spin" /> : <FilePen size={phone ? 18 : 16} />}
+          {!phone && <span>{draftClean ? 'Draft saved' : 'Save draft'}</span>}
         </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
           {saving
@@ -3167,7 +3173,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   onPointerMove={e => { if (painting) extendStroke(e.target.getStage()); }}
                   onPointerLeave={() => setBrushAt(null)}
                 >
-                  <Layer>
+                  <Layer ref={geometricHitTest}>
                     <Group
                       ref={contentRef}
                       x={gx}

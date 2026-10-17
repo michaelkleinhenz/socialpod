@@ -930,20 +930,8 @@
 }
 
 @media (max-width: 768px) {
-  /* Room for the title on a phone: the icon alone, in a button as small
-     as the icon buttons, so the whole header fits a 360px screen. */
-  .ie-draft span {
-    display: none;
-  }
-
-  .ie-draft {
-    flex-shrink: 0;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-  }
-
+  /* Export keeps its width: with the draft and template buttons as icon
+     buttons the whole header fits a 360px screen. */
   .ie-save {
     flex-shrink: 0;
     white-space: nowrap;
