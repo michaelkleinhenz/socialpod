@@ -42,6 +42,9 @@ type TemplateLayer struct {
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 	Rotation float64 `json:"rotation"`
+	// How the layer mixes with what lies under it (compose_blend.go); normal
+	// when empty.
+	Blend string `json:"blend,omitempty"`
 
 	// image
 	Src          string          `json:"src,omitempty"`
@@ -159,16 +162,27 @@ func TemplateTextWidth(l TemplateLayer) float64 {
 // px).
 func drawTemplate(dst *image.RGBA, t TemplateDesign, s float64, fonts Fonts) {
 	for _, l := range t.Layers {
-		switch l.Kind {
-		case "image":
-			drawTemplateImage(dst, l, s)
-		case "text":
-			drawTemplateText(dst, l, s, fonts)
-		case "shape":
-			drawTemplateShape(dst, l, s)
-		case "paint":
-			drawTemplatePaint(dst, l, s)
+		if isBlendMode(l.Blend) {
+			// Drawn on its own first, then blended onto what is below.
+			buf := image.NewRGBA(dst.Bounds())
+			drawTemplateLayer(buf, l, s, fonts)
+			blendOnto(dst, buf, l.Blend)
+			continue
 		}
+		drawTemplateLayer(dst, l, s, fonts)
+	}
+}
+
+func drawTemplateLayer(dst *image.RGBA, l TemplateLayer, s float64, fonts Fonts) {
+	switch l.Kind {
+	case "image":
+		drawTemplateImage(dst, l, s)
+	case "text":
+		drawTemplateText(dst, l, s, fonts)
+	case "shape":
+		drawTemplateShape(dst, l, s)
+	case "paint":
+		drawTemplatePaint(dst, l, s)
 	}
 }
 

@@ -4,16 +4,16 @@ import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label,
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Music, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
-  ALargeSmall, Blend, CaseSensitive, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
+  ALargeSmall, Blend, CaseSensitive, Contrast, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
-  applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
+  applyAdjustments, BLEND_MODES, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
   instantiateTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
   shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
-  type Adjustments, type AudioTrack, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
+  type Adjustments, type AudioTrack, type BlendMode, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
@@ -868,10 +868,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const phoneToolIds = (l: EditorLayer | null): string[] => {
     if (!l) return ['crop', 'filters', 'canvas', 'shapes', 'brush'];
     switch (l.kind) {
-      case 'text': return ['font', 'size', 'color', 'align', 'style', 'animate'];
-      case 'image': return ['clip', 'opacity', 'corners', 'border', 'animate'];
-      case 'shape': return ['shape', 'fill', 'border', 'corners', 'opacity', 'animate'];
-      default: return ['brush', 'animate'];
+      case 'text': return ['font', 'size', 'color', 'align', 'style', 'blend', 'animate'];
+      case 'image': return ['clip', 'opacity', 'blend', 'corners', 'border', 'animate'];
+      case 'shape': return ['shape', 'fill', 'border', 'corners', 'opacity', 'blend', 'animate'];
+      default: return ['brush', 'blend', 'animate'];
     }
   };
 
@@ -2154,7 +2154,32 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </div>
   );
 
-  // Opacity, corners, border, fit, centre, replace and remove for the
+  // How the layer mixes with what lies under it: a list in the desktop
+  // panel, chips in the phone's tray.
+  const blendSelect = (l: EditorLayer) => (
+    <label className="ie-field">
+      <span>Blend</span>
+      <select
+        className="ie-select"
+        value={l.blend ?? 'normal'}
+        onChange={e => updateLayer(l.id, { blend: e.target.value as BlendMode })}
+        aria-label="Blend mode"
+      >
+        {BLEND_MODES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+      </select>
+    </label>
+  );
+  const blendChips = (l: EditorLayer) => (
+    <div className="ie-row ie-scroll">
+      {BLEND_MODES.map(m => (
+        <button key={m.id} className={`ie-chip ${(l.blend ?? 'normal') === m.id ? 'active' : ''}`} onClick={() => updateLayer(l.id, { blend: m.id })}>
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Opacity, blend, corners, border, fit, centre, replace and remove for the
   // selected image layer.
   const imageLayerControls = selected?.kind === 'image' && (
     <>
@@ -2170,6 +2195,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         />
         <span className="ie-value">{Math.round(selected.opacity * 100)}%</span>
       </label>
+      {blendSelect(selected)}
       <label className="ie-slider">
         <span>Corners</span>
         <input
@@ -2219,7 +2245,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </>
   );
 
-  // Shape, fill, border, corners and opacity of the selected shape.
+  // Shape, fill, border, corners, opacity and blend of the selected shape.
   const shapeControls = (l: ShapeLayer) => (
     <>
       <span className="ie-label ie-section">Shape</span>
@@ -2269,6 +2295,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         />
         <span className="ie-value">{Math.round(l.opacity * 100)}%</span>
       </label>
+      {blendSelect(l)}
       <div className="ie-row ie-scroll">
         <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
         <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove</button>
@@ -2582,6 +2609,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           toolItem('color', 'Colour', Palette),
           toolItem('align', 'Align', AlignCenter),
           toolItem('style', 'Style', Bold),
+          toolItem('blend', 'Blend', Contrast),
           ...animate,
           centre,
         ];
@@ -2590,6 +2618,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           actionItem('replace', 'Replace', Replace, () => placeInputRef.current?.click(), placingImage),
           ...(l.clip ? [toolItem('clip', 'Clip', Volume2, 'volume')] : []),
           toolItem('opacity', 'Opacity', Blend),
+          toolItem('blend', 'Blend', Contrast),
           toolItem('corners', 'Corners', SquareRoundCorner),
           toolItem('border', 'Border', SquareDashed, 'style'),
           actionItem('fit', 'Fit', Maximize, fitSelectedImage),
@@ -2603,11 +2632,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           toolItem('border', 'Border', SquareDashed, 'width'),
           ...(l.shape === 'rect' ? [toolItem('corners', 'Corners', SquareRoundCorner)] : []),
           toolItem('opacity', 'Opacity', Blend),
+          toolItem('blend', 'Blend', Contrast),
           ...animate,
           centre,
         ];
       default:
-        return [toolItem('brush', 'Brush', Brush, 'size'), ...animate];
+        return [toolItem('brush', 'Brush', Brush, 'size'), toolItem('blend', 'Blend', Contrast), ...animate];
     }
   };
 
@@ -2664,6 +2694,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       const subs = [{ id: 'timing', label: 'Timing' }, { id: 'in', label: 'Comes in' }, { id: 'loop', label: 'While shown' }, { id: 'out', label: 'Goes out' }];
       return { subs, body: animateControls(l, pick(subs) as AnimPart) };
     }
+    if (phoneTool === 'blend') return { body: blendChips(l) };
     if (l.kind === 'text') {
       switch (phoneTool) {
         case 'font':
@@ -2954,6 +2985,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       ? 'New strokes go into the selected paint layer. Start a new layer to keep them apart.'
                       : 'Drag the paint to move it.'}
                   </p>
+                  {blendSelect(selected)}
                   <div className="ie-row">
                     <button className="ie-chip" onClick={() => { setSelectedId(null); setBrushMode('paint'); }}><Plus size={14} /> New layer</button>
                     <button className="ie-chip danger" onClick={deleteSelected}><Trash2 size={14} /> Remove layer</button>
@@ -3017,6 +3049,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   {alignButtons(selected)}
                 </div>
                 {colorRow(selected.fill, (c, key) => updateLayer(selected.id, { fill: c }, key), `fill:${selected.id}`)}
+                {blendSelect(selected)}
                 <div className="ie-row ie-scroll">
                   {textStyleChips(selected)}
                   <button className="ie-chip" onClick={centreSelected}><Crosshair size={14} /> Centre</button>
@@ -3098,7 +3131,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                         if (l.kind === 'paint') {
                           return wrap(
                             <Fragment key={l.id}>
-                              <Group {...common} x={l.x} y={l.y}>
+                              <Group {...common} x={l.x} y={l.y} {...blendAttrs(l)}>
                                 {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
                               </Group>
                               {drawing && l.id === selectedId && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
