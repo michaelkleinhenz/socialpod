@@ -9,6 +9,8 @@ export interface NewTemplate {
   tags: string[];
   width: number;
   height: number;
+  // A video template: designed with a length, music and animations.
+  video: boolean;
 }
 
 interface Props {
@@ -22,6 +24,13 @@ export function TemplateFormModal({ onClose, onContinue }: Props) {
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState('');
   const [formatId, setFormatId] = useState('4:5');
+  const [video, setVideo] = useState(false);
+
+  // A video is usually a reel or story, a still usually a feed post.
+  const changeType = (v: boolean) => {
+    setVideo(v);
+    setFormatId(v ? '9:16' : '4:5');
+  };
 
   const proceed = () => {
     const format = CANVAS_FORMATS.find(f => f.id === formatId) ?? CANVAS_FORMATS[0];
@@ -31,6 +40,7 @@ export function TemplateFormModal({ onClose, onContinue }: Props) {
       tags: tags.split(/[,;]/).map(t => t.trim().replace(/^#/, '').toLowerCase()).filter(Boolean),
       width: format.width,
       height: format.height,
+      video,
     });
   };
 
@@ -46,6 +56,13 @@ export function TemplateFormModal({ onClose, onContinue }: Props) {
         <div className="form-group">
           <label>Name</label>
           <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. News card" autoFocus />
+        </div>
+        <div className="form-group">
+          <label>Type</label>
+          <select className="select" value={video ? 'video' : 'image'} onChange={e => changeType(e.target.value === 'video')}>
+            <option value="image">Image</option>
+            <option value="video">Video (length, music and animations, for reels and stories)</option>
+          </select>
         </div>
         <div className="form-group">
           <label>Format</label>

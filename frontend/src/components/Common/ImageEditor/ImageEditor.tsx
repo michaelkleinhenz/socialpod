@@ -11,7 +11,7 @@ import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BLEND_MODES, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
+  instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
   shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
   type Adjustments, type AudioTrack, type BlendMode, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
@@ -151,6 +151,9 @@ interface Props {
   // Shades where Instagram's own interface covers a reel or a story (header,
   // icons, caption), switchable in the header and never exported.
   safeZone?: SafeZoneKind;
+  // Editing a media library template: for a video, Save hands over the design
+  // with the frame at the playhead as its preview instead of exporting the MP4.
+  designOnly?: boolean;
   // The rendered JPEG (an MP4 for a video), and the design as a template
   // (the crop as its canvas).
   onSave: (blob: Blob, design: EditorTemplate) => void | Promise<void>;
@@ -164,7 +167,7 @@ const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
-export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, safeZone, onSave, onCancel }: Props) {
+export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, safeZone, designOnly = false, onSave, onCancel }: Props) {
   // The photo being edited; a draft restored here can bring its own, or
   // none (a blank canvas).
   const [photoUrl, setPhotoUrl] = useState(imageUrl || undefined);
@@ -386,8 +389,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       api.getMedia({ kind: 'template', limit: 200 }),
       api.getImageDrafts().catch(() => [] as ImageDraft[]),
     ])
-      .then(([items, saved]) => {
+      .then(([all, saved]) => {
         if (cancelled) return;
+        // A still editor leaves out video templates, whose animations and
+        // clips it cannot play.
+        const items = video ? all : all.filter(t => !isVideoTemplate(t.template));
         setTemplates(items);
         setDrafts(saved);
         // With nothing to start from, a new canvas opens on its own settings.
@@ -395,7 +401,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       })
       .catch(() => { if (!cancelled) { setTemplates([]); setDrafts(d => d ?? []); toast.error('Failed to load the templates'); } });
     return () => { cancelled = true; };
-  }, [templatesOpened, templates, canvasMode]);
+  }, [templatesOpened, templates, canvasMode, video]);
 
   // Media library: fetched once the Media tab has been opened, then again as
   // the search changes.
@@ -1744,7 +1750,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const save = async () => {
     if (!ready || !crop || saving) return;
-    if (video) { await saveVideo(); return; }
+    if (video && !designOnly) { await saveVideo(); return; }
+    if (video) setPlaying(false);
     setSaving(true);
     try {
       const blob = await renderEdit({
@@ -1752,9 +1759,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         background: canvas?.background,
         crop,
         adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
-        layers,
+        // A video template's preview is the frame at the playhead.
+        layers: video ? layersAt(layers, time, duration) : layers,
       });
-      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff'));
+      await onSave(blob, video
+        ? toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio)
+        : toTemplate(crop, layers, canvas?.background ?? '#ffffff'));
     } catch (err) {
       const e = err instanceof Error ? err : null;
       toast.error(e?.name === 'SecurityError'
@@ -2408,6 +2418,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 title={t.description ? `${t.name}: ${t.description}` : t.name}
               >
                 <img src={resolveUrl(t.url)} alt="" loading="lazy" />
+                {video && isVideoTemplate(t.template) && <Film size={14} className="ie-tile-badge" aria-label="Video template" />}
                 <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
               </button>
             ))}
@@ -2869,7 +2880,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
           {saving
             ? <><Loader2 size={16} className="ie-spin" /> {exportProgress !== null ? `Exporting ${exportProgress}%` : 'Saving…'}</>
-            : video ? 'Export video' : 'Save'}
+            : video && !designOnly ? 'Export video' : 'Save'}
         </button>
       </header>
 

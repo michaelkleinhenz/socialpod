@@ -104,6 +104,7 @@ func imageToolDefinitions() []mcpTool {
 				"and its description says how and where the team uses it; follow that. " +
 				"A template is a design of the team's image editor: its templateLayers list each layer by index (texts with their wording, images and shapes with their frame, paint as brush strokes), " +
 				"and compose_image with template draws it with the texts and images you swap in. " +
+				"A video template (for reels and stories) has a templateDuration in seconds; compose_image draws it as a still, without its animations, and leaves its video clips out unless an image is swapped in. " +
 				"With preview=true a small thumbnail of each hit (up to 12) is attached; for a font, a text sample set in it; for a template, its preview.",
 			InputSchema: map[string]any{
 				"type": "object",
@@ -470,6 +471,8 @@ type mediaInfo struct {
 	// TemplateLayers describes a template's layers for compose_image; the
 	// design's JSON itself is left out.
 	TemplateLayers []templateLayerInfo `json:"templateLayers,omitempty"`
+	// TemplateDuration is a video template's length in seconds.
+	TemplateDuration float64 `json:"templateDuration,omitempty"`
 }
 
 func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bool) {
@@ -485,6 +488,9 @@ func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bo
 		info := mediaInfo{MediaItem: it, AbsoluteURL: absoluteURL(c, it.URL)}
 		if it.ContentType == models.MediaTemplateType {
 			info.TemplateLayers = templateLayerInfos(it.Template)
+			if t, err := services.ParseTemplateDesign(it.Template); err == nil {
+				info.TemplateDuration = t.Duration
+			}
 			info.Template = ""
 		}
 		out = append(out, info)
