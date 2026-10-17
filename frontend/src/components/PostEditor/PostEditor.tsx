@@ -1912,6 +1912,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       {creatingVideo && (
         <ImageEditor
           video
+          safeZone={isReel ? 'reel' : 'story'}
           canvas={{ width: 1080, height: 1920, background: '#000000' }}
           title={isReel ? 'Create reel' : 'Create story video'}
           onCancel={() => setCreatingVideo(false)}

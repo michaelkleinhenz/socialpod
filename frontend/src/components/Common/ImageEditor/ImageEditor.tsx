@@ -3,7 +3,7 @@ import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
-  Move, Music, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
+  Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
   ALargeSmall, Blend, CaseSensitive, Contrast, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -17,6 +17,7 @@ import {
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
+import { safeZoneRects, type SafeZoneKind } from './safeZones';
 import { LayerList } from './LayerList';
 import {
   animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt,
@@ -123,6 +124,8 @@ const TOUCH_SLOP = 16;
 const GUIDE_COLOR = '#ff2d95';
 const SNAP_STORAGE_KEY = 'socialpod.imageEditor.snap';
 const LOOP_STORAGE_KEY = 'socialpod.imageEditor.loop';
+const SAFE_ZONE_STORAGE_KEY = 'socialpod.imageEditor.safeZone';
+const SAFE_ZONE_FILL = 'rgba(255, 45, 85, 0.3)';
 
 // Around the image on screen, so crop and transform handles stay reachable.
 const STAGE_PADDING = 20;
@@ -145,6 +148,9 @@ interface Props {
   // show for a span of it and come in, move and go out with an effect, and
   // Save exports an MP4 instead of a JPEG.
   video?: boolean;
+  // Shades where Instagram's own interface covers a reel or a story (header,
+  // icons, caption), switchable in the header and never exported.
+  safeZone?: SafeZoneKind;
   // The rendered JPEG (an MP4 for a video), and the design as a template
   // (the crop as its canvas).
   onSave: (blob: Blob, design: EditorTemplate) => void | Promise<void>;
@@ -158,7 +164,7 @@ const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
-export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, onSave, onCancel }: Props) {
+export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, safeZone, onSave, onCancel }: Props) {
   // The photo being edited; a draft restored here can bring its own, or
   // none (a blank canvas).
   const [photoUrl, setPhotoUrl] = useState(imageUrl || undefined);
@@ -264,6 +270,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
   });
   const [guides, setGuides] = useState<SnapResult | null>(null);
+  const [showSafeZone, setShowSafeZone] = useState(() => {
+    try { return localStorage.getItem(SAFE_ZONE_STORAGE_KEY) !== 'off'; } catch { return true; }
+  });
   const [brush, setBrush] = useState<BrushSettings>(DEFAULT_BRUSH);
   // The stroke being painted, in picture pixels, and where the brush is.
   const [drawing, setDrawing] = useState<PaintStroke | null>(null);
@@ -1496,6 +1505,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // replaces it. Not on touch: the keyboard would cover the picture
     // straight away.
     if (!isTouch) startTextEdit(base.id, { selectAll: true });
+  };
+
+  const toggleSafeZone = () => {
+    setShowSafeZone(on => {
+      try { localStorage.setItem(SAFE_ZONE_STORAGE_KEY, on ? 'off' : 'on'); } catch { /* per-viewer convenience only */ }
+      return !on;
+    });
   };
 
   const toggleSnap = () => {
@@ -2810,6 +2826,17 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <Magnet size={18} />
         </button>
+        {safeZone && (
+          <button
+            className={`ie-icon-btn ${showSafeZone ? 'active' : ''}`}
+            onClick={toggleSafeZone}
+            title={showSafeZone ? `Hide the ${safeZone} safe zone` : `Show the ${safeZone} safe zone (where Instagram's text and icons cover the video)`}
+            aria-label="Safe zone"
+            aria-pressed={showSafeZone}
+          >
+            <Smartphone size={18} />
+          </button>
+        )}
         <button
           className={`ie-icon-btn ${(phone ? sheet === 'layers' : showLayers) ? 'active' : ''}`}
           onClick={() => (phone ? openSheet('layers') : setShowLayers(v => !v))}
@@ -3153,6 +3180,19 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                         <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
                       )}
                     </Group>
+
+                    {safeZone && showSafeZone && tab !== 'crop' && (
+                      <Group listening={false}>
+                        {safeZoneRects(safeZone, { x: gx + crop.x * scale, y: gy + crop.y * scale, width: crop.width * scale, height: crop.height * scale }).map((z, i) => (
+                          <Group key={`sz${i}`}>
+                            <Rect x={z.x} y={z.y} width={z.width} height={z.height} fill={SAFE_ZONE_FILL} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={1} dash={[4, 4]} />
+                            {z.width > 60 && (
+                              <KText x={z.x + 4} y={z.y + 4} width={z.width - 8} text={z.label} fontSize={11} fill="#ffffff" shadowColor="#000000" shadowBlur={2} shadowOpacity={0.8} />
+                            )}
+                          </Group>
+                        ))}
+                      </Group>
+                    )}
 
                     {guides && tab !== 'crop' && (
                       <Group listening={false}>
