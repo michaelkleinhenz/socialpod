@@ -5,9 +5,11 @@ import { buildLayerNode, clamp, measureText, textLayerAttrs, type AudioTrack, ty
 // come in, move and go out with a preset effect. Everything is a pure function
 // of the time, so the preview, a scrub and the export draw the same frame.
 
-export type EnterEffect = 'none' | 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'wipe-right' | 'wipe-left' | 'typewriter';
-export type ExitEffect = 'none' | 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'wipe-right' | 'wipe-left';
-export type LoopEffect = 'none' | 'pulse' | 'float' | 'wiggle' | 'spin';
+export type EnterEffect = 'none' | 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'pop' | 'wipe-right' | 'wipe-left'
+  | 'flicker' | 'tumble' | 'spin' | 'bungee' | 'shrink' | 'typewriter';
+export type ExitEffect = 'none' | 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'wipe-right' | 'wipe-left'
+  | 'flicker' | 'tumble' | 'spin' | 'pop' | 'grow';
+export type LoopEffect = 'none' | 'pulse' | 'float' | 'wiggle' | 'spin' | 'breathe' | 'bob' | 'yoyo' | 'jitter' | 'blink' | 'flicker';
 
 // When a layer shows and how it moves, in seconds of the video. Without it a
 // layer shows the whole time and does not move.
@@ -33,6 +35,11 @@ export const ENTER_EFFECTS: { id: EnterEffect; label: string; textOnly?: boolean
   { id: 'pop', label: 'Pop' },
   { id: 'wipe-right', label: 'Wipe right' },
   { id: 'wipe-left', label: 'Wipe left' },
+  { id: 'flicker', label: 'Flicker' },
+  { id: 'tumble', label: 'Tumble' },
+  { id: 'spin', label: 'Spin' },
+  { id: 'bungee', label: 'Bungee' },
+  { id: 'shrink', label: 'Shrink' },
   { id: 'typewriter', label: 'Typewriter', textOnly: true },
 ];
 
@@ -46,6 +53,11 @@ export const EXIT_EFFECTS: { id: ExitEffect; label: string }[] = [
   { id: 'zoom', label: 'Zoom' },
   { id: 'wipe-right', label: 'Wipe right' },
   { id: 'wipe-left', label: 'Wipe left' },
+  { id: 'flicker', label: 'Flicker' },
+  { id: 'tumble', label: 'Tumble' },
+  { id: 'spin', label: 'Spin' },
+  { id: 'pop', label: 'Pop' },
+  { id: 'grow', label: 'Grow' },
 ];
 
 export const LOOP_EFFECTS: { id: LoopEffect; label: string }[] = [
@@ -54,6 +66,12 @@ export const LOOP_EFFECTS: { id: LoopEffect; label: string }[] = [
   { id: 'float', label: 'Float' },
   { id: 'wiggle', label: 'Wiggle' },
   { id: 'spin', label: 'Spin' },
+  { id: 'breathe', label: 'Breathe' },
+  { id: 'bob', label: 'Bob' },
+  { id: 'yoyo', label: 'Yoyo' },
+  { id: 'jitter', label: 'Jitter' },
+  { id: 'blink', label: 'Blink' },
+  { id: 'flicker', label: 'Flicker' },
 ];
 
 // Instagram takes reels of 3 seconds and more; 90 is plenty for a design.
@@ -99,6 +117,29 @@ const easeOut = (p: number) => 1 - Math.pow(1 - p, 3);
 const easeIn = (p: number) => p * p * p;
 // Overshoots a little and settles, for Pop.
 const easeOutBack = (p: number) => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
+// Overshoots and springs back a few times, for Bungee.
+const easeOutElastic = (p: number) => (p <= 0 ? 0 : p >= 1 ? 1 : Math.pow(2, -10 * p) * Math.sin((p * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1);
+
+// A fixed pseudo-random number in [0, 1) for step n, so a flicker or a
+// jitter is the same on every play and in the export.
+const noise = (n: number) => {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+// A number per layer, so layers that flicker at once do not flicker alike.
+function layerSeed(l: EditorLayer): number {
+  let h = 0;
+  for (let i = 0; i < l.id.length; i++) h = (h * 31 + l.id.charCodeAt(i)) % 9973;
+  return h;
+}
+
+// Whether a flickering layer is on at progress p (0 to 1) of an enter:
+// off and on in ten steps, on more often as it goes, and on at the end.
+function flickerOn(p: number, seed: number): boolean {
+  if (p >= 0.9) return true;
+  return noise(seed + Math.floor(p * 10)) < p + 0.1;
+}
 
 // The state of layer l at time t. box is the frame, which sets how far a
 // slide travels.
@@ -110,6 +151,7 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
   if (t < start || t > end || (t === end && end < duration)) return { ...IDENTITY, visible: false };
   const s: AnimState = { ...IDENTITY };
   const travel = Math.min(box.width, box.height) * 0.25;
+  const seed = layerSeed(l);
   const length = end - start;
   // Enter and exit share the span when it is too short for both.
   const enterLen = a.enter === 'none' ? 0 : Math.min(a.enterDuration, length / (a.exit === 'none' ? 1 : 2));
@@ -132,6 +174,14 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
       case 'pop': s.scale *= Math.max(0, easeOutBack(p)); s.opacity *= clamp(p * 3, 0, 1); break;
       case 'wipe-right': s.reveal = { from: 'left', share: e }; break;
       case 'wipe-left': s.reveal = { from: 'right', share: e }; break;
+      case 'flicker': if (!flickerOn(p, seed)) s.opacity = 0; break;
+      // Rolls in from a half turn back, growing.
+      case 'tumble': s.rotation -= 180 * (1 - e); s.scale *= 0.3 + 0.7 * e; s.opacity *= e; break;
+      case 'spin': s.rotation -= 360 * (1 - e); s.scale *= 0.5 + 0.5 * e; s.opacity *= e; break;
+      // Drops from above and springs on its rope until it settles.
+      case 'bungee': s.dy -= travel * 2 * (1 - easeOutElastic(p)); s.opacity *= clamp(p * 4, 0, 1); break;
+      // Comes in large and shrinks into place.
+      case 'shrink': s.scale *= 1.8 - 0.8 * e; s.opacity *= e; break;
       case 'typewriter':
         if (l.kind === 'text') s.chars = Math.floor(p * l.text.length);
         else s.opacity *= p;
@@ -148,6 +198,14 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
       // Wipes away towards the side it names.
       case 'wipe-right': s.reveal = { from: 'right', share: 1 - e }; break;
       case 'wipe-left': s.reveal = { from: 'left', share: 1 - e }; break;
+      case 'flicker': if (!flickerOn(1 - q, seed + 50)) s.opacity = 0; break;
+      case 'tumble': s.rotation += 180 * e; s.scale *= 1 - 0.7 * e; s.opacity *= 1 - e; break;
+      case 'spin': s.rotation += 360 * e; s.scale *= 1 - 0.5 * e; s.opacity *= 1 - e; break;
+      // Swells a little, then snaps away.
+      case 'pop':
+        s.scale *= q < 0.3 ? 1 + 0.15 * easeOut(q / 0.3) : 1.15 * (1 - easeIn((q - 0.3) / 0.7));
+        break;
+      case 'grow': s.scale *= 1 + 0.8 * e; s.opacity *= 1 - e; break;
       // Slides out the way it would come in.
       default: slide(a.exit, -e); s.opacity *= 1 - e;
     }
@@ -160,6 +218,29 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
     case 'float': s.dy += Math.min(box.width, box.height) * 0.015 * wave(2.4); break;
     case 'wiggle': s.rotation += 4 * wave(0.8); break;
     case 'spin': s.rotation += (360 * since) / 4; break;
+    // Slow and soft, swelling and dimming a little like a breath.
+    case 'breathe': {
+      const b = (1 - Math.cos((2 * Math.PI * since) / 3.2)) / 2;
+      s.scale *= 1 + 0.05 * b;
+      s.opacity *= 1 - 0.15 * b;
+      break;
+    }
+    // Hops up and drops back, landing each second.
+    case 'bob': s.dy -= Math.min(box.width, box.height) * 0.03 * Math.abs(Math.sin(Math.PI * since)); break;
+    case 'yoyo': s.dx += Math.min(box.width, box.height) * 0.03 * wave(2); break;
+    // A nervous shake, a new offset twelve times a second.
+    case 'jitter': {
+      const n = seed + Math.floor(since * 12) * 3;
+      const amp = Math.min(box.width, box.height) * 0.006;
+      s.dx += (noise(n) - 0.5) * 2 * amp;
+      s.dy += (noise(n + 1) - 0.5) * 2 * amp;
+      s.rotation += (noise(n + 2) - 0.5) * 2;
+      break;
+    }
+    // Off for the last quarter of every second.
+    case 'blink': if (since % 1 >= 0.75) s.opacity = 0; break;
+    // Mostly on, dimming now and then for a moment, like a failing bulb.
+    case 'flicker': if (noise(seed + Math.floor(since * 15)) < 0.1) s.opacity *= 0.25; break;
   }
   return s;
 }
