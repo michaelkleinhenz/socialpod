@@ -5,7 +5,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Brush, Circle, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
+import { Brush, Circle, Film, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
 import { layerName, type EditorLayer } from './editorModel';
 
 // Rows only move up and down.
@@ -102,7 +102,7 @@ function layerIcon(layer: EditorLayer) {
     case 'text': return <Type size={12} />;
     case 'shape': return layer.shape === 'ellipse' ? <Circle size={12} /> : layer.shape === 'triangle' ? <Triangle size={12} /> : <Square size={12} />;
     case 'paint': return <Brush size={12} />;
-    default: return layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />;
+    default: return layer.clip ? <Film size={12} /> : layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />;
   }
 }
 
@@ -128,6 +128,8 @@ function layerThumb(layer: EditorLayer) {
       return <span className="ie-layer-paint" style={{ background: `radial-gradient(circle, ${st?.color ?? '#000000'} 0%, transparent 70%)`, opacity: Math.max(0.4, st?.opacity ?? 1) }} />;
     }
     default:
-      return <img src={layer.img.src} alt="" />;
+      // A clip's thumbnail is its first frame, the video itself.
+      if (layer.clip) return <video src={layer.img instanceof HTMLVideoElement ? layer.img.src : ''} muted preload="metadata" />;
+      return <img src={layer.img instanceof HTMLImageElement ? layer.img.src : ''} alt="" />;
   }
 }

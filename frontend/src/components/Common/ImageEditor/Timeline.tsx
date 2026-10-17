@@ -1,7 +1,7 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
-import { Pause, Play, SkipBack } from 'lucide-react';
-import { formatTime, layerAnim, layerSpan, type LayerAnim } from './animation';
-import { clamp, layerName, type EditorLayer } from './editorModel';
+import { Music, Pause, Play, SkipBack } from 'lucide-react';
+import { formatTime, layerAnim, layerSpan, musicSpan, type LayerAnim } from './animation';
+import { clamp, layerName, type AudioTrack, type EditorLayer } from './editorModel';
 
 interface Props {
   // In drawing order, like the Objects list; shown top first.
@@ -16,6 +16,10 @@ interface Props {
   // A drag of a bar: key keeps the whole drag one undo step.
   onTiming: (layer: EditorLayer, anim: LayerAnim, key: string) => void;
   onDragStart: () => void;
+  // The music, a bar of its own, dragged to move where it starts.
+  audio: AudioTrack | null;
+  onMusicStart: (start: number, key: string) => void;
+  onSelectMusic: () => void;
 }
 
 // Spans snap to a tenth of a second.
@@ -24,7 +28,7 @@ const snap = (v: number) => Math.round(v / STEP) * STEP;
 
 // The video's timeline under the picture: play and scrub, and a bar per layer
 // for the span it shows, dragged to move it or by its ends to change it.
-export function Timeline({ layers, duration, time, playing, selectedId, onSeek, onTogglePlay, onSelect, onTiming, onDragStart }: Props) {
+export function Timeline({ layers, duration, time, playing, selectedId, onSeek, onTogglePlay, onSelect, onTiming, onDragStart, audio, onMusicStart, onSelectMusic }: Props) {
   const tracksRef = useRef<HTMLDivElement>(null);
   const topFirst = [...layers].reverse();
 
@@ -62,6 +66,29 @@ export function Timeline({ layers, duration, time, playing, selectedId, onSeek, 
       }
       // A span reaching the end keeps following the video's length.
       onTiming(l, { ...anim, start, end: end >= duration - 1e-6 ? undefined : end }, key);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  const startMusicDrag = (e: ReactPointerEvent) => {
+    if (!audio) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onSelectMusic();
+    onDragStart();
+    const from = audio.start;
+    const x0 = e.clientX;
+    const perPx = secondsPerPx();
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - x0) < 3) return;
+      onMusicStart(clamp(snap(from + (ev.clientX - x0) * perPx), 0, duration - STEP), 'gesture:music');
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -114,6 +141,23 @@ export function Timeline({ layers, duration, time, playing, selectedId, onSeek, 
             <span className="ie-playhead" style={{ left: pct(time) }} />
           </div>
         </div>
+        {audio && (() => {
+          const m = musicSpan(audio, duration);
+          return (
+            <div className="ie-track">
+              <button className="ie-track-name" onClick={onSelectMusic} title={audio.name}><Music size={11} /> {audio.name}</button>
+              <div className="ie-track-lane" onPointerDown={seekAt}>
+                <div
+                  className="ie-track-span music"
+                  style={{ left: pct(m.start), width: pct(Math.max(STEP, m.end - m.start)) }}
+                  onPointerDown={startMusicDrag}
+                  title={`Music from ${formatTime(m.start)} to ${formatTime(m.end)}: drag to move`}
+                />
+                <span className="ie-playhead" style={{ left: pct(time) }} />
+              </div>
+            </div>
+          );
+        })()}
         {topFirst.length === 0 && <p className="ie-hint">Add texts, images and shapes; each gets a bar here for when it shows.</p>}
         {topFirst.map(l => {
           const { start, end } = layerSpan(l, duration);
@@ -121,7 +165,7 @@ export function Timeline({ layers, duration, time, playing, selectedId, onSeek, 
           // Effects as a share of the bar.
           const share = (len: number) => `${Math.min(1, len / Math.max(STEP, end - start)) * 100}%`;
           return (
-            <div key={l.id} className={`ie-track ${l.id === selectedId ? 'active' : ''}`}>
+            <div key={l.id} className={`ie-track ${l.id === selectedId ? 'active' : ''} ${l.kind === 'image' && l.clip ? 'clip' : ''}`}>
               <button className="ie-track-name" onClick={() => onSelect(l)} title={layerName(l)}>{layerName(l)}</button>
               <div className="ie-track-lane" onPointerDown={seekAt}>
                 <div

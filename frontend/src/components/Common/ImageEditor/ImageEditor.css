@@ -197,7 +197,8 @@
   background: repeating-conic-gradient(#475569 0% 25%, #334155 0% 50%) 50% / 10px 10px;
 }
 
-.ie-layer-thumb img {
+.ie-layer-thumb img,
+.ie-layer-thumb video {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -385,6 +386,85 @@
   margin-left: -1px;
   background: #ff2d95;
   pointer-events: none;
+}
+
+/* Clips and music in the timeline. */
+.ie-track.clip .ie-track-span {
+  background: color-mix(in srgb, #0ea5e9 55%, transparent);
+  border-color: #0ea5e9;
+}
+
+.ie-track.clip.active .ie-track-span {
+  background: #0ea5e9;
+}
+
+.ie-track-span.music {
+  background: color-mix(in srgb, #22c55e 55%, transparent);
+  border-color: #22c55e;
+}
+
+.ie-track-name svg {
+  vertical-align: -1px;
+}
+
+.ie-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ie-check input {
+  accent-color: var(--accent);
+}
+
+.ie-sound-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ie-sound-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ie-sound {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ie-sound span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ie-sound.active {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.ie-label svg {
+  vertical-align: -2px;
 }
 
 /* On a phone the list lies over the picture's right edge, behind its toggle. */
@@ -760,7 +840,8 @@
   box-sizing: content-box;
 }
 
-.ie-tile img {
+.ie-tile img,
+.ie-tile video {
   width: 100%;
   aspect-ratio: 1;
   object-fit: contain;

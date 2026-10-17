@@ -24,7 +24,9 @@ export interface ImageLayer {
   // Where the image came from (a watermark's or library entry's URL), so a
   // template can load it again.
   src: string;
-  img: HTMLImageElement;
+  // What is drawn: the picture, or for a clip its video (an export swaps in
+  // the decoded frame, a canvas).
+  img: LayerSource;
   x: number;
   y: number;
   width: number;
@@ -44,6 +46,41 @@ export interface ImageLayer {
   placeholder?: boolean;
   // In a video: when it shows and how it moves.
   anim?: LayerAnim;
+  // A video clip instead of a picture: src is the video, and it plays (with
+  // its sound) while the layer shows.
+  clip?: ClipInfo;
+}
+
+export type LayerSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas;
+
+// A clip's playback: it starts trimStart seconds into the video, and its
+// sound plays at volume (0 to 1). duration is the video's own length, so a
+// layer knows where its clip ends without loading it.
+export interface ClipInfo {
+  trimStart: number;
+  volume: number;
+  duration: number;
+}
+
+// A video's music: a sound file, from start seconds into the video,
+// trimStart seconds into the file, faded in and out over fadeIn and fadeOut
+// seconds. duration is the file's own length.
+export interface AudioTrack {
+  src: string;
+  name: string;
+  start: number;
+  trimStart: number;
+  volume: number;
+  fadeIn: number;
+  fadeOut: number;
+  duration: number;
+}
+
+// The pixel size of what a layer draws.
+export function sourceSize(img: LayerSource): { width: number; height: number } {
+  if (img instanceof HTMLImageElement) return { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height };
+  if (img instanceof HTMLVideoElement) return { width: img.videoWidth || 1, height: img.videoHeight || 1 };
+  return { width: img.width, height: img.height };
 }
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
@@ -160,6 +197,8 @@ export interface EditorTemplate {
   // A video design: its length in seconds. The layers' anim says when each
   // shows; a still design has neither.
   duration?: number;
+  // A video design's music.
+  audio?: AudioTrack;
 }
 
 // Unfinished work saved to come back to (an image draft): the design as a
@@ -509,7 +548,7 @@ export function layerName(layer: EditorLayer): string {
     case 'text': return layer.text.trim().split('\n')[0] || 'Empty text';
     case 'shape': return SHAPE_KINDS.find(k => k.id === layer.shape)?.label ?? 'Shape';
     case 'paint': return 'Paint';
-    default: return layer.origin === 'watermark' ? 'Watermark' : 'Image';
+    default: return layer.clip ? 'Clip' : layer.origin === 'watermark' ? 'Watermark' : 'Image';
   }
 }
 
@@ -641,13 +680,14 @@ export function fitLayers<L extends EditorLayer | TemplateLayer>(layers: L[], fr
 
 // The design as a template: the crop becomes the canvas, layers move with it.
 // A video design passes its duration, which keeps the layers' timing.
-export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string, duration?: number): EditorTemplate {
+export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string, duration?: number, audio?: AudioTrack | null): EditorTemplate {
   return {
     version: 1,
     width: Math.round(crop.width),
     height: Math.round(crop.height),
     background,
     ...(duration ? { duration } : {}),
+    ...(duration && audio ? { audio } : {}),
     // Everything but the id and the loaded image.
     layers: layers.map((l): TemplateLayer => ({ ...templateLayer(l, crop), ...(duration && l.anim ? { anim: l.anim } : {}) })),
   };
@@ -677,6 +717,7 @@ function templateLayer(l: EditorLayer, crop: CropBox): TemplateLayer {
       ...(l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
       ...(l.border ? { border: l.border } : {}),
       ...(l.srcCrop ? { srcCrop: l.srcCrop } : {}),
+      ...(l.clip ? { clip: l.clip } : {}),
     };
   }
   return {
@@ -710,7 +751,7 @@ export async function instantiateTemplate(
     if (l.kind === 'paint') return { ...(l as Omit<PaintLayer, 'id'>), id: newLayerId() };
     const il = l as Omit<ImageLayer, 'id' | 'img'>;
     try {
-      const img = await loadImage(resolve(il.src));
+      const img = il.clip ? await loadVideo(resolve(il.src), il.clip.trimStart) : await loadImage(resolve(il.src));
       return { ...il, id: newLayerId(), img, ...(placeholders ? { placeholder: true } : {}) };
     } catch {
       missing++;
@@ -729,6 +770,25 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Failed to load image'));
     img.src = url;
+  });
+}
+
+// A clip's video, loaded far enough to draw its frame at time at (seconds).
+// It is not muted: it plays its sound in the preview.
+export function loadVideo(url: string, at = 0): Promise<HTMLVideoElement> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    if (!url.startsWith('blob:') && !url.startsWith('data:')) v.crossOrigin = 'anonymous';
+    v.preload = 'auto';
+    v.playsInline = true;
+    v.onerror = () => reject(new Error('Failed to load the clip'));
+    v.onloadeddata = () => {
+      v.onloadeddata = null;
+      if (at <= 0) { resolve(v); return; }
+      v.onseeked = () => { v.onseeked = null; resolve(v); };
+      v.currentTime = Math.min(at, Math.max(0, (Number.isFinite(v.duration) ? v.duration : at) - 0.05));
+    };
+    v.src = url;
   });
 }
 

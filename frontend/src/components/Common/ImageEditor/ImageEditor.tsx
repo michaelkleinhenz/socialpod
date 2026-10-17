@@ -2,25 +2,26 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
-  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
-  Move, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
+  Move, Music, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
-  shapeLayerParts, textLayerAttrs, toTemplate,
-  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
+  instantiateTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
+  shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
+  type Adjustments, type AudioTrack, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
 import { LayerList } from './LayerList';
 import {
   animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt,
-  layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, type LayerAnim,
+  layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, musicSpan, NO_ANIM, type LayerAnim,
 } from './animation';
+import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
 import { canExportVideo, renderVideo } from './videoExport';
 import './ImageEditor.css';
@@ -95,8 +96,9 @@ interface Snapshot {
   aspectId: string;
   adjustments: Adjustments;
   layers: EditorLayer[];
-  // The video's length; unused on a still.
+  // The video's length and music; unused on a still.
   duration: number;
+  audio: AudioTrack | null;
 }
 
 // How close, in screen pixels, a moved layer has to come to snap.
@@ -167,6 +169,24 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // Bumped to restart the playback from the playhead while it plays.
   const [playRun, setPlayRun] = useState(0);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
+  // A video's music, part of the undo snapshot, and the library's sounds to
+  // pick it from, loaded when the music controls are first shown.
+  const [audio, setAudio] = useState<AudioTrack | null>(() => template?.audio ?? null);
+  const [sounds, setSounds] = useState<MediaItem[] | null>(null);
+  const [uploadingSound, setUploadingSound] = useState(false);
+  // Clips and sounds uploaded here as temporary files. They are released
+  // when the editor closes, which deletes whatever nothing references: a
+  // video rendered into a post keeps only the rendered file, a draft keeps
+  // the clips it uses.
+  const tempUploads = useRef(new Set<string>());
+  // An upload kept in the media library instead, for other videos too.
+  const [keepInLibrary, setKeepInLibrary] = useState(false);
+  // What playback reads between renders: the layers and music as they are,
+  // the music's player, and every clip video the preview has seen.
+  const layersRef = useRef<EditorLayer[]>([]);
+  const audioRef = useRef<AudioTrack | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const knownVideos = useRef(new Set<HTMLVideoElement>());
   // The text layer being typed into on the picture itself.
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const editingTextRef = useRef<string | null>(null);
@@ -178,6 +198,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [media, setMedia] = useState<MediaItem[] | null>(null);
   const [mediaQuery, setMediaQuery] = useState('');
   const [watermarksOnly, setWatermarksOnly] = useState(false);
+  // In a video the Media tab also lists the library's clips (its videos).
+  const [clipsView, setClipsView] = useState(false);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -234,6 +256,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const contentRef = useRef<Konva.Group>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const clipInputRef = useRef<HTMLInputElement>(null);
+  const soundInputRef = useRef<HTMLInputElement>(null);
   const placeInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -324,13 +348,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setMediaLoading(true);
       // Everything the library returns (its limit is 200), newest first; the
       // search only narrows it down.
-      api.getMedia({ q: mediaQuery.trim(), kind: watermarksOnly ? 'watermark' : 'image', limit: 200 })
-        .then(items => { if (!cancelled) setMedia(items.filter(isImageMedia)); })
+      api.getMedia({ q: mediaQuery.trim(), kind: clipsView ? 'video' : watermarksOnly ? 'watermark' : 'image', limit: 200 })
+        .then(items => { if (!cancelled) setMedia(clipsView ? items.filter(m => m.url) : items.filter(isImageMedia)); })
         .catch(() => { if (!cancelled) { setMedia(m => m ?? []); toast.error('Failed to load the media library'); } })
         .finally(() => { if (!cancelled) setMediaLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [mediaOpened, mediaQuery, watermarksOnly]);
+  }, [mediaOpened, mediaQuery, watermarksOnly, clipsView]);
 
   // Stage size follows the canvas area.
   useLayoutEffect(() => {
@@ -397,7 +421,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // ends it.
     const sticky = key?.startsWith('gesture:');
     if (key && last?.key === key && (sticky || now - last.at < COALESCE_MS)) return;
-    const snap: Snapshot = { canvas, crop, aspectId, adjustments, layers, duration };
+    const snap: Snapshot = { canvas, crop, aspectId, adjustments, layers, duration, audio };
     setUndoStack(stack => [...stack.slice(-(HISTORY_LIMIT - 1)), snap]);
     setRedoStack([]);
     setDraftClean(false);
@@ -414,6 +438,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setAdjustments(snap.adjustments);
     setLayers(snap.layers);
     setDuration(snap.duration);
+    setAudio(snap.audio);
     if (selectedId && !snap.layers.some(l => l.id === selectedId)) setSelectedId(null);
     lastChange.current = null;
     setDraftClean(false);
@@ -423,7 +448,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const prev = undoStack[undoStack.length - 1];
     if (!prev || !crop) return;
     setUndoStack(stack => stack.slice(0, -1));
-    setRedoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers, duration }]);
+    setRedoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers, duration, audio }]);
     restore(prev);
   };
 
@@ -431,7 +456,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const next = redoStack[redoStack.length - 1];
     if (!next || !crop) return;
     setRedoStack(stack => stack.slice(0, -1));
-    setUndoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers, duration }]);
+    setUndoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers, duration, audio }]);
     restore(next);
   };
 
@@ -473,6 +498,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // --- Video ----------------------------------------------------------------
 
+  // Draws the stage again, for a clip's new frame.
+  const redrawStage = useCallback(() => { contentRef.current?.getLayer()?.batchDraw(); }, []);
+
   const seek = (t: number) => {
     const to = clamp(t, 0, duration);
     timeRef.current = to;
@@ -509,11 +537,150 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       }
       timeRef.current = t;
       setTime(t);
+      // Clips and music play along; the canvas draws the clips' new frames.
+      syncMedia(layersRef.current, audioRef.current, musicRef.current, t, duration, true, knownVideos.current, redrawStage);
+      redrawStage();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, duration, playRun]);
+  }, [playing, duration, playRun, redrawStage]);
+
+  // Playback reads the latest layers and music.
+  useEffect(() => {
+    layersRef.current = layers;
+    audioRef.current = audio;
+  });
+
+  // Paused, every clip shows its frame at the playhead, and nothing plays.
+  useEffect(() => {
+    if (!video || playing) return;
+    syncMedia(layers, audio, musicRef.current, time, duration, false, knownVideos.current, redrawStage);
+  }, [video, playing, time, layers, audio, duration, redrawStage]);
+
+  // The music's player, for the preview.
+  const musicSrc = audio?.src;
+  useEffect(() => {
+    if (!musicSrc) return;
+    const el = new Audio(resolveUrl(musicSrc));
+    el.preload = 'auto';
+    musicRef.current = el;
+    return () => {
+      el.pause();
+      if (musicRef.current === el) musicRef.current = null;
+    };
+  }, [musicSrc]);
+
+  // Closing the editor stops what plays and releases the temporary uploads:
+  // the clips and sounds nothing references by now (a post keeps only the
+  // rendered video) are deleted.
+  useEffect(() => {
+    const known = knownVideos.current;
+    const temp = tempUploads.current;
+    return () => {
+      stopMedia(known, musicRef.current);
+      if (temp.size > 0) void api.releaseTemp([...temp]).catch(() => {});
+    };
+  }, []);
+
+  // Clips and sounds uploaded for this video only.
+  const uploadTemp = async (file: File) => {
+    const { url } = await api.uploadTemp(file);
+    tempUploads.current.add(url);
+    return url;
+  };
+
+  // Puts a clip on the picture at the playhead, shown whole (filling the
+  // frame when it has its shape) and for as long as it runs.
+  const addClip = async (url: string, busyKey: string) => {
+    if (!crop) return;
+    setAddingMedia(busyKey);
+    try {
+      const v = await loadVideo(resolveUrl(url));
+      const own = sourceSize(v);
+      const r = own.width / own.height;
+      let width = crop.width;
+      let height = width / r;
+      if (height > crop.height) { height = crop.height; width = height * r; }
+      const length = Number.isFinite(v.duration) ? v.duration : 0;
+      const start = timeRef.current < duration - 0.5 ? Math.round(timeRef.current * 10) / 10 : 0;
+      const end = length > 0 ? Math.round((start + length) * 10) / 10 : duration;
+      addLayer({
+        id: newLayerId(), kind: 'image', origin: 'media', src: url, img: v,
+        x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
+        clip: { trimStart: 0, volume: 1, duration: length },
+        anim: { ...NO_ANIM, start, ...(end < duration ? { end } : {}) },
+      });
+    } catch {
+      toast.error('Failed to load that clip');
+    } finally {
+      setAddingMedia(null);
+    }
+  };
+
+  // A clip from a file: for this video only, or kept in the library.
+  const uploadClip = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingMedia(true);
+    try {
+      if (keepInLibrary) {
+        const item = await api.uploadMedia(file);
+        setMedia(prev => [item, ...(prev ?? []).filter(m => m.id !== item.id)]);
+        await addClip(item.url, item.id);
+      } else {
+        await addClip(await uploadTemp(file), 'upload');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const changeAudio = (next: AudioTrack | null, key?: string) => {
+    checkpoint(key);
+    setAudio(next);
+  };
+
+  // The library's sounds, once the music controls are shown.
+  const soundsWanted = video && tab === 'animate' && !selectedId;
+  useEffect(() => {
+    if (!soundsWanted || sounds !== null) return;
+    let cancelled = false;
+    api.getMedia({ kind: 'audio', limit: 200 })
+      .then(items => { if (!cancelled) setSounds(items.filter(m => m.url)); })
+      .catch(() => { if (!cancelled) setSounds([]); });
+    return () => { cancelled = true; };
+  }, [soundsWanted, sounds]);
+
+  // Sets the music, from the start of the video and of the file.
+  const pickSound = async (url: string, name: string) => {
+    const length = await soundDuration(resolveUrl(url));
+    changeAudio({ src: url, name, start: 0, trimStart: 0, volume: 0.8, fadeIn: 0, fadeOut: Math.min(2, duration / 4), duration: length });
+  };
+
+  const uploadSound = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingSound(true);
+    try {
+      const name = file.name.replace(/\.[^.]+$/, '');
+      if (keepInLibrary) {
+        const item = await api.uploadMedia(file, { name });
+        setSounds(prev => [item, ...(prev ?? [])]);
+        await pickSound(item.url, item.name);
+      } else {
+        await pickSound(await uploadTemp(file), name);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingSound(false);
+    }
+  };
 
   const changeDuration = (d: number, key?: string) => {
     const next = Math.round(clamp(d, MIN_DURATION, MAX_DURATION) * 10) / 10;
@@ -715,6 +882,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setCrop(target);
       setLayers(added);
       if (video && t.duration) setDuration(clamp(t.duration, MIN_DURATION, MAX_DURATION));
+      if (video && t.audio) setAudio(t.audio);
     } else {
       setLayers(prev => [...prev, ...added]);
     }
@@ -766,7 +934,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     try {
       // Layers stay in the picture's own pixels, so the draft comes back
       // exactly as it was.
-      const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff', video ? duration : undefined);
+      const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff', video ? duration : undefined, audio);
       const design: EditorDraft = canvasMode
         ? { version: 1, template }
         : { version: 1, template, photo: { src: await draftPhotoUrl(photoUrl!), crop, aspectId, adjustments } };
@@ -836,6 +1004,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setLayers(restored);
       if (video) {
         setDuration(clamp(d.template.duration ?? DEFAULT_DURATION, MIN_DURATION, MAX_DURATION));
+        setAudio(d.template.audio ?? null);
         setPlaying(false);
         seek(0);
       }
@@ -927,7 +1096,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const fitSelectedImage = () => {
     if (!crop || selected?.kind !== 'image') return;
-    const r = selected.img.naturalWidth / selected.img.naturalHeight;
+    const own = sourceSize(selected.img);
+    const r = own.width / own.height;
     let width = crop.width;
     let height = width / r;
     if (height > crop.height) { height = crop.height; width = height * r; }
@@ -953,7 +1123,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       const img = await loadImage(resolveUrl(url));
       if (target) {
         updateLayer(target.id, {
-          img, src: url, origin: 'media',
+          img, src: url, origin: 'media', clip: undefined,
           srcCrop: centredCrop(img.naturalWidth, img.naturalHeight, target.width / target.height),
         });
         return;
@@ -1292,9 +1462,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
         layers,
         duration,
+        audio,
+        resolve: resolveUrl,
         onProgress: p => setExportProgress(Math.floor(p * 100)),
       });
-      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration));
+      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio));
     } catch (err) {
       const e = err instanceof Error ? err : null;
       toast.error(e?.name === 'SecurityError'
@@ -1470,10 +1642,142 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     );
   };
 
+  // Whether an upload here goes into the media library or is kept for this
+  // video only.
+  const keepInLibraryToggle = (
+    <label className="ie-check">
+      <input type="checkbox" checked={keepInLibrary} onChange={e => setKeepInLibrary(e.target.checked)} />
+      <span>Keep uploads in the media library</span>
+    </label>
+  );
+
+  // Where a clip starts playing, how loud, and how long its layer shows.
+  const clipControls = (l: ImageLayer, c: ClipInfo) => {
+    const { start, end } = layerSpan(l, duration);
+    const runs = c.duration > 0 ? c.duration - c.trimStart : 0;
+    return (
+      <>
+        <span className="ie-label"><Film size={14} /> Clip</span>
+        {c.duration > 0 && (
+          <label className="ie-slider">
+            <span>Start at</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, Math.floor((c.duration - 0.1) * 10))}
+              value={Math.round(c.trimStart * 10)}
+              onChange={e => updateLayer(l.id, { clip: { ...c, trimStart: Number(e.target.value) / 10 } }, `clip-trim:${l.id}`)}
+            />
+            <span className="ie-value">{formatTime(c.trimStart)}</span>
+          </label>
+        )}
+        <label className="ie-slider">
+          <span>Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(c.volume * 100)}
+            onChange={e => updateLayer(l.id, { clip: { ...c, volume: Number(e.target.value) / 100 } }, `clip-volume:${l.id}`)}
+          />
+          <span className="ie-value">{Math.round(c.volume * 100)}%</span>
+        </label>
+        <div className="ie-row">
+          <button className="ie-chip" onClick={() => updateLayer(l.id, { clip: { ...c, volume: c.volume > 0 ? 0 : 1 } })}>
+            {c.volume > 0 ? 'Mute' : 'Unmute'}
+          </button>
+          {runs > 0 && (
+            <button
+              className="ie-chip"
+              onClick={() => { const to = Math.round((start + runs) * 10) / 10; updateAnim(l, { end: to >= duration ? undefined : to }); }}
+              title="Show it for as long as the clip runs from its start point"
+            >
+              Fit to clip
+            </button>
+          )}
+        </div>
+        {runs > 0 && end - start > runs + 0.05 && (
+          <p className="ie-hint">The clip runs {formatTime(runs)} from its start point; its last frame stays for the rest of the {formatTime(end - start)}.</p>
+        )}
+        <span className="ie-label ie-section">Picture</span>
+      </>
+    );
+  };
+
+  // The video's music: a sound from the library or a file, where it starts,
+  // how loud, and its fades.
+  const musicControls = () => (
+    <>
+      <span className="ie-label ie-section"><Music size={14} /> Music</span>
+      {audio ? (
+        <>
+          <div className="ie-row">
+            <span className="ie-sound-name" title={audio.name}>{audio.name}</span>
+            <button className="ie-chip danger" onClick={() => changeAudio(null)}><Trash2 size={14} /> Remove</button>
+          </div>
+          <label className="ie-slider">
+            <span>Starts at</span>
+            <input type="range" min={0} max={Math.round(duration * 10)} value={Math.round(audio.start * 10)}
+              onChange={e => changeAudio({ ...audio, start: Number(e.target.value) / 10 }, 'music-start')} />
+            <span className="ie-value">{formatTime(audio.start)}</span>
+          </label>
+          {audio.duration > 0 && (
+            <label className="ie-slider">
+              <span>Skip</span>
+              <input type="range" min={0} max={Math.max(0, Math.floor((audio.duration - 1) * 10))} value={Math.round(audio.trimStart * 10)}
+                onChange={e => changeAudio({ ...audio, trimStart: Number(e.target.value) / 10 }, 'music-trim')} title="Start this far into the song" />
+              <span className="ie-value">{formatTime(audio.trimStart)}</span>
+            </label>
+          )}
+          <label className="ie-slider">
+            <span>Volume</span>
+            <input type="range" min={0} max={100} value={Math.round(audio.volume * 100)}
+              onChange={e => changeAudio({ ...audio, volume: Number(e.target.value) / 100 }, 'music-volume')} />
+            <span className="ie-value">{Math.round(audio.volume * 100)}%</span>
+          </label>
+          <label className="ie-slider">
+            <span>Fade in</span>
+            <input type="range" min={0} max={50} value={Math.round(audio.fadeIn * 10)}
+              onChange={e => changeAudio({ ...audio, fadeIn: Number(e.target.value) / 10 }, 'music-fade-in')} />
+            <span className="ie-value">{formatTime(audio.fadeIn)}</span>
+          </label>
+          <label className="ie-slider">
+            <span>Fade out</span>
+            <input type="range" min={0} max={50} value={Math.round(audio.fadeOut * 10)}
+              onChange={e => changeAudio({ ...audio, fadeOut: Number(e.target.value) / 10 }, 'music-fade-out')} />
+            <span className="ie-value">{formatTime(audio.fadeOut)}</span>
+          </label>
+          {(() => { const m = musicSpan(audio, duration); return m.end < duration - 0.05 ? <p className="ie-hint">The song ends at {formatTime(m.end)}, before the video does.</p> : null; })()}
+        </>
+      ) : (
+        <p className="ie-hint">Add a song or a sound under the video, from the media library or a file (mp3, m4a, wav). Clips play their own sound as well.</p>
+      )}
+      <div className="ie-row">
+        <button className="ie-chip" onClick={() => soundInputRef.current?.click()} disabled={uploadingSound}>
+          {uploadingSound ? <Loader2 size={14} className="ie-spin" /> : <Upload size={14} />} {audio ? 'Upload another' : 'Upload a sound'}
+        </button>
+      </div>
+      {keepInLibraryToggle}
+      {sounds === null ? (
+        <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading the library's sounds…</p>
+      ) : sounds.length > 0 && (
+        <div className="ie-sound-list">
+          {sounds.map(m => (
+            <button key={m.id} className={`ie-sound ${audio?.src === m.url ? 'active' : ''}`} onClick={() => void pickSound(m.url, m.name)} title={m.description || m.name}>
+              <Music size={14} /> <span>{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <input ref={soundInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" hidden onChange={uploadSound} />
+    </>
+  );
+
   // Opacity, corners, border, fit, centre, replace and remove for the
   // selected image layer.
   const imageLayerControls = selected?.kind === 'image' && (
     <>
+      {selected.clip && clipControls(selected, selected.clip)}
       <label className="ie-slider">
         <span>Opacity</span>
         <input
@@ -1817,13 +2121,19 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   {imageLayerControls}
                   <span className="ie-label ie-section">Media library</span>
                 </>
+              ) : clipsView ? (
+                <p className="ie-hint">Tap a clip to add it at the playhead, or upload one. Move, resize and turn it like an image; its sound plays along.</p>
               ) : media && media.length > 0 && (
                 <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
               )}
               <div className="ie-row">
-                <button className={`ie-chip ${!watermarksOnly ? 'active' : ''}`} onClick={() => setWatermarksOnly(false)}>All images</button>
-                <button className={`ie-chip ${watermarksOnly ? 'active' : ''}`} onClick={() => setWatermarksOnly(true)}><Stamp size={14} /> Watermarks</button>
+                <button className={`ie-chip ${!watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(false); setClipsView(false); }}>All images</button>
+                <button className={`ie-chip ${watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(true); setClipsView(false); }}><Stamp size={14} /> Watermarks</button>
+                {video && (
+                  <button className={`ie-chip ${clipsView ? 'active' : ''}`} onClick={() => { setClipsView(true); setWatermarksOnly(false); }}><Film size={14} /> Clips</button>
+                )}
               </div>
+              {clipsView && keepInLibraryToggle}
               <div className="ie-row ie-sticky">
                 <div className="ie-search">
                   <Search size={16} />
@@ -1836,9 +2146,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 </div>
                 <button
                   className="ie-icon-btn"
-                  onClick={() => mediaInputRef.current?.click()}
+                  onClick={() => (clipsView ? clipInputRef : mediaInputRef).current?.click()}
                   disabled={uploadingMedia}
-                  title="Add an image to the library"
+                  title={clipsView ? (keepInLibrary ? 'Upload a clip into the library' : 'Upload a clip for this video') : 'Add an image to the library'}
                 >
                   {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
                 </button>
@@ -1849,7 +2159,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 <p className="ie-hint">
                   {mediaLoading ? 'Searching…' : mediaQuery.trim()
                     ? 'Nothing in the library matches that.'
-                    : watermarksOnly
+                    : clipsView
+                      ? 'No clips in the library yet. Upload one with the button: it is kept for this video only, unless you keep it in the library.'
+                      : watermarksOnly
                       ? 'No watermarks yet. Upload one here, or mark images as watermarks in the Media Library.'
                       : 'The media library has no images yet. Add them here or on the Media Library page.'}
                 </p>
@@ -1859,11 +2171,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                     <button
                       key={m.id}
                       className="ie-tile"
-                      onClick={() => addMedia(m)}
+                      onClick={() => (clipsView ? addClip(m.url, m.id) : addMedia(m))}
                       disabled={addingMedia !== null}
                       title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
                     >
-                      <img src={resolveUrl(m.url)} alt="" loading="lazy" />
+                      {clipsView
+                        ? <video src={resolveUrl(m.url)} muted preload="metadata" />
+                        : <img src={resolveUrl(m.url)} alt="" loading="lazy" />}
                       <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
                       {m.watermark && !watermarksOnly && <Stamp size={14} className="ie-tile-badge" aria-label="Watermark" />}
                     </button>
@@ -1871,6 +2185,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 </div>
               )}
               <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
+              <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
             </>
           )}
 
@@ -1979,6 +2294,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   ? 'Pick an object on the picture or in the timeline to set when it shows and how it comes in and goes out. Drag its bar in the timeline to move it in time.'
                   : 'Add texts, images and shapes, then animate them here. Each shows the whole video until you change it.'}
               </p>
+              {musicControls()}
             </>
           ))}
 
@@ -2271,16 +2587,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 onSelect={l => { setPlaying(false); selectLayer(l); }}
                 onTiming={(l, a, key) => updateLayer(l.id, { anim: a }, key)}
                 onDragStart={startGesture}
-              />
-            )}
-            {editingText && (
-              <InlineTextEditor
-                ref={textAreaRef}
-                layer={editingText}
-                scale={scale}
-                origin={{ x: gx, y: gy }}
-                onChange={text => updateLayer(editingText.id, retypeText(editingText, text), `gesture:text:${editingText.id}`)}
-                onDone={finishTextEdit}
+                audio={audio}
+                onMusicStart={(start, key) => { if (audio) changeAudio({ ...audio, start }, key); }}
+                onSelectMusic={() => { setPlaying(false); setSelectedId(null); setTab('animate'); }}
               />
             )}
           </div>

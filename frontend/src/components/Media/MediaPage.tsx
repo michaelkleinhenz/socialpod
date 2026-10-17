@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Brush, Check, Film, FolderOpen, LayoutTemplate, Palette, Pencil, Search, Stamp, Trash2, Type, Upload, X } from 'lucide-react';
+import { Brush, Check, Film, FolderOpen, LayoutTemplate, Music, Palette, Pencil, Search, Stamp, Trash2, Type, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
 import type { MediaItem, MediaKind } from '../../types';
@@ -30,13 +30,14 @@ const KINDS: { kind: MediaKind | ''; label: string }[] = [
   { kind: 'image', label: 'Images' },
   { kind: 'watermark', label: 'Watermarks' },
   { kind: 'video', label: 'Videos' },
+  { kind: 'audio', label: 'Audio' },
   { kind: 'font', label: 'Fonts' },
   { kind: 'color', label: 'Colours' },
   { kind: 'template', label: 'Templates' },
 ];
 
 const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
-const ANY_ACCEPT = `${IMAGE_ACCEPT},video/mp4,video/quicktime,.ttf,.otf,font/ttf,font/otf`;
+const ANY_ACCEPT = `${IMAGE_ACCEPT},video/mp4,video/quicktime,audio/*,.mp3,.m4a,.aac,.wav,.ogg,.ttf,.otf,font/ttf,font/otf`;
 
 // The template open in the image editor: a new one, or a library entry.
 type Designing = { kind: 'new'; info: NewTemplate } | { kind: 'edit'; item: MediaItem; template: EditorTemplate };
@@ -312,7 +313,13 @@ export function MediaPage() {
                     <span>{item.color}</span>
                   </div>
                 ) : item.contentType?.startsWith('video/') ? (
-                  <Film size={40} />
+                  // Clips for the image editor's videos, playable here.
+                  item.url ? <video src={src(item.url)} controls preload="metadata" /> : <Film size={40} />
+                ) : item.contentType?.startsWith('audio/') ? (
+                  <div className="media-audio">
+                    <Music size={36} />
+                    <audio src={src(item.url)} controls preload="none" />
+                  </div>
                 ) : isFont(item) ? (
                   <FontPreview item={item} />
                 ) : (
