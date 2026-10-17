@@ -48,6 +48,25 @@ export async function canExportVideo(crop: CropBox, maxSide = 1920): Promise<boo
   }
 }
 
+const aacEncodable = () =>
+  canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: SAMPLE_RATE }).catch(() => false);
+
+// Whether the sound track can be encoded. Browsers without an AAC encoder of
+// their own (Chromium on Linux, Brave, Firefox) get FFmpeg's, built to WASM,
+// which is loaded only then.
+let aacFallback: Promise<void> | null = null;
+async function canEncodeAac(): Promise<boolean> {
+  if (await aacEncodable()) return true;
+  aacFallback ??= import('@mediabunny/aac-encoder').then(m => m.registerAacEncoder());
+  try {
+    await aacFallback;
+  } catch {
+    aacFallback = null;
+    return false;
+  }
+  return aacEncodable();
+}
+
 const isClip = (l: EditorLayer): l is ImageLayer & { clip: NonNullable<ImageLayer['clip']> } => l.kind === 'image' && !!l.clip;
 
 // Each file fetched once, however many layers use it.
@@ -148,7 +167,7 @@ export async function renderVideo({
   const load = fetcher(resolve, signal);
 
   const sound = await mixAudio(layers, audio, duration, load);
-  if (sound && !(await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: SAMPLE_RATE }).catch(() => false))) {
+  if (sound && !(await canEncodeAac())) {
     throw new Error('This browser cannot encode the sound (AAC). Use a current Chrome, Edge or Safari.');
   }
 
