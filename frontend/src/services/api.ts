@@ -53,6 +53,42 @@ class ApiClient {
     return res.json();
   }
 
+  // A multipart upload through XMLHttpRequest, which (unlike fetch) reports
+  // how far the request body has gone: onProgress gets 0 to 1.
+  private uploadWithProgress<T>(path: string, form: FormData, onProgress?: (share: number) => void): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}/api${path}`);
+      const token = this.getToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onerror = () => reject(new Error('Upload failed, check the connection'));
+      xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
+      xhr.onload = () => {
+        if (xhr.status === 401) {
+          this.setToken(null);
+          window.location.href = '/login';
+          reject(new Error('Unauthorized'));
+          return;
+        }
+        let body: unknown = null;
+        try {
+          body = JSON.parse(xhr.responseText);
+        } catch {
+          // A proxy's error page, say.
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error((body as { error?: string } | null)?.error || `Upload failed (${xhr.status})`));
+          return;
+        }
+        resolve(body as T);
+      };
+      xhr.send(form);
+    });
+  }
+
   // Auth
   login(email: string, password: string) {
     return this.request<{ token: string; user: any }>('/auth/login', {
@@ -140,6 +176,13 @@ class ApiClient {
     const form = new FormData();
     form.append('file', file);
     return this.request<{ url: string; contentType: string; size: number }>('/upload/temp', { method: 'POST', body: form });
+  }
+
+  // uploadTemp with the upload's progress (0 to 1).
+  uploadTempWithProgress(file: File, onProgress: (share: number) => void) {
+    const form = new FormData();
+    form.append('file', file);
+    return this.uploadWithProgress<{ url: string; contentType: string; size: number }>('/upload/temp', form, onProgress);
   }
 
   // Lets go of temporary uploads. keepalive, so it still goes out while the
@@ -774,6 +817,24 @@ class ApiClient {
 
   postConventionItemNow(queueId: string, itemId: string) {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}/post-now`, { method: 'POST' });
+  }
+
+  // Quick Reel: an Instagram caption from a few words about the clip.
+  quickReelCaption(queueId: string, hints: string) {
+    return this.request<{ caption: string }>(`/convention/queues/${queueId}/reel/caption`, {
+      method: 'POST',
+      body: JSON.stringify({ hints }),
+    });
+  }
+
+  // Quick Reel: schedules the rendered reel for Instagram, half an hour after
+  // uploadedAt (the clip's upload).
+  publishQuickReel(queueId: string, video: Blob, caption: string, uploadedAt: Date, onProgress?: (share: number) => void) {
+    const form = new FormData();
+    form.append('video', video, 'reel.mp4');
+    form.append('caption', caption);
+    form.append('uploadedAt', uploadedAt.toISOString());
+    return this.uploadWithProgress<import('../types').Post>(`/convention/queues/${queueId}/reel`, form, onProgress);
   }
 
   // BGG integration
