@@ -29,21 +29,34 @@ function loadLibraryFonts(): Promise<void> {
   return libraryFonts;
 }
 
-const area = (l: ImageLayer) => l.width * l.height;
+// The share of the canvas a layer's box covers (its turn ignored).
+function coverage(l: ImageLayer, width: number, height: number): number {
+  const w = Math.min(l.x + l.width / 2, width) - Math.max(l.x - l.width / 2, 0);
+  const h = Math.min(l.y + l.height / 2, height) - Math.max(l.y - l.height / 2, 0);
+  return w > 0 && h > 0 ? (w * h) / (width * height) : 0;
+}
+
+// An image smaller than this share of the canvas is a logo or decoration,
+// not a frame meant for the picture.
+const MIN_PHOTO_COVERAGE = 1 / 3;
 
 // The layer the clip goes into: the template's largest clip, or else its
-// largest image (a template's photo placeholder, not a logo). -1 when the
-// template has neither, and the clip goes under everything instead.
-export function clipTarget(layers: EditorLayer[]): number {
+// largest image when that covers a good part of the canvas (a photo
+// placeholder or full-frame backdrop). -1 when there is neither, and the
+// clip goes full frame under everything instead.
+export function clipTarget(layers: EditorLayer[], width: number, height: number): number {
   let best = -1;
   let bestClip = false;
+  let bestCover = 0;
   layers.forEach((l, i) => {
     if (l.kind !== 'image') return;
     const isClip = !!l.clip;
-    const current = best >= 0 ? layers[best] as ImageLayer : null;
-    if (!current || (isClip && !bestClip) || (isClip === bestClip && area(l) > area(current))) {
+    const cover = coverage(l, width, height);
+    if (!isClip && cover < MIN_PHOTO_COVERAGE) return;
+    if (best < 0 || (isClip && !bestClip) || (isClip === bestClip && cover > bestCover)) {
       best = i;
       bestClip = isClip;
+      bestCover = cover;
     }
   });
   return best;
@@ -72,7 +85,7 @@ export async function renderQuickReel({ template, clipUrl, onProgress, signal }:
   const duration = clamp(template.duration ?? length, MIN_DURATION, MAX_DURATION);
 
   // The clip fills its frame, cropped to its shape, from its start.
-  const i = clipTarget(layers);
+  const i = clipTarget(layers, box.width, box.height);
   if (i >= 0) {
     const target = layers[i] as ImageLayer;
     layers[i] = {

@@ -54,10 +54,16 @@ class ApiClient {
   }
 
   // A multipart upload through XMLHttpRequest, which (unlike fetch) reports
-  // how far the request body has gone: onProgress gets 0 to 1.
-  private uploadWithProgress<T>(path: string, form: FormData, onProgress?: (share: number) => void): Promise<T> {
+  // how far the request body has gone: onProgress gets 0 to 1. signal
+  // cancels the upload only while the body is still going out: once all of
+  // it is sent the server may already have stored it, so the answer is still
+  // awaited and the caller learns the URL to let go of.
+  private uploadWithProgress<T>(path: string, form: FormData, onProgress?: (share: number) => void, signal?: AbortSignal): Promise<T> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let sent = false;
+      xhr.upload.onload = () => { sent = true; };
+      signal?.addEventListener('abort', () => { if (!sent) xhr.abort(); }, { once: true });
       xhr.open('POST', `${API_URL}/api${path}`);
       const token = this.getToken();
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -179,10 +185,10 @@ class ApiClient {
   }
 
   // uploadTemp with the upload's progress (0 to 1).
-  uploadTempWithProgress(file: File, onProgress: (share: number) => void) {
+  uploadTempWithProgress(file: File, onProgress: (share: number) => void, signal?: AbortSignal) {
     const form = new FormData();
     form.append('file', file);
-    return this.uploadWithProgress<{ url: string; contentType: string; size: number }>('/upload/temp', form, onProgress);
+    return this.uploadWithProgress<{ url: string; contentType: string; size: number }>('/upload/temp', form, onProgress, signal);
   }
 
   // Lets go of temporary uploads. keepalive, so it still goes out while the
@@ -829,11 +835,13 @@ class ApiClient {
 
   // Quick Reel: schedules the rendered reel for Instagram, half an hour after
   // uploadedAt (the clip's upload).
-  publishQuickReel(queueId: string, video: Blob, caption: string, uploadedAt: Date, onProgress?: (share: number) => void) {
+  // Schedules the reel, or with draft keeps it as a draft.
+  publishQuickReel(queueId: string, video: Blob, caption: string, uploadedAt: Date, onProgress?: (share: number) => void, draft = false) {
     const form = new FormData();
     form.append('video', video, 'reel.mp4');
     form.append('caption', caption);
     form.append('uploadedAt', uploadedAt.toISOString());
+    if (draft) form.append('draft', 'true');
     return this.uploadWithProgress<import('../types').Post>(`/convention/queues/${queueId}/reel`, form, onProgress);
   }
 

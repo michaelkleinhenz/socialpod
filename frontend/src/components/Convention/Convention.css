@@ -115,7 +115,11 @@
   padding: 20px 20px 0;
 }
 
-.modal-header h2 { margin-bottom: 0; }
+.modal .modal-header h2 { margin-bottom: 0; }
+
+/* These dialogs pad their header, body and footer themselves, so the panel's
+   own padding would push the close button in from the corner. */
+.modal.conv-modal, .modal.conv-preview-modal { padding: 0; }
 
 .modal-footer {
   display: flex;
@@ -1058,6 +1062,10 @@
 .qr-hints, .qr-caption { width: 100%; resize: vertical; font-size: 16px; }
 
 .qr-main { justify-content: center; padding: 12px; font-size: 16px; }
+
+.qr-actions { display: flex; gap: 10px; }
+.qr-actions .qr-main { flex: 1; }
+.qr-actions .qr-main:first-child { flex: 0 1 auto; }
 
 .qr-video {
   display: block;
