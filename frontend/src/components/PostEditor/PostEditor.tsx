@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette, Clapperboard } from 'lucide-react';
 import { CaptionChecker, InsightsStrip, InstagramPeople } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -519,6 +519,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [croppingImageIdx, setCroppingImageIdx] = useState<number | null>(null);
   // The image editor on a blank canvas, to make an image instead of uploading one.
   const [creatingImage, setCreatingImage] = useState(false);
+  // The same editor making a video, for a reel or a story.
+  const [creatingVideo, setCreatingVideo] = useState(false);
   // Overlay picked inside the cropper. Starts empty on every open — a post
   // image gets a watermark only when someone asks for one.
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -888,7 +890,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     const onPaste = (e: ClipboardEvent) => {
       // The image editor, the cropper and Adobe Express own the clipboard while
       // they're up.
-      if (editingImageIdx !== null || croppingImageIdx !== null || creatingImage || adobeActive) return;
+      if (editingImageIdx !== null || croppingImageIdx !== null || creatingImage || creatingVideo || adobeActive) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       for (const item of items) {
@@ -904,7 +906,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [addFiles, acceptsType, editingImageIdx, croppingImageIdx, creatingImage, adobeActive]);
+  }, [addFiles, acceptsType, editingImageIdx, croppingImageIdx, creatingImage, creatingVideo, adobeActive]);
 
   // The cropper's overlay: reset whenever it opens, so an overlay is always a
   // deliberate pick, and load the picked watermark for the live preview and the
@@ -1675,6 +1677,15 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                       <Palette size={14} /> Create an image
                     </button>
                   )}
+                  {(isReel || isStory) && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm image-dropzone-create"
+                      onClick={e => { e.stopPropagation(); setCreatingVideo(true); }}
+                    >
+                      <Clapperboard size={14} /> Create a video
+                    </button>
+                  )}
                 </div>
               )}
               {images.length > 0 && (
@@ -1780,6 +1791,11 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 <Palette size={16} /> Create Image
               </button>
             )}
+            {(isReel || isStory) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => setCreatingVideo(true)} title="Make an animated video: texts, images and shapes that come in, move and go out">
+                <Clapperboard size={16} /> Create Video
+              </button>
+            )}
             {adobeClientId && (
               <button className="btn btn-ghost btn-sm" onClick={launchAdobeExpress} disabled={adobeLoading}>
                 <Wand2 size={16} /> {adobeLoading ? 'Opening...' : (isStory ? 'Create Story Design' : isReel ? 'Create Reel Design' : 'Create Design')}
@@ -1856,6 +1872,21 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             else setImages(prev => [...prev, { kind: 'file', file }]);
             setCreatingImage(false);
             toast.success('Image added');
+          }}
+        />
+      )}
+
+      {creatingVideo && (
+        <ImageEditor
+          video
+          canvas={{ width: 1080, height: 1920, background: '#000000' }}
+          title={isReel ? 'Create reel' : 'Create story video'}
+          onCancel={() => setCreatingVideo(false)}
+          onSave={blob => {
+            // A reel or a story holds one video, which the new one replaces.
+            setImages([{ kind: 'file', file: new File([blob], 'video.mp4', { type: 'video/mp4' }) }]);
+            setCreatingVideo(false);
+            toast.success('Video added');
           }}
         />
       )}

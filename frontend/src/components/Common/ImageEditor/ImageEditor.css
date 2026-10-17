@@ -79,6 +79,14 @@
   order: 1;
 }
 
+.ie-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .ie-canvas {
   position: relative;
   flex: 1;
@@ -238,6 +246,147 @@
   color: var(--text-muted);
 }
 
+/* A video's timeline under the picture: play and scrub, then a bar per
+   object for when it shows, its in and out effects shaded at its ends. */
+.ie-timeline {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.ie-timeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ie-timeline-time {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.ie-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 150px;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.ie-track {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.ie-track-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ie-track.active .ie-track-name {
+  color: var(--accent-hover);
+  font-weight: 600;
+}
+
+.ie-track-lane {
+  position: relative;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+}
+
+.ie-ruler {
+  height: 18px;
+  background: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.ie-tick {
+  position: absolute;
+  bottom: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.ie-track-span {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  min-width: 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  border: 1px solid var(--accent);
+  overflow: hidden;
+  cursor: grab;
+}
+
+.ie-track.active .ie-track-span {
+  background: var(--accent);
+}
+
+.ie-track-fx {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.ie-track-fx.in {
+  left: 0;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.45), transparent);
+}
+
+.ie-track-fx.out {
+  right: 0;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.45), transparent);
+}
+
+.ie-track-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.ie-track-handle.start {
+  left: 0;
+}
+
+.ie-track-handle.end {
+  right: 0;
+}
+
+.ie-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: #ff2d95;
+  pointer-events: none;
+}
+
 /* On a phone the list lies over the picture's right edge, behind its toggle. */
 @media (max-width: 768px) {
   .ie-header {
@@ -252,6 +401,14 @@
     width: 168px;
     z-index: 2;
     box-shadow: -6px 0 16px rgba(0, 0, 0, 0.3);
+  }
+
+  .ie-track {
+    grid-template-columns: 64px 1fr;
+  }
+
+  .ie-tracks {
+    max-height: 96px;
   }
 }
 

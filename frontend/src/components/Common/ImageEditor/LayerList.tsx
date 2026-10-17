@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Brush, Circle, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
-import { SHAPE_KINDS, type EditorLayer } from './editorModel';
+import { layerName, type EditorLayer } from './editorModel';
 
 // Rows only move up and down.
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -95,15 +95,6 @@ function LayerRow({ layer, selected, onSelect }: { layer: EditorLayer; selected:
       <GripVertical size={14} className="ie-layer-grip" />
     </button>
   );
-}
-
-function layerName(layer: EditorLayer): string {
-  switch (layer.kind) {
-    case 'text': return layer.text.trim().split('\n')[0] || 'Empty text';
-    case 'shape': return SHAPE_KINDS.find(k => k.id === layer.shape)?.label ?? 'Shape';
-    case 'paint': return 'Paint';
-    default: return layer.origin === 'watermark' ? 'Watermark' : 'Image';
-  }
 }
 
 function layerIcon(layer: EditorLayer) {

@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import type { Filter } from 'konva/lib/Node';
+import type { LayerAnim } from './animation';
 
 // Everything the editor holds is in source-image pixels: the crop is a window
 // onto the original image, and watermarks and texts sit on the original too,
@@ -41,6 +42,8 @@ export interface ImageLayer {
   // Came with a template: a pasted image takes its place. Images the user
   // added are left alone by a paste. Not stored in a template.
   placeholder?: boolean;
+  // In a video: when it shows and how it moves.
+  anim?: LayerAnim;
 }
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
@@ -79,6 +82,7 @@ export interface TextLayer {
   x: number;
   y: number;
   rotation: number;
+  anim?: LayerAnim;
 }
 
 export type ShapeKind = 'rect' | 'ellipse' | 'triangle';
@@ -109,6 +113,7 @@ export interface ShapeLayer {
   strokeWidth: number;
   // Boxes only: corner rounding in percent of the shorter side.
   cornerRadius?: number;
+  anim?: LayerAnim;
 }
 
 // One brush stroke: a path through points (x0, y0, x1, y1, ...) relative to
@@ -129,6 +134,7 @@ export interface PaintLayer {
   x: number;
   y: number;
   strokes: PaintStroke[];
+  anim?: LayerAnim;
 }
 
 export type EditorLayer = ImageLayer | TextLayer | ShapeLayer | PaintLayer;
@@ -151,6 +157,9 @@ export interface EditorTemplate {
   height: number;
   background: string;
   layers: TemplateLayer[];
+  // A video design: its length in seconds. The layers' anim says when each
+  // shows; a still design has neither.
+  duration?: number;
 }
 
 // Unfinished work saved to come back to (an image draft): the design as a
@@ -460,6 +469,12 @@ export function buildPaintLayerNode(l: PaintLayer): Konva.Group {
   return g;
 }
 
+export function buildLayerNode(l: EditorLayer): Konva.Group | Konva.Shape {
+  if (l.kind === 'text') return new Konva.Text(textLayerAttrs(l));
+  if (l.kind === 'paint') return buildPaintLayerNode(l);
+  return buildImageLayerNode(l);
+}
+
 export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
   return {
     x: l.x,
@@ -486,6 +501,16 @@ export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
     shadowOffsetX: l.fontSize * 0.03,
     shadowOffsetY: l.fontSize * 0.03,
   };
+}
+
+// What the Objects list and the timeline call a layer.
+export function layerName(layer: EditorLayer): string {
+  switch (layer.kind) {
+    case 'text': return layer.text.trim().split('\n')[0] || 'Empty text';
+    case 'shape': return SHAPE_KINDS.find(k => k.id === layer.shape)?.label ?? 'Shape';
+    case 'paint': return 'Paint';
+    default: return layer.origin === 'watermark' ? 'Watermark' : 'Image';
+  }
 }
 
 // The size Konva gives a text at rotation 0, in source-image pixels.
@@ -560,11 +585,7 @@ export async function renderEdit({ source, background = '#ffffff', crop, adjustm
       group.add(new Konva.Rect({ x: crop.x, y: crop.y, width: crop.width, height: crop.height, fill: background }));
     }
 
-    for (const l of layers) {
-      if (l.kind === 'text') group.add(new Konva.Text(textLayerAttrs(l)));
-      else if (l.kind === 'paint') group.add(buildPaintLayerNode(l));
-      else group.add(buildImageLayerNode(l));
-    }
+    for (const l of layers) group.add(buildLayerNode(l));
 
     const canvas = group.toCanvas({ x: 0, y: 0, width, height, pixelRatio: 1 });
     return await new Promise<Blob>((resolve, reject) => {
@@ -619,44 +640,48 @@ export function fitLayers<L extends EditorLayer | TemplateLayer>(layers: L[], fr
 }
 
 // The design as a template: the crop becomes the canvas, layers move with it.
-export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string): EditorTemplate {
+// A video design passes its duration, which keeps the layers' timing.
+export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string, duration?: number): EditorTemplate {
   return {
     version: 1,
     width: Math.round(crop.width),
     height: Math.round(crop.height),
     background,
+    ...(duration ? { duration } : {}),
     // Everything but the id and the loaded image.
-    layers: layers.map((l): TemplateLayer => {
-      const x = l.x - crop.x;
-      const y = l.y - crop.y;
-      if (l.kind === 'shape') {
-        return {
-          kind: 'shape', shape: l.shape, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
-          fill: l.fill, stroke: l.stroke, strokeWidth: l.strokeWidth,
-          ...(l.shape === 'rect' && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
-        };
-      }
-      if (l.kind === 'paint') {
-        // A tenth of a pixel is plenty, and keeps long strokes small.
-        const r = (v: number) => Math.round(v * 10) / 10;
-        return {
-          kind: 'paint', x: r(x), y: r(y),
-          strokes: l.strokes.map(st => ({ ...st, points: st.points.map(r), size: r(st.size), feather: r(st.feather) })),
-        };
-      }
-      if (l.kind === 'image') {
-        return {
-          kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
-          ...(l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
-          ...(l.border ? { border: l.border } : {}),
-          ...(l.srcCrop ? { srcCrop: l.srcCrop } : {}),
-        };
-      }
-      return {
-        kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
-        bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
-      };
-    }),
+    layers: layers.map((l): TemplateLayer => ({ ...templateLayer(l, crop), ...(duration && l.anim ? { anim: l.anim } : {}) })),
+  };
+}
+
+function templateLayer(l: EditorLayer, crop: CropBox): TemplateLayer {
+  const x = l.x - crop.x;
+  const y = l.y - crop.y;
+  if (l.kind === 'shape') {
+    return {
+      kind: 'shape', shape: l.shape, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
+      fill: l.fill, stroke: l.stroke, strokeWidth: l.strokeWidth,
+      ...(l.shape === 'rect' && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+    };
+  }
+  if (l.kind === 'paint') {
+    // A tenth of a pixel is plenty, and keeps long strokes small.
+    const r = (v: number) => Math.round(v * 10) / 10;
+    return {
+      kind: 'paint', x: r(x), y: r(y),
+      strokes: l.strokes.map(st => ({ ...st, points: st.points.map(r), size: r(st.size), feather: r(st.feather) })),
+    };
+  }
+  if (l.kind === 'image') {
+    return {
+      kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
+      ...(l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+      ...(l.border ? { border: l.border } : {}),
+      ...(l.srcCrop ? { srcCrop: l.srcCrop } : {}),
+    };
+  }
+  return {
+    kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
+    bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
   };
 }
 
