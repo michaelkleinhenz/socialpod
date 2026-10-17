@@ -534,7 +534,11 @@
 .preview-story-frame {
   position: relative;
   aspect-ratio: 9/16;
-  max-height: 480px;
+  /* Cap the width, not the height: a max-height on a full-width box breaks
+     the aspect ratio, and the cover-fitted video then loses its edges. */
+  width: 100%;
+  max-width: 270px;
+  align-self: center;
   border-radius: 12px;
   overflow: hidden;
   background: #000;
@@ -601,6 +605,11 @@
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+.preview-reel-download {
+  align-self: center;
+  margin-top: 8px;
 }
 
 /* Edit button on image thumbnails */
