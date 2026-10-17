@@ -122,6 +122,7 @@ const SNAP_PX = 6;
 const TOUCH_SLOP = 16;
 const GUIDE_COLOR = '#ff2d95';
 const SNAP_STORAGE_KEY = 'socialpod.imageEditor.snap';
+const LOOP_STORAGE_KEY = 'socialpod.imageEditor.loop';
 
 // Around the image on screen, so crop and transform handles stay reachable.
 const STAGE_PADDING = 20;
@@ -183,6 +184,21 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [time, setTime] = useState(0);
   const timeRef = useRef(0);
   const [playing, setPlaying] = useState(false);
+  // Repeat: playback starts over at the end instead of stopping, and the
+  // design stays editable while it runs, so changes show as it plays.
+  const [loop, setLoop] = useState(() => {
+    try { return localStorage.getItem(LOOP_STORAGE_KEY) === 'on'; } catch { return false; }
+  });
+  const loopRef = useRef(loop);
+  loopRef.current = loop;
+  const toggleLoop = () => {
+    setLoop(on => {
+      try { localStorage.setItem(LOOP_STORAGE_KEY, on ? 'off' : 'on'); } catch { /* per-viewer convenience only */ }
+      return !on;
+    });
+  };
+  // Playing on repeat, the picture and the timeline stay live.
+  const livePlay = playing && loop;
   // Bumped to restart the playback from the playhead while it plays.
   const [playRun, setPlayRun] = useState(0);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
@@ -436,10 +452,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // None while painting: the brush works over the selected paint layer.
     const node = tab === 'crop'
       ? cropRectRef.current
-      : (selectedId && !playing && selectedId !== editingTextId && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
+      : (selectedId && (!playing || livePlay) && selectedId !== editingTextId && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [tab, selectedId, layers, source, aspectId, brushMode, playing, editingTextId]);
+  }, [tab, selectedId, layers, source, aspectId, brushMode, playing, livePlay, editingTextId]);
 
   // --- Undo -----------------------------------------------------------------
 
@@ -555,14 +571,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setPlayRun(n => n + 1);
   };
 
-  // Plays from the playhead to the end, in real time.
+  // Plays from the playhead to the end, in real time, or round and round on
+  // repeat. Each frame moves on from timeRef, so a seek while it plays takes.
   useEffect(() => {
     if (!playing) return;
-    const from = timeRef.current;
-    const t0 = performance.now();
+    let last = performance.now();
     let raf = 0;
     const tick = (now: number) => {
-      const t = from + (now - t0) / 1000;
+      let t = timeRef.current + (now - last) / 1000;
+      last = now;
+      if (t >= duration && loopRef.current) t = 0;
       if (t >= duration) {
         timeRef.current = duration;
         setTime(duration);
@@ -2264,8 +2282,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const layerTransformer = tab !== 'crop';
   // Layers are picked and moved on every tab but Crop and a painting Brush,
   // where the pointer crops or paints.
-  // Nor while a video plays.
-  const layersInteractive = tab !== 'crop' && !painting && !playing;
+  // Nor while a video plays, unless on repeat.
+  const layersInteractive = tab !== 'crop' && !painting && (!playing || livePlay);
   const ratio = aspectRatio(aspectId);
 
   // --- Controls shared by the desktop panel and the phone's tray and sheets
@@ -3241,14 +3259,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 time={time}
                 playing={playing}
                 selectedId={selectedId}
-                onSeek={t => { setPlaying(false); seek(t); }}
+                loop={loop}
+                onSeek={t => { if (!loop) setPlaying(false); seek(t); }}
                 onTogglePlay={togglePlay}
-                onSelect={l => { setPlaying(false); selectLayer(l); }}
+                onToggleLoop={toggleLoop}
+                onSelect={l => { if (!loop) setPlaying(false); selectLayer(l); }}
                 onTiming={(l, a, key) => updateLayer(l.id, { anim: a }, key)}
                 onDragStart={startGesture}
                 audio={audio}
                 onMusicStart={(start, key) => { if (audio) changeAudio({ ...audio, start }, key); }}
-                onSelectMusic={() => { setPlaying(false); setSelectedId(null); if (phone) openSheet('video'); else setTab('animate'); }}
+                onSelectMusic={() => { if (!loop) setPlaying(false); setSelectedId(null); if (phone) openSheet('video'); else setTab('animate'); }}
               />
             )}
           </div>

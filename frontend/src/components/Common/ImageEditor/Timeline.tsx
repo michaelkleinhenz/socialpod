@@ -1,5 +1,5 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
-import { Music, Pause, Play, SkipBack } from 'lucide-react';
+import { Music, Pause, Play, Repeat, SkipBack } from 'lucide-react';
 import { formatTime, layerAnim, layerSpan, musicSpan, type LayerAnim } from './animation';
 import { clamp, layerName, type AudioTrack, type EditorLayer } from './editorModel';
 
@@ -9,9 +9,12 @@ interface Props {
   duration: number;
   time: number;
   playing: boolean;
+  // Repeat: playback starts over at the end.
+  loop: boolean;
   selectedId: string | null;
   onSeek: (t: number) => void;
   onTogglePlay: () => void;
+  onToggleLoop: () => void;
   onSelect: (layer: EditorLayer) => void;
   // A drag of a bar: key keeps the whole drag one undo step.
   onTiming: (layer: EditorLayer, anim: LayerAnim, key: string) => void;
@@ -28,7 +31,7 @@ const snap = (v: number) => Math.round(v / STEP) * STEP;
 
 // The video's timeline under the picture: play and scrub, and a bar per layer
 // for the span it shows, dragged to move it or by its ends to change it.
-export function Timeline({ layers, duration, time, playing, selectedId, onSeek, onTogglePlay, onSelect, onTiming, onDragStart, audio, onMusicStart, onSelectMusic }: Props) {
+export function Timeline({ layers, duration, time, playing, loop, selectedId, onSeek, onTogglePlay, onToggleLoop, onSelect, onTiming, onDragStart, audio, onMusicStart, onSelectMusic }: Props) {
   const tracksRef = useRef<HTMLDivElement>(null);
   const topFirst = [...layers].reverse();
 
@@ -127,6 +130,9 @@ export function Timeline({ layers, duration, time, playing, selectedId, onSeek, 
         </button>
         <button className="ie-icon-btn active" onClick={onTogglePlay} title={playing ? 'Pause (Space)' : 'Play (Space)'} aria-label={playing ? 'Pause' : 'Play'}>
           {playing ? <Pause size={18} /> : <Play size={18} />}
+        </button>
+        <button className={`ie-icon-btn${loop ? ' active' : ''}`} onClick={onToggleLoop} title={loop ? 'Repeat on: plays round and round, and you can edit while it plays' : 'Repeat off'} aria-label="Repeat" aria-pressed={loop}>
+          <Repeat size={16} />
         </button>
         <span className="ie-timeline-time">{formatTime(time)} / {formatTime(duration)}</span>
       </div>
