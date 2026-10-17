@@ -237,6 +237,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [draft, setDraft] = useState<{ id: string; name: string } | null>(null);
   const [draftClean, setDraftClean] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [restoringDraft, setRestoringDraft] = useState<string | null>(null);
   const restoredPhoto = useRef<string | null>(null);
   // A local photo (a fresh pick, a blob URL) uploaded for a draft, so later
@@ -1207,7 +1208,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setDraft({ id: saved.id, name: saved.name });
       setDraftClean(true);
       setDrafts(prev => (prev === null ? prev : [saved, ...prev.filter(d => d.id !== saved.id)]));
-      toast.success(`Saved as draft "${saved.name}". Find it under Templates.`);
+      toast.success(`Saved as draft "${saved.name}". Open it again under Templates, Your drafts, the next time you create ${video ? 'a video' : 'an image'}.`);
     } catch (err) {
       const e = err instanceof Error ? err : null;
       toast.error(e?.name === 'SecurityError'
@@ -1215,6 +1216,37 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         : (e?.message || 'Failed to save the draft'));
     } finally {
       setSavingDraft(false);
+    }
+  };
+
+  // Keeps the video's design in the media library as a template, its length,
+  // music and animations included, for any video to start from.
+  const saveAsTemplate = async () => {
+    if (!ready || !crop || saving || savingTemplate) return;
+    if (layers.length === 0) { toast.error('Add something to the video first'); return; }
+    const answer = window.prompt('Name this template', draft?.name ?? '');
+    if (answer === null) return;
+    const name = answer.trim() || `Template ${new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+    setSavingTemplate(true);
+    try {
+      const template = toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio);
+      const preview = await renderEdit({
+        source: canvasMode ? null : source,
+        background: canvas?.background,
+        crop,
+        adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
+        // The frame at the playhead, as for a draft.
+        layers: layersAt(layers, time, duration),
+        maxSide: 1080,
+        quality: 0.85,
+      });
+      const item = await api.createMediaTemplate(preview, template, { name });
+      setTemplates(prev => (prev === null ? prev : [item, ...prev]));
+      toast.success(`Saved as template "${item.name}". Find it under Templates and in the Media Library.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save the template');
+    } finally {
+      setSavingTemplate(false);
     }
   };
 
@@ -2738,6 +2770,17 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <LayersIcon size={18} />
         </button>
+        {video && (
+          <button
+            className="btn btn-secondary ie-draft"
+            onClick={() => void saveAsTemplate()}
+            disabled={!ready || saving || savingTemplate}
+            title="Keep this design in the media library as a template for other videos"
+          >
+            {savingTemplate ? <Loader2 size={16} className="ie-spin" /> : <LayoutTemplate size={16} />}
+            <span>Save template</span>
+          </button>
+        )}
         <button
           className="btn btn-secondary ie-draft"
           onClick={() => void saveDraft()}
