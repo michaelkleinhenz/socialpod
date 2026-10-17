@@ -95,6 +95,25 @@ export function layerSpan(l: EditorLayer, duration: number): { start: number; en
   return { start, end };
 }
 
+// The first moment a layer shows in full, its entrance over (shared with
+// the exit when its span is too short for both, as animStateAt does).
+export function settledAt(l: EditorLayer, duration: number): number {
+  const { start, end } = layerSpan(l, duration);
+  const a = layerAnim(l);
+  return a.enter === 'none' ? start : Math.min(start + a.enterDuration, (start + end) / 2);
+}
+
+// Where a design opens: once the layers that come in at the very start have
+// settled, so a reopened video does not show them before they are in (faded
+// out and shifted off their place), which reads as lost.
+export function openingTime(layers: EditorLayer[], duration: number): number {
+  let t = 0;
+  for (const l of layers) {
+    if (l.anim && layerSpan(l, duration).start < 0.05) t = Math.max(t, settledAt(l, duration));
+  }
+  return clamp(t, 0, duration);
+}
+
 // How a layer is drawn at one moment, on top of its own attributes: shifted,
 // scaled and turned about its centre, faded, and for a typing text how many
 // characters are out.

@@ -21,7 +21,7 @@ import { geometricHitTest } from './hitTest';
 import { safeZoneRects, type SafeZoneKind } from './safeZones';
 import { LayerList } from './LayerList';
 import {
-  animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt,
+  animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt, openingTime, settledAt,
   layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, musicSpan, NO_ANIM, type LayerAnim,
 } from './animation';
 import { soundDuration, stopMedia, syncMedia } from './mediaSync';
@@ -567,10 +567,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // Draws the stage again, for a clip's new frame.
   const redrawStage = useCallback(() => { contentRef.current?.getLayer()?.batchDraw(); }, []);
 
-  const seek = (t: number) => {
-    const to = clamp(t, 0, duration);
-    timeRef.current = to;
-    setTime(to);
+  const seek = (t: number) => jumpTo(clamp(t, 0, duration));
+
+  // seek for a design just loaded, whose length is not in duration yet.
+  const jumpTo = (t: number) => {
+    timeRef.current = t;
+    setTime(t);
   };
 
   const togglePlay = () => {
@@ -763,13 +765,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   };
 
   // Moves the playhead to where a layer shows in full, unless it already
-  // shows, so a layer picked while hidden can be seen and changed.
+  // does (not still coming in), so a layer picked while hidden can be seen and changed.
   const seekInto = (l: EditorLayer) => {
-    const { start, end } = layerSpan(l, duration);
+    const { end } = layerSpan(l, duration);
+    const settled = settledAt(l, duration);
     const t = timeRef.current;
-    if (t >= start && t < end) return;
-    const a = layerAnim(l);
-    seek(a.enter === 'none' ? start : Math.min(start + a.enterDuration, (start + end) / 2));
+    if (t >= settled && t < end) return;
+    seek(settled);
   };
 
   // Just saved as a draft, or restored from one, nothing is lost by leaving.
@@ -1186,7 +1188,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setCanvas({ width: t.width, height: t.height, background: t.background });
       setCrop(target);
       setLayers(added);
-      if (video && t.duration) setDuration(clamp(t.duration, MIN_DURATION, MAX_DURATION));
+      if (video && t.duration) {
+        const length = clamp(t.duration, MIN_DURATION, MAX_DURATION);
+        setDuration(length);
+        setPlaying(false);
+        jumpTo(openingTime(added, length));
+      }
       if (video && t.audio) setAudio(t.audio);
     } else {
       setLayers(prev => [...prev, ...added]);
@@ -1339,10 +1346,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       }
       setLayers(restored);
       if (video) {
-        setDuration(clamp(d.template.duration ?? DEFAULT_DURATION, MIN_DURATION, MAX_DURATION));
+        const length = clamp(d.template.duration ?? DEFAULT_DURATION, MIN_DURATION, MAX_DURATION);
+        setDuration(length);
         setAudio(d.template.audio ?? null);
         setPlaying(false);
-        seek(0);
+        jumpTo(openingTime(restored, length));
       }
       setSelectedId(null);
       setUndoStack([]);
@@ -1535,6 +1543,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // straight away.
     if (!isTouch) startTextEdit(base.id, { selectAll: true });
   };
+
+  // Instagram's interface covers a full-screen 9:16 frame only, so the zone
+  // (and its switch) shows while the crop or canvas has that shape.
+  const zone = safeZone && crop && Math.abs(crop.width * 16 - crop.height * 9) <= crop.height * 0.2 ? safeZone : undefined;
 
   const toggleSafeZone = () => {
     setShowSafeZone(on => {
@@ -2879,11 +2891,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         >
           <Magnet size={18} />
         </button>
-        {safeZone && !phone && (
+        {zone && !phone && (
           <button
             className={`ie-icon-btn ${showSafeZone ? 'active' : ''}`}
             onClick={toggleSafeZone}
-            title={showSafeZone ? `Hide the ${safeZone} safe zone` : `Show the ${safeZone} safe zone (where Instagram's text and icons cover the video)`}
+            title={showSafeZone ? `Hide the ${zone} safe zone` : `Show the ${zone} safe zone (where Instagram's text and icons cover the frame)`}
             aria-label="Safe zone"
             aria-pressed={showSafeZone}
           >
@@ -3239,9 +3251,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       )}
                     </Group>
 
-                    {safeZone && (showSafeZone || phone) && tab !== 'crop' && (
+                    {zone && (showSafeZone || phone) && tab !== 'crop' && (
                       <Group listening={false}>
-                        {safeZoneRects(safeZone, { x: gx + crop.x * scale, y: gy + crop.y * scale, width: crop.width * scale, height: crop.height * scale }).map((z, i) => (
+                        {safeZoneRects(zone, { x: gx + crop.x * scale, y: gy + crop.y * scale, width: crop.width * scale, height: crop.height * scale }).map((z, i) => (
                           <Group key={`sz${i}`}>
                             <Rect x={z.x} y={z.y} width={z.width} height={z.height} fill={SAFE_ZONE_FILL} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={1} dash={[4, 4]} />
                             {z.width > 60 && (
