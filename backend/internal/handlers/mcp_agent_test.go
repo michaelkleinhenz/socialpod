@@ -177,7 +177,10 @@ func TestMediaListFilter(t *testing.T) {
 	if f := mediaListFilter(scope, "", nil, "Font"); f["contentType"] != (primitive.Regex{Pattern: "^font/"}) {
 		t.Errorf("kind font: contentType = %v", f["contentType"])
 	}
-	if f := mediaListFilter(scope, "", nil, "audio"); f["contentType"] != nil {
+	if f := mediaListFilter(scope, "", nil, "audio"); f["contentType"] != (primitive.Regex{Pattern: "^audio/"}) {
+		t.Errorf("kind audio: contentType = %v", f["contentType"])
+	}
+	if f := mediaListFilter(scope, "", nil, "spreadsheet"); f["contentType"] != nil {
 		t.Error("unknown kind should not filter")
 	}
 	if f := mediaListFilter(scope, "", nil, "watermark"); f["watermark"] != true || f["contentType"] != nil {

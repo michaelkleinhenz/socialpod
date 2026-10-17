@@ -133,6 +133,21 @@ class ApiClient {
     });
   }
 
+  // A clip or a sound for the image editor's video, stored as a temporary
+  // upload: freed once released (releaseTemp) or a day later, unless
+  // something references it by then.
+  uploadTemp(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    return this.request<{ url: string; contentType: string; size: number }>('/upload/temp', { method: 'POST', body: form });
+  }
+
+  // Lets go of temporary uploads. keepalive, so it still goes out while the
+  // page is being left.
+  releaseTemp(urls: string[]) {
+    return this.request<{ released: number }>('/upload/release', { method: 'POST', body: JSON.stringify({ urls }), keepalive: true });
+  }
+
   uploadFromURL(url: string) {
     return this.request<{ url: string; filename: string }>('/upload-from-url', {
       method: 'POST',

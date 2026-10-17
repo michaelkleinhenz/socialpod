@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import type { Filter } from 'konva/lib/Node';
+import type { LayerAnim } from './animation';
 
 // Everything the editor holds is in source-image pixels: the crop is a window
 // onto the original image, and watermarks and texts sit on the original too,
@@ -23,7 +24,9 @@ export interface ImageLayer {
   // Where the image came from (a watermark's or library entry's URL), so a
   // template can load it again.
   src: string;
-  img: HTMLImageElement;
+  // What is drawn: the picture, or for a clip its video (an export swaps in
+  // the decoded frame, a canvas).
+  img: LayerSource;
   x: number;
   y: number;
   width: number;
@@ -41,6 +44,43 @@ export interface ImageLayer {
   // Came with a template: a pasted image takes its place. Images the user
   // added are left alone by a paste. Not stored in a template.
   placeholder?: boolean;
+  // In a video: when it shows and how it moves.
+  anim?: LayerAnim;
+  // A video clip instead of a picture: src is the video, and it plays (with
+  // its sound) while the layer shows.
+  clip?: ClipInfo;
+}
+
+export type LayerSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas;
+
+// A clip's playback: it starts trimStart seconds into the video, and its
+// sound plays at volume (0 to 1). duration is the video's own length, so a
+// layer knows where its clip ends without loading it.
+export interface ClipInfo {
+  trimStart: number;
+  volume: number;
+  duration: number;
+}
+
+// A video's music: a sound file, from start seconds into the video,
+// trimStart seconds into the file, faded in and out over fadeIn and fadeOut
+// seconds. duration is the file's own length.
+export interface AudioTrack {
+  src: string;
+  name: string;
+  start: number;
+  trimStart: number;
+  volume: number;
+  fadeIn: number;
+  fadeOut: number;
+  duration: number;
+}
+
+// The pixel size of what a layer draws.
+export function sourceSize(img: LayerSource): { width: number; height: number } {
+  if (img instanceof HTMLImageElement) return { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height };
+  if (img instanceof HTMLVideoElement) return { width: img.videoWidth || 1, height: img.videoHeight || 1 };
+  return { width: img.width, height: img.height };
 }
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'glow' | 'offset';
@@ -79,6 +119,7 @@ export interface TextLayer {
   x: number;
   y: number;
   rotation: number;
+  anim?: LayerAnim;
 }
 
 export type ShapeKind = 'rect' | 'ellipse' | 'triangle';
@@ -109,6 +150,7 @@ export interface ShapeLayer {
   strokeWidth: number;
   // Boxes only: corner rounding in percent of the shorter side.
   cornerRadius?: number;
+  anim?: LayerAnim;
 }
 
 // One brush stroke: a path through points (x0, y0, x1, y1, ...) relative to
@@ -129,6 +171,7 @@ export interface PaintLayer {
   x: number;
   y: number;
   strokes: PaintStroke[];
+  anim?: LayerAnim;
 }
 
 export type EditorLayer = ImageLayer | TextLayer | ShapeLayer | PaintLayer;
@@ -151,6 +194,11 @@ export interface EditorTemplate {
   height: number;
   background: string;
   layers: TemplateLayer[];
+  // A video design: its length in seconds. The layers' anim says when each
+  // shows; a still design has neither.
+  duration?: number;
+  // A video design's music.
+  audio?: AudioTrack;
 }
 
 // Unfinished work saved to come back to (an image draft): the design as a
@@ -460,6 +508,12 @@ export function buildPaintLayerNode(l: PaintLayer): Konva.Group {
   return g;
 }
 
+export function buildLayerNode(l: EditorLayer): Konva.Group | Konva.Shape {
+  if (l.kind === 'text') return new Konva.Text(textLayerAttrs(l));
+  if (l.kind === 'paint') return buildPaintLayerNode(l);
+  return buildImageLayerNode(l);
+}
+
 export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
   return {
     x: l.x,
@@ -486,6 +540,16 @@ export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
     shadowOffsetX: l.fontSize * 0.03,
     shadowOffsetY: l.fontSize * 0.03,
   };
+}
+
+// What the Objects list and the timeline call a layer.
+export function layerName(layer: EditorLayer): string {
+  switch (layer.kind) {
+    case 'text': return layer.text.trim().split('\n')[0] || 'Empty text';
+    case 'shape': return SHAPE_KINDS.find(k => k.id === layer.shape)?.label ?? 'Shape';
+    case 'paint': return 'Paint';
+    default: return layer.clip ? 'Clip' : layer.origin === 'watermark' ? 'Watermark' : 'Image';
+  }
 }
 
 // The size Konva gives a text at rotation 0, in source-image pixels.
@@ -560,11 +624,7 @@ export async function renderEdit({ source, background = '#ffffff', crop, adjustm
       group.add(new Konva.Rect({ x: crop.x, y: crop.y, width: crop.width, height: crop.height, fill: background }));
     }
 
-    for (const l of layers) {
-      if (l.kind === 'text') group.add(new Konva.Text(textLayerAttrs(l)));
-      else if (l.kind === 'paint') group.add(buildPaintLayerNode(l));
-      else group.add(buildImageLayerNode(l));
-    }
+    for (const l of layers) group.add(buildLayerNode(l));
 
     const canvas = group.toCanvas({ x: 0, y: 0, width, height, pixelRatio: 1 });
     return await new Promise<Blob>((resolve, reject) => {
@@ -619,44 +679,50 @@ export function fitLayers<L extends EditorLayer | TemplateLayer>(layers: L[], fr
 }
 
 // The design as a template: the crop becomes the canvas, layers move with it.
-export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string): EditorTemplate {
+// A video design passes its duration, which keeps the layers' timing.
+export function toTemplate(crop: CropBox, layers: EditorLayer[], background: string, duration?: number, audio?: AudioTrack | null): EditorTemplate {
   return {
     version: 1,
     width: Math.round(crop.width),
     height: Math.round(crop.height),
     background,
+    ...(duration ? { duration } : {}),
+    ...(duration && audio ? { audio } : {}),
     // Everything but the id and the loaded image.
-    layers: layers.map((l): TemplateLayer => {
-      const x = l.x - crop.x;
-      const y = l.y - crop.y;
-      if (l.kind === 'shape') {
-        return {
-          kind: 'shape', shape: l.shape, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
-          fill: l.fill, stroke: l.stroke, strokeWidth: l.strokeWidth,
-          ...(l.shape === 'rect' && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
-        };
-      }
-      if (l.kind === 'paint') {
-        // A tenth of a pixel is plenty, and keeps long strokes small.
-        const r = (v: number) => Math.round(v * 10) / 10;
-        return {
-          kind: 'paint', x: r(x), y: r(y),
-          strokes: l.strokes.map(st => ({ ...st, points: st.points.map(r), size: r(st.size), feather: r(st.feather) })),
-        };
-      }
-      if (l.kind === 'image') {
-        return {
-          kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
-          ...(l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
-          ...(l.border ? { border: l.border } : {}),
-          ...(l.srcCrop ? { srcCrop: l.srcCrop } : {}),
-        };
-      }
-      return {
-        kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
-        bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
-      };
-    }),
+    layers: layers.map((l): TemplateLayer => ({ ...templateLayer(l, crop), ...(duration && l.anim ? { anim: l.anim } : {}) })),
+  };
+}
+
+function templateLayer(l: EditorLayer, crop: CropBox): TemplateLayer {
+  const x = l.x - crop.x;
+  const y = l.y - crop.y;
+  if (l.kind === 'shape') {
+    return {
+      kind: 'shape', shape: l.shape, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
+      fill: l.fill, stroke: l.stroke, strokeWidth: l.strokeWidth,
+      ...(l.shape === 'rect' && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+    };
+  }
+  if (l.kind === 'paint') {
+    // A tenth of a pixel is plenty, and keeps long strokes small.
+    const r = (v: number) => Math.round(v * 10) / 10;
+    return {
+      kind: 'paint', x: r(x), y: r(y),
+      strokes: l.strokes.map(st => ({ ...st, points: st.points.map(r), size: r(st.size), feather: r(st.feather) })),
+    };
+  }
+  if (l.kind === 'image') {
+    return {
+      kind: 'image', origin: l.origin, src: l.src, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
+      ...(l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+      ...(l.border ? { border: l.border } : {}),
+      ...(l.srcCrop ? { srcCrop: l.srcCrop } : {}),
+      ...(l.clip ? { clip: l.clip } : {}),
+    };
+  }
+  return {
+    kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
+    bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
   };
 }
 
@@ -685,7 +751,7 @@ export async function instantiateTemplate(
     if (l.kind === 'paint') return { ...(l as Omit<PaintLayer, 'id'>), id: newLayerId() };
     const il = l as Omit<ImageLayer, 'id' | 'img'>;
     try {
-      const img = await loadImage(resolve(il.src));
+      const img = il.clip ? await loadVideo(resolve(il.src), il.clip.trimStart) : await loadImage(resolve(il.src));
       return { ...il, id: newLayerId(), img, ...(placeholders ? { placeholder: true } : {}) };
     } catch {
       missing++;
@@ -704,6 +770,25 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Failed to load image'));
     img.src = url;
+  });
+}
+
+// A clip's video, loaded far enough to draw its frame at time at (seconds).
+// It is not muted: it plays its sound in the preview.
+export function loadVideo(url: string, at = 0): Promise<HTMLVideoElement> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    if (!url.startsWith('blob:') && !url.startsWith('data:')) v.crossOrigin = 'anonymous';
+    v.preload = 'auto';
+    v.playsInline = true;
+    v.onerror = () => reject(new Error('Failed to load the clip'));
+    v.onloadeddata = () => {
+      v.onloadeddata = null;
+      if (at <= 0) { resolve(v); return; }
+      v.onseeked = () => { v.onseeked = null; resolve(v); };
+      v.currentTime = Math.min(at, Math.max(0, (Number.isFinite(v.duration) ? v.duration : at) - 0.05));
+    };
+    v.src = url;
   });
 }
 

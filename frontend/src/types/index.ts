@@ -79,7 +79,7 @@ export type Watermark = MediaItem;
 
 /** An entry of the team's media library (uploaded material for post images). */
 /** The kinds the media library's list can be narrowed to. */
-export type MediaKind = 'image' | 'video' | 'font' | 'color' | 'template' | 'watermark';
+export type MediaKind = 'image' | 'video' | 'audio' | 'font' | 'color' | 'template' | 'watermark';
 
 export interface MediaItem {
   id: string;

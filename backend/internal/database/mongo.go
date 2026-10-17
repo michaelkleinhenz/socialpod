@@ -64,6 +64,11 @@ func (m *MongoDB) EnsureIndexes() {
 		Keys:    bson.D{{Key: "filename", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
+	// The hourly cleanup of the image editor's temporary clips and sounds.
+	m.Uploads().Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "temporary", Value: 1}, {Key: "createdAt", Value: 1}},
+		Options: options.Index().SetPartialFilterExpression(bson.M{"temporary": true}),
+	})
 
 	m.Footers().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},

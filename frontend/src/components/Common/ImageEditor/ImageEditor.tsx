@@ -2,24 +2,31 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
-  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Crop, Crosshair, FilePen, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
-  Move, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
+  AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
+  Move, Music, Plus, Redo2, Search, Shapes, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, loadImage, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
-  shapeLayerParts, textLayerAttrs, toTemplate,
-  type Adjustments, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
+  instantiateTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
+  shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
+  type Adjustments, type AudioTrack, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
 import { LayerList } from './LayerList';
+import {
+  animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt,
+  layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, musicSpan, NO_ANIM, type LayerAnim,
+} from './animation';
+import { soundDuration, stopMedia, syncMedia } from './mediaSync';
+import { Timeline } from './Timeline';
+import { canExportVideo, renderVideo } from './videoExport';
 import './ImageEditor.css';
 
-type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush';
+type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush' | 'animate';
 
 const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle };
 
@@ -89,6 +96,9 @@ interface Snapshot {
   aspectId: string;
   adjustments: Adjustments;
   layers: EditorLayer[];
+  // The video's length and music; unused on a still.
+  duration: number;
+  audio: AudioTrack | null;
 }
 
 // How close, in screen pixels, a moved layer has to come to snap.
@@ -113,7 +123,12 @@ interface Props {
   // output, for images whose overlay is composited later (convention queues
   // stamp theirs when the item is posted).
   guideOverlay?: HTMLImageElement | null;
-  // The rendered JPEG, and the design as a template (the crop as its canvas).
+  // A video (a reel): the design gets a length and a timeline, its layers
+  // show for a span of it and come in, move and go out with an effect, and
+  // Save exports an MP4 instead of a JPEG.
+  video?: boolean;
+  // The rendered JPEG (an MP4 for a video), and the design as a template
+  // (the crop as its canvas).
   onSave: (blob: Blob, design: EditorTemplate) => void | Promise<void>;
   onCancel: () => void;
 }
@@ -125,7 +140,7 @@ const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
 const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
-export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, onSave, onCancel }: Props) {
+export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, onSave, onCancel }: Props) {
   // The photo being edited; a draft restored here can bring its own, or
   // none (a blank canvas).
   const [photoUrl, setPhotoUrl] = useState(imageUrl || undefined);
@@ -145,6 +160,33 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [adjustments, setAdjustments] = useState<Adjustments>(NO_ADJUSTMENTS);
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A video's length, where its playhead is and whether it plays; and how far
+  // an export has got, in percent.
+  const [duration, setDuration] = useState(() => template?.duration ?? DEFAULT_DURATION);
+  const [time, setTime] = useState(0);
+  const timeRef = useRef(0);
+  const [playing, setPlaying] = useState(false);
+  // Bumped to restart the playback from the playhead while it plays.
+  const [playRun, setPlayRun] = useState(0);
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+  // A video's music, part of the undo snapshot, and the library's sounds to
+  // pick it from, loaded when the music controls are first shown.
+  const [audio, setAudio] = useState<AudioTrack | null>(() => template?.audio ?? null);
+  const [sounds, setSounds] = useState<MediaItem[] | null>(null);
+  const [uploadingSound, setUploadingSound] = useState(false);
+  // Clips and sounds uploaded here as temporary files. They are released
+  // when the editor closes, which deletes whatever nothing references: a
+  // video rendered into a post keeps only the rendered file, a draft keeps
+  // the clips it uses.
+  const tempUploads = useRef(new Set<string>());
+  // An upload kept in the media library instead, for other videos too.
+  const [keepInLibrary, setKeepInLibrary] = useState(false);
+  // What playback reads between renders: the layers and music as they are,
+  // the music's player, and every clip video the preview has seen.
+  const layersRef = useRef<EditorLayer[]>([]);
+  const audioRef = useRef<AudioTrack | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const knownVideos = useRef(new Set<HTMLVideoElement>());
   // The text layer being typed into on the picture itself.
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const editingTextRef = useRef<string | null>(null);
@@ -156,6 +198,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [media, setMedia] = useState<MediaItem[] | null>(null);
   const [mediaQuery, setMediaQuery] = useState('');
   const [watermarksOnly, setWatermarksOnly] = useState(false);
+  // In a video the Media tab also lists the library's clips (its videos).
+  const [clipsView, setClipsView] = useState(false);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -212,6 +256,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const contentRef = useRef<Konva.Group>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const clipInputRef = useRef<HTMLInputElement>(null);
+  const soundInputRef = useRef<HTMLInputElement>(null);
   const placeInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -302,13 +348,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setMediaLoading(true);
       // Everything the library returns (its limit is 200), newest first; the
       // search only narrows it down.
-      api.getMedia({ q: mediaQuery.trim(), kind: watermarksOnly ? 'watermark' : 'image', limit: 200 })
-        .then(items => { if (!cancelled) setMedia(items.filter(isImageMedia)); })
+      api.getMedia({ q: mediaQuery.trim(), kind: clipsView ? 'video' : watermarksOnly ? 'watermark' : 'image', limit: 200 })
+        .then(items => { if (!cancelled) setMedia(clipsView ? items.filter(m => m.url) : items.filter(isImageMedia)); })
         .catch(() => { if (!cancelled) { setMedia(m => m ?? []); toast.error('Failed to load the media library'); } })
         .finally(() => { if (!cancelled) setMediaLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [mediaOpened, mediaQuery, watermarksOnly]);
+  }, [mediaOpened, mediaQuery, watermarksOnly, clipsView]);
 
   // Stage size follows the canvas area.
   useLayoutEffect(() => {
@@ -356,10 +402,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // None while painting: the brush works over the selected paint layer.
     const node = tab === 'crop'
       ? cropRectRef.current
-      : (selectedId && selectedId !== editingTextId && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
+      : (selectedId && !playing && selectedId !== editingTextId && !(tab === 'brush' && brushMode === 'paint') ? nodeRefs.current.get(selectedId) ?? null : null);
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [tab, selectedId, layers, source, aspectId, brushMode, editingTextId]);
+  }, [tab, selectedId, layers, source, aspectId, brushMode, playing, editingTextId]);
 
   // --- Undo -----------------------------------------------------------------
 
@@ -375,7 +421,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // ends it.
     const sticky = key?.startsWith('gesture:');
     if (key && last?.key === key && (sticky || now - last.at < COALESCE_MS)) return;
-    const snap: Snapshot = { canvas, crop, aspectId, adjustments, layers };
+    const snap: Snapshot = { canvas, crop, aspectId, adjustments, layers, duration, audio };
     setUndoStack(stack => [...stack.slice(-(HISTORY_LIMIT - 1)), snap]);
     setRedoStack([]);
     setDraftClean(false);
@@ -391,6 +437,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setAspectId(snap.aspectId);
     setAdjustments(snap.adjustments);
     setLayers(snap.layers);
+    setDuration(snap.duration);
+    setAudio(snap.audio);
     if (selectedId && !snap.layers.some(l => l.id === selectedId)) setSelectedId(null);
     lastChange.current = null;
     setDraftClean(false);
@@ -400,7 +448,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const prev = undoStack[undoStack.length - 1];
     if (!prev || !crop) return;
     setUndoStack(stack => stack.slice(0, -1));
-    setRedoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers }]);
+    setRedoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers, duration, audio }]);
     restore(prev);
   };
 
@@ -408,7 +456,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const next = redoStack[redoStack.length - 1];
     if (!next || !crop) return;
     setRedoStack(stack => stack.slice(0, -1));
-    setUndoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers }]);
+    setUndoStack(stack => [...stack, { canvas, crop, aspectId, adjustments, layers, duration, audio }]);
     restore(next);
   };
 
@@ -448,6 +496,214 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setSelectedId(null);
   };
 
+  // --- Video ----------------------------------------------------------------
+
+  // Draws the stage again, for a clip's new frame.
+  const redrawStage = useCallback(() => { contentRef.current?.getLayer()?.batchDraw(); }, []);
+
+  const seek = (t: number) => {
+    const to = clamp(t, 0, duration);
+    timeRef.current = to;
+    setTime(to);
+  };
+
+  const togglePlay = () => {
+    if (playing) { setPlaying(false); return; }
+    // From the start again once it has played to the end.
+    if (timeRef.current >= duration - 1e-3) seek(0);
+    setPlaying(true);
+  };
+
+  // Plays a stretch to show an effect just picked.
+  const playFrom = (t: number) => {
+    seek(t);
+    setPlaying(true);
+    setPlayRun(n => n + 1);
+  };
+
+  // Plays from the playhead to the end, in real time.
+  useEffect(() => {
+    if (!playing) return;
+    const from = timeRef.current;
+    const t0 = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = from + (now - t0) / 1000;
+      if (t >= duration) {
+        timeRef.current = duration;
+        setTime(duration);
+        setPlaying(false);
+        return;
+      }
+      timeRef.current = t;
+      setTime(t);
+      // Clips and music play along; the canvas draws the clips' new frames.
+      syncMedia(layersRef.current, audioRef.current, musicRef.current, t, duration, true, knownVideos.current, redrawStage);
+      redrawStage();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, duration, playRun, redrawStage]);
+
+  // Playback reads the latest layers and music.
+  useEffect(() => {
+    layersRef.current = layers;
+    audioRef.current = audio;
+  });
+
+  // Paused, every clip shows its frame at the playhead, and nothing plays.
+  useEffect(() => {
+    if (!video || playing) return;
+    syncMedia(layers, audio, musicRef.current, time, duration, false, knownVideos.current, redrawStage);
+  }, [video, playing, time, layers, audio, duration, redrawStage]);
+
+  // The music's player, for the preview.
+  const musicSrc = audio?.src;
+  useEffect(() => {
+    if (!musicSrc) return;
+    const el = new Audio(resolveUrl(musicSrc));
+    el.preload = 'auto';
+    musicRef.current = el;
+    return () => {
+      el.pause();
+      if (musicRef.current === el) musicRef.current = null;
+    };
+  }, [musicSrc]);
+
+  // Closing the editor stops what plays and releases the temporary uploads:
+  // the clips and sounds nothing references by now (a post keeps only the
+  // rendered video) are deleted.
+  useEffect(() => {
+    const known = knownVideos.current;
+    const temp = tempUploads.current;
+    return () => {
+      stopMedia(known, musicRef.current);
+      if (temp.size > 0) void api.releaseTemp([...temp]).catch(() => {});
+    };
+  }, []);
+
+  // Clips and sounds uploaded for this video only.
+  const uploadTemp = async (file: File) => {
+    const { url } = await api.uploadTemp(file);
+    tempUploads.current.add(url);
+    return url;
+  };
+
+  // Puts a clip on the picture at the playhead, shown whole (filling the
+  // frame when it has its shape) and for as long as it runs.
+  const addClip = async (url: string, busyKey: string) => {
+    if (!crop) return;
+    setAddingMedia(busyKey);
+    try {
+      const v = await loadVideo(resolveUrl(url));
+      const own = sourceSize(v);
+      const r = own.width / own.height;
+      let width = crop.width;
+      let height = width / r;
+      if (height > crop.height) { height = crop.height; width = height * r; }
+      const length = Number.isFinite(v.duration) ? v.duration : 0;
+      const start = timeRef.current < duration - 0.5 ? Math.round(timeRef.current * 10) / 10 : 0;
+      const end = length > 0 ? Math.round((start + length) * 10) / 10 : duration;
+      addLayer({
+        id: newLayerId(), kind: 'image', origin: 'media', src: url, img: v,
+        x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
+        clip: { trimStart: 0, volume: 1, duration: length },
+        anim: { ...NO_ANIM, start, ...(end < duration ? { end } : {}) },
+      });
+    } catch {
+      toast.error('Failed to load that clip');
+    } finally {
+      setAddingMedia(null);
+    }
+  };
+
+  // A clip from a file: for this video only, or kept in the library.
+  const uploadClip = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingMedia(true);
+    try {
+      if (keepInLibrary) {
+        const item = await api.uploadMedia(file);
+        setMedia(prev => [item, ...(prev ?? []).filter(m => m.id !== item.id)]);
+        await addClip(item.url, item.id);
+      } else {
+        await addClip(await uploadTemp(file), 'upload');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const changeAudio = (next: AudioTrack | null, key?: string) => {
+    checkpoint(key);
+    setAudio(next);
+  };
+
+  // The library's sounds, once the music controls are shown.
+  const soundsWanted = video && tab === 'animate' && !selectedId;
+  useEffect(() => {
+    if (!soundsWanted || sounds !== null) return;
+    let cancelled = false;
+    api.getMedia({ kind: 'audio', limit: 200 })
+      .then(items => { if (!cancelled) setSounds(items.filter(m => m.url)); })
+      .catch(() => { if (!cancelled) setSounds([]); });
+    return () => { cancelled = true; };
+  }, [soundsWanted, sounds]);
+
+  // Sets the music, from the start of the video and of the file.
+  const pickSound = async (url: string, name: string) => {
+    const length = await soundDuration(resolveUrl(url));
+    changeAudio({ src: url, name, start: 0, trimStart: 0, volume: 0.8, fadeIn: 0, fadeOut: Math.min(2, duration / 4), duration: length });
+  };
+
+  const uploadSound = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingSound(true);
+    try {
+      const name = file.name.replace(/\.[^.]+$/, '');
+      if (keepInLibrary) {
+        const item = await api.uploadMedia(file, { name });
+        setSounds(prev => [item, ...(prev ?? [])]);
+        await pickSound(item.url, item.name);
+      } else {
+        await pickSound(await uploadTemp(file), name);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingSound(false);
+    }
+  };
+
+  const changeDuration = (d: number, key?: string) => {
+    const next = Math.round(clamp(d, MIN_DURATION, MAX_DURATION) * 10) / 10;
+    if (next === duration) return;
+    checkpoint(key);
+    setDuration(next);
+    if (timeRef.current > next) seek(next);
+  };
+
+  const updateAnim = (l: EditorLayer, patch: Partial<LayerAnim>, key?: string) => {
+    updateLayer(l.id, { anim: { ...layerAnim(l), ...patch } }, key);
+  };
+
+  // Moves the playhead to where a layer shows in full, unless it already
+  // shows, so a layer picked while hidden can be seen and changed.
+  const seekInto = (l: EditorLayer) => {
+    const { start, end } = layerSpan(l, duration);
+    const t = timeRef.current;
+    if (t >= start && t < end) return;
+    const a = layerAnim(l);
+    seek(a.enter === 'none' ? start : Math.min(start + a.enterDuration, (start + end) / 2));
+  };
+
   // Just saved as a draft, or restored from one, nothing is lost by leaving.
   const dirty = draftClean ? false : canvasMode
     ? undoStack.length > 0
@@ -479,6 +735,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         e.preventDefault();
         if (k === 'y' || e.shiftKey) redo();
         else undo();
+        return;
+      }
+      if (video && e.key === ' ' && !typing && t?.tagName !== 'BUTTON') {
+        e.preventDefault();
+        togglePlay();
         return;
       }
       if (e.key === 'Escape') {
@@ -520,6 +781,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const selectLayer = (l: EditorLayer) => {
     if (editingTextId && editingTextId !== l.id) finishTextEdit();
     setSelectedId(l.id);
+    if (video) {
+      seekInto(l);
+      // The Animate tab stays, to set the timing of one layer after another.
+      if (tab === 'animate') return;
+    }
     if (l.kind === 'text') setTab('text');
     else if (l.kind === 'shape') setTab('shapes');
     else if (l.kind === 'paint') {
@@ -615,6 +881,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       setCanvas({ width: t.width, height: t.height, background: t.background });
       setCrop(target);
       setLayers(added);
+      if (video && t.duration) setDuration(clamp(t.duration, MIN_DURATION, MAX_DURATION));
+      if (video && t.audio) setAudio(t.audio);
     } else {
       setLayers(prev => [...prev, ...added]);
     }
@@ -666,7 +934,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     try {
       // Layers stay in the picture's own pixels, so the draft comes back
       // exactly as it was.
-      const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff');
+      const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff', video ? duration : undefined, audio);
       const design: EditorDraft = canvasMode
         ? { version: 1, template }
         : { version: 1, template, photo: { src: await draftPhotoUrl(photoUrl!), crop, aspectId, adjustments } };
@@ -675,7 +943,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         background: canvas?.background,
         crop,
         adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
-        layers,
+        // A video's preview is the frame at the playhead.
+        layers: video ? layersAt(layers, time, duration) : layers,
         maxSide: 1080,
         quality: 0.85,
       });
@@ -733,6 +1002,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         setAdjustments(NO_ADJUSTMENTS);
       }
       setLayers(restored);
+      if (video) {
+        setDuration(clamp(d.template.duration ?? DEFAULT_DURATION, MIN_DURATION, MAX_DURATION));
+        setAudio(d.template.audio ?? null);
+        setPlaying(false);
+        seek(0);
+      }
       setSelectedId(null);
       setUndoStack([]);
       setRedoStack([]);
@@ -821,7 +1096,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const fitSelectedImage = () => {
     if (!crop || selected?.kind !== 'image') return;
-    const r = selected.img.naturalWidth / selected.img.naturalHeight;
+    const own = sourceSize(selected.img);
+    const r = own.width / own.height;
     let width = crop.width;
     let height = width / r;
     if (height > crop.height) { height = crop.height; width = height * r; }
@@ -847,7 +1123,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       const img = await loadImage(resolveUrl(url));
       if (target) {
         updateLayer(target.id, {
-          img, src: url, origin: 'media',
+          img, src: url, origin: 'media', clip: undefined,
           srcCrop: centredCrop(img.naturalWidth, img.naturalHeight, target.width / target.height),
         });
         return;
@@ -1147,6 +1423,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const save = async () => {
     if (!ready || !crop || saving) return;
+    if (video) { await saveVideo(); return; }
     setSaving(true);
     try {
       const blob = await renderEdit({
@@ -1163,6 +1440,41 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         ? 'This image cannot be exported (it was loaded from another site)'
         : (e?.message || 'Failed to save the image'));
       setSaving(false);
+    }
+  };
+
+  // Renders the video frame by frame and hands over the MP4.
+  const saveVideo = async () => {
+    if (!crop) return;
+    setPlaying(false);
+    setSaving(true);
+    try {
+      if (!(await canExportVideo(crop))) {
+        toast.error('This browser cannot export video. Use a current Chrome, Edge or Safari.');
+        setSaving(false);
+        return;
+      }
+      setExportProgress(0);
+      const blob = await renderVideo({
+        source: canvasMode ? null : source,
+        background: canvas?.background,
+        crop,
+        adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
+        layers,
+        duration,
+        audio,
+        resolve: resolveUrl,
+        onProgress: p => setExportProgress(Math.floor(p * 100)),
+      });
+      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio));
+    } catch (err) {
+      const e = err instanceof Error ? err : null;
+      toast.error(e?.name === 'SecurityError'
+        ? 'This video cannot be exported (an image was loaded from another site)'
+        : (e?.message || 'Failed to export the video'));
+      setSaving(false);
+    } finally {
+      setExportProgress(null);
     }
   };
 
@@ -1258,10 +1570,214 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </div>
   );
 
+  // When the selected layer shows, and its effects in, while and out.
+  const animateControls = (l: EditorLayer) => {
+    const a = layerAnim(l);
+    const { start, end } = layerSpan(l, duration);
+    const secondsField = (value: number, min: number, max: number, set: (v: number) => void, label: string) => (
+      <input
+        type="number"
+        className="ie-number"
+        min={min}
+        max={max}
+        step={0.1}
+        value={Math.round(value * 10) / 10}
+        onChange={e => { const v = Number(e.target.value); if (e.target.value !== '' && v >= min && v <= max) set(Math.round(v * 10) / 10); }}
+        aria-label={label}
+      />
+    );
+    const durationSlider = (value: number, set: (v: number) => void) => (
+      <label className="ie-slider">
+        <span>Duration</span>
+        <input type="range" min={1} max={30} value={Math.round(value * 10)} onChange={e => set(Number(e.target.value) / 10)} />
+        <span className="ie-value">{formatTime(value)}</span>
+      </label>
+    );
+    return (
+      <>
+        <span className="ie-label">Shows</span>
+        <div className="ie-row">
+          <span className="ie-unit">from</span>
+          {secondsField(start, 0, Math.max(0, end - 0.1), v => updateAnim(l, { start: v }, `anim-start:${l.id}`), 'Shows from, in seconds')}
+          <span className="ie-unit">to</span>
+          {secondsField(end, start + 0.1, duration, v => updateAnim(l, { end: v >= duration ? undefined : v }, `anim-end:${l.id}`), 'Shows until, in seconds')}
+          <span className="ie-unit">s</span>
+        </div>
+        <div className="ie-row">
+          <button className="ie-chip" onClick={() => updateAnim(l, { start: 0, end: undefined })} disabled={start === 0 && end === duration}>Whole video</button>
+          <button className="ie-chip" onClick={() => updateAnim(l, { start: Math.min(Math.round(time * 10) / 10, end - 0.1) })} title="Start at the playhead">Start here</button>
+          <button className="ie-chip" onClick={() => updateAnim(l, { end: time >= duration ? undefined : Math.max(Math.round(time * 10) / 10, start + 0.1) })} title="End at the playhead">End here</button>
+        </div>
+        <span className="ie-label ie-section">Comes in</span>
+        <div className="ie-row">
+          {ENTER_EFFECTS.filter(f => !f.textOnly || l.kind === 'text').map(f => (
+            <button key={f.id} className={`ie-chip ${a.enter === f.id ? 'active' : ''}`} onClick={() => { updateAnim(l, { enter: f.id }); playFrom(start); }}>{f.label}</button>
+          ))}
+        </div>
+        {a.enter !== 'none' && durationSlider(a.enterDuration, v => updateAnim(l, { enterDuration: v }, `anim-enter:${l.id}`))}
+        <span className="ie-label ie-section">While it shows</span>
+        <div className="ie-row">
+          {LOOP_EFFECTS.map(f => (
+            <button key={f.id} className={`ie-chip ${a.loop === f.id ? 'active' : ''}`} onClick={() => updateAnim(l, { loop: f.id })}>{f.label}</button>
+          ))}
+        </div>
+        <span className="ie-label ie-section">Goes out</span>
+        <div className="ie-row">
+          {EXIT_EFFECTS.map(f => (
+            <button
+              key={f.id}
+              className={`ie-chip ${a.exit === f.id ? 'active' : ''}`}
+              onClick={() => { updateAnim(l, { exit: f.id }); playFrom(Math.max(start, end - a.exitDuration - 0.5)); }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {a.exit !== 'none' && durationSlider(a.exitDuration, v => updateAnim(l, { exitDuration: v }, `anim-exit:${l.id}`))}
+        {a.exit !== 'none' && end >= duration && <p className="ie-hint">It shows to the end of the video, so it goes out as the video ends.</p>}
+        <div className="ie-row">
+          <button className="ie-chip" onClick={() => { playFrom(start); }}><Clapperboard size={14} /> Preview</button>
+        </div>
+      </>
+    );
+  };
+
+  // Whether an upload here goes into the media library or is kept for this
+  // video only.
+  const keepInLibraryToggle = (
+    <label className="ie-check">
+      <input type="checkbox" checked={keepInLibrary} onChange={e => setKeepInLibrary(e.target.checked)} />
+      <span>Keep uploads in the media library</span>
+    </label>
+  );
+
+  // Where a clip starts playing, how loud, and how long its layer shows.
+  const clipControls = (l: ImageLayer, c: ClipInfo) => {
+    const { start, end } = layerSpan(l, duration);
+    const runs = c.duration > 0 ? c.duration - c.trimStart : 0;
+    return (
+      <>
+        <span className="ie-label"><Film size={14} /> Clip</span>
+        {c.duration > 0 && (
+          <label className="ie-slider">
+            <span>Start at</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, Math.floor((c.duration - 0.1) * 10))}
+              value={Math.round(c.trimStart * 10)}
+              onChange={e => updateLayer(l.id, { clip: { ...c, trimStart: Number(e.target.value) / 10 } }, `clip-trim:${l.id}`)}
+            />
+            <span className="ie-value">{formatTime(c.trimStart)}</span>
+          </label>
+        )}
+        <label className="ie-slider">
+          <span>Volume</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(c.volume * 100)}
+            onChange={e => updateLayer(l.id, { clip: { ...c, volume: Number(e.target.value) / 100 } }, `clip-volume:${l.id}`)}
+          />
+          <span className="ie-value">{Math.round(c.volume * 100)}%</span>
+        </label>
+        <div className="ie-row">
+          <button className="ie-chip" onClick={() => updateLayer(l.id, { clip: { ...c, volume: c.volume > 0 ? 0 : 1 } })}>
+            {c.volume > 0 ? 'Mute' : 'Unmute'}
+          </button>
+          {runs > 0 && (
+            <button
+              className="ie-chip"
+              onClick={() => { const to = Math.round((start + runs) * 10) / 10; updateAnim(l, { end: to >= duration ? undefined : to }); }}
+              title="Show it for as long as the clip runs from its start point"
+            >
+              Fit to clip
+            </button>
+          )}
+        </div>
+        {runs > 0 && end - start > runs + 0.05 && (
+          <p className="ie-hint">The clip runs {formatTime(runs)} from its start point; its last frame stays for the rest of the {formatTime(end - start)}.</p>
+        )}
+        <span className="ie-label ie-section">Picture</span>
+      </>
+    );
+  };
+
+  // The video's music: a sound from the library or a file, where it starts,
+  // how loud, and its fades.
+  const musicControls = () => (
+    <>
+      <span className="ie-label ie-section"><Music size={14} /> Music</span>
+      {audio ? (
+        <>
+          <div className="ie-row">
+            <span className="ie-sound-name" title={audio.name}>{audio.name}</span>
+            <button className="ie-chip danger" onClick={() => changeAudio(null)}><Trash2 size={14} /> Remove</button>
+          </div>
+          <label className="ie-slider">
+            <span>Starts at</span>
+            <input type="range" min={0} max={Math.round(duration * 10)} value={Math.round(audio.start * 10)}
+              onChange={e => changeAudio({ ...audio, start: Number(e.target.value) / 10 }, 'music-start')} />
+            <span className="ie-value">{formatTime(audio.start)}</span>
+          </label>
+          {audio.duration > 0 && (
+            <label className="ie-slider">
+              <span>Skip</span>
+              <input type="range" min={0} max={Math.max(0, Math.floor((audio.duration - 1) * 10))} value={Math.round(audio.trimStart * 10)}
+                onChange={e => changeAudio({ ...audio, trimStart: Number(e.target.value) / 10 }, 'music-trim')} title="Start this far into the song" />
+              <span className="ie-value">{formatTime(audio.trimStart)}</span>
+            </label>
+          )}
+          <label className="ie-slider">
+            <span>Volume</span>
+            <input type="range" min={0} max={100} value={Math.round(audio.volume * 100)}
+              onChange={e => changeAudio({ ...audio, volume: Number(e.target.value) / 100 }, 'music-volume')} />
+            <span className="ie-value">{Math.round(audio.volume * 100)}%</span>
+          </label>
+          <label className="ie-slider">
+            <span>Fade in</span>
+            <input type="range" min={0} max={50} value={Math.round(audio.fadeIn * 10)}
+              onChange={e => changeAudio({ ...audio, fadeIn: Number(e.target.value) / 10 }, 'music-fade-in')} />
+            <span className="ie-value">{formatTime(audio.fadeIn)}</span>
+          </label>
+          <label className="ie-slider">
+            <span>Fade out</span>
+            <input type="range" min={0} max={50} value={Math.round(audio.fadeOut * 10)}
+              onChange={e => changeAudio({ ...audio, fadeOut: Number(e.target.value) / 10 }, 'music-fade-out')} />
+            <span className="ie-value">{formatTime(audio.fadeOut)}</span>
+          </label>
+          {(() => { const m = musicSpan(audio, duration); return m.end < duration - 0.05 ? <p className="ie-hint">The song ends at {formatTime(m.end)}, before the video does.</p> : null; })()}
+        </>
+      ) : (
+        <p className="ie-hint">Add a song or a sound under the video, from the media library or a file (mp3, m4a, wav). Clips play their own sound as well.</p>
+      )}
+      <div className="ie-row">
+        <button className="ie-chip" onClick={() => soundInputRef.current?.click()} disabled={uploadingSound}>
+          {uploadingSound ? <Loader2 size={14} className="ie-spin" /> : <Upload size={14} />} {audio ? 'Upload another' : 'Upload a sound'}
+        </button>
+      </div>
+      {keepInLibraryToggle}
+      {sounds === null ? (
+        <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading the library's sounds…</p>
+      ) : sounds.length > 0 && (
+        <div className="ie-sound-list">
+          {sounds.map(m => (
+            <button key={m.id} className={`ie-sound ${audio?.src === m.url ? 'active' : ''}`} onClick={() => void pickSound(m.url, m.name)} title={m.description || m.name}>
+              <Music size={14} /> <span>{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <input ref={soundInputRef} type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" hidden onChange={uploadSound} />
+    </>
+  );
+
   // Opacity, corners, border, fit, centre, replace and remove for the
   // selected image layer.
   const imageLayerControls = selected?.kind === 'image' && (
     <>
+      {selected.clip && clipControls(selected, selected.clip)}
       <label className="ie-slider">
         <span>Opacity</span>
         <input
@@ -1403,7 +1919,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const layerTransformer = tab !== 'crop';
   // Layers are picked and moved on every tab but Crop and a painting Brush,
   // where the pointer crops or paints.
-  const layersInteractive = tab !== 'crop' && !painting;
+  // Nor while a video plays.
+  const layersInteractive = tab !== 'crop' && !painting && !playing;
   const ratio = aspectRatio(aspectId);
 
   return (
@@ -1447,7 +1964,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           <span>{draftClean ? 'Draft saved' : 'Save draft'}</span>
         </button>
         <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
-          {saving ? <><Loader2 size={16} className="ie-spin" /> Saving…</> : 'Save'}
+          {saving
+            ? <><Loader2 size={16} className="ie-spin" /> {exportProgress !== null ? `Exporting ${exportProgress}%` : 'Saving…'}</>
+            : video ? 'Export video' : 'Save'}
         </button>
       </header>
 
@@ -1469,6 +1988,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           <button className={tab === 'text' ? 'active' : ''} onClick={() => switchTab('text')}><Type size={20} /><span>Text</span></button>
           <button className={tab === 'shapes' ? 'active' : ''} onClick={() => switchTab('shapes')}><Shapes size={20} /><span>Shapes</span></button>
           <button className={tab === 'brush' ? 'active' : ''} onClick={() => switchTab('brush')}><Brush size={20} /><span>Brush</span></button>
+          {video && (
+            <button className={tab === 'animate' ? 'active' : ''} onClick={() => switchTab('animate')}><Clapperboard size={20} /><span>Animate</span></button>
+          )}
         </nav>
         <div className="ie-panel">
           {tab === 'crop' && (
@@ -1599,13 +2121,19 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   {imageLayerControls}
                   <span className="ie-label ie-section">Media library</span>
                 </>
+              ) : clipsView ? (
+                <p className="ie-hint">Tap a clip to add it at the playhead, or upload one. Move, resize and turn it like an image; its sound plays along.</p>
               ) : media && media.length > 0 && (
                 <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
               )}
               <div className="ie-row">
-                <button className={`ie-chip ${!watermarksOnly ? 'active' : ''}`} onClick={() => setWatermarksOnly(false)}>All images</button>
-                <button className={`ie-chip ${watermarksOnly ? 'active' : ''}`} onClick={() => setWatermarksOnly(true)}><Stamp size={14} /> Watermarks</button>
+                <button className={`ie-chip ${!watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(false); setClipsView(false); }}>All images</button>
+                <button className={`ie-chip ${watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(true); setClipsView(false); }}><Stamp size={14} /> Watermarks</button>
+                {video && (
+                  <button className={`ie-chip ${clipsView ? 'active' : ''}`} onClick={() => { setClipsView(true); setWatermarksOnly(false); }}><Film size={14} /> Clips</button>
+                )}
               </div>
+              {clipsView && keepInLibraryToggle}
               <div className="ie-row ie-sticky">
                 <div className="ie-search">
                   <Search size={16} />
@@ -1618,9 +2146,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 </div>
                 <button
                   className="ie-icon-btn"
-                  onClick={() => mediaInputRef.current?.click()}
+                  onClick={() => (clipsView ? clipInputRef : mediaInputRef).current?.click()}
                   disabled={uploadingMedia}
-                  title="Add an image to the library"
+                  title={clipsView ? (keepInLibrary ? 'Upload a clip into the library' : 'Upload a clip for this video') : 'Add an image to the library'}
                 >
                   {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
                 </button>
@@ -1631,7 +2159,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 <p className="ie-hint">
                   {mediaLoading ? 'Searching…' : mediaQuery.trim()
                     ? 'Nothing in the library matches that.'
-                    : watermarksOnly
+                    : clipsView
+                      ? 'No clips in the library yet. Upload one with the button: it is kept for this video only, unless you keep it in the library.'
+                      : watermarksOnly
                       ? 'No watermarks yet. Upload one here, or mark images as watermarks in the Media Library.'
                       : 'The media library has no images yet. Add them here or on the Media Library page.'}
                 </p>
@@ -1641,11 +2171,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                     <button
                       key={m.id}
                       className="ie-tile"
-                      onClick={() => addMedia(m)}
+                      onClick={() => (clipsView ? addClip(m.url, m.id) : addMedia(m))}
                       disabled={addingMedia !== null}
                       title={m.description ? `${m.name}: ${m.description}` : `Add ${m.name}`}
                     >
-                      <img src={resolveUrl(m.url)} alt="" loading="lazy" />
+                      {clipsView
+                        ? <video src={resolveUrl(m.url)} muted preload="metadata" />
+                        : <img src={resolveUrl(m.url)} alt="" loading="lazy" />}
                       <span>{addingMedia === m.id ? 'Adding…' : m.name}</span>
                       {m.watermark && !watermarksOnly && <Stamp size={14} className="ie-tile-badge" aria-label="Watermark" />}
                     </button>
@@ -1653,6 +2185,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 </div>
               )}
               <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
+              <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
             </>
           )}
 
@@ -1736,6 +2269,34 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               )}
             </>
           )}
+
+          {tab === 'animate' && (selected ? animateControls(selected) : (
+            <>
+              <span className="ie-label">Video length</span>
+              <div className="ie-row ie-scroll">
+                {DURATION_PRESETS.map(d => (
+                  <button key={d} className={`ie-chip ${duration === d ? 'active' : ''}`} onClick={() => changeDuration(d)}>{d}s</button>
+                ))}
+                <input
+                  type="number"
+                  className="ie-number"
+                  min={MIN_DURATION}
+                  max={MAX_DURATION}
+                  step={0.5}
+                  value={duration}
+                  onChange={e => { const v = Number(e.target.value); if (v >= MIN_DURATION && v <= MAX_DURATION) changeDuration(v, 'duration'); }}
+                  aria-label="Video length in seconds"
+                />
+                <span className="ie-unit">s</span>
+              </div>
+              <p className="ie-hint">
+                {layers.length > 0
+                  ? 'Pick an object on the picture or in the timeline to set when it shows and how it comes in and goes out. Drag its bar in the timeline to move it in time.'
+                  : 'Add texts, images and shapes, then animate them here. Each shows the whole video until you change it.'}
+              </p>
+              {musicControls()}
+            </>
+          ))}
 
           {tab === 'text' && (
             selected?.kind === 'text' ? (
@@ -1824,188 +2385,211 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           )}
         </div>
         <div className="ie-body">
-          <div className={`ie-canvas ${painting ? 'ie-painting' : ''}`} ref={canvasBoxRef}>
-            {loadError && <div className="ie-message">The image could not be loaded.</div>}
-            {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
-            {ready && crop && size.w > 0 && (
-              <Stage
-                width={size.w}
-                height={size.h}
-                onPointerDown={onStagePointerDown}
-                onPointerMove={e => { if (painting) extendStroke(e.target.getStage()); }}
-                onPointerLeave={() => setBrushAt(null)}
-              >
-                <Layer>
-                  <Group
-                    ref={contentRef}
-                    x={gx}
-                    y={gy}
-                    scaleX={scale}
-                    scaleY={scale}
-                    {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
-                  >
-                    {canvas
-                      ? <Rect ref={backgroundRef} x={0} y={0} width={natW} height={natH} fill={canvas.background} />
-                      : <KImage ref={baseRef} image={source ?? undefined} width={natW} height={natH} />}
-                    {layers.map(l => {
-                      const common = {
-                        ref: (node: Konva.Node | null) => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); },
-                        listening: layersInteractive,
-                        draggable: layersInteractive,
-                        onPointerDown: (e: Konva.KonvaEventObject<PointerEvent>) => onLayerPointerDown(l, e),
-                        onDragStart: startGesture,
-                        onTransformStart: startGesture,
-                        onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragMove(l, e),
-                        onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragEnd(l, e),
-                      };
-                      if (l.kind === 'text') {
-                        return (
-                          <KText
-                            key={l.id}
-                            {...common}
-                            {...textLayerAttrs(l)}
-                            visible={editingTextId !== l.id}
-                            onDblClick={() => startTextEdit(l.id)}
-                            onDblTap={() => startTextEdit(l.id)}
-                            onTransformEnd={e => onLayerTransformEnd(l, e.target)}
-                          />
-                        );
-                      }
-                      if (l.kind === 'paint') {
-                        return (
-                          <Fragment key={l.id}>
-                            <Group {...common} x={l.x} y={l.y}>
-                              {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
-                            </Group>
-                            {drawing && l.id === selectedId && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
-                          </Fragment>
-                        );
-                      }
-                      const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
-                      return (
-                        <Group key={l.id} {...common} {...group} onTransformEnd={e => onLayerTransformEnd(l, e.currentTarget)}>
-                          {parts.map(renderPart)}
-                        </Group>
-                      );
-                    })}
-                    {/* The stroke being painted shows where it will go: in the
-                        selected paint layer's place in the stack (above), or
-                        on top, where a new paint layer is added. */}
-                    {drawing && selected?.kind !== 'paint' && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
-                    {guideOverlay && (
-                      <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
-                    )}
-                  </Group>
-
-                  {guides && tab !== 'crop' && (
-                    <Group listening={false}>
-                      {guides.guides.map((g, i) => (g.orientation === 'v' ? (
-                        <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                      ) : (
-                        <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                      )))}
-                      {guides.gaps.map((m, i) => {
-                        const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
-                        const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
-                        const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
-                        const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
-                        const [lx, ly] = pt((a + b) / 2, c);
-                        return (
-                          <Group key={`m${i}`}>
-                            <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                            <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                            <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
-                            <Label x={lx} y={ly}>
-                              <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
-                              <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
-                            </Label>
-                          </Group>
+          <div className="ie-main">
+            <div className={`ie-canvas ${painting ? 'ie-painting' : ''}`} ref={canvasBoxRef}>
+              {loadError && <div className="ie-message">The image could not be loaded.</div>}
+              {!ready && !loadError && <div className="ie-message"><Loader2 size={24} className="ie-spin" /></div>}
+              {ready && crop && size.w > 0 && (
+                <Stage
+                  width={size.w}
+                  height={size.h}
+                  onPointerDown={onStagePointerDown}
+                  onPointerMove={e => { if (painting) extendStroke(e.target.getStage()); }}
+                  onPointerLeave={() => setBrushAt(null)}
+                >
+                  <Layer>
+                    <Group
+                      ref={contentRef}
+                      x={gx}
+                      y={gy}
+                      scaleX={scale}
+                      scaleY={scale}
+                      {...(tab === 'crop' ? {} : { clipX: crop.x, clipY: crop.y, clipWidth: crop.width, clipHeight: crop.height })}
+                    >
+                      {canvas
+                        ? <Rect ref={backgroundRef} x={0} y={0} width={natW} height={natH} fill={canvas.background} />
+                        : <KImage ref={baseRef} image={source ?? undefined} width={natW} height={natH} />}
+                      {layers.map(l => {
+                        // In a video every layer is drawn as it is at the
+                        // playhead, inside a group that animates it.
+                        const anim = video ? animStateAt(l, time, duration, crop) : null;
+                        const wrap = (el: React.JSX.Element) => (anim ? <Group key={l.id} {...animGroupAttrs(l, anim)}>{el}</Group> : el);
+                        const common = {
+                          ref: (node: Konva.Node | null) => { if (node) nodeRefs.current.set(l.id, node); else nodeRefs.current.delete(l.id); },
+                          listening: layersInteractive,
+                          draggable: layersInteractive,
+                          onPointerDown: (e: Konva.KonvaEventObject<PointerEvent>) => onLayerPointerDown(l, e),
+                          onDragStart: startGesture,
+                          onTransformStart: startGesture,
+                          onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragMove(l, e),
+                          onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => onLayerDragEnd(l, e),
+                        };
+                        if (l.kind === 'text') {
+                          return wrap(
+                            <KText
+                              key={l.id}
+                              {...common}
+                              {...(anim ? animatedTextAttrs(l, anim) : textLayerAttrs(l))}
+                              visible={editingTextId !== l.id}
+                              onDblClick={() => startTextEdit(l.id)}
+                              onDblTap={() => startTextEdit(l.id)}
+                              onTransformEnd={e => onLayerTransformEnd(l, e.target)}
+                            />,
+                          );
+                        }
+                        if (l.kind === 'paint') {
+                          return wrap(
+                            <Fragment key={l.id}>
+                              <Group {...common} x={l.x} y={l.y}>
+                                {l.strokes.map((st, i) => <Shape key={i} {...paintStrokeAttrs(st)} />)}
+                              </Group>
+                              {drawing && l.id === selectedId && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                            </Fragment>,
+                          );
+                        }
+                        const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
+                        return wrap(
+                          <Group key={l.id} {...common} {...group} onTransformEnd={e => onLayerTransformEnd(l, e.currentTarget)}>
+                            {parts.map(renderPart)}
+                          </Group>,
                         );
                       })}
-                    </Group>
-                  )}
-
-                  {painting && brushAt && (
-                    <Group listening={false}>
-                      <Circle x={gx + brushAt.x * scale} y={gy + brushAt.y * scale} radius={Math.max(1, (brushSize / 2) * scale)} stroke="#ffffff" strokeWidth={1.5} shadowColor="#000000" shadowBlur={2} shadowOpacity={0.8} />
-                      {brushFeather > 0 && (
-                        <Circle x={gx + brushAt.x * scale} y={gy + brushAt.y * scale} radius={(brushSize / 2 + brushFeather) * scale} stroke="rgba(255,255,255,0.6)" strokeWidth={1} dash={[4, 4]} />
+                      {/* The stroke being painted shows where it will go: in the
+                          selected paint layer's place in the stack (above), or
+                          on top, where a new paint layer is added. */}
+                      {drawing && selected?.kind !== 'paint' && <Shape {...paintStrokeAttrs(drawing)} listening={false} />}
+                      {guideOverlay && (
+                        <KImage image={guideOverlay} x={crop.x} y={crop.y} width={crop.width} height={crop.height} listening={false} opacity={tab === 'crop' ? 0.6 : 1} />
                       )}
                     </Group>
-                  )}
 
-                  {tab === 'crop' && (
-                    <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
-                      {/* Shade what the crop leaves out. */}
-                      <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
-                      <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                      <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                      <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
-                      {[1, 2].map(i => (
-                        <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                      ))}
-                      {[1, 2].map(i => (
-                        <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
-                      ))}
-                      <Rect
-                        ref={cropRectRef}
-                        x={crop.x}
-                        y={crop.y}
-                        width={crop.width}
-                        height={crop.height}
-                        fill="rgba(0,0,0,0)"
-                        stroke="#ffffff"
-                        strokeWidth={2}
-                        strokeScaleEnabled={false}
-                        draggable
-                        dragBoundFunc={cropDragBound}
-                        onDragStart={startGesture}
-                        onTransformStart={startGesture}
-                        onDragMove={syncCropFromNode}
-                        onDragEnd={syncCropFromNode}
-                        onTransform={syncCropFromNode}
-                        onTransformEnd={syncCropFromNode}
-                      />
-                    </Group>
-                  )}
+                    {guides && tab !== 'crop' && (
+                      <Group listening={false}>
+                        {guides.guides.map((g, i) => (g.orientation === 'v' ? (
+                          <Line key={`g${i}`} points={[gx + g.pos * scale, gy + g.from * scale, gx + g.pos * scale, gy + g.to * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                        ) : (
+                          <Line key={`g${i}`} points={[gx + g.from * scale, gy + g.pos * scale, gx + g.to * scale, gy + g.pos * scale]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                        )))}
+                        {guides.gaps.map((m, i) => {
+                          const a = (m.axis === 'x' ? gx : gy) + m.from * scale;
+                          const b = (m.axis === 'x' ? gx : gy) + m.to * scale;
+                          const c = (m.axis === 'x' ? gy : gx) + m.at * scale;
+                          const pt = (along: number, cross: number) => (m.axis === 'x' ? [along, cross] : [cross, along]);
+                          const [lx, ly] = pt((a + b) / 2, c);
+                          return (
+                            <Group key={`m${i}`}>
+                              <Line points={[...pt(a, c), ...pt(b, c)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                              <Line points={[...pt(a, c - 4), ...pt(a, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                              <Line points={[...pt(b, c - 4), ...pt(b, c + 4)]} stroke={GUIDE_COLOR} strokeWidth={1} />
+                              <Label x={lx} y={ly}>
+                                <Tag fill={GUIDE_COLOR} cornerRadius={3} pointerDirection={m.axis === 'x' ? 'down' : 'left'} pointerWidth={0} pointerHeight={4} />
+                                <KText text={`${Math.round(m.to - m.from)}`} fontSize={11} fill="#ffffff" padding={3} />
+                              </Label>
+                            </Group>
+                          );
+                        })}
+                      </Group>
+                    )}
 
-                  <Transformer
-                    ref={trRef}
-                    anchorSize={anchorSize}
-                    anchorCornerRadius={anchorSize / 2}
-                    anchorStroke="#6366f1"
-                    anchorFill="#ffffff"
-                    borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
-                    borderStrokeWidth={1.5}
-                    padding={layerTransformer ? 4 : 0}
-                    rotateEnabled={layerTransformer && selected?.kind !== 'paint'}
-                    rotateAnchorOffset={isTouch ? 36 : 28}
-                    rotationSnaps={[0, 90, 180, 270]}
-                    flipEnabled={false}
-                    ignoreStroke
-                    // Shapes stretch freely (Shift keeps their proportions);
-                    // paint is moved only.
-                    keepRatio={layerTransformer ? selected?.kind !== 'shape' : ratio !== null}
-                    enabledAnchors={layerTransformer && selected?.kind === 'paint'
-                      ? []
-                      : (layerTransformer && selected?.kind !== 'shape') || (!layerTransformer && ratio !== null)
-                        ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
-                        : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
-                    boundBoxFunc={(oldBox, newBox) => (layerTransformer
-                      ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
-                      : cropBoundBox(oldBox, newBox))}
-                  />
-                </Layer>
-              </Stage>
-            )}
-            {editingText && (
-              <InlineTextEditor
-                ref={textAreaRef}
-                layer={editingText}
-                scale={scale}
-                origin={{ x: gx, y: gy }}
-                onChange={text => updateLayer(editingText.id, retypeText(editingText, text), `gesture:text:${editingText.id}`)}
-                onDone={finishTextEdit}
+                    {painting && brushAt && (
+                      <Group listening={false}>
+                        <Circle x={gx + brushAt.x * scale} y={gy + brushAt.y * scale} radius={Math.max(1, (brushSize / 2) * scale)} stroke="#ffffff" strokeWidth={1.5} shadowColor="#000000" shadowBlur={2} shadowOpacity={0.8} />
+                        {brushFeather > 0 && (
+                          <Circle x={gx + brushAt.x * scale} y={gy + brushAt.y * scale} radius={(brushSize / 2 + brushFeather) * scale} stroke="rgba(255,255,255,0.6)" strokeWidth={1} dash={[4, 4]} />
+                        )}
+                      </Group>
+                    )}
+
+                    {tab === 'crop' && (
+                      <Group x={gx} y={gy} scaleX={scale} scaleY={scale}>
+                        {/* Shade what the crop leaves out. */}
+                        <Rect x={0} y={0} width={natW} height={crop.y} fill="rgba(0,0,0,0.6)" listening={false} />
+                        <Rect x={0} y={crop.y + crop.height} width={natW} height={natH - crop.y - crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                        <Rect x={0} y={crop.y} width={crop.x} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                        <Rect x={crop.x + crop.width} y={crop.y} width={natW - crop.x - crop.width} height={crop.height} fill="rgba(0,0,0,0.6)" listening={false} />
+                        {[1, 2].map(i => (
+                          <Line key={`v${i}`} points={[crop.x + crop.width * i / 3, crop.y, crop.x + crop.width * i / 3, crop.y + crop.height]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                        ))}
+                        {[1, 2].map(i => (
+                          <Line key={`h${i}`} points={[crop.x, crop.y + crop.height * i / 3, crop.x + crop.width, crop.y + crop.height * i / 3]} stroke="rgba(255,255,255,0.45)" strokeWidth={1} strokeScaleEnabled={false} listening={false} />
+                        ))}
+                        <Rect
+                          ref={cropRectRef}
+                          x={crop.x}
+                          y={crop.y}
+                          width={crop.width}
+                          height={crop.height}
+                          fill="rgba(0,0,0,0)"
+                          stroke="#ffffff"
+                          strokeWidth={2}
+                          strokeScaleEnabled={false}
+                          draggable
+                          dragBoundFunc={cropDragBound}
+                          onDragStart={startGesture}
+                          onTransformStart={startGesture}
+                          onDragMove={syncCropFromNode}
+                          onDragEnd={syncCropFromNode}
+                          onTransform={syncCropFromNode}
+                          onTransformEnd={syncCropFromNode}
+                        />
+                      </Group>
+                    )}
+
+                    <Transformer
+                      ref={trRef}
+                      anchorSize={anchorSize}
+                      anchorCornerRadius={anchorSize / 2}
+                      anchorStroke="#6366f1"
+                      anchorFill="#ffffff"
+                      borderStroke={layerTransformer ? '#818cf8' : 'rgba(0,0,0,0)'}
+                      borderStrokeWidth={1.5}
+                      padding={layerTransformer ? 4 : 0}
+                      rotateEnabled={layerTransformer && selected?.kind !== 'paint'}
+                      rotateAnchorOffset={isTouch ? 36 : 28}
+                      rotationSnaps={[0, 90, 180, 270]}
+                      flipEnabled={false}
+                      ignoreStroke
+                      // Shapes stretch freely (Shift keeps their proportions);
+                      // paint is moved only.
+                      keepRatio={layerTransformer ? selected?.kind !== 'shape' : ratio !== null}
+                      enabledAnchors={layerTransformer && selected?.kind === 'paint'
+                        ? []
+                        : (layerTransformer && selected?.kind !== 'shape') || (!layerTransformer && ratio !== null)
+                          ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                          : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+                      boundBoxFunc={(oldBox, newBox) => (layerTransformer
+                        ? (newBox.width < 12 || newBox.height < 12 ? oldBox : newBox)
+                        : cropBoundBox(oldBox, newBox))}
+                    />
+                  </Layer>
+                </Stage>
+              )}
+              {editingText && (
+                <InlineTextEditor
+                  ref={textAreaRef}
+                  layer={editingText}
+                  scale={scale}
+                  origin={{ x: gx, y: gy }}
+                  onChange={text => updateLayer(editingText.id, retypeText(editingText, text), `gesture:text:${editingText.id}`)}
+                  onDone={finishTextEdit}
+                />
+              )}
+            </div>
+            {video && (
+              <Timeline
+                layers={layers}
+                duration={duration}
+                time={time}
+                playing={playing}
+                selectedId={selectedId}
+                onSeek={t => { setPlaying(false); seek(t); }}
+                onTogglePlay={togglePlay}
+                onSelect={l => { setPlaying(false); selectLayer(l); }}
+                onTiming={(l, a, key) => updateLayer(l.id, { anim: a }, key)}
+                onDragStart={startGesture}
+                audio={audio}
+                onMusicStart={(start, key) => { if (audio) changeAudio({ ...audio, start }, key); }}
+                onSelectMusic={() => { setPlaying(false); setSelectedId(null); setTab('animate'); }}
               />
             )}
           </div>

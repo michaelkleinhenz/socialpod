@@ -148,6 +148,7 @@ func main() {
 	inboxHandler := &handlers.InboxHandler{DB: db, Instagram: igService, Bluesky: bskyService}
 	conventionHandler := &handlers.ConventionHandler{DB: db, UploadDir: cfg.UploadDir}
 	conventionHandler.StartAutoPoster()
+	handlers.StartTemporaryUploadCleanup(db, cfg.UploadDir)
 	defer conventionHandler.StopAutoPoster()
 	bggHandler := &handlers.BGGHandler{DB: db, UploadDir: cfg.UploadDir}
 	publisherHandleHandler := &handlers.PublisherHandleHandler{DB: db}
@@ -249,6 +250,10 @@ func main() {
 		auth.POST("/posts/:id/retry", postHandler.Retry)
 		auth.POST("/posts/:id/retry-news", postHandler.RetryEpisodeNews)
 		auth.POST("/upload", postHandler.UploadImage)
+		// The image editor's clips and sounds for a video: temporary until
+		// something references them (uploads_temp.go).
+		auth.POST("/upload/temp", postHandler.UploadTemp)
+		auth.POST("/upload/release", postHandler.ReleaseTemp)
 		auth.POST("/upload-from-url", postHandler.UploadFromURL)
 		auth.GET("/accounts", adminHandler.ListActiveAccounts)
 		auth.POST("/generate-text", adminHandler.GenerateText)

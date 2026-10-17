@@ -39,13 +39,15 @@ var mediaContentTypes = map[string]string{
 	".gif": "image/gif", ".webp": "image/webp",
 	".mp4": "video/mp4", ".mov": "video/quicktime",
 	".ttf": "font/ttf", ".otf": "font/otf",
+	".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
+	".wav": "audio/wav", ".ogg": "audio/ogg",
 }
 
 func isFontContentType(ct string) bool { return strings.HasPrefix(ct, "font/") }
 
 // mediaKindPrefixes maps a list filter kind to the content type prefix; kind
 // watermark is the images flagged as watermarks.
-var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "font": "font/", "color": "color/", "template": "template/"}
+var mediaKindPrefixes = map[string]string{"image": "image/", "video": "video/", "audio": "audio/", "font": "font/", "color": "color/", "template": "template/"}
 
 var hexColorPattern = regexp.MustCompile(`^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$`)
 
@@ -118,7 +120,7 @@ func splitTags(s string) []string {
 
 // mediaListFilter builds the scoped query for a library search: words of
 // query must all appear in the name, description, tags or colour value; every
-// tag given must be present; kind (image, video, font, color, template,
+// tag given must be present; kind (image, video, audio, font, color, template,
 // watermark; empty = all) limits the content type.
 func mediaListFilter(scope bson.M, query string, tags []string, kind string) bson.M {
 	filter := bson.M{}
@@ -181,6 +183,8 @@ func addMediaItem(ctx context.Context, c *gin.Context, db *database.MongoDB, upl
 	maxSize := 15 * 1024 * 1024
 	if strings.HasPrefix(ct, "video/") {
 		maxSize = 100 * 1024 * 1024
+	} else if strings.HasPrefix(ct, "audio/") {
+		maxSize = maxAudioSize
 	}
 	if len(data) == 0 || len(data) > maxSize {
 		return models.MediaItem{}, fmt.Errorf("file is empty or larger than %d MB", maxSize/(1024*1024))
@@ -303,7 +307,7 @@ func (h *MediaHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, items)
 }
 
-// Create takes a multipart upload: file (image, video, or a .ttf/.otf font),
+// Create takes a multipart upload: file (image, video, sound, or a .ttf/.otf font),
 // plus optional name, description, comma-separated tags and watermark=true to
 // add an image as a watermark.
 func (h *MediaHandler) Create(c *gin.Context) {

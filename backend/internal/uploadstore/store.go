@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"socialmedia/internal/database"
@@ -41,6 +42,23 @@ const StorageBucket = "s3"
 
 // ErrNotFound is returned when an upload exists nowhere.
 var ErrNotFound = errors.New("upload not found")
+
+// ErrNeedsBucket is returned for a video or a sound stored without a bucket:
+// they are too large for a database record (16 MB at most) and would bloat
+// the database and every backup.
+var ErrNeedsBucket = errors.New("videos and sounds need the S3 bucket (set AWS_S3_BUCKET_NAME and its credentials)")
+
+// Meta is what a record carries besides the file itself.
+type Meta struct {
+	Temporary bool
+	OwnerID   string
+}
+
+// isMedia reports whether a content type is a video or a sound, which are
+// only ever stored in the bucket.
+func isMedia(contentType string) bool {
+	return strings.HasPrefix(contentType, "video/") || strings.HasPrefix(contentType, "audio/")
+}
 
 // Bucket is the object API the store needs; objectstore.S3 and
 // objectstore.Memory implement it.
@@ -74,15 +92,27 @@ func ValidName(filename string) bool {
 // record without one), the record in the uploads collection, and a copy in
 // dir. It fails if the bytes could not be stored durably; the disk copy is
 // best-effort.
+//
+// Videos and sounds are refused without a bucket (ErrNeedsBucket).
 func Save(ctx context.Context, db *database.MongoDB, dir, filename, contentType string, data []byte) error {
+	return SaveWith(ctx, db, dir, filename, contentType, data, Meta{})
+}
+
+// SaveWith is Save with the record's meta data.
+func SaveWith(ctx context.Context, db *database.MongoDB, dir, filename, contentType string, data []byte, meta Meta) error {
 	if !ValidName(filename) {
 		return fmt.Errorf("invalid upload name %q", filename)
+	}
+	if bucket == nil && isMedia(contentType) {
+		return ErrNeedsBucket
 	}
 	rec := models.Upload{
 		Filename:    filename,
 		ContentType: contentType,
 		Size:        int64(len(data)),
 		CreatedAt:   time.Now(),
+		Temporary:   meta.Temporary,
+		OwnerID:     meta.OwnerID,
 	}
 	if bucket != nil {
 		if err := bucket.Put(ctx, Key(filename), contentType, data); err != nil {

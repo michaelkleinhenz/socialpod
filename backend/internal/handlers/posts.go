@@ -701,7 +701,9 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 		c.File(p)
 		return
 	}
-	c.Data(http.StatusOK, ct, data)
+	// Ranges still work, so a clip the image editor plays can be seeked in.
+	c.Header("Content-Type", ct)
+	http.ServeContent(c.Writer, c.Request, filename, time.Time{}, bytes.NewReader(data))
 }
 
 func (h *PostHandler) Retry(c *gin.Context) {

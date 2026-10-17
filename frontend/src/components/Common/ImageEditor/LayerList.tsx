@@ -5,8 +5,8 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Brush, Circle, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
-import { SHAPE_KINDS, type EditorLayer } from './editorModel';
+import { Brush, Circle, Film, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
+import { layerName, type EditorLayer } from './editorModel';
 
 // Rows only move up and down.
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -97,21 +97,12 @@ function LayerRow({ layer, selected, onSelect }: { layer: EditorLayer; selected:
   );
 }
 
-function layerName(layer: EditorLayer): string {
-  switch (layer.kind) {
-    case 'text': return layer.text.trim().split('\n')[0] || 'Empty text';
-    case 'shape': return SHAPE_KINDS.find(k => k.id === layer.shape)?.label ?? 'Shape';
-    case 'paint': return 'Paint';
-    default: return layer.origin === 'watermark' ? 'Watermark' : 'Image';
-  }
-}
-
 function layerIcon(layer: EditorLayer) {
   switch (layer.kind) {
     case 'text': return <Type size={12} />;
     case 'shape': return layer.shape === 'ellipse' ? <Circle size={12} /> : layer.shape === 'triangle' ? <Triangle size={12} /> : <Square size={12} />;
     case 'paint': return <Brush size={12} />;
-    default: return layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />;
+    default: return layer.clip ? <Film size={12} /> : layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />;
   }
 }
 
@@ -137,6 +128,8 @@ function layerThumb(layer: EditorLayer) {
       return <span className="ie-layer-paint" style={{ background: `radial-gradient(circle, ${st?.color ?? '#000000'} 0%, transparent 70%)`, opacity: Math.max(0.4, st?.opacity ?? 1) }} />;
     }
     default:
-      return <img src={layer.img.src} alt="" />;
+      // A clip's thumbnail is its first frame, the video itself.
+      if (layer.clip) return <video src={layer.img instanceof HTMLVideoElement ? layer.img.src : ''} muted preload="metadata" />;
+      return <img src={layer.img instanceof HTMLImageElement ? layer.img.src : ''} alt="" />;
   }
 }

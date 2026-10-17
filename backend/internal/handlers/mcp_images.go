@@ -98,7 +98,7 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "list_media",
 			Description: "Search the team's media library: uploaded photos, artwork, logos, backgrounds and fonts, and the team's colours, each with a name, a description and tags. " +
-				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, fonts, colours, templates or watermarks. " +
+				"All words of query must appear in the name, description, tags or colour value; every tag in tags must be set; kind limits the results to images, videos, sounds (audio), fonts, colours, templates or watermarks. " +
 				"Watermarks are library images marked watermark (logos and overlays; list_watermarks also tells what the team uses each for). " +
 				"A font's id goes into fontMediaId of a compose_image text layer. A colour entry has no file: its color (#rrggbb or #rrggbbaa) goes into any colour field of compose_image, " +
 				"and its description says how and where the team uses it; follow that. " +
@@ -110,7 +110,7 @@ func imageToolDefinitions() []mcpTool {
 				"properties": map[string]any{
 					"query":   map[string]any{"type": "string", "description": "Words to search for"},
 					"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required tags"},
-					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "font", "color", "template", "watermark"}, "description": "Only this kind of entry (default all). A template is a design for the image editor; its url is a preview image. watermark: the images marked as watermarks"},
+					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "audio", "font", "color", "template", "watermark"}, "description": "Only this kind of entry (default all). A template is a design for the image editor; its url is a preview image. watermark: the images marked as watermarks"},
 					"limit":   map[string]any{"type": "number", "description": "Maximum results (default 50, max 200)"},
 					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
 				},
@@ -119,7 +119,7 @@ func imageToolDefinitions() []mcpTool {
 		{
 			Name: "add_media",
 			Description: "Add a file to the media library from a URL (an upload URL or a public URL) or from base64 data, with a name, a description of what it shows and tags. " +
-				"Images, videos (mp4, mov) and fonts (.ttf, .otf; a font must draw Latin text with umlauts, max 10 MB) are accepted. " +
+				"Images, videos (mp4, mov), sounds (mp3, m4a, aac, wav, ogg) and fonts (.ttf, .otf; a font must draw Latin text with umlauts, max 10 MB) are accepted. " +
 				"Or add a colour: give color instead of url/data, and say in description how to use it.",
 			InputSchema: map[string]any{
 				"type": "object",
