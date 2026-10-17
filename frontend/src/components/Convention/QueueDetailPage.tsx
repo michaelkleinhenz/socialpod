@@ -32,6 +32,7 @@ import {
   Send,
   Images,
   Crop,
+  Clapperboard,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -39,6 +40,7 @@ import { QueueFormModal } from './ConventionPage';
 import { Modal } from '../Common/Modal';
 import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
+import { QuickReel } from './QuickReel';
 import '../PostEditor/PostEditor.css';
 import './Convention.css';
 
@@ -557,6 +559,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [galleryDragOver, setGalleryDragOver] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showQuickReel, setShowQuickReel] = useState(false);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [filterPending, setFilterPending] = useState(false);
@@ -900,6 +903,25 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         )}
       </div>
 
+      {/* Quick Reel: a clip in the convention's reel template, out on Instagram */}
+      <button
+        className={`conv-quick-reel ${queue.reelTemplateId ? '' : 'unset'}`}
+        onClick={() => {
+          if (queue.reelTemplateId) setShowQuickReel(true);
+          else toast('Pick a reel template under Edit first');
+        }}
+      >
+        <Clapperboard size={22} />
+        <span className="conv-quick-reel-text">
+          <span className="conv-quick-reel-title">Quick Reel</span>
+          <span className="conv-quick-reel-hint">
+            {queue.reelTemplateId
+              ? 'Upload a clip, get an Instagram reel in the convention template'
+              : 'Set a reel template under Edit to use it'}
+          </span>
+        </span>
+      </button>
+
       {/* Upload zones: one post per photo, or one gallery post from many photos */}
       <div className="conv-upload-zones">
         <div
@@ -1063,6 +1085,10 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
           onSave={handleEditQueue}
           onClose={() => setShowEdit(false)}
         />
+      )}
+
+      {showQuickReel && (
+        <QuickReel queue={queue} onClose={() => setShowQuickReel(false)} />
       )}
 
       {preview && (

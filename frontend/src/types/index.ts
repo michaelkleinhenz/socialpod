@@ -409,6 +409,8 @@ export interface ConventionQueue {
   footerIds?: Record<string, string>;
   /** Optional overlay watermark applied to every image at post time. */
   watermarkId?: string;
+  /** Media library video template the Quick Reel puts a clip into. */
+  reelTemplateId?: string;
   status: string;
   /** Time the next random post from this queue is due (set by the auto-poster). */
   nextPostAt?: string;

@@ -39,7 +39,12 @@ type ConventionQueue struct {
 	// WatermarkID, when set, is an overlay watermark that is composited onto
 	// each image at post time.
 	WatermarkID *primitive.ObjectID `bson:"watermarkId,omitempty" json:"watermarkId,omitempty"`
-	Status      string              `bson:"status" json:"status"`
+	// ReelTemplateID is a media library video template (a template entry whose
+	// design has a duration). The convention page's Quick Reel puts a clip the
+	// user uploads into it, renders the reel in the browser and schedules it
+	// for Instagram.
+	ReelTemplateID *primitive.ObjectID `bson:"reelTemplateId,omitempty" json:"reelTemplateId,omitempty"`
+	Status         string              `bson:"status" json:"status"`
 	// NextPostAt is the time the next random post from this queue is due. The
 	// auto-poster picks one approved item at random whenever this time passes,
 	// publishes it, and rolls NextPostAt forward by the schedule gap. A nil

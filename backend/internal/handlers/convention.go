@@ -163,10 +163,12 @@ type ConventionQueueInput struct {
 	AccountIDs           map[string]string `json:"accountIds,omitempty"`
 	FooterIDs            map[string]string `json:"footerIds,omitempty"`
 	WatermarkID          *string           `json:"watermarkId,omitempty"`
+	ReelTemplateID       *string           `json:"reelTemplateId,omitempty"`
 }
 
 // parseWatermarkID converts an optional hex string into an ObjectID pointer.
-// A nil, empty, or invalid value yields nil (no watermark).
+// A nil, empty, or invalid value yields nil (no watermark). The reel template
+// ID is read the same way.
 func parseWatermarkID(s *string) *primitive.ObjectID {
 	if s == nil || *s == "" {
 		return nil
@@ -217,6 +219,7 @@ func (h *ConventionHandler) CreateQueue(c *gin.Context) {
 		AccountIDs:           input.AccountIDs,
 		FooterIDs:            input.FooterIDs,
 		WatermarkID:          parseWatermarkID(input.WatermarkID),
+		ReelTemplateID:       parseWatermarkID(input.ReelTemplateID),
 		Status:               models.ConventionQueueStatusActive,
 		CreatedAt:            time.Now(),
 		UpdatedAt:            time.Now(),
@@ -358,6 +361,7 @@ func (h *ConventionHandler) UpdateQueue(c *gin.Context) {
 		"accountIds":           input.AccountIDs,
 		"footerIds":            input.FooterIDs,
 		"watermarkId":          parseWatermarkID(input.WatermarkID),
+		"reelTemplateId":       parseWatermarkID(input.ReelTemplateID),
 		"updatedAt":            time.Now(),
 	}})
 	if err != nil || result.MatchedCount == 0 {

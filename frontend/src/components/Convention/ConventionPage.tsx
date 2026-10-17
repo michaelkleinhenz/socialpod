@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { ConventionQueue, Platform, SocialAccount, Footer, Watermark } from '../../types';
+import type { ConventionQueue, Platform, SocialAccount, Footer, MediaItem, Watermark } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Plus, Trash2, Calendar, Hash, ExternalLink, Tent, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { Modal, DISCARD_PROMPT } from '../Common/Modal';
+import { isVideoTemplate } from '../Common/ImageEditor/editorModel';
 import './Convention.css';
 
 const PLATFORM_OPTIONS: Platform[] = ['bluesky', 'instagram', 'twitter', 'mastodon', 'threads', 'linkedin'];
@@ -45,6 +46,7 @@ function QueueFormModal({
   const initialAccountIds = initial?.accountIds ?? {};
   const initialFooterIds = initial?.footerIds ?? {};
   const initialWatermarkId = initial?.watermarkId ?? '';
+  const initialReelTemplateId = initial?.reelTemplateId ?? '';
 
   const [name, setName] = useState(initialName);
   const [conventionUrl, setConventionUrl] = useState(initialUrl);
@@ -60,11 +62,16 @@ function QueueFormModal({
   const [footers, setFooters] = useState<Footer[]>([]);
   const [watermarkId, setWatermarkId] = useState(initialWatermarkId);
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
+  const [reelTemplateId, setReelTemplateId] = useState(initialReelTemplateId);
+  const [reelTemplates, setReelTemplates] = useState<MediaItem[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.getFooters().then(setFooters).catch(() => {});
     api.getWatermarks().then(setWatermarks).catch(() => {});
+    api.getMedia({ kind: 'template', limit: 200 })
+      .then(items => setReelTemplates(items.filter(m => isVideoTemplate(m.template))))
+      .catch(() => {});
   }, []);
 
   const addHashtag = () => {
@@ -107,7 +114,8 @@ function QueueFormModal({
     !sameSet(platforms, initialPlatforms) ||
     !sameMap(accountIds, initialAccountIds) ||
     !sameMap(footerIds, initialFooterIds) ||
-    watermarkId !== initialWatermarkId;
+    watermarkId !== initialWatermarkId ||
+    reelTemplateId !== initialReelTemplateId;
 
   const handleClose = () => {
     if (isDirty && !window.confirm(DISCARD_PROMPT)) return;
@@ -140,6 +148,7 @@ function QueueFormModal({
         accountIds,
         footerIds,
         watermarkId: watermarkId || null,
+        reelTemplateId: reelTemplateId || null,
       });
     } finally {
       setSaving(false);
@@ -228,6 +237,36 @@ function QueueFormModal({
             </p>
           </div>
         )}
+
+        <div className="form-group">
+          <label>Quick Reel template</label>
+          {reelTemplates.length > 0 ? (
+            <div className="conv-watermark-select">
+              <select
+                className="select"
+                value={reelTemplateId}
+                onChange={e => setReelTemplateId(e.target.value)}
+              >
+                <option value="">None</option>
+                {reelTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              {reelTemplateId && (() => {
+                const t = reelTemplates.find(m => m.id === reelTemplateId);
+                if (!t?.url) return null;
+                const base = import.meta.env.VITE_API_URL || '';
+                const src = t.url.startsWith('/') ? base + t.url : t.url;
+                return <img src={src} alt={t.name} className="conv-watermark-preview" />;
+              })()}
+            </div>
+          ) : null}
+          <p className="conv-upload-hint">
+            {reelTemplates.length > 0
+              ? 'Quick Reel puts an uploaded clip into this video template and schedules it as an Instagram reel.'
+              : 'Create a video template in the Media Library to use Quick Reel.'}
+          </p>
+        </div>
 
         <div className="form-row">
           <div className="form-group">
