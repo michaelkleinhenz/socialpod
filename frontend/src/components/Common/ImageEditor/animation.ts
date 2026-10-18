@@ -9,7 +9,7 @@ export type EnterEffect = 'none' | 'fade' | 'slide-up' | 'slide-down' | 'slide-l
   | 'flicker' | 'tumble' | 'spin' | 'bungee' | 'shrink' | 'typewriter';
 export type ExitEffect = 'none' | 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom' | 'wipe-right' | 'wipe-left'
   | 'flicker' | 'tumble' | 'spin' | 'pop' | 'grow';
-export type LoopEffect = 'none' | 'pulse' | 'float' | 'wiggle' | 'spin' | 'breathe' | 'bob' | 'yoyo' | 'jitter' | 'blink' | 'flicker';
+export type LoopEffect = 'none' | 'pulse' | 'float' | 'wiggle' | 'spin' | 'breathe' | 'bob' | 'yoyo' | 'jitter' | 'blink' | 'flicker' | 'slow-zoom';
 
 // When a layer shows and how it moves, in seconds of the video. Without it a
 // layer shows the whole time and does not move.
@@ -72,6 +72,7 @@ export const LOOP_EFFECTS: { id: LoopEffect; label: string }[] = [
   { id: 'jitter', label: 'Jitter' },
   { id: 'blink', label: 'Blink' },
   { id: 'flicker', label: 'Flicker' },
+  { id: 'slow-zoom', label: 'Slow zoom' },
 ];
 
 // Instagram takes reels of 3 seconds and more; 90 is plenty for a design.
@@ -260,6 +261,9 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
     case 'blink': if (since % 1 >= 0.75) s.opacity = 0; break;
     // Mostly on, dimming now and then for a moment, like a failing bulb.
     case 'flicker': if (noise(seed + Math.floor(since * 15)) < 0.1) s.opacity *= 0.25; break;
+    // Grows a tenth over the whole time it shows, the slow push-in of a
+    // photo in a slideshow.
+    case 'slow-zoom': s.scale *= 1 + 0.1 * clamp(since / Math.max(length, 0.1), 0, 1); break;
   }
   return s;
 }

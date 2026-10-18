@@ -808,6 +808,19 @@
   color: #ffffff;
 }
 
+/* Tabs within a panel: the width of the panel, buttons with words. */
+.ie-segmented-wide {
+  display: flex;
+  width: 100%;
+}
+
+.ie-segmented-wide button {
+  flex: 1;
+  width: auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* A title above a group of controls, set off from what comes before. */
 .ie-section {
   margin-top: 6px;
@@ -869,6 +882,33 @@
   object-fit: contain;
   background: repeating-conic-gradient(#475569 0% 25%, #334155 0% 50%) 50% / 12px 12px;
   border-radius: 4px;
+}
+
+/* A built-in template's preview, and its player over it while it plays. */
+.ie-tile-media {
+  position: relative;
+  width: 100%;
+}
+
+.ie-tile-media img {
+  display: block;
+}
+
+.ie-tile-player {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.ie-tile-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-radius: 4px;
+  background: var(--bg-primary);
 }
 
 .ie-tile span {

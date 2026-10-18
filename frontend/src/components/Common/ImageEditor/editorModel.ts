@@ -138,6 +138,26 @@ export interface ImageBorder {
   color: string;
 }
 
+// The fonts every device has (or falls back from), listed after the media
+// library's.
+export interface FontOption {
+  label: string;
+  family: string;
+}
+
+export const BUILTIN_FONTS: FontOption[] = [
+  { label: 'Arial', family: 'Arial, Helvetica, sans-serif' },
+  { label: 'Helvetica', family: 'Helvetica, Arial, sans-serif' },
+  { label: 'Verdana', family: 'Verdana, sans-serif' },
+  { label: 'Trebuchet MS', family: 'Trebuchet MS, sans-serif' },
+  { label: 'Impact', family: 'Impact, Haettenschweiler, Arial Black, sans-serif' },
+  { label: 'Georgia', family: 'Georgia, serif' },
+  { label: 'Times New Roman', family: 'Times New Roman, Times, serif' },
+  { label: 'Rockwell', family: 'Rockwell, Rockwell Nova, Roboto Slab, DejaVu Serif, Sitka Small, serif' },
+  { label: 'Courier New', family: 'Courier New, monospace' },
+  { label: 'Comic Sans MS', family: 'Comic Sans MS, cursive' },
+];
+
 export type TextAlign = 'left' | 'center' | 'right';
 
 export interface TextLayer {
