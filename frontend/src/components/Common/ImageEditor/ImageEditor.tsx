@@ -4,7 +4,7 @@ import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label,
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
-  ALargeSmall, Blend, CaseSensitive, Contrast, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
+  ALargeSmall, Blend, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
@@ -23,6 +23,7 @@ import { LayerList } from './LayerList';
 import {
   animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt, openingTime, settledAt,
   layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, musicSpan, NO_ANIM, type LayerAnim,
+  hasKeys, KEY_EASES, keyIndexAt, keyValuesAt, setKeyAt, type Keyframe, type KeyValues,
 } from './animation';
 import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
@@ -44,7 +45,7 @@ const MINI_TOOLBAR = { width: 216, height: 48 };
 type PhoneSheet = 'templates' | 'media' | 'layers' | 'video';
 
 // The parts of a layer's animation, one at a time in the phone's tray.
-type AnimPart = 'timing' | 'in' | 'loop' | 'out';
+type AnimPart = 'timing' | 'keys' | 'in' | 'loop' | 'out';
 
 const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle };
 
@@ -754,6 +755,14 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     updateLayer(l.id, { anim: { ...layerAnim(l), ...patch } }, key);
   };
 
+  // Seconds into a layer's span at the playhead, where its keys are set.
+  const keyTime = (l: EditorLayer) => Math.max(0, time - layerSpan(l, duration).start);
+
+  // Changes the layer's key at the playhead, adding one there if it has none.
+  const setKey = (l: EditorLayer, patch: Partial<Keyframe>, key?: string) => {
+    updateAnim(l, { keys: setKeyAt(l.anim?.keys, keyTime(l), patch) }, key);
+  };
+
   // Moves the playhead to where a layer shows in full, unless it already
   // does (not still coming in), so a layer picked while hidden can be seen and changed.
   const seekInto = (l: EditorLayer) => {
@@ -1027,7 +1036,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // Two fingers on the picture resize and turn the selected object, and move
   // it with them.
-  const pinch = useRef<{ id: string; dist: number; angle: number; mid: { x: number; y: number }; from: EditorLayer } | null>(null);
+  const pinch = useRef<{ id: string; dist: number; angle: number; mid: { x: number; y: number }; from: EditorLayer; fromKey: KeyValues | null } | null>(null);
   const touchPoints = (e: Konva.KonvaEventObject<TouchEvent>) => {
     const box = e.target.getStage()?.container().getBoundingClientRect();
     if (!box) return null;
@@ -1052,7 +1061,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     startGesture();
     setGuides(null);
     setMoving(true);
-    pinch.current = { id: selected.id, ...t, from: selected };
+    // A keyframed layer is pinched into its key at the playhead.
+    const fromKey = video && hasKeys(selected) ? keyValuesAt(selected.anim?.keys, keyTime(selected)) : null;
+    pinch.current = { id: selected.id, ...t, from: selected, fromKey };
   };
   const onStageTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
     const p = pinch.current;
@@ -1063,6 +1074,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const s = t.dist / p.dist;
     const turn = ((t.angle - p.angle) * 180) / Math.PI;
     const shift = { x: (t.mid.x - p.mid.x) / scale, y: (t.mid.y - p.mid.y) / scale };
+    if (p.fromKey) {
+      const k = p.fromKey;
+      const l = layers.find(x => x.id === p.id);
+      if (l) setKey(l, { x: k.x + shift.x, y: k.y + shift.y, scale: k.scale * s, rotation: k.rotation + turn }, `gesture:pinch:${p.id}`);
+      return;
+    }
     updateLayer(p.id, pinchedLayer(p.from, s, turn, shift), `gesture:pinch:${p.id}`);
   };
   const endPinch = () => {
@@ -1581,20 +1598,62 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setGuides(r.guides.length || r.gaps.length ? r : null);
   };
 
-  const startMove = () => {
+  // Where the layer being moved showed when the gesture began: the centre
+  // of its box on the picture, for a keyframed layer's move.
+  const moveFrom = useRef<{ x: number; y: number } | null>(null);
+
+  const visualCentre = (node: Konva.Node) => {
+    const r = node.getClientRect({ relativeTo: contentRef.current ?? undefined, skipShadow: true, skipStroke: true });
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  };
+
+  const startMove = (e: Konva.KonvaEventObject<Event>) => {
     startGesture();
     setMoving(true);
+    moveFrom.current = visualCentre(e.currentTarget);
   };
+
+  // Folds a move, resize or turn of a keyframed layer into its key at the
+  // playhead (scaled by grow, turned by turn), and puts the node back on the
+  // layer's own attributes, which stay as they are.
+  const keyGesture = (l: EditorLayer, node: Konva.Node, grow = 1, turn = 0) => {
+    const from = moveFrom.current;
+    const to = visualCentre(node);
+    moveFrom.current = null;
+    node.setAttrs({ x: l.x, y: l.y, scaleX: 1, scaleY: 1, ...('rotation' in l ? { rotation: l.rotation } : {}) });
+    const k = keyValuesAt(l.anim?.keys, keyTime(l));
+    setKey(l, {
+      x: k.x + (from ? to.x - from.x : 0),
+      y: k.y + (from ? to.y - from.y : 0),
+      scale: Math.max(0.01, k.scale * grow),
+      rotation: k.rotation + turn,
+    });
+  };
+
+  // Whether a gesture on the picture sets the layer's key rather than the
+  // layer itself.
+  const keyed = (l: EditorLayer) => video && hasKeys(l);
+  const selectedKeyed = !!selected && keyed(selected);
 
   const onLayerDragEnd = (l: EditorLayer, e: Konva.KonvaEventObject<DragEvent>) => {
     setMoving(false);
     setGuides(null);
+    if (keyed(l)) { keyGesture(l, e.target); return; }
     updateLayer(l.id, { x: e.target.x(), y: e.target.y() });
   };
 
   // Re-centres the selected layer on the crop, keeping its rotation.
   const centreSelected = () => {
     if (!crop || !selected) return;
+    if (keyed(selected)) {
+      // Where it shows at the playhead, through its key.
+      const node = nodeRefs.current.get(selected.id);
+      if (!node) return;
+      const c = visualCentre(node);
+      const k = keyValuesAt(selected.anim?.keys, keyTime(selected));
+      setKey(selected, { x: k.x + crop.x + crop.width / 2 - c.x, y: k.y + crop.y + crop.height / 2 - c.y });
+      return;
+    }
     if (selected.kind === 'image' || selected.kind === 'shape') {
       updateLayer(selected.id, { x: crop.x + crop.width / 2, y: crop.y + crop.height / 2 });
       return;
@@ -1617,6 +1676,11 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0;
     const dy = key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0;
     if (!dx && !dy) return;
+    if (keyed(selected)) {
+      const k = keyValuesAt(selected.anim?.keys, keyTime(selected));
+      setKey(selected, { x: k.x + dx, y: k.y + dy }, `nudge:${selected.id}`);
+      return;
+    }
     updateLayer(selected.id, { x: selected.x + dx, y: selected.y + dy }, `nudge:${selected.id}`);
   };
 
@@ -1675,6 +1739,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setMoving(false);
     const sx = node.scaleX();
     const sy = node.scaleY();
+    if (keyed(l)) {
+      keyGesture(l, node, Math.sqrt(Math.abs(sx * sy)), node.rotation() - ('rotation' in l ? l.rotation : 0));
+      return;
+    }
     node.setAttrs({ scaleX: 1, scaleY: 1 });
     if (l.kind === 'image' || l.kind === 'shape') {
       const width = Math.max(4, l.width * sx);
@@ -1980,6 +2048,69 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </div>
   );
 
+  // The layer's keyframes: add or remove one at the playhead, step from key
+  // to key, and set the one at the playhead (or, between keys, a new one
+  // there) by its numbers. Moving, resizing and turning the layer on the
+  // picture sets the same values.
+  const keyControls = (l: EditorLayer, inTray: boolean) => {
+    const keys = l.anim?.keys ?? [];
+    const { start, end } = layerSpan(l, duration);
+    const since = keyTime(l);
+    const at = keyIndexAt(keys, since);
+    const v = keyValuesAt(keys, since);
+    const prev = [...keys].reverse().find(k => k.t < since - 1e-6);
+    const next = keys.find(k => k.t > since + 1e-6);
+    const goTo = (k: Keyframe) => { setPlaying(false); seek(start + k.t); };
+    const inSpan = time >= start && time <= end;
+    const slider = (label: string, min: number, max: number, value: number, set: (n: number) => void, shown: string) => (
+      <label className="ie-slider">
+        <span>{label}</span>
+        <input type="range" min={min} max={max} value={Math.round(value)} disabled={!inSpan} onChange={e => set(Number(e.target.value))} />
+        <span className="ie-value">{shown}</span>
+      </label>
+    );
+    const span = Math.max(crop ? Math.max(crop.width, crop.height) : 1000, Math.abs(v.x), Math.abs(v.y));
+    return (
+      <>
+        {!inTray && <span className="ie-label ie-section"><Diamond size={14} /> Keyframes</span>}
+        <div className={`ie-row ${inTray ? 'ie-scroll' : ''}`}>
+          <button className="ie-chip" onClick={() => prev && goTo(prev)} disabled={!prev} title="Previous keyframe" aria-label="Previous keyframe"><ChevronLeft size={14} /></button>
+          {at >= 0 ? (
+            <button className="ie-chip" onClick={() => updateAnim(l, { keys: keys.filter((_, i) => i !== at) })}><DiamondMinus size={14} /> Remove key</button>
+          ) : (
+            <button className="ie-chip" onClick={() => setKey(l, {})} disabled={!inSpan} title="A keyframe at the playhead, as the object is now"><DiamondPlus size={14} /> Add key</button>
+          )}
+          <button className="ie-chip" onClick={() => next && goTo(next)} disabled={!next} title="Next keyframe" aria-label="Next keyframe"><ChevronRight size={14} /></button>
+          {keys.length > 0 && <button className="ie-chip" onClick={() => updateAnim(l, { keys: undefined })}>Clear all</button>}
+        </div>
+        {keys.length === 0 && !inTray && (
+          <p className="ie-hint">Add a key, move the playhead and add another, then move, resize, turn or fade the object there: it moves from key to key.</p>
+        )}
+        {keys.length > 0 && (
+          <>
+            {!inSpan && <p className="ie-hint">Move the playhead into the object's span to set its keys.</p>}
+            {inSpan && at < 0 && !inTray && <p className="ie-hint">Between keys: a change here adds a key at {formatTime(time)}.</p>}
+            {slider('Move X', -span, span, v.x, n => setKey(l, { x: n }, `key-x:${l.id}`), `${Math.round(v.x)}px`)}
+            {slider('Move Y', -span, span, v.y, n => setKey(l, { y: n }, `key-y:${l.id}`), `${Math.round(v.y)}px`)}
+            {slider('Size', 1, Math.max(400, Math.round(v.scale * 100)), v.scale * 100, n => setKey(l, { scale: n / 100 }, `key-scale:${l.id}`), `${Math.round(v.scale * 100)}%`)}
+            {slider('Turn', Math.min(-360, Math.floor(v.rotation)), Math.max(360, Math.ceil(v.rotation)), v.rotation, n => setKey(l, { rotation: n }, `key-rotation:${l.id}`), `${Math.round(v.rotation)}°`)}
+            {slider('Opacity', 0, 100, v.opacity * 100, n => setKey(l, { opacity: n / 100 }, `key-opacity:${l.id}`), `${Math.round(v.opacity * 100)}%`)}
+            {at >= 0 && at < keys.length - 1 && (
+              <>
+                <span className="ie-label">To the next key</span>
+                <div className={`ie-row ${inTray ? 'ie-scroll' : ''}`}>
+                  {KEY_EASES.map(e => (
+                    <button key={e.id} className={`ie-chip ${(keys[at].ease ?? 'smooth') === e.id ? 'active' : ''}`} onClick={() => setKey(l, { ease: e.id })}>{e.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
   // When the selected layer shows, and its effects in, while and out; all of
   // it, or one part (the phone's tray, which names the parts itself).
   const animateControls = (l: EditorLayer, part?: AnimPart) => {
@@ -2025,6 +2156,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             </div>
           </>
         )}
+        {shows('keys') && keyControls(l, !!part)}
         {shows('in') && (
           <>
             {!part && <span className="ie-label ie-section">Comes in</span>}
@@ -2831,7 +2963,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }
     if (!l) return null;
     if (phoneTool === 'animate') {
-      const subs = [{ id: 'timing', label: 'Timing' }, { id: 'in', label: 'Comes in' }, { id: 'loop', label: 'While shown' }, { id: 'out', label: 'Goes out' }];
+      const subs = [{ id: 'timing', label: 'Timing' }, { id: 'keys', label: 'Keyframes' }, { id: 'in', label: 'Comes in' }, { id: 'loop', label: 'While shown' }, { id: 'out', label: 'Goes out' }];
       return { subs, body: animateControls(l, pick(subs) as AnimPart) };
     }
     if (phoneTool === 'blend') return { body: blendChips(l) };
@@ -3418,11 +3550,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       flipEnabled={false}
                       ignoreStroke
                       // Shapes stretch freely (Shift keeps their proportions);
-                      // paint is moved only.
-                      keepRatio={layerTransformer ? selected?.kind !== 'shape' : ratio !== null}
+                      // paint is moved only. A keyframed layer scales evenly
+                      // about its centre, as its keys do.
+                      keepRatio={layerTransformer ? selected?.kind !== 'shape' || selectedKeyed : ratio !== null}
+                      centeredScaling={layerTransformer && selectedKeyed}
                       enabledAnchors={layerTransformer && selected?.kind === 'paint'
                         ? []
-                        : (layerTransformer && selected?.kind !== 'shape') || (!layerTransformer && ratio !== null)
+                        : (layerTransformer && (selected?.kind !== 'shape' || selectedKeyed)) || (!layerTransformer && ratio !== null)
                           ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
                           : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
                       boundBoxFunc={(oldBox, newBox) => (layerTransformer

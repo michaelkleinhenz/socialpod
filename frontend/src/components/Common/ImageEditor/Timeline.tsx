@@ -1,6 +1,6 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { Music, Pause, Play, Repeat, SkipBack } from 'lucide-react';
-import { formatTime, layerAnim, layerSpan, musicSpan, type LayerAnim } from './animation';
+import { formatTime, KEY_SNAP, layerAnim, layerSpan, musicSpan, sortKeys, type LayerAnim } from './animation';
 import { clamp, layerName, type AudioTrack, type EditorLayer } from './editorModel';
 
 interface Props {
@@ -67,10 +67,47 @@ export function Timeline({ layers, duration, time, playing, loop, selectedId, on
       } else {
         end = clamp(snap(from.end + d), start + STEP, duration);
       }
+      // Keys count from the start of the span: trimming the start keeps
+      // them where they are in the video.
+      const keys = mode === 'start' && anim.keys ? anim.keys.map(k => ({ ...k, t: k.t + from.start - start })) : anim.keys;
       // A span reaching the end keeps following the video's length.
-      onTiming(l, { ...anim, start, end: end >= duration - 1e-6 ? undefined : end }, key);
+      onTiming(l, { ...anim, keys, start, end: end >= duration - 1e-6 ? undefined : end }, key);
     };
     const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  // A keyframe's diamond: a click goes to it, a drag moves it along the bar.
+  const startKeyDrag = (e: ReactPointerEvent, l: EditorLayer, index: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect(l);
+    const anim = layerAnim(l);
+    const keys = anim.keys ?? [];
+    const { start, end } = layerSpan(l, duration);
+    const from = keys[index].t;
+    const x0 = e.clientX;
+    const perPx = secondsPerPx();
+    const key = `gesture:key:${l.id}`;
+    let moved = false;
+    onDragStart();
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+      moved = true;
+      // To a frame, within the span, and not onto another key.
+      const t = clamp(Math.round((from + (ev.clientX - x0) * perPx) * 30) / 30, 0, end - start);
+      if (keys.some((k, i) => i !== index && Math.abs(k.t - t) <= KEY_SNAP)) return;
+      onTiming(l, { ...anim, keys: sortKeys(keys.map((k, i) => (i === index ? { ...k, t } : k))) }, key);
+      onSeek(start + t);
+    };
+    const up = () => {
+      if (!moved) onSeek(start + from);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
@@ -187,6 +224,15 @@ export function Timeline({ layers, duration, time, playing, loop, selectedId, on
                   <span className="ie-track-handle start" onPointerDown={e => startDrag(e, l, 'start')} />
                   <span className="ie-track-handle end" onPointerDown={e => startDrag(e, l, 'end')} />
                 </div>
+                {(a.keys ?? []).map((k, i) => (k.t >= -1e-6 && start + k.t <= end + 1e-6 ? (
+                  <span
+                    key={i}
+                    className={`ie-track-key${Math.abs(start + k.t - time) <= KEY_SNAP ? ' current' : ''}`}
+                    style={{ left: pct(start + k.t) }}
+                    onPointerDown={e => startKeyDrag(e, l, i)}
+                    title={`Keyframe at ${formatTime(start + k.t)}: click to go to it, drag to move it`}
+                  />
+                ) : null))}
                 <span className="ie-playhead" style={{ left: pct(time) }} />
               </div>
             </div>
