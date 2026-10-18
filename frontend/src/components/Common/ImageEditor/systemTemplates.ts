@@ -1,7 +1,8 @@
-import { NO_ANIM, type EnterEffect, type LayerAnim } from './animation';
+import Konva from 'konva';
+import { animStateAt, buildAnimatedLayerNode, NO_ANIM, type EnterEffect, type ExitEffect, type LayerAnim, type LoopEffect } from './animation';
 import {
-  BUILTIN_FONTS, instantiateTemplate, measureText, NO_ADJUSTMENTS, renderEdit, type BlendMode, type CropBox, type EditorTemplate, type ImageBorder, type ImageLayer, type PaintLayer, type ShapeKind,
-  type ShapeLayer, type TemplateLayer, type TextAlign, type TextLayer,
+  BUILTIN_FONTS, instantiateTemplate, measureText, type BlendMode, type CropBox, type EditorLayer, type EditorTemplate, type ImageBorder, type ImageLayer, type PaintLayer,
+  type ShapeKind, type ShapeLayer, type TemplateLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 
 // The templates SocialPod ships with, beside the team's own: generic designs
@@ -9,8 +10,9 @@ import {
 // the user changes once a template is on the canvas. Each design is a function
 // of the format, so it comes in 1:1, 4:5 and 9:16 (kept inside the area
 // Instagram's interface leaves free), and in a video with its layers coming
-// in one after the other. Pictures are placeholders (public/template-assets),
-// which a paste or Replace takes the place of.
+// in one after the other. Reel designs (REELS) are videos only, in 9:16: their
+// layers have their own timing, scene after scene. Pictures are placeholders
+// (public/template-assets), which a paste or Replace takes the place of.
 
 export type SystemFormat = '1:1' | '4:5' | '9:16';
 
@@ -43,6 +45,11 @@ export interface SystemTemplate {
   // Laid over a full-frame picture (its bottom layer). On a photo being
   // edited the photo takes that picture's place; the others need a canvas.
   overPhoto: boolean;
+  // A reel design, offered in a video only.
+  videoOnly: boolean;
+  // How long its video runs, and the moment its preview shows.
+  duration: number;
+  poster: number;
   // The design; video adds the layers' timing and a length.
   build(opts: { video: boolean; photo: boolean }): EditorTemplate;
 }
@@ -116,7 +123,7 @@ function coverCrop(w: number, h: number): CropBox {
   return { x: (PHOTO_W - cw) / 2, y: 0, width: cw, height: PHOTO_H };
 }
 
-interface PhotoOpts { corner?: number; border?: ImageBorder; rotation?: number; bg?: boolean }
+interface PhotoOpts { corner?: number; border?: ImageBorder; rotation?: number; bg?: boolean; anim?: Partial<LayerAnim> | null }
 
 // A placeholder picture filling the box (top-left x, y).
 function photo(p: PhotoKey, x: number, y: number, w: number, h: number, o: PhotoOpts = {}): Item {
@@ -127,7 +134,7 @@ function photo(p: PhotoKey, x: number, y: number, w: number, h: number, o: Photo
     ...(o.corner ? { cornerRadius: o.corner } : {}),
     ...(o.border ? { border: o.border } : {}),
   };
-  return { layer, box: { x, y, w, h }, bg: o.bg };
+  return { layer, box: { x, y, w, h }, bg: o.bg, anim: o.anim };
 }
 
 interface ShapeOpts { corner?: number; stroke?: string; strokeWidth?: number; opacity?: number; rotation?: number; blend?: BlendMode; bg?: boolean; anim?: Partial<LayerAnim> | null }
@@ -207,6 +214,21 @@ function shade(f: Frame, y: number, size: number, feather: number, color: string
   return { layer, box: { x: 0, y: y - size / 2, w: f.w, h: size }, anim: { enter: 'fade', enterDuration: 0.6 } };
 }
 
+// A reel layer's timing: it shows from start until end (the end of the
+// video when absent), coming in and going out with the effects named.
+function at(start: number, end: number | undefined, enter: EnterEffect, exit: ExitEffect = 'none', o: { in?: number; out?: number; loop?: LoopEffect } = {}): Partial<LayerAnim> {
+  return {
+    start, ...(end !== undefined ? { end } : {}), enter, exit,
+    enterDuration: o.in ?? 0.5, exitDuration: o.out ?? 0.35, loop: o.loop ?? 'none',
+  };
+}
+
+// Gives items the timing of a scene, on top of what they set themselves.
+function timed(items: Item[], anim: Partial<LayerAnim>): Item[] {
+  for (const it of items) it.anim = { ...anim, ...it.anim };
+  return items;
+}
+
 // Moves items (and their boxes) by dx, dy.
 function move(items: Item[], dx: number, dy: number): Item[] {
   for (const it of items) {
@@ -258,6 +280,9 @@ interface Design {
   category: SystemCategory;
   background: string;
   overPhoto?: boolean;
+  // A reel: its length, the moment its preview shows, and the formats it
+  // comes in (9:16 when absent). Its layers carry their own timing.
+  reel?: { duration: number; poster: number; formats?: SystemFormat[] };
   draw(f: Frame): Item[];
 }
 
@@ -552,6 +577,284 @@ const DESIGNS: Design[] = [
   },
 ];
 
+// --- Reels ------------------------------------------------------------------
+
+// Confetti bits around the edge of the frame, floating once they are in.
+function confetti(f: Frame, start: number, colours: string[]): Item[] {
+  const bits: [ShapeKind, number, number, number, number][] = [
+    ['rect', 0.08, 0.1, 34, 20], ['ellipse', 0.24, 0.06, 26, 0], ['triangle', 0.84, 0.08, 40, 15], ['rect', 0.93, 0.2, 30, -25],
+    ['ellipse', 0.06, 0.34, 22, 0], ['triangle', 0.94, 0.42, 34, -10], ['rect', 0.05, 0.58, 28, 35], ['ellipse', 0.92, 0.62, 30, 0],
+    ['triangle', 0.1, 0.74, 38, 30], ['rect', 0.88, 0.74, 32, -30], ['ellipse', 0.55, 0.05, 20, 0], ['rect', 0.4, 0.09, 26, 50],
+  ];
+  return bits.map(([k, x, y, size, r], i) => shape(k, x * f.w - size / 2, y * f.h - size / 2, size, k === 'rect' ? size * 0.5 : size, colours[i % colours.length],
+    { rotation: r, anim: at(start + (i % 4) * 0.08, undefined, 'pop', 'none', { in: 0.4, loop: i % 2 ? 'float' : 'wiggle' }) }));
+}
+
+const REELS: Design[] = [
+  {
+    key: 'reel-kinetic', name: 'Kinetic Intro', category: 'promo', background: '#111111',
+    reel: { duration: 8, poster: 5 },
+    draw: f => {
+      const items: Item[] = [];
+      // Three words slam in, each on a colour of its own, then the reveal.
+      const words: [string, string, string, LoopEffect][] = [['NEW', '#ff3d68', '#ffffff', 'none'], ['GAME', '#ffd23f', '#111111', 'none'], ['ALERT', '#3d5afe', '#ffffff', 'jitter']];
+      words.forEach(([word, bg, colour, loop], i) => {
+        const t0 = i * 1.1;
+        items.push(rect(0, 0, f.w, f.h, bg, { anim: at(t0, t0 + 1.1, 'none', 'none') }));
+        items.push(text(word, { x: f.cx, y: f.h / 2, valign: 'middle', size: 300, bold: true, color: colour, maxWidth: f.x1 - f.x0, anim: at(t0, t0 + 1.1, 'shrink', 'none', { in: 0.3, loop }) }));
+      });
+      const pw = f.x1 - f.x0;
+      const pic = photo('warm', f.x0, 0, pw, pw * 1.05, { corner: 5, anim: at(3.3, undefined, 'zoom', 'none', { in: 0.6 }) });
+      const title = text('Game Title', { x: f.cx, y: pic.box.h + 60, size: 140, bold: true, color: '#ffffff', maxWidth: pw, anim: at(3.6, undefined, 'slide-up', 'none', { in: 0.6 }) });
+      const sub = text('Out now. Here is why you want it.', { x: f.cx, y: title.box.y + title.box.h + 20, size: 50, color: '#ffd23f', maxWidth: pw, anim: at(3.9, undefined, 'slide-up', 'none', { in: 0.6 }) });
+      const cta = timed(pill('LINK IN BIO', f.cx, sub.box.y + sub.box.h + 50, { fill: '#ff3d68', color: '#ffffff', size: 38, align: 'center' }), at(4.4, undefined, 'pop', 'none', { in: 0.5, loop: 'pulse' }));
+      items.push(...centreY([pic, title, sub, ...cta], f.y0, f.y1));
+      return items;
+    },
+  },
+  {
+    key: 'reel-countdown', name: 'Countdown Reveal', category: 'news', background: '#0d0d0d',
+    reel: { duration: 8, poster: 5 },
+    draw: f => {
+      const cy = f.h / 2 - 60;
+      const items: Item[] = [
+        circle(f.cx, cy, 560, '', { stroke: '#ffd23f', strokeWidth: 14, anim: at(0, 2.4, 'zoom', 'zoom', { in: 0.4, out: 0.3, loop: 'pulse' }) }),
+      ];
+      ['3', '2', '1'].forEach((n, i) => {
+        items.push(text(n, { x: f.cx, y: cy, valign: 'middle', size: 380, bold: true, color: '#ffffff', anim: at(i * 0.8, (i + 1) * 0.8, 'pop', 'zoom', { in: 0.3, out: 0.2 }) }));
+      });
+      items.push(photo('cool', 0, 0, f.w, f.h, { anim: at(2.4, undefined, 'shrink', 'none', { in: 0.8, loop: 'slow-zoom' }) }));
+      items.push(timed([shade(f, f.h, f.h * 0.8, f.h * 0.35, '#000000', 0.9)], at(2.6, undefined, 'fade', 'none', { in: 0.6 }))[0]);
+      const sub = text('Add the one detail that matters most.', { x: f.x0, y: f.y1, valign: 'bottom', align: 'left', size: 44, color: '#e8e8e8', maxWidth: f.x1 - f.x0, anim: at(3.5, undefined, 'fade', 'none', { in: 0.6 }) });
+      const head = text('The big reveal\ngoes right here', { x: f.x0, y: sub.box.y - 28, valign: 'bottom', align: 'left', size: 110, bold: true, color: '#ffffff', maxWidth: f.x1 - f.x0, anim: at(3.1, undefined, 'slide-up', 'none', { in: 0.6 }) });
+      const kicker = text("IT'S HERE", { x: f.x0, y: head.box.y - 24, valign: 'bottom', align: 'left', size: 48, bold: true, color: '#ffd23f', anim: at(2.9, undefined, 'wipe-right', 'none', { in: 0.5 }) });
+      items.push(kicker, head, sub);
+      return items;
+    },
+  },
+  {
+    key: 'reel-top3', name: 'Top 3 Countdown', category: 'list', background: '#101820',
+    reel: { duration: 13, poster: 3.4 },
+    draw: f => {
+      const items: Item[] = [];
+      const intro = at(0, 2.2, 'slide-up', 'zoom', { in: 0.5, out: 0.3 });
+      const top = text('TOP', { x: f.cx, y: 0, size: 150, bold: true, color: '#fee715', anim: { ...intro, enter: 'slide-down' } });
+      const three = text('3', { x: f.cx, y: top.box.h - 60, size: 560, bold: true, color: '#ffffff', anim: { ...intro, enter: 'bungee', enterDuration: 0.9 } });
+      const sub = text('games for two players', { x: f.cx, y: three.box.y + three.box.h - 20, size: 64, bold: true, color: '#fee715', maxWidth: f.x1 - f.x0, anim: { ...intro, start: 0.3 } });
+      items.push(...centreY([top, three, sub], f.y0, f.y1));
+      const pw = f.x1 - f.x0;
+      const ph = pw * 1.1;
+      (['warm', 'cool', 'green'] as PhotoKey[]).forEach((p, i) => {
+        const t0 = 2.2 + i * 3;
+        const scene = at(t0, t0 + 3, 'slide-left', 'slide-left', { in: 0.5, out: 0.35 });
+        const pic = photo(p, f.x0, 0, pw, ph, { corner: 4, anim: scene });
+        const d = 190;
+        const badge = circle(f.x0 + 40, 40, d, '#fee715', { stroke: '#101820', strokeWidth: 12, anim: { ...scene, start: t0 + 0.2, enter: 'pop' } });
+        const num = text(`#${3 - i}`, { x: f.x0 + 40, y: 40, valign: 'middle', size: 84, bold: true, color: '#101820', anim: { ...scene, start: t0 + 0.2, enter: 'pop' } });
+        const title = text('Game Title', { x: f.x0, y: ph + 50, align: 'left', size: 100, bold: true, color: '#ffffff', maxWidth: pw, anim: { ...scene, start: t0 + 0.3, enter: 'slide-up' } });
+        const info = text('2 players  |  30 min  |  easy to learn', { x: f.x0, y: title.box.y + title.box.h + 16, align: 'left', size: 42, color: '#a8b3bd', maxWidth: pw, anim: { ...scene, start: t0 + 0.45, enter: 'slide-up' } });
+        items.push(...centreY([pic, badge, num, title, info], f.y0 + 40, f.y1));
+      });
+      const ask = text('Which one is\nyour #1?', { x: f.cx, y: f.h / 2 - 140, valign: 'middle', size: 120, bold: true, color: '#ffffff', maxWidth: pw, anim: at(11.2, undefined, 'pop', 'none', { in: 0.5 }) });
+      const tell = text('Tell us in the comments', { x: f.cx, y: ask.box.y + ask.box.h + 40, size: 50, bold: true, color: '#fee715', anim: at(11.6, undefined, 'slide-up', 'none', { in: 0.5, loop: 'pulse' }) });
+      items.push(ask, tell);
+      return items;
+    },
+  },
+  {
+    key: 'reel-verdict', name: 'Review Verdict', category: 'review', background: '#1b1b2f',
+    reel: { duration: 9, poster: 6 },
+    draw: f => {
+      const items: Item[] = [
+        photo('dark', 0, 0, f.w, f.h, { anim: at(0, undefined, 'fade', 'none', { in: 0.6, loop: 'slow-zoom' }) }),
+        timed([shade(f, f.h, f.h * 0.95, f.h * 0.4, '#1b1b2f', 0.95)], at(0, undefined, 'none'))[0],
+      ];
+      const verdict = text('Clever, quick and easy to teach.\nA new favourite on our table.', { x: f.x0, y: f.y1, valign: 'bottom', align: 'left', size: 44, color: '#d8d8e8', maxWidth: f.x1 - f.x0, anim: at(3.4, undefined, 'typewriter', 'none', { in: 2.2 }) });
+      const starSize = 96;
+      const starY = verdict.box.y - 60 - starSize;
+      for (let i = 0; i < 5; i++) {
+        items.push(text(i < 4 ? '★' : '☆', { x: f.x0 + i * starSize * 1.05, y: starY, align: 'left', size: starSize, color: '#ffb703', anim: at(1.4 + i * 0.2, undefined, 'pop', 'none', { in: 0.4 }) }));
+      }
+      const title = text('Game Title', { x: f.x0, y: starY - 24, valign: 'bottom', align: 'left', size: 120, bold: true, color: '#ffffff', maxWidth: f.x1 - f.x0 - 120, anim: at(0.6, undefined, 'slide-up', 'none', { in: 0.6 }) });
+      const kicker = text('OUR VERDICT', { x: f.x0, y: title.box.y - 16, valign: 'bottom', align: 'left', size: 44, bold: true, color: '#ffb703', anim: at(0.3, undefined, 'wipe-right', 'none', { in: 0.5 }) });
+      const d = 250;
+      const cx = f.x1 - d / 2;
+      const cy = kicker.box.y - d / 2 - 40;
+      items.push(
+        circle(cx, cy, d, '#ffb703', { anim: at(2.6, undefined, 'bungee', 'none', { in: 1.0, loop: 'pulse' }) }),
+        text('8.5', { x: cx, y: cy - 10, valign: 'middle', size: 104, bold: true, color: '#1b1b2f', anim: at(2.6, undefined, 'bungee', 'none', { in: 1.0, loop: 'pulse' }) }),
+        text('OUT OF 10', { x: cx, y: cy + 52, valign: 'middle', size: 24, bold: true, color: '#1b1b2f', anim: at(2.6, undefined, 'bungee', 'none', { in: 1.0, loop: 'pulse' }) }),
+        kicker, title, verdict,
+      );
+      return items;
+    },
+  },
+  {
+    key: 'reel-podcast', name: 'Podcast Clip', category: 'episode', background: '#4c2a85',
+    reel: { duration: 10, poster: 3 },
+    draw: f => {
+      const items: Item[] = [
+        circle(f.w * 0.95, f.h * 0.12, f.w * 0.7, '#5e3a9e', { anim: at(0, undefined, 'none', 'none', { loop: 'float' }) }),
+        circle(f.w * 0.02, f.h * 0.9, f.w * 0.6, '#5e3a9e', { anim: at(0, undefined, 'none', 'none', { loop: 'float' }) }),
+      ];
+      const tag = timed(pill('NEW EPISODE', f.cx, 0, { fill: '#ff6f59', color: '#ffffff', size: 36, align: 'center' }), at(0.2, undefined, 'pop', 'none', { in: 0.5 }));
+      // The cover as a record: it turns on a black disc with grooves.
+      const rd = 640;
+      const rcy = bounds(tag).h + 50 + rd / 2;
+      const spinIn = at(0.4, undefined, 'zoom', 'none', { in: 0.6, loop: 'spin' });
+      const record: Item[] = [
+        circle(f.cx, rcy, rd, '#141414', { anim: spinIn }),
+        circle(f.cx, rcy, rd * 0.86, '', { stroke: '#2a2a2a', strokeWidth: 3, anim: spinIn }),
+        circle(f.cx, rcy, rd * 0.74, '', { stroke: '#2a2a2a', strokeWidth: 3, anim: spinIn }),
+        photo('cool', f.cx - rd * 0.31, rcy - rd * 0.31, rd * 0.62, rd * 0.62, { corner: 50, anim: spinIn }),
+        circle(f.cx, rcy, 28, '#141414', { anim: spinIn }),
+      ];
+      const ep = text('EPISODE 42', { x: f.cx, y: rcy + rd / 2 + 60, size: 44, bold: true, color: '#ffd166', anim: at(1.0, undefined, 'slide-up', 'none', { in: 0.5 }) });
+      const title = text('The episode title\nin two lines', { x: f.cx, y: ep.box.y + ep.box.h + 16, size: 92, bold: true, color: '#ffffff', maxWidth: f.x1 - f.x0, anim: at(1.2, undefined, 'slide-up', 'none', { in: 0.6 }) });
+      // A row of dots that ripple like a voice.
+      const dots: Item[] = [];
+      const n = 11;
+      const gap = 52;
+      const dy = title.box.y + title.box.h + 60;
+      for (let i = 0; i < n; i++) {
+        dots.push(circle(f.cx + (i - (n - 1) / 2) * gap, dy, 24, i % 3 === 1 ? '#ffd166' : '#ffffff', { anim: at(1.6 + i * 0.09, undefined, 'fade', 'none', { in: 0.3, loop: 'bob' }) }));
+      }
+      const listen = text('Listen now, link in bio', { x: f.cx, y: dy + 60, size: 40, color: '#e0d4f5', anim: at(2.2, undefined, 'fade', 'none', { in: 0.6 }) });
+      items.push(...centreY([...tag, ...record, ep, title, ...dots, listen], f.y0, f.y1));
+      return items;
+    },
+  },
+  {
+    key: 'reel-breaking', name: 'Breaking Live', category: 'news', background: '#111111', overPhoto: true,
+    reel: { duration: 8, poster: 4 },
+    draw: f => {
+      const items: Item[] = [
+        photo('cool', 0, 0, f.w, f.h, { bg: true, anim: at(0, undefined, 'none', 'none', { loop: 'slow-zoom' }) }),
+        timed([shade(f, f.h, f.h * 0.85, f.h * 0.4, '#000000', 0.9)], at(0, undefined, 'fade', 'none', { in: 0.8 }))[0],
+      ];
+      const label = text('LIVE', { x: 0, y: 0, align: 'left', size: 36, bold: true, color: '#ffffff' });
+      const bh = label.box.h + 32;
+      const live = at(0.3, undefined, 'pop', 'none', { in: 0.4 });
+      items.push(rect(f.x0, f.y0, label.box.w + 100, bh, '#e63946', { corner: 50, anim: live }));
+      items.push(circle(f.x0 + 38, f.y0 + bh / 2, 20, '#ffffff', { anim: { ...live, loop: 'blink' } }));
+      items.push(...timed(move([label], f.x0 + 64, f.y0 + 16), live));
+      const sub = text('Add the one detail that matters most.', { x: f.x0, y: f.y1, valign: 'bottom', align: 'left', size: 44, color: '#d8d8d8', maxWidth: f.x1 - f.x0, anim: at(3.4, undefined, 'fade', 'none', { in: 0.6 }) });
+      const head = text('Big announcement\nin two short lines', { x: f.x0, y: sub.box.y - 30, valign: 'bottom', align: 'left', size: 104, bold: true, color: '#ffffff', maxWidth: f.x1 - f.x0, anim: at(1.3, undefined, 'typewriter', 'none', { in: 1.8 }) });
+      const tag = text('BREAKING NEWS', { x: 0, y: 0, align: 'left', size: 50, bold: true, color: '#ffffff' });
+      const band = rect(f.x0, head.box.y - 40 - (tag.box.h + 40), tag.box.w + 70, tag.box.h + 40, '#e63946', { anim: at(0.7, undefined, 'wipe-right', 'none', { in: 0.5 }) });
+      move([tag], f.x0 + 35, band.box.y + 20);
+      tag.anim = at(0.9, undefined, 'flicker', 'none', { in: 0.5 });
+      items.push(band, tag, head, sub);
+      return items;
+    },
+  },
+  {
+    key: 'reel-versus', name: 'Versus', category: 'question', background: '#111111',
+    reel: { duration: 8, poster: 3 },
+    draw: f => {
+      const half = f.w / 2;
+      const items: Item[] = [
+        rect(0, 0, half, f.h, '#ff4d6d', { anim: at(0, undefined, 'slide-down', 'none', { in: 0.5 }) }),
+        rect(half, 0, half, f.h, '#3a86ff', { anim: at(0, undefined, 'slide-up', 'none', { in: 0.5 }) }),
+      ];
+      const title = text('WHICH ONE\nWINS?', { x: f.cx, y: f.y0, size: 120, bold: true, color: '#ffffff', shadow: true, maxWidth: f.x1 - f.x0, anim: at(0.3, undefined, 'slide-down', 'none', { in: 0.6 }) });
+      const pw = half - 110;
+      const ph = pw * 1.4;
+      const py = title.box.y + title.box.h + 80;
+      const border = { style: 'solid' as const, width: 12, color: '#ffffff' };
+      items.push(title,
+        photo('warm', (half - pw) / 2 + 20, py, pw, ph, { corner: 6, border, rotation: -3, anim: at(0.6, undefined, 'slide-right', 'none', { in: 0.6 }) }),
+        photo('cool', half + (half - pw) / 2 - 20, py, pw, ph, { corner: 6, border, rotation: 3, anim: at(0.8, undefined, 'slide-left', 'none', { in: 0.6 }) }));
+      const label = (x: number, l: string, start: number) => text(l, { x, y: py + ph + 50, size: 60, bold: true, color: '#ffffff', anim: at(start, undefined, 'pop', 'none', { in: 0.4 }) });
+      items.push(label(half / 2 + 20, 'A', 1.6), label(half * 1.5 - 20, 'B', 1.8));
+      const vy = py + ph / 2;
+      const vs = at(1.2, undefined, 'spin', 'none', { in: 0.6, loop: 'pulse' });
+      items.push(circle(f.cx, vy, 220, '#ffffff', { stroke: '#111111', strokeWidth: 10, anim: vs }), text('VS', { x: f.cx, y: vy, valign: 'middle', size: 100, bold: true, color: '#111111', anim: vs }));
+      items.push(text('Vote in the comments', { x: f.cx, y: py + ph + 160, size: 52, bold: true, color: '#ffffff', anim: at(2.2, undefined, 'bungee', 'none', { in: 1.0 }) }));
+      return items;
+    },
+  },
+  {
+    key: 'reel-savethedate', name: 'Save the Date', category: 'event', background: '#14213d',
+    reel: { duration: 8, poster: 5 },
+    draw: f => {
+      const items: Item[] = confetti(f, 2.4, ['#fca311', '#ffffff', '#e5e5e5', '#fca311']);
+      const kicker = text('SAVE THE DATE', { x: f.cx, y: 0, size: 72, bold: true, color: '#fca311', anim: at(0.2, undefined, 'wipe-right', 'none', { in: 0.6 }) });
+      const day = text('24', { x: f.cx, y: kicker.box.h + 20, size: 420, bold: true, color: '#ffffff', anim: at(0.7, undefined, 'shrink', 'none', { in: 0.5 }) });
+      const month = text('OCTOBER', { x: f.cx, y: day.box.y + day.box.h - 30, size: 96, bold: true, color: '#fca311', anim: at(1.1, undefined, 'slide-up', 'none', { in: 0.5 }) });
+      const line = rect(f.cx - 120, month.box.y + month.box.h + 50, 240, 8, '#ffffff', { anim: at(1.4, undefined, 'wipe-right', 'none', { in: 0.5 }) });
+      const details = text('Friday, 7 pm\nYour venue name', { x: f.cx, y: line.box.y + 60, size: 56, color: '#e5e5e5', anim: at(1.7, undefined, 'typewriter', 'none', { in: 1.2 }) });
+      const cta = timed(pill('EVERYONE WELCOME', f.cx, details.box.y + details.box.h + 60, { fill: '#fca311', color: '#14213d', size: 40, align: 'center' }), at(3.1, undefined, 'pop', 'none', { in: 0.5, loop: 'pulse' }));
+      items.push(...centreY([kicker, day, month, line, details, ...cta], f.y0, f.y1));
+      return items;
+    },
+  },
+  {
+    key: 'reel-quote', name: 'Quote Typewriter', category: 'quote', background: '#f7f3ee',
+    reel: { duration: 8, poster: 6 },
+    draw: f => {
+      const mark = text('“', { x: f.cx, y: 0, font: SERIF, size: 360, bold: true, color: '#e76f51', anim: at(0.2, undefined, 'pop', 'none', { in: 0.5 }) });
+      const q = text('Put a memorable quote\nfrom the episode or\na review right here.', { x: f.cx, y: mark.box.h * 0.55, font: SERIF, size: 84, color: '#222222', maxWidth: f.x1 - f.x0, anim: at(0.6, undefined, 'typewriter', 'none', { in: 3.0 }) });
+      const line = rect(f.cx - 50, q.box.y + q.box.h + 60, 100, 8, '#e76f51', { anim: at(3.8, undefined, 'wipe-right', 'none', { in: 0.4 }) });
+      const who = text('Name Surname', { x: f.cx, y: line.box.y + 48, size: 46, bold: true, color: '#222222', anim: at(4.0, undefined, 'slide-up', 'none', { in: 0.5 }) });
+      const role = text('Role or source', { x: f.cx, y: who.box.y + who.box.h + 10, size: 38, color: '#777777', anim: at(4.3, undefined, 'fade', 'none', { in: 0.5 }) });
+      return centreY([mark, q, line, who, role], f.y0, f.y1);
+    },
+  },
+  {
+    key: 'reel-giveaway', name: 'Giveaway Hype', category: 'giveaway', background: '#7b2ff7',
+    reel: { duration: 10, poster: 6.5 },
+    draw: f => {
+      const items: Item[] = [];
+      const words: [string, string, string][] = [['WIN', '#ff6fb5', '#ffffff'], ['THIS', '#ffd23f', '#111111'], ['GAME', '#2ec4b6', '#ffffff']];
+      words.forEach(([word, bg, colour], i) => {
+        const t0 = i * 0.9;
+        items.push(rect(0, 0, f.w, f.h, bg, { anim: at(t0, t0 + 0.9, 'none', 'none') }));
+        items.push(text(word, { x: f.cx, y: f.h / 2, valign: 'middle', size: 320, bold: true, color: colour, maxWidth: f.x1 - f.x0, anim: at(t0, t0 + 0.9, 'pop', 'none', { in: 0.3 }) }));
+      });
+      items.push(...confetti(f, 2.7, ['#ffd23f', '#ff6fb5', '#2ec4b6']));
+      const head = text('GIVEAWAY', { x: f.cx, y: 0, size: 150, bold: true, color: '#ffffff', shadow: true, rotation: -4, maxWidth: f.x1 - f.x0, anim: at(2.7, undefined, 'pop', 'none', { in: 0.5, loop: 'wiggle' }) });
+      const pw = (f.x1 - f.x0) * 0.85;
+      const pic = photo('warm', f.cx - pw / 2, head.box.h + 50, pw, pw * 0.95, { corner: 5, border: { style: 'solid', width: 12, color: '#ffffff' }, anim: at(3.0, undefined, 'zoom', 'none', { in: 0.6, loop: 'float' }) });
+      const how = text('HOW TO ENTER', { x: f.cx, y: pic.box.y + pic.box.h + 50, size: 46, bold: true, color: '#ffd23f', anim: at(3.6, undefined, 'fade', 'none', { in: 0.4 }) });
+      const steps = ['1. Follow us', '2. Like this post', '3. Tag a friend'];
+      let y = how.box.y + how.box.h + 16;
+      const lines = steps.map((st, i) => {
+        const t = text(st, { x: f.cx, y, size: 50, color: '#ffffff', anim: at(4.0 + i * 0.4, undefined, 'slide-left', 'none', { in: 0.4 }) });
+        y += t.box.h + 8;
+        return t;
+      });
+      const ends = timed(pill('ENDS FRIDAY', f.cx, y + 40, { fill: '#ff6fb5', color: '#ffffff', size: 36, align: 'center' }), at(5.4, undefined, 'pop', 'none', { in: 0.4, loop: 'pulse' }));
+      items.push(...centreY([head, pic, how, ...lines, ...ends], f.y0, f.y1));
+      return items;
+    },
+  },
+  {
+    key: 'reel-recap', name: 'Photo Recap', category: 'photo', background: '#000000',
+    reel: { duration: 9, poster: 1.5 },
+    draw: f => {
+      const items: Item[] = [];
+      const shots: [PhotoKey, string][] = [['warm', 'Setting up'], ['green', 'Mid-game chaos'], ['dark', 'And the winner is...']];
+      shots.forEach(([p], i) => {
+        const t0 = i * 3;
+        const end = i < 2 ? t0 + 3.4 : undefined;
+        items.push(photo(p, 0, 0, f.w, f.h, { anim: at(t0, end, i ? 'fade' : 'none', 'none', { in: 0.5, loop: 'slow-zoom' }) }));
+      });
+      items.push(timed([shade(f, f.h, f.h * 0.75, f.h * 0.35, '#000000', 0.85)], at(0, undefined, 'none'))[0]);
+      const label = text('GAME NIGHT RECAP', { x: f.x0, y: f.y0, align: 'left', size: 40, bold: true, color: '#ffffff', anim: at(0.2, undefined, 'wipe-right', 'none', { in: 0.6 }) });
+      items.push(label, rect(f.x0, label.box.y + label.box.h + 16, 90, 6, '#ffd23f', { anim: at(0.5, undefined, 'wipe-right', 'none', { in: 0.4 }) }));
+      shots.forEach(([, caption], i) => {
+        const t0 = i * 3;
+        const end = i < 2 ? t0 + 3 : undefined;
+        items.push(text(caption, { x: f.x0, y: f.y1, valign: 'bottom', align: 'left', size: 100, bold: true, color: '#ffffff', maxWidth: f.x1 - f.x0, anim: at(t0 + 0.3, end, 'slide-up', 'fade', { in: 0.5, out: 0.3 }) }));
+      });
+      const counter = (i: number) => text(`${i + 1} / 3`, { x: f.x1, y: f.y0, align: 'right', size: 36, bold: true, color: '#ffd23f', anim: at(i * 3, i < 2 ? i * 3 + 3 : undefined, 'fade', 'none', { in: 0.3 }) });
+      items.push(counter(0), counter(1), counter(2));
+      return items;
+    },
+  },
+];
+
 // --- The library ------------------------------------------------------------
 
 // The cascade a video version comes in with: every layer from the start, each
@@ -575,6 +878,7 @@ function buildTemplate(d: Design, fmt: SystemFormat, { video, photo: onPhoto }: 
   if (onPhoto && d.overPhoto) items = items.filter((it, i) => !(i === 0 && it.layer.kind === 'image'));
   let k = 0;
   const layers = items.map(it => {
+    if (d.reel) return it.anim ? { ...it.layer, anim: { ...NO_ANIM, ...it.anim } } : it.layer;
     if (!video) return it.layer;
     const anim = videoAnim(it, k, f);
     if (anim) k++;
@@ -582,18 +886,23 @@ function buildTemplate(d: Design, fmt: SystemFormat, { video, photo: onPhoto }: 
   });
   return {
     version: 1, width: f.w, height: f.h, background: d.background, layers,
-    ...(video ? { duration: VIDEO_LENGTH } : {}),
+    ...(video || d.reel ? { duration: d.reel?.duration ?? VIDEO_LENGTH } : {}),
   };
 }
 
-export const SYSTEM_TEMPLATES: SystemTemplate[] = DESIGNS.flatMap(d => SYSTEM_FORMATS.map(({ id: fmt }) => ({
-  id: `${d.key}-${fmt}`,
-  name: d.name,
-  category: d.category,
-  format: fmt,
-  overPhoto: !!d.overPhoto,
-  build: (opts: { video: boolean; photo: boolean }) => buildTemplate(d, fmt, opts),
-})));
+// Reels first, so a video editor lists them at the top.
+export const SYSTEM_TEMPLATES: SystemTemplate[] = [...REELS, ...DESIGNS].flatMap(d =>
+  SYSTEM_FORMATS.filter(({ id }) => !d.reel || (d.reel.formats ?? ['9:16']).includes(id)).map(({ id: fmt }) => ({
+    id: `${d.key}-${fmt}`,
+    name: d.name,
+    category: d.category,
+    format: fmt,
+    overPhoto: !!d.overPhoto,
+    videoOnly: !!d.reel,
+    duration: d.reel?.duration ?? VIDEO_LENGTH,
+    poster: d.reel?.poster ?? VIDEO_LENGTH,
+    build: (opts: { video: boolean; photo: boolean }) => buildTemplate(d, fmt, opts),
+  })));
 
 // The library's format closest to a picture's shape.
 export function nearestFormat(width: number, height: number): SystemFormat {
@@ -605,21 +914,68 @@ export function nearestFormat(width: number, height: number): SystemFormat {
   return best.id;
 }
 
+// A template's layers, loaded (its pictures) once per session and kind: the
+// still design, or the video with its timing.
+const loadedLayers = new Map<string, Promise<{ template: EditorTemplate; layers: EditorLayer[] }>>();
+
+export function systemTemplateLayers(s: SystemTemplate, video: boolean): Promise<{ template: EditorTemplate; layers: EditorLayer[] }> {
+  const key = `${s.id}:${video || s.videoOnly ? 'video' : 'still'}`;
+  let p = loadedLayers.get(key);
+  if (!p) {
+    p = (async () => {
+      const template = s.build({ video, photo: false });
+      const { layers } = await instantiateTemplate(template, { x: 0, y: 0, width: template.width, height: template.height }, url => url);
+      return { template, layers };
+    })();
+    p.catch(() => loadedLayers.delete(key));
+    loadedLayers.set(key, p);
+  }
+  return p;
+}
+
+// Draws the design at time t (seconds; a still design whatever t) into
+// group, in the design's own pixels: the background, then every layer that
+// shows, as it moves then, like the editor's export.
+export function drawSystemFrame(group: Konva.Group, template: EditorTemplate, layers: EditorLayer[], t: number): void {
+  group.destroyChildren();
+  const box = { x: 0, y: 0, width: template.width, height: template.height };
+  group.add(new Konva.Rect({ ...box, fill: template.background }));
+  // A still design's layers have no timing, so they show as they are.
+  const duration = template.duration ?? 1;
+  for (const l of layers) {
+    const st = animStateAt(l, t, duration, box);
+    if (st.visible) group.add(buildAnimatedLayerNode(l, st));
+  }
+}
+
 // Previews, rendered in the browser the first time the library shows them
 // (one after the other, so a long list does not block the page) and kept
-// for the session as object URLs.
+// for the session as object URLs. A reel shows its poster frame.
 const previews = new Map<string, Promise<string>>();
 let queue: Promise<unknown> = Promise.resolve();
+
+const PREVIEW_SIDE = 320;
 
 export function systemTemplatePreview(s: SystemTemplate): Promise<string> {
   let p = previews.get(s.id);
   if (!p) {
     p = queue.then(async () => {
-      const t = s.build({ video: false, photo: false });
-      const box = { x: 0, y: 0, width: t.width, height: t.height };
-      const { layers } = await instantiateTemplate(t, box, url => url);
-      const blob = await renderEdit({ source: null, background: t.background, crop: box, adjustments: NO_ADJUSTMENTS, layers, maxSide: 320, quality: 0.85 });
-      return URL.createObjectURL(blob);
+      const { template, layers } = await systemTemplateLayers(s, s.videoOnly);
+      const scale = PREVIEW_SIDE / Math.max(template.width, template.height);
+      const container = document.createElement('div');
+      const stage = new Konva.Stage({ container, width: 1, height: 1 });
+      try {
+        const layer = new Konva.Layer({ listening: false });
+        stage.add(layer);
+        const group = new Konva.Group({ scaleX: scale, scaleY: scale });
+        layer.add(group);
+        drawSystemFrame(group, template, layers, s.poster);
+        const canvas = group.toCanvas({ x: 0, y: 0, width: Math.round(template.width * scale), height: Math.round(template.height * scale), pixelRatio: 1 });
+        const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Failed to draw the preview'))), 'image/jpeg', 0.85));
+        return URL.createObjectURL(blob);
+      } finally {
+        stage.destroy();
+      }
     });
     // A failed preview is tried again next time.
     p.catch(() => previews.delete(s.id));

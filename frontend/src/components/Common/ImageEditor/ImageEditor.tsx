@@ -2427,10 +2427,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const shownView = templateView ?? (templates === null || ownCount > 0 ? 'own' : 'system');
   const viewFormat = systemFormat ?? (crop ? nearestFormat(crop.width, crop.height) : '4:5');
   // On a photo only the designs laid over a full-frame picture, which the
-  // photo takes the place of.
-  const systemShown = SYSTEM_TEMPLATES.filter(t =>
-    t.format === viewFormat && (canvasMode || t.overPhoto) && (!systemCategory || t.category === systemCategory));
-  const systemCategories = SYSTEM_CATEGORIES.filter(c => SYSTEM_TEMPLATES.some(t => t.category === c.id && (canvasMode || t.overPhoto)));
+  // photo takes the place of; reels only in a video.
+  const systemOffered = SYSTEM_TEMPLATES.filter(t => (canvasMode || t.overPhoto) && (video || !t.videoOnly));
+  const systemShown = systemOffered.filter(t => t.format === viewFormat && (!systemCategory || t.category === systemCategory));
+  const systemCategories = SYSTEM_CATEGORIES.filter(c => systemOffered.some(t => t.category === c.id));
   const systemList = (
     <>
       <div className="ie-row ie-scroll">
@@ -2454,7 +2454,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       </label>
       <p className="ie-hint">
         {canvasMode
-          ? `Tap a template to start from it. It replaces the current design${video ? ', and its layers come in one after the other' : ''}. Replace or paste over a picture to put in yours.`
+          ? `Tap a template to start from it. It replaces the current design. ${video ? 'Point at one to play it; the reels (film badge) run scene after scene. ' : ''}Replace or paste over a picture to put in yours.`
           : 'Tap a template to lay its texts and shapes over the picture.'}
       </p>
       {systemShown.length === 0 ? (
@@ -2465,6 +2465,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             <SystemTemplateTile
               key={t.id}
               template={t}
+              animate={video}
               loading={applyingTemplate === t.id}
               disabled={applyingTemplate !== null}
               onPick={() => void pickSystemTemplate(t).then(() => { if (phone) closeSheet(); })}

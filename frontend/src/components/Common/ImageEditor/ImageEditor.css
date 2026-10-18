@@ -884,6 +884,24 @@
   border-radius: 4px;
 }
 
+/* A built-in template's preview, and its player over it while it plays. */
+.ie-tile-media {
+  position: relative;
+  width: 100%;
+}
+
+.ie-tile-media img {
+  display: block;
+}
+
+.ie-tile-player {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 .ie-tile-placeholder {
   display: flex;
   align-items: center;
