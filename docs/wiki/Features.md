@@ -20,49 +20,76 @@ Footers are stored by reference — updating a footer affects all future posts t
 
 ---
 
-## Built-in Image Editor
+## Media Library
 
-Every post image can be edited in the browser using the built-in image editor (powered by [Filerobot Image Editor](https://github.com/scaleflex/filerobot-image-editor)). Click the pencil icon on any attached image to open it.
+**Post Tools → Media Library** holds the team's material: images, videos, sounds (mp3, m4a, aac, wav, ogg), fonts (.ttf/.otf), colours and design templates. Each entry has a name, a description and tags; search by words and tags, and narrow the list with the kind filter (All, Images, Watermarks, Videos, Audio, Fonts, Colours, Templates). Fonts are shown as a sample set in them, colours as swatches, and videos and sounds play in their cards.
 
-### Available Tools
+- **Add Colour** stores a hex value with a description of how to use it ("headlines and badges"). Library colours are the first swatches in the image editor.
+- Library fonts are offered in the image editor ahead of the system fonts.
+- Descriptions matter: AI agents pick their material by them (see [[Content Agent]]).
 
-| Tab | Description |
-|---|---|
-| **Adjust** | Brightness, contrast, saturation, exposure, and more |
-| **Annotate** | Text overlays, shapes, arrows, and freehand drawing |
-| **Watermark** | Place admin-uploaded watermark images on the photo |
-| **Filters** | Apply preset color filters |
-| **Finetune** | Fine-grained colour and tone adjustments |
-| **Resize** | Change image dimensions |
+A file stays stored as long as the library (or anything else) uses it; deleting an entry frees it otherwise.
 
-### Crop Presets
+### Watermarks
 
-| Preset | Ratio |
-|---|---|
-| Square | 1:1 |
-| Story | 9:16 |
-| Landscape | 16:9 |
-| Portrait | 4:5 |
+Watermarks are library images marked as watermarks: tick the checkbox in an image's edit form, or upload in the **Watermarks** view. They are what the team's overlay settings (BGG, news and episode overlays), convention queues and the editors' overlay pickers offer. Unmarking keeps the image; deleting removes it. The old `/watermarks` page now opens the library's Watermarks view.
 
 ---
 
-## Watermarks
+## Image Editor
 
-Admins can manage a library of watermark images available to all users inside the image editor.
+Click the pencil on any post image (or on a convention queue item) to open SocialPod's own full-screen editor. **Create Image** in the post editor, News and Episode forms opens it on a blank canvas instead (4:5 for a post, 9:16 for a story, 1:1 for News and Episodes).
 
-### Managing Watermarks (Admin)
+### Tools
 
-1. Navigate to **Watermarks** in the sidebar.
-2. Optionally enter a name, click **Upload**, and select an image (PNG, JPEG, GIF, or WebP).
-3. The watermark is immediately available in the image editor.
-4. Click the trash icon to remove a watermark.
+| Tool | Description |
+|---|---|
+| **Crop** | Crop with aspect presets (free, original, 1:1, 4:5, 9:16, 16:9); re-cropping never shifts the layers |
+| **Canvas** | On a blank canvas instead of Crop and Filters: format (1:1, 4:5, 9:16, 16:9) and background colour |
+| **Filters** | Filter presets plus brightness, contrast and saturation |
+| **Templates** | Built-in SocialPod templates, the team's templates and your saved drafts |
+| **Media** | Add images (or watermarks, with the Watermarks filter) from the media library, or upload one into it |
+| **Text** | Type directly on the picture; font, size, alignment, colour, bold, outline, shadow |
+| **Shapes** | Box, circle/ellipse and triangle with fill, border, corners and opacity |
+| **Brush** | Paint strokes with size, feather, colour and opacity, e.g. soft shading behind text |
 
-### Applying Watermarks (Users)
+Image layers take rounded corners, a border (solid, dashed, dotted, double, glow, offset), opacity and a crop of their own; every layer takes a blend mode (multiply, screen, overlay, ...). **Replace** (or pasting an image into a template's placeholder) swaps a picture while keeping its frame.
 
-1. Open a post image and click the pencil icon.
-2. Select the **Watermark** tab.
-3. Click a watermark from the gallery to place it on the image.
-4. Drag, resize, or reposition it, then click **Save**.
+### Working with layers
+
+- The **Objects** list on the right shows the layers top first; drag rows to restack them.
+- Moving a layer snaps it to the edges and centres of the page and of other layers, and to equal spacing, with guide lines. The magnet button turns snapping off; hold **Alt** to skip it for one drag.
+- Arrow keys nudge the selected layer (Shift for ten steps). Undo/redo with Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.
+- For 9:16 designs a phone button shows Instagram's **safe zones**: the areas a reel's or story's own interface covers. They are never exported.
+
+### Phones
+
+On screens up to 768 px wide the editor switches to a phone layout: a bottom bar with the add tools (or the selected object's tools), one control at a time in a tray over the picture, bottom sheets for templates, media and the objects list, and a small toolbar under the selected object (duplicate, up/down, delete). Two fingers pinch, turn and move the selected object.
+
+### Templates
+
+- **SocialPod templates** are built in: headline, breaking news, spotlight, review score, new episode, top 5, quote, giveaway, coming soon, game night and more, each in 1:1, 4:5 and 9:16. They use plain colours and the built-in fonts, ready to restyle; their pictures are placeholders to replace or paste over.
+- **Team templates** are designs kept in the media library. **New Template** on the Media Library page opens the editor on a blank canvas (still or video); the brush on a template card edits its design.
+- On a blank canvas a template replaces the design; on a photo its layers are laid over the crop.
+
+### Drafts
+
+**Save draft** (Ctrl/Cmd+S) keeps unfinished editor work, photo and all layers, under a name. Drafts are listed at the top of the Templates tab under **Yours**; picking one restores it exactly. Drafts are personal.
+
+---
+
+## Video Editor
+
+**Create Video** in the post editor (reels and stories) opens the editor in video mode on a blank 9:16 canvas. A video has a length (3–90 s) and optional music; every layer can be animated.
+
+- **Clips**: add videos from the media library (Media → Clips) or upload one; clips move, resize, turn and take corners, borders and blend modes like images, and have their own trim and volume. Uploads that aren't kept in the library are temporary and cleaned up automatically.
+- **Music**: a sound from the library or an upload, with start, trim, volume and fades (Animate tab with nothing selected).
+- **Animations** (Animate tab): each layer gets a time span on the timeline, an enter effect (fade, slides, zoom, pop, wipes, typewriter, ...), a loop effect (pulse, float, wiggle, slow zoom, ...) and an exit effect.
+- **Keyframes**: add a key at the playhead and set the layer's position, size, rotation and opacity there, with an ease to the next key. Once a layer has keys, dragging or resizing it on the picture sets the key at the playhead. Keys show as diamonds on the layer's bar and can be dragged to retime them.
+- **Timeline**: play/pause (Space), repeat, scrub, drag bars to move or trim layers and music.
+- **Reel templates** (kinetic intro, countdown reveal, top 3, review verdict, podcast clip, versus, save the date, photo recap, ...) are fully animated scene by scene. Template tiles play on hover.
+- **Save template** stores the design with its length, music and animations as a video template in the media library.
+- **Export video** renders an MP4 (H.264 + AAC) in the browser and adds it to the post. Browsers without an AAC encoder of their own get one as WebAssembly; a browser without H.264 encoding can't export.
 
 ---
 
@@ -168,6 +195,7 @@ Per-item actions:
 | **AI regenerate** | Re-run AI vision analysis for a fresh caption |
 | **Reorder** | Use up/down buttons to adjust publish order |
 | **Override platforms** | Override the queue's platform selection for one item |
+| **Crop / Edit image** | Crop the shown image (with the queue watermark drawn over it for reference; it is stamped at post time) or open it in the image editor |
 | **Delete** | Remove the item |
 
 ### AI Caption Generation
@@ -187,6 +215,41 @@ publishes it, and removes it from the approved set so it is never repeated.
 
 Each published post also appears on the calendar and can be edited individually.
 When the approved set empties, posting pauses until you approve more photos.
+
+### Quick Reel
+
+Quick Reel turns a phone clip into an Instagram reel in about a minute, straight from the convention floor.
+
+1. In the queue's settings, pick a **Quick Reel template**: a video template from the media library.
+2. On the queue page, click **Quick Reel** and pick a clip. It uploads with a progress bar.
+3. Drag the two handles on the filmstrip to choose where the reel cuts into the clip and out of it (3–90 s; arrow keys nudge, Shift for a second). The kept part sets the reel's length; the template's animations play over its own length and its music plays on.
+4. Add a few words of hints. The reel renders in the browser while the AI writes the caption (the team's "Rewrite for Instagram" prompt plus the queue's hashtags).
+5. Review the reel and edit the caption, then **Publish**: it is scheduled on the queue's Instagram account and footer 30 minutes after the clip was uploaded, or right away once that has passed. **Save as draft** keeps it as a draft to finish in the post editor instead.
+
+The clip goes into the template's largest clip frame, else into a large picture frame, else full frame under everything.
+
+---
+
+## Instagram Growth
+
+Tools for growing an Instagram account towards a follower goal (teams only). The Instagram login asks for Insights access; accounts connected before that need a reconnect.
+
+- **Growth Settings** (team admin, **Administration → Growth Settings**): the follower goal (target, start and end, a halfway review), the **weekly plan** (recurring slots by weekday, time and format: reel, carousel, image, story or any), the single-image warning limit, the **Rewrite for Instagram** prompt and the limit on open agent drafts.
+- **Growth** page (**Content → Growth**): the goal tracker (weekly net followers vs. required, halfway status), a weekly report (top posts by shares and saves, sends and saves per reach by format) and ad candidates (reels and carousels in the top 20% of the last 30 days). Follower counts are recorded daily and post Insights read regularly; **Refresh** reads them now.
+- **Calendar**: open weekly-plan slots show as dashed placeholders (click one to start a post of that type at that time), each week shows its format mix, and the views show ISO week numbers.
+- **Post editor**: Instagram collaborators (up to 3, suggested from BGG publishers) and image tags, a caption checker (hook, closing question, share prompt, 3–5 hashtags, a tagged account) and **Rewrite for Instagram**. Published posts show their Insights. The News and Episode forms have the same caption checker.
+
+---
+
+## Agents
+
+**Post Tools → Agents** runs AI agents inside SocialPod: a prompt on a schedule (set times, hourly, every N minutes/hours/days, or manual), executed by an OpenRouter model you pay for, with the same tools as the MCP server plus web search. Agents fill the draft queue; nothing is published without a person. Set your OpenRouter key and default model on the **Profile** page. See [[Content Agent]] for the setup, the tools and a sample run.
+
+---
+
+## MCP Server and Connectors
+
+SocialPod is an MCP server at `/api/mcp`. Point Claude Code, OpenCode or another MCP client at it with your API token as a bearer token, or add it as a custom connector in Claude.ai or ChatGPT, which sign in with OAuth (requires `APP_URL` to be the public HTTPS URL). Connected apps are listed, and can be disconnected, on the Profile page.
 
 ---
 
@@ -242,6 +305,8 @@ A team plugin for creating "news" style social posts from a headline and article
 3. Optionally click **BGG Import** to auto-populate fields from a BoardGameGeek URL.
 4. Upload a cover image (drag-and-drop, clipboard paste, or file browse).
 5. Optionally enable **Add as Social Media Posting** to also schedule a social post with the news item.
+
+Saved entries are kept on the **Drafts** tab; publishing moves a draft to the **Posted** tab (cleared with **Remove All**). The Episodes page works the same way.
 
 ---
 
