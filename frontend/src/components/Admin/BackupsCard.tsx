@@ -219,7 +219,9 @@ export function BackupsCard() {
       {title}
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 0 }}>
         A backup holds everything: all users (with password hashes and API tokens), teams, connected social accounts,
-        settings and secrets, posts, drafts, queues, agents and every uploaded image, video and font. It is stored as an
+        settings and secrets, OAuth connections, posts, drafts (image drafts too), queues, agents with their run logs,
+        growth history, the media library (templates and colours included) and every uploaded image, video, sound and
+        font. It is stored as an
         AES-256 encrypted ZIP under <code>backups/</code> in the S3 bucket. Server environment settings (JWT secret,
         MongoDB and S3 credentials) are not part of it.
       </p>
