@@ -10,8 +10,12 @@ A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, *
 
 - **Drag-and-drop calendar** — visual scheduling across all platforms
 - **Multi-platform posting** — cross-post with per-platform text customization
-- **Image editor** — crop, annotate, apply filters and watermarks in the browser
-- **Convention Mode** — drip-publish event photos with AI caption generation
+- **Image editor** — layers, text, shapes, brush, filters, blend modes and built-in templates, with a phone layout
+- **Video editor** — animated reels and stories with clips, music, effects and keyframes, exported as MP4 in the browser
+- **Media library** — team images, videos, sounds, fonts, colours, watermarks and design templates
+- **Convention Mode** — drip-publish event photos with AI captions, and turn a clip into a reel in a minute (Quick Reel)
+- **Instagram growth** — follower goal tracker, weekly plan, Insights, caption checker and AI rewrite
+- **AI agents** — scheduled agents that fill the draft queue, and an MCP server (with OAuth) for Claude, ChatGPT and other clients
 - **Footer management** — append platform-specific text snippets at publish time
 - **@ Autocomplete** — saved mentions with per-platform handles
 - **Instagram feed** — view your Instagram account's post feed with engagement stats
@@ -19,6 +23,7 @@ A self-hosted social media scheduling platform for **Bluesky**, **Instagram**, *
 - **BGG integration** — fetch board game data, cover art, and AI summaries from BoardGameGeek
 - **Multitenancy** — teams with shared posts, footers, API tokens, and team invites
 - **PWA share target** — share images/videos directly from mobile apps into SocialPod
+- **Backups** — scheduled, encrypted full-system backups to S3
 - **REST API** — full scheduling API with API token authentication
 - **n8n node** — native community node for workflow automation
 
@@ -55,8 +60,9 @@ Full documentation is in the [Wiki](../../wiki):
 |---|---|
 | [Getting Started](../../wiki/Getting-Started) | Configuration, environment variables, production deployment |
 | [Connecting Platforms](../../wiki/Connecting-Platforms) | Auth setup for each social network |
-| [Features](../../wiki/Features) | Image editor, footers, mentions, AI generation, convention mode, and more |
+| [Features](../../wiki/Features) | Image and video editor, media library, convention mode, Instagram growth, agents, and more |
 | [REST API](../../wiki/REST-API) | Full API reference with curl examples |
+| [Content Agent](../../wiki/Content-Agent) | AI agents filling the draft queue over MCP |
 | [n8n Integration](../../wiki/n8n-Integration) | Installing and using the native n8n community node |
 | [Development](../../wiki/Development) | Architecture, Makefile, CI/CD |
 | [Troubleshooting](../../wiki/Troubleshooting) | Common issues and fixes |

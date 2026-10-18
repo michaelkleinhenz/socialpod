@@ -39,7 +39,9 @@ Go module `socialmedia`, using Gin as the HTTP framework.
 | `internal/models/` | BSON-tagged Go structs for each collection |
 | `internal/handlers/` | One file per handler group (`auth.go`, `posts.go`, `admin.go`, etc.) |
 | `internal/middleware/auth.go` | `AuthRequired` — tries JWT → user API token → team API token |
-| `internal/services/` | `bluesky.go`, `instagram.go`, `linkedin.go`, `mastodon.go`, `threads.go`, `twitter.go`, `youtube.go`, `scheduler.go`, `imageutil.go`, `email.go` |
+| `internal/services/` | Platforms: `bluesky.go`, `instagram.go` (+ `instagram_insights.go`), `linkedin.go`, `mastodon.go`, `threads.go`, `twitter.go`, `youtube.go`; infrastructure: `scheduler.go`, `growth_jobs.go`, `imageutil.go`, `fonts.go`, `compose.go` (server-side image composition for MCP), `email.go` |
+| `internal/uploadstore/` | Uploaded files: S3 bucket (or MongoDB without one), `UPLOAD_DIR` as a cache |
+| `internal/backup/`, `internal/objectstore/` | Encrypted full-system backups and the S3 client |
 
 The scheduler runs every 30 seconds, queries for `status == "scheduled"` and `scheduledAt <= now`, and publishes posts. Footers are fetched from the DB and appended at publish time.
 
@@ -53,6 +55,8 @@ React 19 + TypeScript + Vite. No state management library — auth state lives i
 | `src/contexts/AuthContext.tsx` | Global auth state (`user`, `loading`, `login`, `logout`, `refreshUser`) |
 | `src/types/index.ts` | All shared TypeScript types |
 | `src/App.tsx` | Route definitions and `ProtectedRoute` |
+| `src/components/Common/ImageEditor/` | The Konva image and video editor (layers, templates, animations, MP4 export) |
+| `src/components/Common/Modal.tsx` | Shared dialog overlay; use it for new dialogs |
 
 ### Authorization Model
 
