@@ -25,6 +25,71 @@
   overflow: hidden;
 }
 
+/* Draft and Posted list rows (News and Episodes pages) */
+.news-draft-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.news-draft-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.news-draft-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.news-draft-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.news-draft-name {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.news-draft-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.news-draft-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  /* The buttons take a row of their own below the text, so the title gets
+     the card's full width instead of a narrow column beside them. */
+  .news-draft-row {
+    flex-wrap: wrap;
+  }
+
+  .news-draft-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+}
+
 @media (max-width: 480px) {
   .news-meta-row {
     grid-template-columns: 1fr;
