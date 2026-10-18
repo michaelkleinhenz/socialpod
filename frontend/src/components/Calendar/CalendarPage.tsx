@@ -470,6 +470,15 @@ export function CalendarPage() {
               {visibleDrafts.map(post => (
                 <div key={post.id} className="card" style={{ padding: 16 }}>
                   <div className="draft-card">
+                    {/* Designs not exported yet show their stills when there is nothing else. */}
+                    {!post.imageUrls?.length && post.designs?.some(d => !d.imageUrl && d.previewUrl) && (
+                      <div className="draft-card-images">
+                        {post.designs.filter(d => !d.imageUrl && d.previewUrl).slice(0, 3).map((d, i) => (
+                          <img key={i} src={d.previewUrl!.startsWith('/') ? apiUrl + d.previewUrl : d.previewUrl} alt="" title="Not exported yet"
+                            style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', opacity: 0.8 }} />
+                        ))}
+                      </div>
+                    )}
                     {post.imageUrls && post.imageUrls.length > 0 && (
                       <div className="draft-card-images">
                         {post.imageUrls.slice(0, 3).map((url, i) => {
@@ -524,6 +533,14 @@ export function CalendarPage() {
                             }}
                           >
                             <Bot size={11} /> {post.origin}
+                          </span>
+                        )}
+                        {post.designs?.some(d => !d.imageUrl) && (
+                          <span
+                            title="Holds a design not exported yet: open the draft, export it with the pencil, then schedule"
+                            style={{ background: 'var(--warning)', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11 }}
+                          >
+                            Not exported
                           </span>
                         )}
                         {post.sourceUrl && (

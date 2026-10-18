@@ -28,12 +28,53 @@ What a built-in agent creates carries the origin `agent-<name>` (e.g. `agent-new
 | What to make, when | `get_growth_settings`, `get_open_slots`, `get_account_insights`, `get_post_insights` |
 | Avoid duplicates and floods | `find_existing`, `get_draft_queue` |
 | Content from the web | `capture_url` (page to draft, in house style), `import_bgg` (BGG game with processed cover, text, hashtags, collaborators) |
-| Images | `list_watermarks`, `list_media`, `get_image`, `upload_from_url`, `compose_image`, `add_media` |
+| Images | `list_watermarks`, `list_media`, `get_image`, `upload_from_url`, `create_upload_url`, `compose_image`, `add_media` |
 | Text | `rewrite_instagram`, `check_instagram_caption`, `list_mentions` |
 | Speech | `transcribe` (a reel's video or a library video/sound to text, timed phrases and optionally words) |
-| Drafts | `create_post` (with `status: "draft"`, `sourceUrl`, `origin`), `update_post`, `create_news_draft`, `create_episode_draft` |
+| Drafts | `create_post` (with `status: "draft"`, `sourceUrl`, `origin`, `designs`), `update_post`, `create_news_draft`, `create_episode_draft` |
 
 Everything an agent creates carries an `origin` (default `mcp`; pass your own short label such as `agent`), so the Calendar's Drafts tab marks those drafts and can filter by origin. Pass `sourceUrl` on `create_post` so `find_existing` recognises the story next time: URLs are compared normalised (BGG games by ID, other pages without tracking parameters, `www.` or trailing slash).
+
+### Uploading files: create_upload_url
+
+`upload_image` and the inline `images` take base64, which is fine for a small picture and nothing else. For anything larger, and for every video or sound, ask for a single-use upload URL and send the file there yourself:
+
+```
+create_upload_url {"filename": "clip.mp4"}
+→ {"uploadUrl": "https://pod.example.com/api/upload/once/3f9c…", "url": "/api/uploads/1760…mp4", "expiresAt": "…", …}
+
+curl -sS --fail-with-body -T clip.mp4 "https://pod.example.com/api/upload/once/3f9c…"
+→ {"url": "/api/uploads/1760…mp4", "contentType": "video/mp4", "size": 48213993}
+```
+
+No Authorization header is needed; the URL works once (a failed upload can be retried) and expires after `expiresInMinutes` (default 60). A multipart POST works too (`curl -F file=@clip.mp4 <uploadUrl>`). The `url` is known from the start and goes wherever a tool takes an uploaded file. Images up to 30 MB, videos (mp4, mov, webm) up to 200 MB, sounds up to 50 MB, fonts up to 10 MB. An upload nothing ends up using is deleted after a day.
+
+### Editable drafts: designs
+
+A post draft can carry the image editor's designs for its images and videos, so the user opens them in the editor as they were and changes texts, timing or pictures before exporting. That is also how to hand over a video, which only the browser can render, or an image too large to send: as a design that the user exports in the post editor.
+
+```json
+{
+  "postType": "reel", "status": "draft", "platforms": ["instagram"], "scheduledAt": "…",
+  "content": "…",
+  "designs": [{
+    "design": {
+      "version": 1, "width": 1080, "height": 1920, "background": "#000000", "duration": 12,
+      "audio": {"src": "/api/uploads/music.mp3", "name": "Theme", "start": 0, "trimStart": 0, "volume": 0.8, "fadeIn": 0, "fadeOut": 1, "duration": 95},
+      "layers": [
+        {"kind": "image", "origin": "media", "src": "/api/uploads/clip.mp4", "x": 540, "y": 960, "width": 1080, "height": 1920, "rotation": 0, "opacity": 1,
+         "clip": {"trimStart": 0, "volume": 1, "duration": 30}},
+        {"kind": "text", "text": "\"Wingspan\" im Test", "x": 90, "y": 300, "fontSize": 96, "fontFamily": "Arial, Helvetica, sans-serif", "fill": "#ffffff",
+         "bold": true, "outline": false, "shadow": true, "align": "center", "rotation": 0,
+         "anim": {"start": 0.5, "enter": "fade", "enterDuration": 0.6, "exit": "none", "exitDuration": 0.6, "loop": "none"}}
+      ]
+    },
+    "previewUrl": "/api/uploads/still.jpg"
+  }]
+}
+```
+
+Image layers (and clips) are placed by their centre (`x`, `y`) and size in canvas pixels, texts by their top-left corner; a layer's `anim` says when it shows and how it comes in, moves and goes out. `design` is a template in the editor's own format (the one `list_media` with `kind: "template"` and `design: true` returns, a good place to start: take a team template and replace its texts, pictures and clips) or an editor draft (`{"version": 1, "template": …, "photo": {…}}`, as `get_post` returns it). Files are referred to by upload URL. A design with `imageUrl` (one of the post's `imageUrls`) or `file` (an index into the call's inline `images`) is the editable form of that image; one without has not been exported yet, so the post must stay a `draft`: scheduling it is refused until the user exports it. `previewUrl` is an optional still shown in its place. On `update_post`, `designs` replaces the stored list (an empty list clears it); left out, the designs stay. `list_posts` leaves the designs' JSON out; `get_post` returns it.
 
 ### transcribe
 

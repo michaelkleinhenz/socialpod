@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
-import type { Post, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
+import type { Post, PostDesign, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
 import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette, Clapperboard, Download } from 'lucide-react';
 import { CaptionChecker, InsightsStrip, InstagramPeople } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
+import { parseDraft, type EditorDraft } from '../Common/ImageEditor/editorModel';
 import toast from 'react-hot-toast';
 import { MentionTextarea } from './MentionTextarea';
 import { ReelCoverPicker, type ReelCover } from './ReelCoverPicker';
@@ -489,6 +490,34 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
   );
 }
 
+// The image editor's edit of an image or video, and for one not exported yet
+// a still of it.
+type ItemDesign = { edit: EditorDraft; video: boolean; previewUrl?: string };
+
+// One of the post's images or videos: a stored file, a local file not
+// uploaded yet, or a design not exported yet. What was made in the image
+// editor carries its design.
+type ImageItem =
+  | { kind: 'url'; url: string; design?: ItemDesign }
+  | { kind: 'file'; file: File; design?: ItemDesign }
+  | { kind: 'design'; design: ItemDesign };
+
+function itemDesign(d: PostDesign | undefined): ItemDesign | undefined {
+  const edit = d ? parseDraft(d.design) : null;
+  return edit ? { edit, video: !!d!.video, previewUrl: d!.previewUrl } : undefined;
+}
+
+// A post's images with their designs, then the designs not exported yet.
+function postImages(post: Post | null | undefined): ImageItem[] {
+  const designs = post?.designs ?? [];
+  const items: ImageItem[] = (post?.imageUrls || []).map(url => ({ kind: 'url' as const, url, design: itemDesign(designs.find(d => d.imageUrl === url)) }));
+  for (const d of designs) {
+    const design = d.imageUrl ? undefined : itemDesign(d);
+    if (design) items.push({ kind: 'design', design });
+  }
+  return items;
+}
+
 export function PostEditor({ post, postType: propPostType, defaultDate, onSave, onDelete, onClose, chromeless = false, draftKey }: Props) {
   const defaultTime = defaultDate
     ? format(defaultDate, "yyyy-MM-dd'T'HH:mm")
@@ -521,11 +550,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [scheduledAt, setScheduledAt] = useState(
     draft?.scheduledAt ?? (post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime)
   );
-  // Unified image list: existing server URLs and local File objects not yet uploaded.
-  type ImageItem = { kind: 'url'; url: string } | { kind: 'file'; file: File };
-  const [images, setImages] = useState<ImageItem[]>(
-    (post?.imageUrls || []).map(url => ({ kind: 'url' as const, url }))
-  );
+  // Unified image list: existing server URLs and local File objects not yet
+  // uploaded. One made in the image editor carries its edit, to open it again
+  // as it was; a design kept without exporting it (or made over MCP) has no
+  // file yet, only the edit and maybe a still of it.
+  const [initialImages] = useState<ImageItem[]>(() => postImages(post));
+  const [images, setImages] = useState<ImageItem[]>(initialImages);
   // Cache for object URLs so we don't create a new one on every render.
   const objUrlCache = useRef<Map<File, string>>(new Map());
   const [tags] = useState<string[]>(post?.tags || []);
@@ -999,12 +1029,18 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
   // Detect whether an ImageItem is a video (works for both file and URL items).
   const isVideoItem = (item: ImageItem): boolean => {
+    if (item.kind === 'design') return item.design.video;
     if (item.kind === 'file') return item.file.type.startsWith('video/');
     return /\.(mp4|mov)$/i.test(item.url);
   };
 
-  // Returns a displayable URL for any ImageItem without leaking object URLs.
+  // Returns a displayable URL for any ImageItem without leaking object URLs:
+  // for an unexported design its still, if it has one.
   const previewUrl = useMemo(() => (item: ImageItem) => {
+    if (item.kind === 'design') {
+      const still = item.design.previewUrl ?? '';
+      return still.startsWith('/') ? apiUrl + still : still;
+    }
     if (item.kind === 'url') return item.url.startsWith('/') ? apiUrl + item.url : item.url;
     if (!objUrlCache.current.has(item.file)) {
       objUrlCache.current.set(item.file, URL.createObjectURL(item.file));
@@ -1012,10 +1048,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     return objUrlCache.current.get(item.file)!;
   }, [apiUrl]);
 
-  // Image URLs for the preview panel (server URLs + object URLs for local files).
+  // Image URLs for the preview panel (server URLs + object URLs for local
+  // files); an unexported design shows only once it is exported.
+  const exportedImages = useMemo(() => images.filter(item => item.kind !== 'design'), [images]);
   const previewImageUrls = useMemo(() =>
-    images.map(item => previewUrl(item)),
-  [images, previewUrl]);
+    exportedImages.map(item => previewUrl(item)),
+  [exportedImages, previewUrl]);
 
   const blueskyAccount = accounts.find(a => a.platform === 'bluesky') ?? null;
   const instagramAccount = accounts.find(a => a.platform === 'instagram') ?? null;
@@ -1119,10 +1157,24 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         if (content.length > charLimit) { toast.error(`Content exceeds ${charLimit} character limit`); return; }
       }
       if (platforms.length === 0) { toast.error('Select at least one platform'); return; }
+      if (images.some(i => i.kind === 'design')) {
+        toast.error('Export the design first (the pencil opens it), or save the post as a draft');
+        return;
+      }
     }
 
-    const imageUrls = images.filter(i => i.kind === 'url').map(i => (i as { kind: 'url'; url: string }).url);
-    const imageFiles = images.filter(i => i.kind === 'file').map(i => (i as { kind: 'file'; file: File }).file);
+    const imageUrls = images.flatMap(i => (i.kind === 'url' ? [i.url] : []));
+    const imageFiles = images.flatMap(i => (i.kind === 'file' ? [i.file] : []));
+    // The edits of what was made in the image editor; an export uploaded in
+    // this request is named by its place among the files.
+    type DesignInput = { imageUrl?: string; file?: number; previewUrl?: string; design: string };
+    const designs = images.flatMap((i): DesignInput[] => {
+      if (!i.design) return [];
+      const design = JSON.stringify(i.design.edit);
+      if (i.kind === 'url') return [{ imageUrl: i.url, design }];
+      if (i.kind === 'file') return [{ file: imageFiles.indexOf(i.file), design }];
+      return [{ previewUrl: i.design.previewUrl, design }];
+    });
 
     const postType = isStory ? 'story' : isReel ? 'reel' : 'post';
 
@@ -1153,6 +1205,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         userTags: igSelected ? userTags : [],
         // Empty and -1 clear what an edited reel had.
         ...(isReel ? { coverUrl: reelCover.coverUrl, thumbOffset: reelCover.thumbOffset ?? -1 } : {}),
+        designs,
       };
 
       await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
@@ -1161,11 +1214,35 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     }
   };
 
+  // Keeps an edit in the post without exporting it, with a still of it: in
+  // place of the image it was opened from (idx), or as a new one. The post
+  // stays a draft until it is exported.
+  const keepDesign = async (edit: EditorDraft, preview: Blob, video: boolean, idx: number | null) => {
+    const { url } = await api.uploadImage(new File([preview], 'design.jpg', { type: 'image/jpeg' }));
+    const item: ImageItem = { kind: 'design', design: { edit, video, previewUrl: url } };
+    if (idx !== null) {
+      const old = images[idx];
+      if (old?.kind === 'file') {
+        const cached = objUrlCache.current.get(old.file);
+        if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(old.file); }
+      }
+      setImages(prev => prev.map((it, i) => (i === idx ? item : it)));
+      setEditingImageIdx(null);
+    } else {
+      // A story or a reel holds one image or video.
+      if (isStory || isReel) setImages([item]);
+      else setImages(prev => [...prev, item]);
+      setCreatingImage(false);
+      setCreatingVideo(false);
+    }
+    toast.success('Design kept. Export it before the post is scheduled; until then save the post as a draft.');
+  };
+
   const isDirty = content !== (post?.content || '')
     || firstComment !== (post?.firstComment || '')
     || scheduledAt !== (post ? format(new Date(post.scheduledAt), "yyyy-MM-dd'T'HH:mm") : defaultTime)
     || JSON.stringify(platforms) !== JSON.stringify(post?.platforms || ['bluesky'])
-    || images.length !== (post?.imageUrls || []).length
+    || images.length !== initialImages.length || images.some((item, i) => item !== initialImages[i])
     || JSON.stringify(footerIds) !== JSON.stringify(post?.footerIds || {})
     || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {})
     || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || [])
@@ -1746,20 +1823,35 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 >
                   {images.map((item, i) => {
                     const isVid = isVideoItem(item);
+                    const src = previewUrl(item);
                     return (
                       <div key={i} className="image-preview">
-                        {isVid
-                          ? <video src={previewUrl(item)} muted className="image-preview-video" />
-                          : <img src={previewUrl(item)} alt="" />}
-                        {!isVid && (
-                          <>
-                            <button className="edit-btn" onClick={() => setCroppingImageIdx(i)} title="Crop image" style={{ left: 8, right: 'auto' }}>
-                              <Crop size={12} />
-                            </button>
-                            <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title="Edit image">
-                              <Pencil size={12} />
-                            </button>
-                          </>
+                        {item.kind === 'design'
+                          ? (src
+                            ? <img src={src} alt="" />
+                            : <div className="image-preview-pending">{isVid ? <Clapperboard size={24} /> : <Palette size={24} />}</div>)
+                          : isVid
+                          ? <video src={src} muted className="image-preview-video" />
+                          : <img src={src} alt="" />}
+                        {!isVid && item.kind !== 'design' && (
+                          <button className="edit-btn" onClick={() => setCroppingImageIdx(i)} title="Crop image" style={{ left: 8, right: 'auto' }}>
+                            <Crop size={12} />
+                          </button>
+                        )}
+                        {(!isVid || item.design) && (
+                          <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title={item.design ? `Edit the design${item.kind === 'design' ? ' and export it' : ''}` : 'Edit image'}>
+                            <Pencil size={12} />
+                          </button>
+                        )}
+                        {item.design && (
+                          <span
+                            className={`image-preview-badge${item.kind === 'design' ? ' pending' : ''}`}
+                            title={item.kind === 'design'
+                              ? 'Not exported yet: open it with the pencil and export it before the post is scheduled'
+                              : 'Made in the image editor: the pencil opens the design as it was'}
+                          >
+                            {item.kind === 'design' ? 'Not exported' : 'Editable'}
+                          </span>
                         )}
                         <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
                       </div>
@@ -1767,7 +1859,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   })}
                 </div>
               )}
-              {isReel && images.length > 0 && (
+              {isReel && images.length > 0 && images[0].kind !== 'design' && (
                 <div className="reel-cover-row">
                   <div className="reel-cover-thumb">
                     {reelCover.coverUrl
@@ -1825,7 +1917,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 imageUrl={previewImageUrls[0] || ''}
                 apiUrl={apiUrl}
                 instagramAccount={instagramAccount}
-                isVideo={images[0] ? isVideoItem(images[0]) : false}
+                isVideo={exportedImages[0] ? isVideoItem(exportedImages[0]) : false}
               />
             ) : (
               <PostPreview
@@ -1908,39 +2000,56 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       </div>
 
 
-      {editingImageIdx !== null && images[editingImageIdx] && (
-        <ImageEditor
-          imageUrl={previewUrl(images[editingImageIdx])}
-          safeZone={isStory ? 'story' : undefined}
-          onCancel={() => setEditingImageIdx(null)}
-          onSave={blob => {
-            const idx = editingImageIdx;
-            const file = new File([blob], 'edited.jpg', { type: 'image/jpeg' });
-            const oldItem = images[idx];
-            if (oldItem.kind === 'file') {
-              const cached = objUrlCache.current.get(oldItem.file);
-              if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
-            }
-            setImages(prev => prev.map((item, i) =>
-              i === idx ? { kind: 'file' as const, file } : item
-            ));
-            setEditingImageIdx(null);
-            toast.success('Image updated');
-          }}
-        />
-      )}
+      {editingImageIdx !== null && images[editingImageIdx] && (() => {
+        const item = images[editingImageIdx];
+        const design = item.design;
+        return (
+          <ImageEditor
+            // A design opens as it was left; an image without one is edited
+            // as a photo.
+            imageUrl={design ? undefined : previewUrl(item)}
+            draft={design?.edit}
+            video={design?.video}
+            safeZone={design?.video ? (isReel ? 'reel' : 'story') : isStory ? 'story' : undefined}
+            title={design ? (design.video ? 'Edit video' : 'Edit design') : undefined}
+            keepEdit
+            onKeep={(edit, preview) => keepDesign(edit, preview, !!design?.video, editingImageIdx)}
+            onCancel={() => setEditingImageIdx(null)}
+            onSave={(blob, _design, edit) => {
+              const idx = editingImageIdx;
+              const video = !!design?.video;
+              const file = video
+                ? new File([blob], 'video.mp4', { type: 'video/mp4' })
+                : new File([blob], 'edited.jpg', { type: 'image/jpeg' });
+              const oldItem = images[idx];
+              if (oldItem.kind === 'file') {
+                const cached = objUrlCache.current.get(oldItem.file);
+                if (cached) { URL.revokeObjectURL(cached); objUrlCache.current.delete(oldItem.file); }
+              }
+              setImages(prev => prev.map((it, i) =>
+                i === idx ? { kind: 'file' as const, file, design: edit && { edit, video } } : it
+              ));
+              setEditingImageIdx(null);
+              toast.success(video ? 'Video updated' : 'Image updated');
+            }}
+          />
+        );
+      })()}
 
       {creatingImage && (
         <ImageEditor
           canvas={{ width: 1080, height: isStory ? 1920 : 1350, background: '#ffffff' }}
           safeZone={isStory ? 'story' : undefined}
           title={isStory ? 'Create story image' : 'Create image'}
+          keepEdit
+          onKeep={(edit, preview) => keepDesign(edit, preview, false, null)}
           onCancel={() => setCreatingImage(false)}
-          onSave={blob => {
+          onSave={(blob, _design, edit) => {
             const file = new File([blob], 'created.jpg', { type: 'image/jpeg' });
+            const item: ImageItem = { kind: 'file', file, design: edit && { edit, video: false } };
             // A story holds one image, which a created one replaces.
-            if (isStory) setImages([{ kind: 'file', file }]);
-            else setImages(prev => [...prev, { kind: 'file', file }]);
+            if (isStory) setImages([item]);
+            else setImages(prev => [...prev, item]);
             setCreatingImage(false);
             toast.success('Image added');
           }}
@@ -1953,10 +2062,13 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           safeZone={isReel ? 'reel' : 'story'}
           canvas={{ width: 1080, height: 1920, background: '#000000' }}
           title={isReel ? 'Create reel' : 'Create story video'}
+          keepEdit
+          onKeep={(edit, preview) => keepDesign(edit, preview, true, null)}
           onCancel={() => setCreatingVideo(false)}
-          onSave={blob => {
+          onSave={(blob, _design, edit) => {
             // A reel or a story holds one video, which the new one replaces.
-            setImages([{ kind: 'file', file: new File([blob], 'video.mp4', { type: 'video/mp4' }) }]);
+            const file = new File([blob], 'video.mp4', { type: 'video/mp4' });
+            setImages([{ kind: 'file', file, design: edit && { edit, video: true } }]);
             setCreatingVideo(false);
             toast.success('Video added');
           }}

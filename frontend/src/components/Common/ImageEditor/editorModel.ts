@@ -309,6 +309,15 @@ export function parseDraft(raw: string | undefined): EditorDraft | null {
   }
 }
 
+// The uploads an edit uses: its photo, image layers and clips, and music.
+export function editUploadUrls(d: EditorDraft): string[] {
+  const urls = new Set<string>();
+  if (d.photo?.src) urls.add(d.photo.src);
+  for (const l of d.template.layers) if (l.kind === 'image' && l.src) urls.add(l.src);
+  if (d.template.audio?.src) urls.add(d.template.audio.src);
+  return [...urls];
+}
+
 // What a blank canvas starts as when nothing else is given.
 export const DEFAULT_CANVAS: EditorCanvas = { width: 1080, height: 1350, background: '#ffffff' };
 

@@ -4,14 +4,14 @@ import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label,
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
-  ALargeSmall, AudioLines, Blend, Captions, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
+  ALargeSmall, AudioLines, Blend, BookmarkCheck, Captions, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BLEND_MODES, BUILTIN_FONTS, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, cssFontFamily, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, roundable, SHAPE_KINDS,
+  editUploadUrls, instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, roundable, SHAPE_KINDS,
   shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
   type Adjustments, type AudioTrack, type BlendMode, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type FontOption, type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
@@ -157,9 +157,17 @@ interface Props {
   // Editing a media library template: for a video, Save hands over the design
   // with the frame at the playhead as its preview instead of exporting the MP4.
   designOnly?: boolean;
+  // An edit to open as it was left (a post's design): photo, crop and
+  // filters or blank canvas, layers, a video's length and music.
+  draft?: EditorDraft;
+  // Hand the whole edit to onSave as well, to reopen it later.
+  keepEdit?: boolean;
+  // Keeps the edit without exporting it (a post holds it until it is
+  // exported): the edit and a still of it at the playhead.
+  onKeep?: (edit: EditorDraft, preview: Blob) => void | Promise<void>;
   // The rendered JPEG (an MP4 for a video), and the design as a template
-  // (the crop as its canvas).
-  onSave: (blob: Blob, design: EditorTemplate) => void | Promise<void>;
+  // (the crop as its canvas); with keepEdit, the whole edit too.
+  onSave: (blob: Blob, design: EditorTemplate, edit?: EditorDraft) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -171,7 +179,7 @@ const resolveUrl = (url: string) => (url.startsWith('/') && !url.startsWith(TEMP
 const isImageMedia = (m: MediaItem) =>
   !m.contentType?.startsWith('video/') && !m.contentType?.startsWith('font/') && !/\.(mp4|mov|ttf|otf)$/i.test(m.url);
 
-export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, safeZone, designOnly = false, onSave, onCancel }: Props) {
+export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, guideOverlay, video = false, safeZone, designOnly = false, draft: initialEdit, keepEdit = false, onKeep, onSave, onCancel }: Props) {
   // The photo being edited; a draft restored here can bring its own, or
   // none (a blank canvas).
   const [photoUrl, setPhotoUrl] = useState(imageUrl || undefined);
@@ -181,11 +189,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // The blank canvas, in canvas mode; null on a photo.
   const [canvas, setCanvas] = useState<EditorCanvas | null>(() => {
     if (!canvasMode) return null;
-    if (template) return { width: template.width, height: template.height, background: template.background };
+    const start = initialEdit?.template ?? template;
+    if (start) return { width: start.width, height: start.height, background: start.background };
     return initialCanvas ?? DEFAULT_CANVAS;
   });
   // A blank canvas without a design yet opens on the templates to start from.
-  const [tab, setTab] = useState<Tab>(canvasMode ? (template ? 'canvas' : 'templates') : 'crop');
+  const [tab, setTab] = useState<Tab>(initialEdit
+    ? (initialEdit.photo ? 'crop' : 'canvas')
+    : canvasMode ? (template ? 'canvas' : 'templates') : 'crop');
+  // An edit given to open is being loaded.
+  const [opening, setOpening] = useState(!!initialEdit);
   const [crop, setCrop] = useState<CropBox | null>(() => (canvas ? { x: 0, y: 0, width: canvas.width, height: canvas.height } : null));
   const [aspectId, setAspectId] = useState('free');
   const [adjustments, setAdjustments] = useState<Adjustments>(NO_ADJUSTMENTS);
@@ -193,7 +206,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // A video's length, where its playhead is and whether it plays; and how far
   // an export has got, in percent.
-  const [duration, setDuration] = useState(() => template?.duration ?? DEFAULT_DURATION);
+  const [duration, setDuration] = useState(() => (initialEdit?.template ?? template)?.duration ?? DEFAULT_DURATION);
   const [time, setTime] = useState(0);
   const timeRef = useRef(0);
   const [playing, setPlaying] = useState(false);
@@ -217,7 +230,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   // A video's music, part of the undo snapshot, and the library's sounds to
   // pick it from, loaded when the music controls are first shown.
-  const [audio, setAudio] = useState<AudioTrack | null>(() => template?.audio ?? null);
+  const [audio, setAudio] = useState<AudioTrack | null>(() => (initialEdit?.template ?? template)?.audio ?? null);
   // The music analysed for an equalizer to follow, once one is there.
   const [musicLevels, setMusicLevels] = useState<{ src: string; levels: AudioLevels | null } | null>(null);
   const [sounds, setSounds] = useState<MediaItem[] | null>(null);
@@ -384,9 +397,22 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     return () => { cancelled = true; };
   }, []);
 
+  // The edit to open, as it was left.
+  useEffect(() => {
+    if (!initialEdit) return;
+    void applyDraft(initialEdit)
+      .then(missing => {
+        if (missing) toast.error(missing === 1 ? 'One image of the design could not be loaded' : `${missing} images of the design could not be loaded`);
+      })
+      .catch(err => toast.error(err instanceof Error ? err.message : 'Failed to open the design'))
+      .finally(() => setOpening(false));
+    // Once, on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The design to start from. Loading it is not an undo step.
   useEffect(() => {
-    if (template && canvasMode) void applyTemplate(template, { record: false });
+    if (template && canvasMode && !initialEdit) void applyTemplate(template, { record: false });
     // Once, on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -453,7 +479,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const natW = canvas?.width ?? source?.naturalWidth ?? 1;
   const natH = canvas?.height ?? source?.naturalHeight ?? 1;
   // What the stage draws on: the photo once loaded, or the blank canvas.
-  const ready = canvasMode || !!source;
+  const ready = (canvasMode || !!source) && !opening;
 
   // What the stage shows: the whole image while cropping, the crop otherwise.
   const view: CropBox = tab === 'crop' || !crop ? { x: 0, y: 0, width: natW, height: natH } : crop;
@@ -838,7 +864,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   };
 
   // Just saved as a draft, or restored from one, nothing is lost by leaving.
-  const dirty = draftClean ? false : canvasMode
+  // An edit opened as it was left is changed once there is something to undo.
+  const dirty = draftClean ? false : canvasMode || initialEdit
     ? undoStack.length > 0
     : layers.length > 0 || hasAdjustments(adjustments) || (!!crop && !!source
       && (crop.x !== 0 || crop.y !== 0 || crop.width !== natW || crop.height !== natH));
@@ -1314,6 +1341,34 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     return url;
   };
 
+  // The whole edit, to come back to. Layers stay in the picture's own
+  // pixels, so it comes back exactly as it was.
+  const currentEdit = async (): Promise<EditorDraft> => {
+    const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff', video ? duration : undefined, audio);
+    return canvasMode || !crop
+      ? { version: 1, template }
+      : { version: 1, template, photo: { src: await draftPhotoUrl(photoUrl!), crop, aspectId, adjustments } };
+  };
+
+  // A still of the edit for a draft's preview: a video's frame at the playhead.
+  const previewStill = () => renderEdit({
+    source: canvasMode ? null : source,
+    background: canvas?.background,
+    crop: crop!,
+    adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
+    layers: video ? layersAt(layers, time, duration) : layers,
+    maxSide: 1080,
+    quality: 0.85,
+  });
+
+  // An edit handed to the caller keeps its clips and sounds: they are no
+  // longer released on close (the hourly cleanup frees them a day later if
+  // the caller drops the edit unsaved).
+  const handOver = (edit: EditorDraft) => {
+    for (const url of editUploadUrls(edit)) tempUploads.current.delete(url);
+    return edit;
+  };
+
   // Saves the whole edit to come back to: as a new draft the first time
   // (asking for a name), then over the same one.
   const saveDraft = async () => {
@@ -1327,22 +1382,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }
     setSavingDraft(true);
     try {
-      // Layers stay in the picture's own pixels, so the draft comes back
-      // exactly as it was.
-      const template = toTemplate({ x: 0, y: 0, width: natW, height: natH }, layers, canvas?.background ?? '#ffffff', video ? duration : undefined, audio);
-      const design: EditorDraft = canvasMode
-        ? { version: 1, template }
-        : { version: 1, template, photo: { src: await draftPhotoUrl(photoUrl!), crop, aspectId, adjustments } };
-      const preview = await renderEdit({
-        source: canvasMode ? null : source,
-        background: canvas?.background,
-        crop,
-        adjustments: canvasMode ? NO_ADJUSTMENTS : adjustments,
-        // A video's preview is the frame at the playhead.
-        layers: video ? layersAt(layers, time, duration) : layers,
-        maxSide: 1080,
-        quality: 0.85,
-      });
+      const design = await currentEdit();
+      const preview = await previewStill();
       let saved: ImageDraft;
       try {
         saved = await api.saveImageDraft(draft?.id ?? null, preview, design, name);
@@ -1406,39 +1447,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       const full = await api.getImageDraft(item.id);
       const d = parseDraft(full.design);
       if (!d) { toast.error('This draft cannot be read'); return; }
-      await fontsReady.current;
-      const box = { x: 0, y: 0, width: d.template.width, height: d.template.height };
-      const img = d.photo ? await loadImage(resolveUrl(d.photo.src)) : null;
-      const { layers: restored, missing } = await instantiateTemplate(d.template, box, resolveUrl, { placeholders: false });
-      if (d.photo && img) {
-        if (d.photo.src !== photoUrl) restoredPhoto.current = d.photo.src;
-        setPhotoUrl(d.photo.src);
-        setSource(img);
-        setLoadError(false);
-        setCanvas(null);
-        setCrop(d.photo.crop);
-        setAspectId(d.photo.aspectId || 'free');
-        setAdjustments({ ...NO_ADJUSTMENTS, ...d.photo.adjustments });
-      } else {
-        setPhotoUrl(undefined);
-        setSource(null);
-        setCanvas({ width: box.width, height: box.height, background: d.template.background });
-        setCrop(box);
-        setAspectId('free');
-        setAdjustments(NO_ADJUSTMENTS);
-      }
-      setLayers(restored);
-      if (video) {
-        const length = clamp(d.template.duration ?? DEFAULT_DURATION, MIN_DURATION, MAX_DURATION);
-        setDuration(length);
-        setAudio(d.template.audio ?? null);
-        setPlaying(false);
-        jumpTo(openingTime(restored, length));
-      }
-      setSelectedId(null);
-      setUndoStack([]);
-      setRedoStack([]);
-      lastChange.current = null;
+      const missing = await applyDraft(d);
       setDraft({ id: full.id, name: full.name });
       setDraftClean(missing === 0);
       if (missing) toast.error(missing === 1 ? 'One image of the draft could not be loaded' : `${missing} images of the draft could not be loaded`);
@@ -1447,6 +1456,45 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     } finally {
       setRestoringDraft(null);
     }
+  };
+
+  // Puts an edit in place of the current one, exactly as it was saved;
+  // returns how many of its images could not be loaded.
+  const applyDraft = async (d: EditorDraft): Promise<number> => {
+    await fontsReady.current;
+    const box = { x: 0, y: 0, width: d.template.width, height: d.template.height };
+    const img = d.photo ? await loadImage(resolveUrl(d.photo.src)) : null;
+    const { layers: restored, missing } = await instantiateTemplate(d.template, box, resolveUrl, { placeholders: false });
+    if (d.photo && img) {
+      if (d.photo.src !== photoUrl) restoredPhoto.current = d.photo.src;
+      setPhotoUrl(d.photo.src);
+      setSource(img);
+      setLoadError(false);
+      setCanvas(null);
+      setCrop(d.photo.crop);
+      setAspectId(d.photo.aspectId || 'free');
+      setAdjustments({ ...NO_ADJUSTMENTS, ...d.photo.adjustments });
+    } else {
+      setPhotoUrl(undefined);
+      setSource(null);
+      setCanvas({ width: box.width, height: box.height, background: d.template.background });
+      setCrop(box);
+      setAspectId('free');
+      setAdjustments(NO_ADJUSTMENTS);
+    }
+    setLayers(restored);
+    if (video) {
+      const length = clamp(d.template.duration ?? DEFAULT_DURATION, MIN_DURATION, MAX_DURATION);
+      setDuration(length);
+      setAudio(d.template.audio ?? null);
+      setPlaying(false);
+      jumpTo(openingTime(restored, length));
+    }
+    setSelectedId(null);
+    setUndoStack([]);
+    setRedoStack([]);
+    lastChange.current = null;
+    return missing;
   };
 
   const deleteDraft = async (item: ImageDraft) => {
@@ -2050,12 +2098,29 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       });
       await onSave(blob, video
         ? toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio)
-        : toTemplate(crop, layers, canvas?.background ?? '#ffffff'));
+        : toTemplate(crop, layers, canvas?.background ?? '#ffffff'), keepEdit ? handOver(await currentEdit()) : undefined);
     } catch (err) {
       const e = err instanceof Error ? err : null;
       toast.error(e?.name === 'SecurityError'
         ? 'This image cannot be exported (it was loaded from another site)'
         : (e?.message || 'Failed to save the image'));
+      setSaving(false);
+    }
+  };
+
+  // Hands the edit over without exporting it.
+  const keep = async () => {
+    if (!onKeep || !ready || !crop || saving) return;
+    if (video) setPlaying(false);
+    setSaving(true);
+    try {
+      const edit = handOver(await currentEdit());
+      await onKeep(edit, await previewStill());
+    } catch (err) {
+      const e = err instanceof Error ? err : null;
+      toast.error(e?.name === 'SecurityError'
+        ? 'This design cannot be kept (an image was loaded from another site)'
+        : (e?.message || 'Failed to keep the design'));
       setSaving(false);
     }
   };
@@ -2083,7 +2148,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         resolve: resolveUrl,
         onProgress: p => setExportProgress(Math.floor(p * 100)),
       });
-      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio));
+      await onSave(blob, toTemplate(crop, layers, canvas?.background ?? '#ffffff', duration, audio), keepEdit ? handOver(await currentEdit()) : undefined);
     } catch (err) {
       const e = err instanceof Error ? err : null;
       toast.error(e?.name === 'SecurityError'
@@ -3359,6 +3424,18 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           {savingDraft ? <Loader2 size={phone ? 18 : 16} className="ie-spin" /> : <FilePen size={phone ? 18 : 16} />}
           {!phone && <span>{draftClean ? 'Draft saved' : 'Save draft'}</span>}
         </button>
+        {onKeep && (
+          <button
+            className={phone ? 'ie-icon-btn' : 'btn btn-secondary ie-draft'}
+            onClick={() => void keep()}
+            disabled={!ready || saving}
+            title="Keep the design in the post without exporting it; export it before the post is scheduled"
+            aria-label="Keep unexported"
+          >
+            <BookmarkCheck size={phone ? 18 : 16} />
+            {!phone && <span>Keep unexported</span>}
+          </button>
+        )}
         <button className="btn btn-primary ie-save" onClick={save} disabled={!ready || saving}>
           {saving
             ? <><Loader2 size={16} className="ie-spin" /> {exportProgress !== null ? (phone ? `${exportProgress}%` : `Exporting ${exportProgress}%`) : 'Saving…'}</>

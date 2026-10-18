@@ -213,6 +213,10 @@ func main() {
 		api.GET("/auth/linkedin/callback", adminHandler.LinkedInCallback)
 		api.GET("/auth/youtube/callback", adminHandler.YouTubeCallback)
 		api.GET("/uploads/:filename", postHandler.ServeImage)
+		// Single-use upload URLs (create_upload_url): the token is the
+		// authentication.
+		api.PUT("/upload/once/:token", postHandler.UploadOnce)
+		api.POST("/upload/once/:token", postHandler.UploadOnce)
 		api.HEAD("/uploads/:filename", postHandler.ServeImage)
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})

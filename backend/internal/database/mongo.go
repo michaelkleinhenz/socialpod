@@ -70,6 +70,12 @@ func (m *MongoDB) EnsureIndexes() {
 		Options: options.Index().SetPartialFilterExpression(bson.M{"temporary": true}),
 	})
 
+	// Single-use upload URLs: looked up by hash, gone a day after they expire.
+	m.UploadTokens().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "tokenHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(24 * 3600)},
+	})
+
 	m.Footers().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 		{Keys: bson.D{{Key: "teamId", Value: 1}}},
@@ -258,6 +264,11 @@ func (m *MongoDB) OAuthTokens() *mongo.Collection {
 
 func (m *MongoDB) OAuthKeys() *mongo.Collection {
 	return m.Database.Collection("oauth_keys")
+}
+
+// UploadTokens holds the single-use upload URLs handed to MCP clients.
+func (m *MongoDB) UploadTokens() *mongo.Collection {
+	return m.Database.Collection("upload_tokens")
 }
 
 // ImageDrafts holds image editor work saved to be finished later.

@@ -226,8 +226,24 @@ export interface Post {
   sourceUrl?: string;
   /** What created the post when not made in the editor: "mcp" or an agent's label. */
   origin?: string;
+  /** The editable form of images and videos made in the image editor. */
+  designs?: PostDesign[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * The image editor's edit of one of a post's images or videos, so the post
+ * editor reopens it as it was.
+ */
+export interface PostDesign {
+  /** The export among the post's imageUrls; absent until it is exported. */
+  imageUrl?: string;
+  /** A still shown in place of a design not exported yet. */
+  previewUrl?: string;
+  video?: boolean;
+  /** The edit as JSON (EditorDraft). */
+  design: string;
 }
 
 export interface NewsDraft {
