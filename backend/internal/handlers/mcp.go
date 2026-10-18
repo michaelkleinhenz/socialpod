@@ -360,6 +360,8 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 		return h.toolGetGrowthSettings(c, args)
 	case "get_open_slots":
 		return h.toolGetOpenSlots(c, args)
+	case "transcribe":
+		return h.toolTranscribe(c, args)
 	default:
 		return map[string]string{"error": "Unknown tool: " + name}, true
 	}
@@ -2270,6 +2272,7 @@ func (h *MCPHandler) toolDefinitions() []mcpTool {
 	tools = append(tools, agentToolDefinitions()...)
 	tools = append(tools, agentQueueToolDefinitions()...)
 	tools = append(tools, textToolDefinitions()...)
+	tools = append(tools, transcribeToolDefinitions()...)
 	return append(tools, imageToolDefinitions()...)
 }
 
