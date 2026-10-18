@@ -93,3 +93,39 @@ func TestGaussBoxes(t *testing.T) {
 		}
 	}
 }
+
+func TestComposeTemplateEqualizer(t *testing.T) {
+	white := color.RGBA{255, 255, 255, 255}
+	red := color.RGBA{255, 0, 0, 255}
+	d := TemplateDesign{
+		Width: 400, Height: 400, Background: "#ffffff",
+		// Four bars in a 232 × 100 box centred at (200, 200): 40 px wide with
+		// 24 px gaps, standing on y = 250.
+		Layers: []TemplateLayer{{Kind: "shape", Shape: "equalizer", Bars: 4, X: 200, Y: 200, Width: 232, Height: 100, Fill: "#ff0000"}},
+	}
+	img, err := ComposeImage(ComposeSpec{Width: 400, Height: 400, Template: &d, TemplateScale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest := equalizerRest(4)
+	for i, v := range rest {
+		x := 84 + 64*i + 20
+		// Every bar stands on the bottom and reaches its level, but is at
+		// least as high as wide.
+		top := 250 - int(math.Max(40, 100*v))
+		near(t, img, x, 245, red)
+		near(t, img, x, top+6, red)
+		near(t, img, x, top-6, white)
+	}
+	near(t, img, 84+52, 245, white) // the gap between the first two bars
+
+	// Mirrored, the bars grow from the middle both ways.
+	d.Layers[0].Mirror = true
+	img, err = ComposeImage(ComposeSpec{Width: 400, Height: 400, Template: &d, TemplateScale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	near(t, img, 104, 200, red)
+	near(t, img, 104, 200-int(50*rest[0])+6, red)
+	near(t, img, 104, 200+int(50*rest[0])+6, white)
+}

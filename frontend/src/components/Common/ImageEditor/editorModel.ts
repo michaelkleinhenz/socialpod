@@ -1,6 +1,7 @@
 import Konva from 'konva';
 import type { Filter } from 'konva/lib/Node';
 import type { LayerAnim } from './animation';
+import { barCount, equalizerBars, restLevels } from './equalizer';
 
 // Everything the editor holds is in source-image pixels: the crop is a window
 // onto the original image, and watermarks and texts sit on the original too,
@@ -193,15 +194,17 @@ export interface TextLayer {
   blend?: BlendMode;
 }
 
-export type ShapeKind = 'rect' | 'ellipse' | 'triangle';
+export type ShapeKind = 'rect' | 'ellipse' | 'triangle' | 'equalizer';
 
 export const SHAPE_KINDS: { id: ShapeKind; label: string }[] = [
   { id: 'rect', label: 'Box' },
   { id: 'ellipse', label: 'Circle' },
   { id: 'triangle', label: 'Triangle' },
+  { id: 'equalizer', label: 'Equalizer' },
 ];
 
-// A box, circle (an ellipse in its box) or triangle, positioned by its centre
+// A box, circle (an ellipse in its box), triangle or equalizer (a row of bars
+// that move to the video's music, equalizer.ts), positioned by its centre
 // like an image. Its border is drawn on the outline, half inside and half
 // outside, with round joins (the server draws it the same way).
 export interface ShapeLayer {
@@ -219,11 +222,19 @@ export interface ShapeLayer {
   // Border colour and width in source-image pixels; no border at width 0.
   stroke: string;
   strokeWidth: number;
-  // Boxes only: corner rounding in percent of the shorter side.
+  // Boxes and an equalizer's bars: corner rounding in percent of the
+  // shorter side (of a bar).
   cornerRadius?: number;
+  // An equalizer: how many bars, and whether they grow from the middle up
+  // and down instead of from the bottom.
+  bars?: number;
+  mirror?: boolean;
   anim?: LayerAnim;
   blend?: BlendMode;
 }
+
+// Shapes whose corners can be rounded.
+export const roundable = (l: ShapeLayer) => l.shape === 'rect' || l.shape === 'equalizer';
 
 // One brush stroke: a path through points (x0, y0, x1, y1, ...) relative to
 // its layer, painted size wide and blurred feather pixels at its edges.
@@ -452,8 +463,10 @@ export function imageLayerParts(l: ImageLayer): { group: Konva.GroupConfig; part
 }
 
 // A shape layer is a group like an image layer, holding the one shape drawn
-// over its box.
-export function shapeLayerParts(l: ShapeLayer): { group: Konva.GroupConfig; parts: ImagePart[] } {
+// over its box. An equalizer holds its bars at levels (0 to 1 each; at rest
+// when absent) over an empty box, which picks and frames the layer whatever
+// the bars do.
+export function shapeLayerParts(l: ShapeLayer, levels?: number[]): { group: Konva.GroupConfig; parts: ImagePart[] } {
   const { width: w, height: h } = l;
   const sw = Math.max(0, l.strokeWidth);
   const paint = {
@@ -464,6 +477,18 @@ export function shapeLayerParts(l: ShapeLayer): { group: Konva.GroupConfig; part
     strokeEnabled: sw > 0,
     lineJoin: 'round' as const,
   };
+  const group = { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity, ...blendAttrs(l) };
+  if (l.shape === 'equalizer') {
+    const bars = equalizerBars(w, h, levels ?? restLevels(barCount(l)), !!l.mirror);
+    const corner = clamp(l.cornerRadius ?? 0, 0, 50) / 100;
+    return {
+      group,
+      parts: [
+        { kind: 'rect', attrs: { x: 0, y: 0, width: w, height: h, fillEnabled: false, strokeEnabled: false } },
+        ...bars.map((b): ImagePart => ({ kind: 'rect', attrs: { ...b, cornerRadius: corner * Math.min(b.width, b.height), ...paint } })),
+      ],
+    };
+  }
   let part: ImagePart;
   switch (l.shape) {
     case 'ellipse':
@@ -478,10 +503,7 @@ export function shapeLayerParts(l: ShapeLayer): { group: Konva.GroupConfig; part
         attrs: { x: 0, y: 0, width: w, height: h, cornerRadius: (clamp(l.cornerRadius ?? 0, 0, 50) / 100) * Math.min(w, h), ...paint },
       };
   }
-  return {
-    group: { x: l.x, y: l.y, width: w, height: h, offsetX: w / 2, offsetY: h / 2, rotation: l.rotation, opacity: l.opacity, ...blendAttrs(l) },
-    parts: [part],
-  };
+  return { group, parts: [part] };
 }
 
 function partNode(p: ImagePart): Konva.Shape {
@@ -493,8 +515,9 @@ function partNode(p: ImagePart): Konva.Shape {
   }
 }
 
-export function buildImageLayerNode(l: ImageLayer | ShapeLayer): Konva.Group {
-  const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
+// levels: an equalizer's bars at the moment drawn (at rest when absent).
+export function buildImageLayerNode(l: ImageLayer | ShapeLayer, levels?: number[]): Konva.Group {
+  const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l, levels);
   const g = new Konva.Group(group);
   for (const p of parts) g.add(partNode(p));
   return g;
@@ -581,10 +604,10 @@ export function buildPaintLayerNode(l: PaintLayer): Konva.Group {
   return g;
 }
 
-export function buildLayerNode(l: EditorLayer): Konva.Group | Konva.Shape {
+export function buildLayerNode(l: EditorLayer, levels?: number[]): Konva.Group | Konva.Shape {
   if (l.kind === 'text') return new Konva.Text(textLayerAttrs(l));
   if (l.kind === 'paint') return buildPaintLayerNode(l);
-  return buildImageLayerNode(l);
+  return buildImageLayerNode(l, levels);
 }
 
 export function textLayerAttrs(l: TextLayer): Konva.TextConfig {
@@ -778,7 +801,8 @@ function templateLayer(l: EditorLayer, crop: CropBox): TemplateLayer {
     return {
       kind: 'shape', shape: l.shape, x, y, width: l.width, height: l.height, rotation: l.rotation, opacity: l.opacity,
       fill: l.fill, stroke: l.stroke, strokeWidth: l.strokeWidth,
-      ...(l.shape === 'rect' && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+      ...(roundable(l) && l.cornerRadius ? { cornerRadius: l.cornerRadius } : {}),
+      ...(l.shape === 'equalizer' ? { bars: barCount(l), ...(l.mirror ? { mirror: true } : {}) } : {}),
     };
   }
   if (l.kind === 'paint') {

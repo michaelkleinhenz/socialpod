@@ -4,8 +4,9 @@ import {
   QUALITY_HIGH, type WrappedCanvas,
 } from 'mediabunny';
 import {
-  animStateAt, buildAnimatedLayerNode, clipFadeIn, clipFadeOut, clipTimeAt, FPS, layerSpan, musicSpan,
+  animStateAt, buildAnimatedLayerNode, clipFadeIn, clipFadeOut, clipTimeAt, equalizerLevels, FPS, isEqualizer, layerSpan, musicSpan,
 } from './animation';
+import { audioLevels } from './equalizer';
 import { applyAdjustments, type Adjustments, type AudioTrack, type CropBox, type EditorLayer, type ImageLayer } from './editorModel';
 
 export interface VideoInput {
@@ -230,6 +231,8 @@ export async function renderVideo({
   const clock = holdClock(duration, hold);
 
   const sound = await mixAudio(layers, audio, duration, clock, load);
+  // An equalizer follows the music, which plays on through a hold.
+  const levels = audio && layers.some(isEqualizer) ? await audioLevels(resolve(audio.src)) : null;
   if (sound && !(await canEncodeAac())) {
     throw new Error('This browser cannot encode the sound (AAC). Use a current Chrome, Edge or Safari.');
   }
@@ -300,7 +303,7 @@ export async function renderVideo({
           }
         }
         const s = animStateAt(l, t, length, crop);
-        if (s.visible) frameLayers.add(buildAnimatedLayerNode(drawn, s));
+        if (s.visible) frameLayers.add(buildAnimatedLayerNode(drawn, s, isEqualizer(l) ? equalizerLevels(l, time, duration, audio, levels) : undefined));
       }
       layer.draw();
       ctx.clearRect(0, 0, width, height);

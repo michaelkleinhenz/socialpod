@@ -4,14 +4,14 @@ import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label,
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
-  ALargeSmall, Blend, Captions, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
+  ALargeSmall, AudioLines, Blend, Captions, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BLEND_MODES, BUILTIN_FONTS, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, cssFontFamily, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
-  instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
+  instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, roundable, SHAPE_KINDS,
   shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
   type Adjustments, type AudioTrack, type BlendMode, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
   type FontOption, type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
@@ -24,7 +24,9 @@ import {
   animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt, openingTime, settledAt,
   layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, musicSpan, NO_ANIM, type LayerAnim,
   hasKeys, KEY_EASES, keyIndexAt, keyValuesAt, setKeyAt, type Keyframe, type KeyValues,
+  equalizerLevels, isEqualizer,
 } from './animation';
+import { audioLevels, barCount, DEFAULT_BARS, MAX_BARS, MIN_BARS, type AudioLevels } from './equalizer';
 import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
 import { BottomSheet, MiniToolbar, PhoneBar, PhoneTray, type BarItem, type TraySub } from './PhoneParts';
@@ -62,7 +64,7 @@ type PhoneSheet = 'templates' | 'media' | 'layers' | 'video';
 // The parts of a layer's animation, one at a time in the phone's tray.
 type AnimPart = 'timing' | 'keys' | 'in' | 'loop' | 'out';
 
-const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle };
+const SHAPE_ICONS: Record<ShapeKind, typeof Square> = { rect: Square, ellipse: CircleIcon, triangle: Triangle, equalizer: AudioLines };
 
 // The brush's settings; size and feather in pixels of the picture, null
 // until set (they then follow the picture's size).
@@ -216,6 +218,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // A video's music, part of the undo snapshot, and the library's sounds to
   // pick it from, loaded when the music controls are first shown.
   const [audio, setAudio] = useState<AudioTrack | null>(() => template?.audio ?? null);
+  // The music analysed for an equalizer to follow, once one is there.
+  const [musicLevels, setMusicLevels] = useState<{ src: string; levels: AudioLevels | null } | null>(null);
   const [sounds, setSounds] = useState<MediaItem[] | null>(null);
   const [uploadingSound, setUploadingSound] = useState(false);
   // Clips and sounds uploaded here as temporary files. They are released
@@ -577,6 +581,18 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   // --- Video ----------------------------------------------------------------
 
+  // An equalizer follows the music once it is analysed; until then (or if
+  // the sound cannot be decoded) its bars dance on their own.
+  const hasEqualizer = video && layers.some(isEqualizer);
+  const eqSrc = hasEqualizer ? audio?.src ?? null : null;
+  useEffect(() => {
+    if (!eqSrc) return;
+    let cancelled = false;
+    audioLevels(resolveUrl(eqSrc)).then(levels => { if (!cancelled) setMusicLevels({ src: eqSrc, levels }); });
+    return () => { cancelled = true; };
+  }, [eqSrc]);
+  const eqLevels = musicLevels && musicLevels.src === audio?.src ? musicLevels.levels : null;
+
   // Draws the stage again, for a clip's new frame.
   const redrawStage = useCallback(() => { contentRef.current?.getLayer()?.batchDraw(); }, []);
 
@@ -738,10 +754,36 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     return () => { cancelled = true; };
   }, [soundsWanted, sounds]);
 
-  // Sets the music, from the start of the video and of the file.
+  // Sets the music, from the start of the video and of the file. A video
+  // with no clip has nothing moving to the sound, so it gets an equalizer
+  // too (in the same undo step), unless it has one.
   const pickSound = async (url: string, name: string) => {
     const length = await soundDuration(resolveUrl(url));
     changeAudio({ src: url, name, start: 0, trimStart: 0, volume: 0.8, fadeIn: 0, fadeOut: Math.min(2, duration / 4), duration: length });
+    if (!layers.some(l => l.kind === 'image' && l.clip) && !layers.some(isEqualizer)) {
+      const eq = newEqualizer();
+      if (eq) {
+        setLayers(prev => [...prev, eq]);
+        toast.success('Added an equalizer that moves to the sound');
+      }
+    }
+  };
+
+  // An equalizer across the lower middle of the picture, where a reel's
+  // caption area does not cover it.
+  const newEqualizer = (): ShapeLayer | null => {
+    if (!crop) return null;
+    return {
+      id: newLayerId(), kind: 'shape', shape: 'equalizer',
+      x: crop.x + crop.width / 2, y: crop.y + crop.height * 0.6,
+      width: Math.round(crop.width * 0.7), height: Math.round(Math.min(crop.width, crop.height) * 0.2), rotation: 0, opacity: 1,
+      fill: '#ffffff', stroke: '#000000', strokeWidth: 0, cornerRadius: 50, bars: DEFAULT_BARS,
+    };
+  };
+
+  const addEqualizer = () => {
+    const eq = newEqualizer();
+    if (eq) addLayer(eq);
   };
 
   const uploadSound = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -909,7 +951,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     switch (l.kind) {
       case 'text': return ['font', 'size', 'color', 'align', 'style', 'blend', 'animate'];
       case 'image': return ['clip', 'opacity', 'blend', 'corners', 'border', 'animate'];
-      case 'shape': return ['shape', 'fill', 'border', 'corners', 'opacity', 'blend', 'animate'];
+      case 'shape': return ['shape', 'bars', 'fill', 'border', 'corners', 'opacity', 'blend', 'animate'];
       default: return ['brush', 'blend', 'animate'];
     }
   };
@@ -1896,6 +1938,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const addShape = (shape: ShapeKind) => {
     if (!crop) return;
+    if (shape === 'equalizer') { addEqualizer(); return; }
     const side = Math.round(Math.min(crop.width, crop.height) * 0.4);
     addLayer({
       id: newLayerId(), kind: 'shape', shape,
@@ -2405,6 +2448,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     );
   };
 
+  // How long the video would be to play the whole sound from where it starts
+  // (within what a video may be); null without a sound of known length.
+  const soundFit = audio && audio.duration > 0
+    ? Math.round(clamp(audio.start + audio.duration - audio.trimStart, MIN_DURATION, MAX_DURATION) * 10) / 10
+    : null;
+
   // The video's music: a sound from the library or a file, where it starts,
   // how loud, and its fades.
   const musicControls = () => (
@@ -2449,6 +2498,16 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             <span className="ie-value">{formatTime(audio.fadeOut)}</span>
           </label>
           {(() => { const m = musicSpan(audio, duration); return m.end < duration - 0.05 ? <p className="ie-hint">The song ends at {formatTime(m.end)}, before the video does.</p> : null; })()}
+          <div className="ie-row ie-scroll">
+            {soundFit !== null && Math.abs(soundFit - duration) >= 0.1 && (
+              <button className="ie-chip" onClick={() => changeDuration(soundFit)} title="Make the video as long as the sound plays">
+                Video as long as the sound ({formatTime(soundFit)})
+              </button>
+            )}
+            {!layers.some(isEqualizer) && (
+              <button className="ie-chip" onClick={addEqualizer}><AudioLines size={14} /> Add equalizer</button>
+            )}
+          </div>
         </>
       ) : (
         <p className="ie-hint">Add a song or a sound under the video, from the media library or a file (mp3, m4a, wav). Clips play their own sound as well.</p>
@@ -2593,6 +2652,27 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </>
   );
 
+  // An equalizer's bars: how many, and standing or mirrored.
+  const equalizerControls = (l: ShapeLayer) => (
+    <>
+      <span className="ie-label">Bars</span>
+      <label className="ie-slider">
+        <span>Count</span>
+        <input type="range" min={MIN_BARS} max={MAX_BARS} value={barCount(l)} onChange={e => updateLayer(l.id, { bars: Number(e.target.value) }, `eq-bars:${l.id}`)} />
+        <span className="ie-value">{barCount(l)}</span>
+      </label>
+      {equalizerStyleChips(l)}
+      <p className="ie-hint">{video ? (audio ? 'The bars move to the music.' : 'Add music under the video, and the bars move to it.') : 'In a video the bars move to the music.'}</p>
+    </>
+  );
+
+  const equalizerStyleChips = (l: ShapeLayer) => (
+    <div className="ie-row">
+      <button className={`ie-chip ${!l.mirror ? 'active' : ''}`} onClick={() => updateLayer(l.id, { mirror: false })}>Standing</button>
+      <button className={`ie-chip ${l.mirror ? 'active' : ''}`} onClick={() => updateLayer(l.id, { mirror: true })}>Mirrored</button>
+    </div>
+  );
+
   // Shape, fill, border, corners, opacity and blend of the selected shape.
   const shapeControls = (l: ShapeLayer) => (
     <>
@@ -2618,7 +2698,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         <span className="ie-value">{Math.round(l.strokeWidth)}px</span>
       </label>
       {l.strokeWidth > 0 && colorRow(l.stroke, (c, key) => updateLayer(l.id, { stroke: c }, key), `shape-stroke:${l.id}`)}
-      {l.shape === 'rect' && (
+      {l.shape === 'equalizer' && equalizerControls(l)}
+      {roundable(l) && (
         <label className="ie-slider">
           <span>Corners</span>
           <input
@@ -3041,7 +3122,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           toolItem('shape', 'Shape', Shapes),
           toolItem('fill', 'Fill', PaintBucket),
           toolItem('border', 'Border', SquareDashed, 'width'),
-          ...(l.shape === 'rect' ? [toolItem('corners', 'Corners', SquareRoundCorner)] : []),
+          ...(l.shape === 'equalizer' ? [toolItem('bars', 'Bars', AudioLines, 'count')] : []),
+          ...(roundable(l) ? [toolItem('corners', 'Corners', SquareRoundCorner)] : []),
           toolItem('opacity', 'Opacity', Blend),
           toolItem('blend', 'Blend', Contrast),
           ...animate,
@@ -3185,6 +3267,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             : l.strokeWidth > 0
               ? colorRow(l.stroke, (c, key) => updateLayer(l.id, { stroke: c }, key), `shape-stroke:${l.id}`)
               : <p className="ie-hint">Give the border a width first.</p>;
+          return { subs, body };
+        }
+        case 'bars': {
+          const subs = [{ id: 'count', label: 'Count' }, { id: 'style', label: 'Style' }];
+          const body = pick(subs) === 'count'
+            ? traySlider('Bars', MIN_BARS, MAX_BARS, barCount(l), v => updateLayer(l.id, { bars: v }, `eq-bars:${l.id}`), `${barCount(l)}`)
+            : equalizerStyleChips(l);
           return { subs, body };
         }
         case 'corners':
@@ -3569,7 +3658,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                             </Fragment>,
                           );
                         }
-                        const { group, parts } = l.kind === 'image' ? imageLayerParts(l) : shapeLayerParts(l);
+                        const { group, parts } = l.kind === 'image'
+                          ? imageLayerParts(l)
+                          : shapeLayerParts(l, isEqualizer(l) ? equalizerLevels(l, video ? time : null, duration, audio, eqLevels) : undefined);
                         return wrap(
                           <Group key={l.id} {...common} {...group} onTransformEnd={e => onLayerTransformEnd(l, e.currentTarget)}>
                             {parts.map(renderPart)}

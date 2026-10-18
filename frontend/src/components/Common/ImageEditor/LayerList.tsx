@@ -5,7 +5,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Brush, Circle, Film, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
+import { AudioLines, Brush, Circle, Film, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
 import { cssFontFamily, layerName, type EditorLayer } from './editorModel';
 
 // Rows only move up and down.
@@ -100,7 +100,9 @@ function LayerRow({ layer, selected, onSelect }: { layer: EditorLayer; selected:
 function layerIcon(layer: EditorLayer) {
   switch (layer.kind) {
     case 'text': return <Type size={12} />;
-    case 'shape': return layer.shape === 'ellipse' ? <Circle size={12} /> : layer.shape === 'triangle' ? <Triangle size={12} /> : <Square size={12} />;
+    case 'shape':
+      if (layer.shape === 'equalizer') return <AudioLines size={12} />;
+      return layer.shape === 'ellipse' ? <Circle size={12} /> : layer.shape === 'triangle' ? <Triangle size={12} /> : <Square size={12} />;
     case 'paint': return <Brush size={12} />;
     default: return layer.clip ? <Film size={12} /> : layer.origin === 'watermark' ? <Stamp size={12} /> : <ImageIcon size={12} />;
   }
@@ -111,6 +113,7 @@ function layerThumb(layer: EditorLayer) {
     case 'text':
       return <span className="ie-layer-text" style={{ fontFamily: cssFontFamily(layer.fontFamily), color: layer.fill, fontWeight: layer.bold ? 700 : 400 }}>Aa</span>;
     case 'shape':
+      if (layer.shape === 'equalizer') return <span className="ie-layer-shape ie-layer-eq" style={{ color: layer.fill || layer.stroke, opacity: layer.opacity }}><AudioLines size={20} /></span>;
       return (
         <span
           className="ie-layer-shape"

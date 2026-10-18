@@ -1,5 +1,5 @@
 import Konva from 'konva';
-import { animStateAt, buildAnimatedLayerNode, NO_ANIM, type EnterEffect, type ExitEffect, type LayerAnim, type LoopEffect } from './animation';
+import { animStateAt, buildAnimatedLayerNode, equalizerLevels, isEqualizer, NO_ANIM, type EnterEffect, type ExitEffect, type LayerAnim, type LoopEffect } from './animation';
 import {
   BUILTIN_FONTS, instantiateTemplate, measureText, type BlendMode, type CropBox, type EditorLayer, type EditorTemplate, type ImageBorder, type ImageLayer, type PaintLayer,
   type ShapeKind, type ShapeLayer, type TemplateLayer, type TextAlign, type TextLayer,
@@ -144,7 +144,7 @@ function shape(kind: ShapeKind, x: number, y: number, w: number, h: number, fill
   const layer: Omit<ShapeLayer, 'id'> = {
     kind: 'shape', shape: kind, x: x + w / 2, y: y + h / 2, width: w, height: h, rotation: o.rotation ?? 0, opacity: o.opacity ?? 1,
     fill, stroke: o.stroke ?? '#000000', strokeWidth: o.strokeWidth ?? 0,
-    ...(kind === 'rect' && o.corner ? { cornerRadius: o.corner } : {}),
+    ...((kind === 'rect' || kind === 'equalizer') && o.corner ? { cornerRadius: o.corner } : {}),
     ...(o.blend ? { blend: o.blend } : {}),
   };
   return { layer, box: { x, y, w, h }, bg: o.bg, anim: o.anim };
@@ -725,6 +725,47 @@ const REELS: Design[] = [
     },
   },
   {
+    // Tabulaludo's weekly review: its intro is a short audio play, so the
+    // reel is the game's cover and an equalizer moving to the sound, in the
+    // podcast's colours, with room at the bottom for the auto-captions.
+    key: 'reel-tabulaludo-review', name: 'Tabulaludo Review', category: 'review', background: '#eee4b8',
+    reel: { duration: 30, poster: 4 },
+    draw: f => {
+      const red = '#a31b22';
+      const ink = '#3b2a1a';
+      const sand = '#d3c798';
+      const slab = font('Rockwell');
+      const items: Item[] = [
+        circle(f.w * 0.98, f.h * 0.14, f.w * 0.8, sand, { anim: at(0, undefined, 'none', 'none', { loop: 'breathe' }) }),
+        circle(f.w * 0.02, f.h * 0.88, f.w * 0.7, sand, { anim: at(0, undefined, 'none', 'none', { loop: 'breathe' }) }),
+        rect(0, 0, f.w, 22, red),
+        rect(0, f.h - 22, f.w, 22, red),
+      ];
+      const brand = text('TABULALUDO', { x: f.cx, y: 0, font: slab, size: 84, bold: true, color: red, maxWidth: f.x1 - f.x0, anim: at(0.2, undefined, 'wipe-right', 'none', { in: 0.7 }) });
+      const pod = text('PODCAST', { x: f.cx, y: brand.box.h + 2, font: slab, size: 32, bold: true, color: ink, anim: at(0.6, undefined, 'fade', 'none', { in: 0.5 }) });
+      const rule = (x: number) => rect(x, pod.box.y + pod.box.h / 2 - 2, 80, 4, red, { anim: at(0.6, undefined, 'wipe-right', 'none', { in: 0.5 }) });
+      const rules = [rule(f.cx - pod.box.w / 2 - 104), rule(f.cx + pod.box.w / 2 + 24)];
+      const tag = timed(pill('DAS WÖCHENTLICHE REVIEW', f.cx, pod.box.y + pod.box.h + 30, { fill: red, color: '#eee4b8', size: 28, align: 'center', font: slab }), at(0.9, undefined, 'pop', 'none', { in: 0.5 }));
+      // The game's cover, on a card that floats a little.
+      const cd = 420;
+      const cy = bounds(tag).y + bounds(tag).h + 36;
+      const float = at(1.2, undefined, 'zoom', 'none', { in: 0.7, loop: 'float' });
+      const cover: Item[] = [
+        rect(f.cx - cd / 2 + 18, cy + 22, cd, cd, ink, { corner: 3, opacity: 0.25, anim: float }),
+        photo('warm', f.cx - cd / 2, cy, cd, cd, { corner: 3, border: { style: 'solid', width: 14, color: '#ffffff' }, anim: float }),
+      ];
+      const title = text('"Spieltitel"', { x: f.cx, y: cy + cd + 36, font: slab, size: 72, bold: true, color: ink, maxWidth: f.x1 - f.x0, anim: at(1.6, undefined, 'slide-up', 'none', { in: 0.6 }) });
+      // The intro's sound, as bars that move to it.
+      const eq = shape('equalizer', f.x0 + 20, title.box.y + title.box.h + 26, f.x1 - f.x0 - 40, 100, red, { corner: 50, anim: at(2.0, undefined, 'fade', 'none', { in: 0.6 }) });
+      (eq.layer as ShapeLayer).bars = 28;
+      (eq.layer as ShapeLayer).mirror = true;
+      // Kept clear of the auto-captions (two lines about 0.68 of the way
+      // down, captions.ts).
+      items.push(...centreY([brand, pod, ...rules, ...tag, ...cover, title, eq], f.y0 - 50, f.h * 0.617));
+      return items;
+    },
+  },
+  {
     key: 'reel-breaking', name: 'Breaking Live', category: 'news', background: '#111111', overPhoto: true,
     reel: { duration: 8, poster: 4 },
     draw: f => {
@@ -944,7 +985,8 @@ export function drawSystemFrame(group: Konva.Group, template: EditorTemplate, la
   const duration = template.duration ?? 1;
   for (const l of layers) {
     const st = animStateAt(l, t, duration, box);
-    if (st.visible) group.add(buildAnimatedLayerNode(l, st));
+    // An equalizer dances without music in a video, and rests in a still.
+    if (st.visible) group.add(buildAnimatedLayerNode(l, st, isEqualizer(l) ? equalizerLevels(l, template.duration ? t : null, duration, null, null) : undefined));
   }
 }
 
