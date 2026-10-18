@@ -43,7 +43,7 @@ func TestEveryMCPToolIsDispatched(t *testing.T) {
 // MCP exposes user features only: none of the agent tools may reach a team
 // admin or admin handler.
 func TestAgentToolsStayUserLevel(t *testing.T) {
-	for _, file := range []string{"mcp_agent.go", "mcp_images.go", "mcp_sources.go", "mcp_capture.go"} {
+	for _, file := range []string{"mcp_agent.go", "mcp_images.go", "mcp_sources.go", "mcp_capture.go", "mcp_transcribe.go"} {
 		src, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)

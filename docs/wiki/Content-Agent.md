@@ -30,9 +30,16 @@ What a built-in agent creates carries the origin `agent-<name>` (e.g. `agent-new
 | Content from the web | `capture_url` (page to draft, in house style), `import_bgg` (BGG game with processed cover, text, hashtags, collaborators) |
 | Images | `list_watermarks`, `list_media`, `get_image`, `upload_from_url`, `compose_image`, `add_media` |
 | Text | `rewrite_instagram`, `check_instagram_caption`, `list_mentions` |
+| Speech | `transcribe` (a reel's video or a library video/sound to text, timed phrases and optionally words) |
 | Drafts | `create_post` (with `status: "draft"`, `sourceUrl`, `origin`), `update_post`, `create_news_draft`, `create_episode_draft` |
 
 Everything an agent creates carries an `origin` (default `mcp`; pass your own short label such as `agent`), so the Calendar's Drafts tab marks those drafts and can filter by origin. Pass `sourceUrl` on `create_post` so `find_existing` recognises the story next time: URLs are compared normalised (BGG games by ID, other pages without tracking parameters, `www.` or trailing slash).
+
+### transcribe
+
+Transcribes the speech in a video or sound with the same Whisper call as the video editor's auto-captions (the OpenRouter key from the admin settings). Pass the file as `url` (an upload such as `/api/uploads/...`, e.g. the video of a reel draft, or a public link) or `mediaId` (a library video or sound), optionally `language` (`de`, `en`, …; detected otherwise) and `words: true` for word timestamps. The answer has `text`, `language` and `phrases` (`{text, start, end}` in seconds, cut at pauses and sentence ends). Files up to 25 MB.
+
+A routine for reels with spoken content: `list_media` (kind `video`) or `upload_from_url` for the clip, `transcribe` it, write the Bluesky text and the Instagram caption from the transcript (hook from the strongest line, `rewrite_instagram`, `check_instagram_caption`), then `create_post` with `postType: "reel"`, the clip's URL and `status: "draft"`. Burned-in captions are still added in the video editor (Animate tab, Captions), which renders in the browser.
 
 ### compose_image
 
