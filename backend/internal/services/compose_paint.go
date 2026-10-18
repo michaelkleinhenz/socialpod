@@ -59,6 +59,51 @@ func shapeOutline(shape string, ox, oy, w, h, cornerRadius float64) []float64 {
 	return pts
 }
 
+// An equalizer's bars at rest, as the editor draws them in a still design
+// (restLevels, equalizerBars and barCount in equalizer.ts): keep in step.
+const (
+	equalizerDefaultBars = 24
+	equalizerGap         = 0.6
+)
+
+func equalizerBarCount(n int) int {
+	if n <= 0 {
+		n = equalizerDefaultBars
+	}
+	return max(4, min(64, n))
+}
+
+// equalizerRest is each bar's level (0 to 1) at rest.
+func equalizerRest(n int) []float64 {
+	out := make([]float64, n)
+	for i := range out {
+		p := 0.0
+		if n > 1 {
+			p = float64(i) / float64(n-1)
+		}
+		out[i] = 0.25 + 0.6*(0.5+0.5*math.Sin(float64(i)*1.9+0.6))*(1-0.45*p) + 0.15*(1-p)
+	}
+	return out
+}
+
+// equalizerBars lays the bars out in a w × h box: x, y, width, height each,
+// standing on the bottom edge or, mirrored, about the middle, at least as
+// high as wide.
+func equalizerBars(w, h float64, levels []float64, mirror bool) [][4]float64 {
+	n := float64(len(levels))
+	bw := w / (n + (n-1)*equalizerGap)
+	out := make([][4]float64, len(levels))
+	for i, v := range levels {
+		bh := math.Min(h, math.Max(bw, h*math.Max(0, math.Min(1, v))))
+		y := h - bh
+		if mirror {
+			y = (h - bh) / 2
+		}
+		out[i] = [4]float64{float64(i) * bw * (1 + equalizerGap), y, bw, bh}
+	}
+	return out
+}
+
 // drawTemplateShape draws a shape layer: its fill, then its border, turned
 // about its centre (x, y) at the layer's opacity.
 func drawTemplateShape(dst *image.RGBA, l TemplateLayer, s float64) {
@@ -75,22 +120,32 @@ func drawTemplateShape(dst *image.RGBA, l TemplateLayer, s float64) {
 	}
 	pad := math.Ceil(sw/2) + 2
 	local := image.NewRGBA(image.Rect(0, 0, int(math.Ceil(w+2*pad)), int(math.Ceil(h+2*pad))))
-	pts := shapeOutline(l.Shape, pad, pad, w, h, l.CornerRadius)
-
-	if hasFill {
-		b := local.Bounds()
-		ras := vector.NewRasterizer(b.Dx(), b.Dy())
-		ras.MoveTo(float32(pts[0]), float32(pts[1]))
-		for i := 2; i < len(pts); i += 2 {
-			ras.LineTo(float32(pts[i]), float32(pts[i+1]))
+	var outlines [][]float64
+	if l.Shape == "equalizer" {
+		for _, b := range equalizerBars(w, h, equalizerRest(equalizerBarCount(l.Bars)), l.Mirror) {
+			// The corners are relative to a bar, like a box's to the box.
+			outlines = append(outlines, shapeOutline("rect", pad+b[0], pad+b[1], b[2], b[3], l.CornerRadius))
 		}
-		ras.ClosePath()
-		ras.Draw(local, b, &image.Uniform{fill}, image.Point{})
+	} else {
+		outlines = [][]float64{shapeOutline(l.Shape, pad, pad, w, h, l.CornerRadius)}
 	}
-	if hasStroke {
-		m := image.NewAlpha(local.Bounds())
-		strokeMask(m, pts, sw/2, true)
-		draw.DrawMask(local, local.Bounds(), &image.Uniform{stroke}, image.Point{}, m, image.Point{}, draw.Over)
+
+	for _, pts := range outlines {
+		if hasFill {
+			b := local.Bounds()
+			ras := vector.NewRasterizer(b.Dx(), b.Dy())
+			ras.MoveTo(float32(pts[0]), float32(pts[1]))
+			for i := 2; i < len(pts); i += 2 {
+				ras.LineTo(float32(pts[i]), float32(pts[i+1]))
+			}
+			ras.ClosePath()
+			ras.Draw(local, b, &image.Uniform{fill}, image.Point{})
+		}
+		if hasStroke {
+			m := image.NewAlpha(local.Bounds())
+			strokeMask(m, pts, sw/2, true)
+			draw.DrawMask(local, local.Bounds(), &image.Uniform{stroke}, image.Point{}, m, image.Point{}, draw.Over)
+		}
 	}
 	compositeRotated(dst, local, pad+w/2, pad+h/2, l.X*s, l.Y*s, l.Rotation, templateOpacity(l))
 }

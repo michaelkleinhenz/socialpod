@@ -33,7 +33,8 @@ type templateLayerInfo struct {
 	// A video clip of a reel template: a still leaves it out unless an image
 	// is swapped in for it.
 	Clip bool `json:"clip,omitempty"`
-	// shape: rect, ellipse or triangle, and its fill colour (empty: none).
+	// shape: rect, ellipse, triangle or equalizer (a row of bars that move to
+	// a reel's music), and its fill colour (empty: none).
 	Shape string `json:"shape,omitempty"`
 	Fill  string `json:"fill,omitempty"`
 	// The layer's box (image, shape) or top-left corner (text) as fractions

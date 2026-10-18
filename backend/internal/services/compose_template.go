@@ -76,6 +76,9 @@ type TemplateLayer struct {
 	Shape       string  `json:"shape,omitempty"`
 	Stroke      string  `json:"stroke,omitempty"`
 	StrokeWidth float64 `json:"strokeWidth,omitempty"`
+	// equalizer: its bar count and whether the bars grow from the middle
+	Bars   int  `json:"bars,omitempty"`
+	Mirror bool `json:"mirror,omitempty"`
 
 	// paint: brush strokes, moved by (x, y)
 	Strokes []TemplateStroke `json:"strokes,omitempty"`

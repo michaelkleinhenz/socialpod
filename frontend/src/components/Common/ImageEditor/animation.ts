@@ -1,5 +1,6 @@
 import Konva from 'konva';
-import { buildLayerNode, clamp, measureText, textLayerAttrs, type AudioTrack, type CropBox, type EditorLayer, type ImageLayer, type TextLayer } from './editorModel';
+import { buildLayerNode, clamp, measureText, textLayerAttrs, type AudioTrack, type CropBox, type EditorLayer, type ImageLayer, type ShapeLayer, type TextLayer } from './editorModel';
+import { barCount, idleLevels, levelsAtTime, LEVELS_FPS, restLevels, type AudioLevels } from './equalizer';
 
 // Reels: a design with a length, whose layers each show for a span of it and
 // come in, move and go out with a preset effect. Everything is a pure function
@@ -171,7 +172,7 @@ export const MIN_DURATION = 3;
 export const MAX_DURATION = 90;
 export const DEFAULT_DURATION = 10;
 export const DURATION_PRESETS = [5, 10, 15, 30];
-export const FPS = 30;
+export const FPS = LEVELS_FPS;
 
 export const NO_ANIM: LayerAnim = { start: 0, enter: 'none', enterDuration: 0.6, exit: 'none', exitDuration: 0.6, loop: 'none' };
 
@@ -461,11 +462,34 @@ export function animatedTextAttrs(l: TextLayer, s: AnimState): Konva.TextConfig 
   return { ...attrs, text: l.text.slice(0, s.chars), width: measureText(l).width + 0.5 };
 }
 
-// A layer's node for one frame, wrapped in the group that animates it.
-export function buildAnimatedLayerNode(l: EditorLayer, s: AnimState): Konva.Group {
+// A layer's node for one frame, wrapped in the group that animates it;
+// levels are an equalizer's bars in that frame.
+export function buildAnimatedLayerNode(l: EditorLayer, s: AnimState, levels?: number[]): Konva.Group {
   const g = new Konva.Group(animGroupAttrs(l, s));
-  g.add(l.kind === 'text' ? new Konva.Text(animatedTextAttrs(l, s)) : buildLayerNode(l));
+  g.add(l.kind === 'text' ? new Konva.Text(animatedTextAttrs(l, s)) : buildLayerNode(l, levels));
   return g;
+}
+
+export function isEqualizer(l: EditorLayer): l is ShapeLayer {
+  return l.kind === 'shape' && l.shape === 'equalizer';
+}
+
+// The levels (0 to 1) of an equalizer's bars: at rest in a still design
+// (t null), following the music at time t once it has been analysed, and
+// the made-up dance otherwise. Where the music does not play the bars rest
+// at their lowest, and they fade with its fades.
+export function equalizerLevels(
+  l: ShapeLayer, t: number | null, duration: number, audio: AudioTrack | null | undefined, levels: AudioLevels | null | undefined,
+): number[] {
+  const n = barCount(l);
+  if (t === null) return restLevels(n);
+  if (audio && levels && levels.count > 0) {
+    const { start, end } = musicSpan(audio, duration);
+    if (t < start || t >= end) return new Array(n).fill(0);
+    const gain = audio.volume > 0 ? clamp(musicGainAt(audio, t, duration) / audio.volume, 0, 1) : 0;
+    return levelsAtTime(levels, musicTimeAt(audio, t, duration), n).map(v => v * gain);
+  }
+  return idleLevels(n, t);
 }
 
 // --- Clips and sound ---------------------------------------------------------
