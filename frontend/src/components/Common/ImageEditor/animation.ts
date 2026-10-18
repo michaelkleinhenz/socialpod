@@ -22,6 +22,97 @@ export interface LayerAnim {
   exit: ExitEffect;
   exitDuration: number;
   loop: LoopEffect;
+  // Keyframes: where the layer is, how large, turned and opaque at moments
+  // of its span, eased from one to the next. Sorted by time.
+  keys?: Keyframe[];
+}
+
+// How a keyframe eases to the next one: hold stays put and jumps.
+export type KeyEase = 'smooth' | 'linear' | 'ease-in' | 'ease-out' | 'hold';
+
+// The layer at one moment, on top of its own attributes: moved by x/y
+// picture pixels, scaled and turned about its centre, its opacity scaled.
+// t is in seconds after the layer comes in, so a key moves with its bar.
+export interface Keyframe {
+  t: number;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+  ease?: KeyEase;
+}
+
+export type KeyValues = Pick<Keyframe, 'x' | 'y' | 'scale' | 'rotation' | 'opacity'>;
+
+export const KEY_EASES: { id: KeyEase; label: string }[] = [
+  { id: 'smooth', label: 'Smooth' },
+  { id: 'linear', label: 'Linear' },
+  { id: 'ease-in', label: 'Ease in' },
+  { id: 'ease-out', label: 'Ease out' },
+  { id: 'hold', label: 'Hold' },
+];
+
+export const KEY_IDENTITY: KeyValues = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
+
+// Two keys closer than this are the same moment: a playhead on a key edits
+// that key rather than adding one beside it.
+export const KEY_SNAP = 1 / (2 * 30);
+
+const easeKey = (ease: KeyEase | undefined, p: number) => {
+  switch (ease) {
+    case 'linear': return p;
+    case 'ease-in': return p * p * p;
+    case 'ease-out': return 1 - Math.pow(1 - p, 3);
+    case 'hold': return 0;
+    default: return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  }
+};
+
+// The keyed values at `since` seconds into the span: the first key's before
+// it, the last key's after it, eased between.
+export function keyValuesAt(keys: Keyframe[] | undefined, since: number): KeyValues {
+  if (!keys?.length) return KEY_IDENTITY;
+  if (since <= keys[0].t) return pickValues(keys[0]);
+  const last = keys[keys.length - 1];
+  if (since >= last.t) return pickValues(last);
+  let i = 0;
+  while (keys[i + 1].t < since) i++;
+  const a = keys[i];
+  const b = keys[i + 1];
+  const p = easeKey(a.ease, b.t > a.t ? (since - a.t) / (b.t - a.t) : 1);
+  const mix = (u: number, v: number) => u + (v - u) * p;
+  return { x: mix(a.x, b.x), y: mix(a.y, b.y), scale: mix(a.scale, b.scale), rotation: mix(a.rotation, b.rotation), opacity: mix(a.opacity, b.opacity) };
+}
+
+function pickValues(k: Keyframe): KeyValues {
+  return { x: k.x, y: k.y, scale: k.scale, rotation: k.rotation, opacity: k.opacity };
+}
+
+// The index of the key at `since`, or -1.
+export function keyIndexAt(keys: Keyframe[] | undefined, since: number): number {
+  return keys?.findIndex(k => Math.abs(k.t - since) <= KEY_SNAP) ?? -1;
+}
+
+// The keys with the one at `since` changed by patch, added there (from the
+// values it has at that moment) when there is none.
+export function setKeyAt(keys: Keyframe[] | undefined, since: number, patch: Partial<Keyframe>): Keyframe[] {
+  const list = keys ?? [];
+  const i = keyIndexAt(list, since);
+  if (i >= 0) return list.map((k, j) => (j === i ? { ...k, ...patch } : k));
+  const prev = [...list].reverse().find(k => k.t < since);
+  const added: Keyframe = { ...keyValuesAt(list, since), t: since, ...(prev?.ease ? { ease: prev.ease } : {}), ...patch };
+  return sortKeys([...list, added]);
+}
+
+export function sortKeys(keys: Keyframe[]): Keyframe[] {
+  return [...keys].sort((a, b) => a.t - b.t);
+}
+
+// Whether a layer is moved by keyframes, so moving, resizing and turning it
+// on the picture set the key at the playhead instead of the layer itself.
+export function hasKeys(l: EditorLayer): boolean {
+  return !!l.anim?.keys?.length;
 }
 
 export const ENTER_EFFECTS: { id: EnterEffect; label: string; textOnly?: boolean }[] = [
@@ -170,6 +261,14 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
   // The last frame of the video still shows what lasts to the end.
   if (t < start || t > end || (t === end && end < duration)) return { ...IDENTITY, visible: false };
   const s: AnimState = { ...IDENTITY };
+  if (a.keys?.length) {
+    const k = keyValuesAt(a.keys, t - start);
+    s.dx = k.x;
+    s.dy = k.y;
+    s.scale = Math.max(0, k.scale);
+    s.rotation = k.rotation;
+    s.opacity = clamp(k.opacity, 0, 1);
+  }
   const travel = Math.min(box.width, box.height) * 0.25;
   const seed = layerSeed(l);
   const length = end - start;

@@ -400,6 +400,26 @@
   pointer-events: none;
 }
 
+/* A keyframe on a layer's bar. */
+.ie-track-key {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  background: #ffffff;
+  border: 1.5px solid var(--accent);
+  transform: rotate(45deg);
+  cursor: ew-resize;
+  z-index: 1;
+  touch-action: none;
+}
+
+.ie-track-key.current {
+  background: #ff2d95;
+  border-color: #ffffff;
+}
+
 /* Clips and music in the timeline. */
 .ie-track.clip .ie-track-span {
   background: color-mix(in srgb, #0ea5e9 55%, transparent);
