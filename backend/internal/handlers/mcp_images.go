@@ -297,7 +297,7 @@ func (h *MCPHandler) loadImageBytes(ctx context.Context, c *gin.Context, ref map
 			raw = raw[i:]
 		}
 	}
-	if uploadFilename(raw) != "" {
+	if uploadFilename(raw) != "" || strings.HasPrefix(raw, templateAssetPrefix) {
 		data, err := readImageBytes(ctx, h.DB, h.UploadDir, raw)
 		return data, raw, err
 	}

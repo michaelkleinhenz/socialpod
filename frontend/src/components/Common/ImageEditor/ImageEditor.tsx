@@ -10,11 +10,11 @@ import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
-  applyAdjustments, BLEND_MODES, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
+  applyAdjustments, BLEND_MODES, BUILTIN_FONTS, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
   instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
   shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
   type Adjustments, type AudioTrack, type BlendMode, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
-  type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
+  type FontOption, type PaintLayer, type PaintStroke, type ShapeKind, type ShapeLayer, type TextAlign, type TextLayer,
 } from './editorModel';
 import { snapBox, type SnapResult } from './snapping';
 import { geometricHitTest } from './hitTest';
@@ -28,6 +28,8 @@ import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
 import { BottomSheet, MiniToolbar, PhoneBar, PhoneTray, type BarItem, type TraySub } from './PhoneParts';
 import { canExportVideo, renderVideo } from './videoExport';
+import { nearestFormat, SYSTEM_CATEGORIES, SYSTEM_FORMATS, SYSTEM_TEMPLATES, TEMPLATE_ASSETS, type SystemCategory, type SystemFormat, type SystemTemplate } from './systemTemplates';
+import { SystemTemplateTile } from './SystemTemplateTile';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush' | 'animate';
@@ -58,24 +60,6 @@ interface BrushSettings {
 // A new brush paints soft and see-through in black: the usual job is to
 // darken a busy background a little behind a text.
 const DEFAULT_BRUSH: BrushSettings = { size: null, feather: null, color: '#000000', opacity: 0.35 };
-
-interface FontOption {
-  label: string;
-  family: string;
-}
-
-const BUILTIN_FONTS: FontOption[] = [
-  { label: 'Arial', family: 'Arial, Helvetica, sans-serif' },
-  { label: 'Helvetica', family: 'Helvetica, Arial, sans-serif' },
-  { label: 'Verdana', family: 'Verdana, sans-serif' },
-  { label: 'Trebuchet MS', family: 'Trebuchet MS, sans-serif' },
-  { label: 'Impact', family: 'Impact, Haettenschweiler, Arial Black, sans-serif' },
-  { label: 'Georgia', family: 'Georgia, serif' },
-  { label: 'Times New Roman', family: 'Times New Roman, Times, serif' },
-  { label: 'Rockwell', family: 'Rockwell, Rockwell Nova, Roboto Slab, DejaVu Serif, Sitka Small, serif' },
-  { label: 'Courier New', family: 'Courier New, monospace' },
-  { label: 'Comic Sans MS', family: 'Comic Sans MS, cursive' },
-];
 
 const ASPECTS: { id: string; label: string; ratio: number | null | 'original' }[] = [
   { id: 'free', label: 'Free', ratio: null },
@@ -162,7 +146,8 @@ interface Props {
 }
 
 const apiBase = import.meta.env.VITE_API_URL || '';
-const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
+// The built-in templates' placeholder pictures come from the frontend itself.
+const resolveUrl = (url: string) => (url.startsWith('/') && !url.startsWith(TEMPLATE_ASSETS) ? apiBase + url : url);
 
 // The library also holds videos and fonts, which cannot go on a picture.
 const isImageMedia = (m: MediaItem) =>
@@ -255,6 +240,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   // The media library's templates, loaded when the Templates tab is opened.
   const [templates, setTemplates] = useState<MediaItem[] | null>(null);
   const [applyingTemplate, setApplyingTemplate] = useState<string | null>(null);
+  // The Templates tab's two lists: SocialPod's built-in templates or the
+  // user's own (drafts and the library's); null until picked, which shows
+  // the user's own when there are any. The built-in list's format (null:
+  // the one closest to the picture) and category filters.
+  const [templateView, setTemplateView] = useState<'system' | 'own' | null>(null);
+  const [systemFormat, setSystemFormat] = useState<SystemFormat | null>(null);
+  const [systemCategory, setSystemCategory] = useState<SystemCategory | null>(null);
   const [saving, setSaving] = useState(false);
   // Image drafts: the user's saved work, listed on the Templates tab; the
   // one this edit was saved as or restored from, which Save draft updates;
@@ -397,12 +389,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         const items = video ? all : all.filter(t => !isVideoTemplate(t.template));
         setTemplates(items);
         setDrafts(saved);
-        // With nothing to start from, a new canvas opens on its own settings.
-        if (items.length === 0 && saved.length === 0 && canvasMode) setTab(t => (t === 'templates' ? 'canvas' : t));
       })
       .catch(() => { if (!cancelled) { setTemplates([]); setDrafts(d => d ?? []); toast.error('Failed to load the templates'); } });
     return () => { cancelled = true; };
-  }, [templatesOpened, templates, canvasMode, video]);
+  }, [templatesOpened, templates, video]);
 
   // Media library: fetched once the Media tab has been opened, then again as
   // the search changes.
@@ -942,13 +932,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone, phoneTool, selected, tab, sheet]);
 
-  // A blank canvas opens on the templates, when there are any.
+  // A blank canvas opens on the templates.
   const templatesShown = useRef(false);
   useEffect(() => {
-    if (templatesShown.current || !phone || !canvasMode || template || templates === null) return;
+    if (templatesShown.current || !phone || !canvasMode || template) return;
     templatesShown.current = true;
-    if (templates.length > 0 || (drafts?.length ?? 0) > 0) setSheet('templates');
-  }, [phone, canvasMode, template, templates, drafts]);
+    setSheet('templates');
+  }, [phone, canvasMode, template]);
 
   // The media sheet closes once what was picked (or uploaded) is on the
   // picture, and the video sheet once an uploaded clip is.
@@ -1209,6 +1199,18 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     setApplyingTemplate(item.id);
     try {
       await applyTemplate(t);
+    } finally {
+      setApplyingTemplate(null);
+    }
+  };
+
+  // A built-in template: on a photo without its own backdrop picture, in a
+  // video with its layers' timing.
+  const pickSystemTemplate = async (s: SystemTemplate) => {
+    if (canvasMode && layers.length > 0 && !window.confirm('Replace your design with this template?')) return;
+    setApplyingTemplate(s.id);
+    try {
+      await applyTemplate(s.build({ video, photo: !canvasMode }));
     } finally {
       setApplyingTemplate(null);
     }
@@ -2419,60 +2421,120 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </div>
   );
 
-  // The user's drafts and the library's templates.
+  // The Templates tab: SocialPod's built-in templates, and the user's own
+  // (drafts and the library's templates), each a tab of its own.
+  const ownCount = (templates?.length ?? 0) + (drafts?.length ?? 0);
+  const shownView = templateView ?? (templates === null || ownCount > 0 ? 'own' : 'system');
+  const viewFormat = systemFormat ?? (crop ? nearestFormat(crop.width, crop.height) : '4:5');
+  // On a photo only the designs laid over a full-frame picture, which the
+  // photo takes the place of.
+  const systemShown = SYSTEM_TEMPLATES.filter(t =>
+    t.format === viewFormat && (canvasMode || t.overPhoto) && (!systemCategory || t.category === systemCategory));
+  const systemCategories = SYSTEM_CATEGORIES.filter(c => SYSTEM_TEMPLATES.some(t => t.category === c.id && (canvasMode || t.overPhoto)));
+  const systemList = (
+    <>
+      <div className="ie-row ie-scroll">
+        {SYSTEM_FORMATS.map(f => (
+          <button key={f.id} className={`ie-chip ${viewFormat === f.id ? 'active' : ''}`} onClick={() => setSystemFormat(f.id)} title={`${f.width} × ${f.height}`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <label className="ie-field">
+        <span>Category</span>
+        <select
+          className="ie-select"
+          value={systemCategory ?? ''}
+          onChange={e => setSystemCategory((e.target.value || null) as SystemCategory | null)}
+          aria-label="Template category"
+        >
+          <option value="">All</option>
+          {systemCategories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+      </label>
+      <p className="ie-hint">
+        {canvasMode
+          ? `Tap a template to start from it. It replaces the current design${video ? ', and its layers come in one after the other' : ''}. Replace or paste over a picture to put in yours.`
+          : 'Tap a template to lay its texts and shapes over the picture.'}
+      </p>
+      {systemShown.length === 0 ? (
+        <p className="ie-hint">No templates in this format and category.</p>
+      ) : (
+        <div className="ie-grid">
+          {systemShown.map(t => (
+            <SystemTemplateTile
+              key={t.id}
+              template={t}
+              loading={applyingTemplate === t.id}
+              disabled={applyingTemplate !== null}
+              onPick={() => void pickSystemTemplate(t).then(() => { if (phone) closeSheet(); })}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
   const templateList = (
     <>
-      {drafts !== null && drafts.length > 0 && (
+      <div className="ie-segmented ie-segmented-wide" role="tablist" aria-label="Templates">
+        <button role="tab" aria-selected={shownView === 'system'} className={shownView === 'system' ? 'active' : ''} onClick={() => setTemplateView('system')}>SocialPod</button>
+        <button role="tab" aria-selected={shownView === 'own'} className={shownView === 'own' ? 'active' : ''} onClick={() => setTemplateView('own')}>Yours</button>
+      </div>
+      {shownView === 'system' ? systemList : (
         <>
-          <span className="ie-label">Your drafts</span>
-          <p className="ie-hint">Tap a draft to carry on with it. It replaces what you are working on.</p>
-          <div className="ie-grid">
-            {drafts.map(d => (
-              <div key={d.id} className={`ie-tile-wrap ${draft?.id === d.id ? 'current' : ''}`}>
-                <button
-                  className="ie-tile"
-                  onClick={() => void restoreDraft(d).then(() => { if (phone) closeSheet(); })}
-                  disabled={restoringDraft !== null}
-                  title={`${d.name}, saved ${new Date(d.updatedAt).toLocaleString()}`}
-                >
-                  <img src={resolveUrl(d.url)} alt="" loading="lazy" />
-                  <span>{restoringDraft === d.id ? 'Loading…' : d.name}</span>
-                </button>
-                <button className="ie-tile-delete" onClick={() => void deleteDraft(d)} title="Delete this draft" aria-label={`Delete the draft ${d.name}`}>
-                  <Trash2 size={12} />
-                </button>
+          {drafts !== null && drafts.length > 0 && (
+            <>
+              <span className="ie-label">Your drafts</span>
+              <p className="ie-hint">Tap a draft to carry on with it. It replaces what you are working on.</p>
+              <div className="ie-grid">
+                {drafts.map(d => (
+                  <div key={d.id} className={`ie-tile-wrap ${draft?.id === d.id ? 'current' : ''}`}>
+                    <button
+                      className="ie-tile"
+                      onClick={() => void restoreDraft(d).then(() => { if (phone) closeSheet(); })}
+                      disabled={restoringDraft !== null}
+                      title={`${d.name}, saved ${new Date(d.updatedAt).toLocaleString()}`}
+                    >
+                      <img src={resolveUrl(d.url)} alt="" loading="lazy" />
+                      <span>{restoringDraft === d.id ? 'Loading…' : d.name}</span>
+                    </button>
+                    <button className="ie-tile-delete" onClick={() => void deleteDraft(d)} title="Delete this draft" aria-label={`Delete the draft ${d.name}`}>
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <span className="ie-label ie-section">Templates</span>
-        </>
-      )}
-      {templates === null ? (
-        <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
-      ) : templates.length === 0 ? (
-        <p className="ie-hint">No templates yet. Create them in the Media Library.</p>
-      ) : (
-        <>
-          <p className="ie-hint">
-            {canvasMode
-              ? 'Tap a template to start from it. It replaces the current design.'
-              : 'Tap a template to lay its texts and images over the picture.'}
-          </p>
-          <div className="ie-grid">
-            {templates.map(t => (
-              <button
-                key={t.id}
-                className="ie-tile"
-                onClick={() => void pickTemplate(t).then(() => { if (phone) closeSheet(); })}
-                disabled={applyingTemplate !== null}
-                title={t.description ? `${t.name}: ${t.description}` : t.name}
-              >
-                <img src={resolveUrl(t.url)} alt="" loading="lazy" />
-                {video && isVideoTemplate(t.template) && <Film size={14} className="ie-tile-badge" aria-label="Video template" />}
-                <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
-              </button>
-            ))}
-          </div>
+              <span className="ie-label ie-section">Templates</span>
+            </>
+          )}
+          {templates === null ? (
+            <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Loading…</p>
+          ) : templates.length === 0 ? (
+            <p className="ie-hint">No templates of your own yet. Create them in the Media Library, or start from one of SocialPod's.</p>
+          ) : (
+            <>
+              <p className="ie-hint">
+                {canvasMode
+                  ? 'Tap a template to start from it. It replaces the current design.'
+                  : 'Tap a template to lay its texts and images over the picture.'}
+              </p>
+              <div className="ie-grid">
+                {templates.map(t => (
+                  <button
+                    key={t.id}
+                    className="ie-tile"
+                    onClick={() => void pickTemplate(t).then(() => { if (phone) closeSheet(); })}
+                    disabled={applyingTemplate !== null}
+                    title={t.description ? `${t.name}: ${t.description}` : t.name}
+                  >
+                    <img src={resolveUrl(t.url)} alt="" loading="lazy" />
+                    {video && isVideoTemplate(t.template) && <Film size={14} className="ie-tile-badge" aria-label="Video template" />}
+                    <span>{applyingTemplate === t.id ? 'Loading…' : t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </>

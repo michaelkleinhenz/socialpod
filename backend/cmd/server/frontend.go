@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"socialmedia/internal/handlers"
 )
 
 // all: keeps files starting with _ or . (Vite emits chunks such as
@@ -17,6 +19,7 @@ var frontendFS embed.FS
 
 func serveFrontend(r *gin.Engine) {
 	distFS, _ := fs.Sub(frontendFS, "dist")
+	handlers.FrontendFiles = distFS
 	fileServer := http.FileServer(http.FS(distFS))
 
 	r.NoRoute(func(c *gin.Context) {

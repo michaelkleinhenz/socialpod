@@ -2,6 +2,7 @@ import { api } from '../../../services/api';
 import { centredCrop, clamp, instantiateTemplate, loadVideo, newLayerId, NO_ADJUSTMENTS, sourceSize, type EditorLayer, type EditorTemplate, type ImageLayer } from './editorModel';
 import { MAX_DURATION, MIN_DURATION } from './animation';
 import { canExportVideo, renderVideo } from './videoExport';
+import { TEMPLATE_ASSETS } from './systemTemplates';
 
 // A clip put into a video template and exported as the editor's "Export
 // video" would: the template's layers instantiated as the editor does, the
@@ -9,7 +10,8 @@ import { canExportVideo, renderVideo } from './videoExport';
 // shown or edited on the way.
 
 const apiBase = import.meta.env.VITE_API_URL || '';
-const resolveUrl = (url: string) => (url.startsWith('/') ? apiBase + url : url);
+// The built-in templates' placeholder pictures come from the frontend itself.
+const resolveUrl = (url: string) => (url.startsWith('/') && !url.startsWith(TEMPLATE_ASSETS) ? apiBase + url : url);
 
 // The media library's fonts, registered under the family names the editor
 // gives them (ImageEditor's font loading), so a template's texts are set in
