@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Brush, Circle, Film, GripVertical, Image as ImageIcon, Square, Stamp, Triangle, Type } from 'lucide-react';
-import { layerName, type EditorLayer } from './editorModel';
+import { cssFontFamily, layerName, type EditorLayer } from './editorModel';
 
 // Rows only move up and down.
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -109,7 +109,7 @@ function layerIcon(layer: EditorLayer) {
 function layerThumb(layer: EditorLayer) {
   switch (layer.kind) {
     case 'text':
-      return <span className="ie-layer-text" style={{ fontFamily: layer.fontFamily, color: layer.fill, fontWeight: layer.bold ? 700 : 400 }}>Aa</span>;
+      return <span className="ie-layer-text" style={{ fontFamily: cssFontFamily(layer.fontFamily), color: layer.fill, fontWeight: layer.bold ? 700 : 400 }}>Aa</span>;
     case 'shape':
       return (
         <span

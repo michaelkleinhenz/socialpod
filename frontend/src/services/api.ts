@@ -197,6 +197,15 @@ class ApiClient {
     return this.request<{ released: number }>('/upload/release', { method: 'POST', body: JSON.stringify({ urls }), keepalive: true });
   }
 
+  // Speech to timed words (OpenRouter's Whisper), for a video's
+  // auto-captions. language is an ISO 639-1 code; empty detects it.
+  transcribe(audio: Blob, language = '') {
+    const form = new FormData();
+    form.append('audio', audio, 'speech.wav');
+    if (language) form.append('language', language);
+    return this.request<{ text: string; language: string; words: { word: string; start: number; end: number }[] }>('/transcribe', { method: 'POST', body: form });
+  }
+
   uploadFromURL(url: string) {
     return this.request<{ url: string; filename: string }>('/upload-from-url', {
       method: 'POST',

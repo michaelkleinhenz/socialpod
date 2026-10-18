@@ -104,8 +104,11 @@ function fetcher(resolve: (url: string) => string, signal?: AbortSignal) {
 // it: each clip from its trim point while its layer shows, faded with the
 // layer's in and out effects, the music with its own fades. Null when there
 // is nothing to hear.
-async function mixAudio(layers: EditorLayer[], audio: AudioTrack | null | undefined, duration: number, clock: Clock, load: (src: string) => Promise<Blob>): Promise<AudioBuffer | null> {
-  const ctx = new OfflineAudioContext(2, Math.ceil(duration * SAMPLE_RATE), SAMPLE_RATE);
+async function mixAudio(
+  layers: EditorLayer[], audio: AudioTrack | null | undefined, duration: number, clock: Clock, load: (src: string) => Promise<Blob>,
+  { channels = 2, sampleRate = SAMPLE_RATE } = {},
+): Promise<AudioBuffer | null> {
+  const ctx = new OfflineAudioContext(channels, Math.ceil(duration * sampleRate), sampleRate);
   // Decoding needs its own copy: decodeAudioData takes the buffer over.
   const decode = async (src: string) => {
     try {
@@ -151,6 +154,49 @@ async function mixAudio(layers: EditorLayer[], audio: AudioTrack | null | undefi
     any = play(buffer, start, audio.trimStart, end - start, audio.volume, audio.fadeIn, audio.fadeOut) || any;
   }
   return any ? ctx.startRendering() : null;
+}
+
+// The clips' sound alone, as the video plays it, without the music: what
+// auto-captions transcribe, so the words' times are times of the video.
+// 16 kHz mono WAV, which speech recognition needs no more than. Null when
+// no clip has any sound.
+export async function speechAudio(layers: EditorLayer[], duration: number, resolve: (url: string) => string, signal?: AbortSignal): Promise<Blob | null> {
+  const buffer = await mixAudio(layers, null, duration, plainClock(duration), fetcher(resolve, signal), { channels: 1, sampleRate: 16000 });
+  if (!buffer || isSilent(buffer)) return null;
+  return wavBlob(buffer);
+}
+
+// Whether a mix is (practically) silent, e.g. clips whose files carry an
+// empty sound track.
+function isSilent(buffer: AudioBuffer): boolean {
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) if (Math.abs(data[i]) > 0.003) return false;
+  return true;
+}
+
+// A mono buffer as a 16-bit PCM WAV file.
+function wavBlob(buffer: AudioBuffer): Blob {
+  const data = buffer.getChannelData(0);
+  const view = new DataView(new ArrayBuffer(44 + data.length * 2));
+  const text = (at: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(at + i, s.charCodeAt(i)); };
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + data.length * 2, true);
+  text(8, 'WAVE');
+  text(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, buffer.sampleRate, true);
+  view.setUint32(28, buffer.sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, 'data');
+  view.setUint32(40, data.length * 2, true);
+  for (let i = 0; i < data.length; i++) {
+    const v = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+  }
+  return new Blob([view], { type: 'audio/wav' });
 }
 
 // A clip's frames for the video, one per frame in which its layer shows, in

@@ -290,7 +290,7 @@ func (s *Scheduler) accountBelongsToTeam(ctx context.Context, accountID string, 
 
 // instagramExtras collects a post's Instagram collaborators and tags.
 func instagramExtras(post models.Post) MediaExtras {
-	return MediaExtras{Collaborators: post.Collaborators, UserTags: post.UserTags}
+	return MediaExtras{Collaborators: post.Collaborators, UserTags: post.UserTags, CoverURL: post.CoverURL, ThumbOffset: post.ThumbOffset}
 }
 
 func (s *Scheduler) publishPost(ctx context.Context, post models.Post) {

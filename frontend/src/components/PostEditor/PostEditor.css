@@ -967,3 +967,135 @@
 .image-dropzone-create + .image-dropzone-create {
   margin-left: 8px;
 }
+
+/* Reel cover: the row under the reel's video and its picker */
+.reel-cover-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.reel-cover-thumb {
+  width: 48px;
+  aspect-ratio: 9 / 16;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.reel-cover-thumb img,
+.reel-cover-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.reel-cover-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  min-width: 0;
+  flex: 1;
+}
+
+.reel-cover-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.modal.reel-cover-modal {
+  max-width: 640px;
+}
+
+.reel-cover-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.reel-cover-head h2 {
+  margin-bottom: 0;
+}
+
+.reel-cover-body {
+  display: flex;
+  gap: 20px;
+}
+
+.reel-cover-stage {
+  width: 200px;
+  aspect-ratio: 9 / 16;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.reel-cover-stage video,
+.reel-cover-stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.reel-cover-stage .reel-cover-hidden {
+  display: none;
+}
+
+.reel-cover-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.reel-cover-controls input[type='range'] {
+  width: 100%;
+}
+
+.reel-cover-controls .btn {
+  justify-content: flex-start;
+}
+
+.reel-cover-status {
+  font-size: 13px;
+}
+
+.reel-cover-label[for] {
+  margin-top: 4px;
+}
+
+.reel-cover-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reel-cover-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .reel-cover-body {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .reel-cover-stage {
+    width: 160px;
+  }
+
+  .reel-cover-controls {
+    width: 100%;
+  }
+}
