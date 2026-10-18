@@ -469,9 +469,9 @@ export function CalendarPage() {
               )}
               {visibleDrafts.map(post => (
                 <div key={post.id} className="card" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div className="draft-card">
                     {post.imageUrls && post.imageUrls.length > 0 && (
-                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <div className="draft-card-images">
                         {post.imageUrls.slice(0, 3).map((url, i) => (
                           <img
                             key={i}
@@ -492,8 +492,8 @@ export function CalendarPage() {
                         )}
                       </div>
                     )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div className="draft-card-body">
+                      <div className="draft-card-badges">
                         <span style={{
                           background: 'var(--bg-secondary, #1e293b)',
                           borderRadius: 4,
@@ -543,13 +543,13 @@ export function CalendarPage() {
                       }}>
                         {post.content || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>(No content)</span>}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                      <div className="draft-card-meta">
                         <span>Scheduled: {format(parseISO(post.scheduledAt), 'MMM d, yyyy HH:mm')}</span>
-                        <span>·</span>
+                        <span aria-hidden="true">·</span>
                         <span>Updated {format(parseISO(post.updatedAt), 'MMM d, yyyy HH:mm')}</span>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <div className="draft-card-actions">
                       <button
                         className="btn btn-ghost btn-sm"
                         onClick={() => handleEditDraft(post)}
