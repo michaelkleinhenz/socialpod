@@ -1064,11 +1064,11 @@ export function EpisodePage() {
             )}
             {list.map(draft => (
               <div key={draft.id} className="card" style={{ padding: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div className="news-draft-row">
+                  <div className="news-draft-main">
+                    <div className="news-draft-title">
                       {draft.episodeNumber && (
-                        <span style={{
+                        <span className="news-draft-badge" style={{
                           background: 'var(--accent)',
                           color: '#fff',
                           borderRadius: 4,
@@ -1080,7 +1080,7 @@ export function EpisodePage() {
                         </span>
                       )}
                       {draft.episodeType && (
-                        <span style={{
+                        <span className="news-draft-badge" style={{
                           background: 'var(--bg-secondary, #1e293b)',
                           borderRadius: 4,
                           padding: '1px 6px',
@@ -1090,7 +1090,7 @@ export function EpisodePage() {
                           {draft.episodeType}
                         </span>
                       )}
-                      <span style={{ fontWeight: 600, fontSize: 15 }}>
+                      <span className="news-draft-name">
                         {draft.episodeTitle || '(No title)'}
                       </span>
                     </div>
@@ -1099,7 +1099,7 @@ export function EpisodePage() {
                         Episode date: {format(new Date(draft.episodeDate), 'MMM d, yyyy HH:mm')}
                       </div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                    <div className="news-draft-meta">
                       <span>
                         {showPosted && draft.postedAt
                           ? `Posted ${format(new Date(draft.postedAt), 'MMM d, yyyy HH:mm')}`
@@ -1131,7 +1131,7 @@ export function EpisodePage() {
                       style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
                     />
                   )}
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <div className="news-draft-actions">
                     <button
                       className="btn btn-ghost btn-sm"
                       onClick={() => loadDraftIntoForm(draft)}
