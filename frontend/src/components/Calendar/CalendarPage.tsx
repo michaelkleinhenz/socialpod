@@ -472,14 +472,15 @@ export function CalendarPage() {
                   <div className="draft-card">
                     {post.imageUrls && post.imageUrls.length > 0 && (
                       <div className="draft-card-images">
-                        {post.imageUrls.slice(0, 3).map((url, i) => (
-                          <img
-                            key={i}
-                            src={url.startsWith('/') ? apiUrl + url : url}
-                            alt=""
-                            style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover' }}
-                          />
-                        ))}
+                        {post.imageUrls.slice(0, 3).map((url, i) => {
+                          const thumb = { width: 56, height: 56, borderRadius: 6, objectFit: 'cover' as const };
+                          const abs = (u: string) => (u.startsWith('/') ? apiUrl + u : u);
+                          if (!/\.(mp4|mov|webm)$/i.test(url)) return <img key={i} src={abs(url)} alt="" style={thumb} />;
+                          // A reel's video: its cover when it has one, else the frame it is set to.
+                          if (i === 0 && post.coverUrl) return <img key={i} src={abs(post.coverUrl)} alt="" style={thumb} />;
+                          const at = i === 0 && post.thumbOffset ? post.thumbOffset / 1000 : 0.1;
+                          return <video key={i} src={`${abs(url)}#t=${at}`} muted playsInline preload="metadata" style={thumb} />;
+                        })}
                         {post.imageUrls.length > 3 && (
                           <div style={{
                             width: 56, height: 56, borderRadius: 6,
