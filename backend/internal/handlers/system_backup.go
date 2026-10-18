@@ -76,6 +76,9 @@ type SystemBackupHandler struct {
 	UploadDir string
 	// Store is the S3 bucket; nil when none is configured.
 	Store BackupObjectStore
+	// Agents and OAuth hold state a restore replaces; nil skips them.
+	Agents *AgentHandler
+	OAuth  *OAuthHandler
 
 	// mu serialises backup and restore runs.
 	mu sync.Mutex
@@ -465,6 +468,11 @@ func (h *SystemBackupHandler) restoreFrom(c *gin.Context, f *os.File, size int64
 	}
 
 	log.Printf("[Backup] restoring from %s", source)
+	// Agent runs in progress would go on writing into the data being
+	// replaced; their state in the backup is closed after the restore.
+	if h.Agents != nil {
+		h.Agents.cancelAll()
+	}
 	// Detach from the request so a closed browser tab can't abort a
 	// half-finished restore.
 	rctx := context.WithoutCancel(ctx)
@@ -483,6 +491,15 @@ func (h *SystemBackupHandler) restoreFrom(c *gin.Context, f *os.File, size int64
 		return
 	}
 	h.DB.EnsureIndexes()
+	// Agents that were running when the backup was taken would otherwise
+	// stay marked running, refused a run until the next server start.
+	if h.Agents != nil {
+		h.Agents.recoverInterrupted("Interrupted by a backup restore")
+	}
+	// The ID token signing key is the backup's now.
+	if h.OAuth != nil {
+		h.OAuth.resetSigningKey()
+	}
 	// A backup from before the media library held the watermarks brings
 	// their old collection back.
 	if n, err := MigrateWatermarksToMedia(rctx, h.DB, h.UploadDir); err != nil {

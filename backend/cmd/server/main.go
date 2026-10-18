@@ -168,7 +168,7 @@ func main() {
 	defer agentHandler.StopScheduler()
 
 	// Full-system backups go to an S3-compatible bucket (AWS_* env vars).
-	backupHandler := &handlers.SystemBackupHandler{DB: db, UploadDir: cfg.UploadDir}
+	backupHandler := &handlers.SystemBackupHandler{DB: db, UploadDir: cfg.UploadDir, Agents: agentHandler, OAuth: oauthHandler}
 	if s3 != nil {
 		backupHandler.Store = s3
 		log.Printf("Backup storage: S3 bucket %s", os.Getenv("AWS_S3_BUCKET_NAME"))

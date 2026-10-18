@@ -143,6 +143,14 @@ func (h *OAuthHandler) JWKS(c *gin.Context) {
 	}}})
 }
 
+// resetSigningKey drops the cached signing key, so the next use loads the
+// one in oauth_keys again (after a restore replaced it).
+func (h *OAuthHandler) resetSigningKey() {
+	h.keyMu.Lock()
+	h.key, h.kid = nil, ""
+	h.keyMu.Unlock()
+}
+
 // signingKey loads the ID token signing key, generating and storing one on
 // first use. The oldest stored key wins, so instances racing to create one
 // converge on the same key.

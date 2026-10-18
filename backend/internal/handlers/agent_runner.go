@@ -70,7 +70,7 @@ func (h *AgentHandler) StartScheduler() {
 	if h.stop != nil {
 		return
 	}
-	h.recoverInterrupted()
+	h.recoverInterrupted("Interrupted by a server restart")
 	h.stop = make(chan struct{})
 	ticker := time.NewTicker(30 * time.Second)
 	log.Println("Agent scheduler started")
@@ -94,6 +94,11 @@ func (h *AgentHandler) StopScheduler() {
 		close(h.stop)
 		h.stop = nil
 	}
+	h.cancelAll()
+}
+
+// cancelAll cancels every run in progress in this process.
+func (h *AgentHandler) cancelAll() {
 	h.mu.Lock()
 	for _, cancel := range h.cancels {
 		cancel()
@@ -101,15 +106,17 @@ func (h *AgentHandler) StopScheduler() {
 	h.mu.Unlock()
 }
 
-func (h *AgentHandler) recoverInterrupted() {
+// recoverInterrupted closes the runs left marked running, by a previous
+// process or in a restored backup, and frees their agents.
+func (h *AgentHandler) recoverInterrupted(reason string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	now := time.Now().UTC()
 	h.DB.AgentRuns().UpdateMany(ctx, bson.M{"status": models.AgentRunRunning}, bson.M{"$set": bson.M{
-		"status": models.AgentRunError, "error": "Interrupted by a server restart", "finishedAt": now,
+		"status": models.AgentRunError, "error": reason, "finishedAt": now,
 	}})
 	h.DB.Agents().UpdateMany(ctx, bson.M{"running": true}, bson.M{
-		"$set":   bson.M{"running": false, "lastStatus": models.AgentRunError, "lastError": "Interrupted by a server restart"},
+		"$set":   bson.M{"running": false, "lastStatus": models.AgentRunError, "lastError": reason},
 		"$unset": bson.M{"runStartedAt": ""},
 	})
 }
