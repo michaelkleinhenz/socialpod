@@ -120,6 +120,28 @@ type Post struct {
 	// Origin names what created the post when it was not made by hand in the
 	// editor: "mcp" for MCP clients, or the label an agent passes ("agent").
 	Origin string `bson:"origin,omitempty" json:"origin,omitempty"`
+	// Designs keep images and videos made in the image editor editable: the
+	// editor's whole edit for each, so the post editor reopens it as it was.
+	// A design without an ImageURL has not been exported yet (made over MCP,
+	// or kept unrendered in the post editor); a post holding one stays a
+	// draft until it is exported.
+	Designs []PostDesign `bson:"designs,omitempty" json:"designs,omitempty"`
+	// DesignURLs are the uploads the designs use (photos, image layers,
+	// clips, music, previews), so they stay while the post does.
+	DesignURLs []string `bson:"designUrls,omitempty" json:"-"`
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt    time.Time          `bson:"updatedAt" json:"updatedAt"`
+}
+
+// PostDesign is the editable form of one of a post's images or videos: the
+// image editor's edit as JSON (an image draft's design: {"template", "photo"}).
+type PostDesign struct {
+	// ImageURL is the export among the post's ImageURLs; empty until the
+	// design has been exported.
+	ImageURL string `bson:"imageUrl,omitempty" json:"imageUrl,omitempty"`
+	// PreviewURL is a still of an unexported design, shown in its place.
+	PreviewURL string `bson:"previewUrl,omitempty" json:"previewUrl,omitempty"`
+	// Video marks a video design (one with a length).
+	Video  bool   `bson:"video,omitempty" json:"video,omitempty"`
+	Design string `bson:"design" json:"design,omitempty"`
 }

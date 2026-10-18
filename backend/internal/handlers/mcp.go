@@ -324,6 +324,8 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 		return h.toolPostEpisodeDraft(c, args)
 	case "upload_image":
 		return h.toolUploadImage(c, args)
+	case "create_upload_url":
+		return h.toolCreateUploadURL(c, args)
 	case "get_post_insights":
 		return h.toolGetPostInsights(c, args)
 	case "get_account_insights":
@@ -376,6 +378,24 @@ func thumbOffsetArg(args map[string]any) *int {
 	}
 	o := int(v)
 	return cleanThumbOffset(&o)
+}
+
+// designsArg reads the designs argument of create_post/update_post: nil when
+// absent.
+func designsArg(args map[string]any) (*[]postDesignInput, error) {
+	v, ok := args["designs"]
+	if !ok || v == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("designs: %v", err)
+	}
+	var in []postDesignInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return nil, fmt.Errorf("designs must be a list of {design, imageUrl?, file?, previewUrl?}: %v", err)
+	}
+	return &in, nil
 }
 
 func strArg(args map[string]any, key string) string {
@@ -457,7 +477,9 @@ func (h *MCPHandler) toolListPosts(c *gin.Context, args map[string]any) (any, bo
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	opts := options.Find().SetSort(bson.D{{Key: "scheduledAt", Value: 1}})
+	// The designs' JSON is left out (get_post has it); a list of them would
+	// fill the context.
+	opts := options.Find().SetSort(bson.D{{Key: "scheduledAt", Value: 1}}).SetProjection(bson.M{"designs.design": 0})
 	cursor, err := h.DB.Posts().Find(ctx, filter, opts)
 	if err != nil {
 		return map[string]string{"error": "Failed to fetch posts"}, true
@@ -538,11 +560,27 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 	userID, _ := c.Get("userId")
 	objID, _ := primitive.ObjectIDFromHex(userID.(string))
 
-	imageURLs := strSliceArg(args, "imageUrls")
-	if uploaded, err := h.processInlineImages(args); err != nil {
+	designsIn, err := designsArg(args)
+	if err != nil {
 		return map[string]string{"error": err.Error()}, true
-	} else {
-		imageURLs = append(imageURLs, uploaded...)
+	}
+	imageURLs := strSliceArg(args, "imageUrls")
+	uploaded, err := h.processInlineImages(args)
+	if err != nil {
+		return map[string]string{"error": err.Error()}, true
+	}
+	imageURLs = append(imageURLs, uploaded...)
+	var designs []models.PostDesign
+	var designURLs []string
+	if designsIn != nil {
+		designs, designURLs, err = buildPostDesigns(*designsIn, uploaded, imageURLs)
+		if err == nil && status != models.PostStatusDraft && hasUnexportedDesign(designs) {
+			err = errUnexportedDesign
+		}
+		if err != nil {
+			cleanupUploads(h.DB, h.UploadDir, uploaded)
+			return map[string]string{"error": err.Error()}, true
+		}
 	}
 
 	post := models.Post{
@@ -567,6 +605,9 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 		Origin:           mcpOrigin(args),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
+	}
+	if len(designs) > 0 {
+		post.Designs, post.DesignURLs = designs, designURLs
 	}
 
 	if teamID, ok := c.Get("teamId"); ok {
@@ -669,10 +710,16 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 			unset["thumbOffset"] = ""
 		}
 	}
-	imageURLs := strSliceArg(args, "imageUrls")
-	if uploaded, err := h.processInlineImages(args); err != nil {
+	designs, err := designsArg(args)
+	if err != nil {
 		return map[string]string{"error": err.Error()}, true
-	} else if len(uploaded) > 0 {
+	}
+	imageURLs := strSliceArg(args, "imageUrls")
+	uploaded, err := h.processInlineImages(args)
+	if err != nil {
+		return map[string]string{"error": err.Error()}, true
+	}
+	if len(uploaded) > 0 {
 		if imageURLs == nil {
 			imageURLs = uploaded
 		} else {
@@ -686,8 +733,18 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	var status *models.PostStatus
+	if s, ok := update["status"].(string); ok {
+		st := models.PostStatus(s)
+		status = &st
+	}
+	if err := updatePostDesigns(ctx, h.DB.Posts(), filter, designs, uploaded, imageURLs, status, update, unset); err != nil {
+		cleanupUploads(h.DB, h.UploadDir, uploaded)
+		return map[string]string{"error": err.Error()}, true
+	}
+
 	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
-	if _, ok := unset["coverUrl"]; ok && previousImages == nil {
+	if previousImages == nil && unsetsUploads(unset) {
 		previousImages = collectUploadURLs(ctx, h.DB.Posts(), filter)
 	}
 	change := bson.M{"$set": update}
@@ -2323,6 +2380,16 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to tag on the image (max 20)"},
 					"coverUrl":         map[string]any{"type": "string", "description": "Reel only: URL of an uploaded image to use as the reel's cover"},
 					"thumbOffset":      map[string]any{"type": "integer", "description": "Reel only: the video frame (milliseconds from the start) to use as the cover when there is no coverUrl"},
+					"designs": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"design":     map[string]any{"type": "object", "description": "The image editor design: a template like compose_image's media library templates ({version: 1, width, height, background, layers, and for a video duration in seconds, audio and the layers' anim}), or an editor draft ({version: 1, template, photo?: {src, crop, aspectId, adjustments}}). Image layers, clips and audio refer to uploaded files by URL (create_upload_url)."},
+							"imageUrl":   map[string]any{"type": "string", "description": "The post image (one of its imageUrls) this design was exported as; leave out for a design not exported yet"},
+							"file":       map[string]any{"type": "integer", "description": "Instead of imageUrl: the index of the export among this call's inline images"},
+							"previewUrl": map[string]any{"type": "string", "description": "An uploaded still shown in place of a design not exported yet (e.g. from compose_image with the template)"},
+						},
+						"required": []string{"design"},
+					}, "description": "Editable designs for the post's images or videos: the post editor opens them in the image editor as they were. A design without imageUrl/file has not been exported yet (a video, or an image too large to upload): the user exports it in the post editor, so such a post must be a draft. On update_post the list replaces the stored designs (empty clears); left out, they stay."},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
 						"type": "object",
@@ -2358,6 +2425,16 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames tagged on the image; an empty list clears them"},
 					"coverUrl":         map[string]any{"type": "string", "description": "Reel only: URL of an uploaded cover image; an empty string clears it"},
 					"thumbOffset":      map[string]any{"type": "integer", "description": "Reel only: the cover frame in milliseconds; -1 clears it"},
+					"designs": map[string]any{"type": "array", "items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"design":     map[string]any{"type": "object", "description": "The image editor design: a template like compose_image's media library templates ({version: 1, width, height, background, layers, and for a video duration in seconds, audio and the layers' anim}), or an editor draft ({version: 1, template, photo?: {src, crop, aspectId, adjustments}}). Image layers, clips and audio refer to uploaded files by URL (create_upload_url)."},
+							"imageUrl":   map[string]any{"type": "string", "description": "The post image (one of its imageUrls) this design was exported as; leave out for a design not exported yet"},
+							"file":       map[string]any{"type": "integer", "description": "Instead of imageUrl: the index of the export among this call's inline images"},
+							"previewUrl": map[string]any{"type": "string", "description": "An uploaded still shown in place of a design not exported yet (e.g. from compose_image with the template)"},
+						},
+						"required": []string{"design"},
+					}, "description": "Editable designs for the post's images or videos: the post editor opens them in the image editor as they were. A design without imageUrl/file has not been exported yet (a video, or an image too large to upload): the user exports it in the post editor, so such a post must be a draft. On update_post the list replaces the stored designs (empty clears); left out, they stay."},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
 						"type": "object",
@@ -2730,6 +2807,21 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 				"type":       "object",
 				"properties": map[string]any{"id": map[string]any{"type": "string", "description": "Draft ID"}},
 				"required":   []string{"id"},
+			},
+		},
+		{
+			Name: "create_upload_url",
+			Description: "Get a single-use URL to upload a file to directly, instead of passing it base64 through a tool call: the way to upload anything larger than a small image, above all videos and sounds. " +
+				"Send the file there yourself (curl -T file <uploadUrl>, or curl -F file=@file <uploadUrl>; no Authorization header) before it expires; the URL then stops working. " +
+				"The answer already carries the file's url, which works once the upload is done: use it in imageUrls, a design's image layers (src) and audio, coverUrl, add_media, get_image or transcribe. " +
+				"An upload nothing references is deleted after a day.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"filename":         map[string]any{"type": "string", "description": "The file's name with extension, which sets its type: jpg, jpeg, png, gif, webp (max 30 MB), mp4, mov, webm (max 200 MB), mp3, m4a, aac, wav, ogg (max 50 MB), ttf, otf (max 10 MB)"},
+					"expiresInMinutes": map[string]any{"type": "integer", "description": "How long the URL stays valid (default 60, max 1440)"},
+				},
+				"required": []string{"filename"},
 			},
 		},
 		{

@@ -113,6 +113,7 @@ func imageToolDefinitions() []mcpTool {
 					"tags":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required tags"},
 					"kind":    map[string]any{"type": "string", "enum": []string{"image", "video", "audio", "font", "color", "template", "watermark"}, "description": "Only this kind of entry (default all). A template is a design for the image editor; its url is a preview image. watermark: the images marked as watermarks"},
 					"limit":   map[string]any{"type": "number", "description": "Maximum results (default 50, max 200)"},
+					"design":  map[string]any{"type": "boolean", "description": "Include each template's design JSON (template): a starting point to edit and pass as a post's design (create_post designs), e.g. a reel template whose clips and texts you replace"},
 					"preview": map[string]any{"type": "boolean", "description": "Attach thumbnails"},
 				},
 			},
@@ -491,7 +492,10 @@ func (h *MCPHandler) toolListMedia(c *gin.Context, args map[string]any) (any, bo
 			if t, err := services.ParseTemplateDesign(it.Template); err == nil {
 				info.TemplateDuration = t.Duration
 			}
-			info.Template = ""
+			// The design's JSON only on request: to start a post's design from.
+			if !boolArg(args, "design") {
+				info.Template = ""
+			}
 		}
 		out = append(out, info)
 		if boolArg(args, "preview") && len(images) < 12 && (strings.HasPrefix(it.ContentType, "image/") || isFontContentType(it.ContentType) || it.ContentType == models.MediaTemplateType) {

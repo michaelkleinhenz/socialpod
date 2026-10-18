@@ -56,6 +56,8 @@ type CreatePostInput struct {
 	UserTags         []string          `json:"userTags,omitempty"`
 	CoverURL         string            `json:"coverUrl,omitempty"`
 	ThumbOffset      *int              `json:"thumbOffset,omitempty"`
+	// Designs keep images made in the image editor editable (post_designs.go).
+	Designs []postDesignInput `json:"designs,omitempty"`
 }
 
 // cleanThumbOffset keeps a reel cover's frame offset (ms) when it is one:
@@ -88,6 +90,10 @@ type UpdatePostInput struct {
 	// URL or a negative offset clears.
 	CoverURL    *string `json:"coverUrl,omitempty"`
 	ThumbOffset *int    `json:"thumbOffset,omitempty"`
+	// Designs replace the stored ones when present (an empty list clears
+	// them). Absent, the stored ones stay, less those of images the update
+	// drops.
+	Designs *[]postDesignInput `json:"designs,omitempty"`
 }
 
 const (
@@ -211,15 +217,28 @@ func (h *PostHandler) Create(c *gin.Context) {
 	defer cancel()
 
 	// Upload any attached image files and append their URLs to the post.
+	var uploaded []string
 	if form, err := c.MultipartForm(); err == nil {
 		for _, fh := range form.File["images"] {
 			url, uploadErr := h.saveUpload(ctx, fh)
 			if uploadErr != nil {
+				cleanupUploads(h.DB, h.UploadDir, uploaded)
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
 				return
 			}
+			uploaded = append(uploaded, url)
 			input.ImageURLs = append(input.ImageURLs, url)
 		}
+	}
+
+	designs, designURLs, err := buildPostDesigns(input.Designs, uploaded, input.ImageURLs)
+	if err == nil && status != models.PostStatusDraft && hasUnexportedDesign(designs) {
+		err = errUnexportedDesign
+	}
+	if err != nil {
+		cleanupUploads(h.DB, h.UploadDir, uploaded)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	postType := input.PostType
@@ -246,6 +265,9 @@ func (h *PostHandler) Create(c *gin.Context) {
 		ThumbOffset:      cleanThumbOffset(input.ThumbOffset),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
+	}
+	if len(designs) > 0 {
+		post.Designs, post.DesignURLs = designs, designURLs
 	}
 
 	if input.EpisodeNews != nil {
@@ -402,18 +424,28 @@ func (h *PostHandler) Update(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	var uploaded []string
 	if form, err := c.MultipartForm(); err == nil {
 		for _, fh := range form.File["images"] {
 			url, uploadErr := h.saveUpload(ctx, fh)
 			if uploadErr != nil {
+				cleanupUploads(h.DB, h.UploadDir, uploaded)
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + uploadErr.Error()})
 				return
 			}
+			uploaded = append(uploaded, url)
 			input.ImageURLs = append(input.ImageURLs, url)
 		}
 	}
 
 	update := bson.M{"updatedAt": time.Now()}
+	unset := bson.M{}
+
+	if err := updatePostDesigns(ctx, h.DB.Posts(), filter, input.Designs, uploaded, input.ImageURLs, input.Status, update, unset); err != nil {
+		cleanupUploads(h.DB, h.UploadDir, uploaded)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	if input.Content != nil {
 		update["content"] = *input.Content
@@ -458,7 +490,6 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.UserTags != nil {
 		update["userTags"] = cleanUsernames(*input.UserTags, 20)
 	}
-	unset := bson.M{}
 	if input.CoverURL != nil {
 		if u := strings.TrimSpace(*input.CoverURL); u != "" {
 			update["coverUrl"] = u
@@ -475,8 +506,7 @@ func (h *PostHandler) Update(c *gin.Context) {
 	}
 
 	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
-
-	if _, ok := unset["coverUrl"]; ok && previousImages == nil {
+	if previousImages == nil && unsetsUploads(unset) {
 		previousImages = collectUploadURLs(ctx, h.DB.Posts(), filter)
 	}
 	change := bson.M{"$set": update}

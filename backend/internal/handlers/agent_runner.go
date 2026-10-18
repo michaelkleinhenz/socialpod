@@ -550,12 +550,19 @@ func withoutImageParts(messages []map[string]any) []map[string]any {
 	return out
 }
 
+// agentHiddenTools are MCP tools a built-in agent cannot use: it has no way
+// to send a file to a single-use upload URL (it has upload_from_url).
+var agentHiddenTools = map[string]bool{"create_upload_url": true}
+
 // agentTools is the tool list in OpenAI function format: the MCP tools plus
 // the runner's own.
 func (h *AgentHandler) agentTools() []map[string]any {
 	defs := append(h.MCP.toolDefinitions(), agentBuiltinToolDefinitions()...)
 	tools := make([]map[string]any, 0, len(defs))
 	for _, d := range defs {
+		if agentHiddenTools[d.Name] {
+			continue
+		}
 		tools = append(tools, map[string]any{
 			"type": "function",
 			"function": map[string]any{

@@ -36,6 +36,8 @@ var uploadReferences = []uploadReference{
 	{func(db *database.MongoDB) *mongo.Collection { return db.Posts() }, "imageUrls"},
 	// A reel's cover image.
 	{func(db *database.MongoDB) *mongo.Collection { return db.Posts() }, "coverUrl"},
+	// What a post's editable designs use (photos, layers, clips, previews).
+	{func(db *database.MongoDB) *mongo.Collection { return db.Posts() }, "designUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.NewsDrafts() }, "imageUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.EpisodeDrafts() }, "imageUrls"},
 	{func(db *database.MongoDB) *mongo.Collection { return db.ConventionQueueItems() }, "imageUrl"},
@@ -125,10 +127,19 @@ func cleanupUploads(db *database.MongoDB, uploadDir string, urls []string) int {
 func previousUploadURLs(ctx context.Context, coll *mongo.Collection, filter, update bson.M) []string {
 	_, images := update["imageUrls"]
 	_, cover := update["coverUrl"]
-	if !images && !cover {
+	_, designs := update["designUrls"]
+	if !images && !cover && !designs {
 		return nil
 	}
 	return collectUploadURLs(ctx, coll, filter)
+}
+
+// unsetsUploads reports whether an update's $unset drops a field holding
+// uploads, whose files previousUploadURLs then has not collected.
+func unsetsUploads(unset bson.M) bool {
+	_, cover := unset["coverUrl"]
+	_, designs := unset["designUrls"]
+	return cover || designs
 }
 
 // deleteOneAndCollectUploadURLs deletes the single document matching filter
@@ -154,6 +165,8 @@ func deleteOneAndCollectUploadURLs(ctx context.Context, coll *mongo.Collection, 
 		CoverURL string `bson:"coverUrl"`
 		// The images a media library template uses.
 		TemplateURLs []string `bson:"templateUrls"`
+		// What a post's designs use.
+		DesignURLs []string `bson:"designUrls"`
 	}
 	if err := res.Decode(&doc); err != nil {
 		log.Printf("upload cleanup: failed to read images off deleted document: %v", err)
@@ -171,6 +184,7 @@ func deleteOneAndCollectUploadURLs(ctx context.Context, coll *mongo.Collection, 
 		urls = append(urls, doc.CoverURL)
 	}
 	urls = append(urls, doc.TemplateURLs...)
+	urls = append(urls, doc.DesignURLs...)
 	return urls, nil
 }
 
@@ -181,7 +195,7 @@ func deleteOneAndCollectUploadURLs(ctx context.Context, coll *mongo.Collection, 
 // for it. Errors only cost cleanup, so they are logged and whatever was read
 // is returned.
 func collectUploadURLs(ctx context.Context, coll *mongo.Collection, filter bson.M) []string {
-	projection := bson.M{"imageUrl": 1, "imageUrls": 1, "coverUrl": 1}
+	projection := bson.M{"imageUrl": 1, "imageUrls": 1, "coverUrl": 1, "designUrls": 1}
 	cursor, err := coll.Find(ctx, filter, options.Find().SetProjection(projection))
 	if err != nil {
 		log.Printf("upload cleanup: failed to list images for bulk delete: %v", err)
@@ -190,9 +204,10 @@ func collectUploadURLs(ctx context.Context, coll *mongo.Collection, filter bson.
 	defer cursor.Close(ctx)
 
 	var docs []struct {
-		ImageURL  string   `bson:"imageUrl"`
-		ImageURLs []string `bson:"imageUrls"`
-		CoverURL  string   `bson:"coverUrl"`
+		ImageURL   string   `bson:"imageUrl"`
+		ImageURLs  []string `bson:"imageUrls"`
+		CoverURL   string   `bson:"coverUrl"`
+		DesignURLs []string `bson:"designUrls"`
 	}
 	if err := cursor.All(ctx, &docs); err != nil {
 		log.Printf("upload cleanup: failed to decode images for bulk delete: %v", err)
@@ -208,6 +223,7 @@ func collectUploadURLs(ctx context.Context, coll *mongo.Collection, filter bson.
 		if d.CoverURL != "" {
 			urls = append(urls, d.CoverURL)
 		}
+		urls = append(urls, d.DesignURLs...)
 	}
 	return urls
 }

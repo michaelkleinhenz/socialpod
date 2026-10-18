@@ -51,6 +51,7 @@ func TestUploadReferencesCoverOwningCollections(t *testing.T) {
 	want := []string{
 		"posts.imageUrls",
 		"posts.coverUrl",
+		"posts.designUrls",
 		"news_drafts.imageUrls",
 		"episode_drafts.imageUrls",
 		"convention_queue_items.imageUrl",
