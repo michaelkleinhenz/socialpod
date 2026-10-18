@@ -365,6 +365,17 @@ func (h *MCPHandler) callTool(c *gin.Context, name string, args map[string]any) 
 	}
 }
 
+// thumbOffsetArg reads a reel's cover frame (ms) from the thumbOffset
+// argument; nil when absent or negative.
+func thumbOffsetArg(args map[string]any) *int {
+	v, ok := args["thumbOffset"].(float64)
+	if !ok {
+		return nil
+	}
+	o := int(v)
+	return cleanThumbOffset(&o)
+}
+
 func strArg(args map[string]any, key string) string {
 	if v, ok := args[key]; ok {
 		if s, ok := v.(string); ok {
@@ -547,6 +558,8 @@ func (h *MCPHandler) toolCreatePost(c *gin.Context, args map[string]any) (any, b
 		ImageURLs:        imageURLs,
 		Collaborators:    cleanUsernames(strSliceArg(args, "collaborators"), 3),
 		UserTags:         cleanUsernames(strSliceArg(args, "userTags"), 20),
+		CoverURL:         strings.TrimSpace(strArg(args, "coverUrl")),
+		ThumbOffset:      thumbOffsetArg(args),
 		SourceURL:        strings.TrimSpace(strArg(args, "sourceUrl")),
 		SourceKey:        sourceKey(strArg(args, "sourceUrl")),
 		Origin:           mcpOrigin(args),
@@ -639,6 +652,21 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	if _, ok := args["userTags"]; ok {
 		update["userTags"] = cleanUsernames(strSliceArg(args, "userTags"), 20)
 	}
+	unset := bson.M{}
+	if v, ok := args["coverUrl"].(string); ok {
+		if v = strings.TrimSpace(v); v != "" {
+			update["coverUrl"] = v
+		} else {
+			unset["coverUrl"] = ""
+		}
+	}
+	if _, ok := args["thumbOffset"]; ok {
+		if o := thumbOffsetArg(args); o != nil {
+			update["thumbOffset"] = *o
+		} else {
+			unset["thumbOffset"] = ""
+		}
+	}
 	imageURLs := strSliceArg(args, "imageUrls")
 	if uploaded, err := h.processInlineImages(args); err != nil {
 		return map[string]string{"error": err.Error()}, true
@@ -657,8 +685,15 @@ func (h *MCPHandler) toolUpdatePost(c *gin.Context, args map[string]any) (any, b
 	defer cancel()
 
 	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
+	if _, ok := unset["coverUrl"]; ok && previousImages == nil {
+		previousImages = collectUploadURLs(ctx, h.DB.Posts(), filter)
+	}
+	change := bson.M{"$set": update}
+	if len(unset) > 0 {
+		change["$unset"] = unset
+	}
 
-	res, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
+	res, err := h.DB.Posts().UpdateOne(ctx, filter, change)
 	if err != nil || res.MatchedCount == 0 {
 		return map[string]string{"error": "Post not found"}, true
 	}
@@ -2283,6 +2318,8 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"origin":           map[string]any{"type": "string", "description": "Short label for who created it, e.g. agent (lower-case slug; default mcp). Drafts with an origin count towards the team's agent draft limit and are marked in the Drafts list."},
 					"collaborators":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to invite as collaborators (max 3); the post also appears on their profile once they accept"},
 					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames to tag on the image (max 20)"},
+					"coverUrl":         map[string]any{"type": "string", "description": "Reel only: URL of an uploaded image to use as the reel's cover"},
+					"thumbOffset":      map[string]any{"type": "integer", "description": "Reel only: the video frame (milliseconds from the start) to use as the cover when there is no coverUrl"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
 						"type": "object",
@@ -2316,6 +2353,8 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"sourceUrl":        map[string]any{"type": "string", "description": "The page or BGG entry the post is about; find_existing uses it to detect duplicates"},
 					"collaborators":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram collaborator usernames (max 3); an empty list clears them"},
 					"userTags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Instagram usernames tagged on the image; an empty list clears them"},
+					"coverUrl":         map[string]any{"type": "string", "description": "Reel only: URL of an uploaded cover image; an empty string clears it"},
+					"thumbOffset":      map[string]any{"type": "integer", "description": "Reel only: the cover frame in milliseconds; -1 clears it"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
 						"type": "object",

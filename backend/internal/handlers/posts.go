@@ -54,6 +54,18 @@ type CreatePostInput struct {
 	EpisodeNews      *EpisodeNewsInput `json:"episodeNews,omitempty"`
 	Collaborators    []string          `json:"collaborators,omitempty"`
 	UserTags         []string          `json:"userTags,omitempty"`
+	CoverURL         string            `json:"coverUrl,omitempty"`
+	ThumbOffset      *int              `json:"thumbOffset,omitempty"`
+}
+
+// cleanThumbOffset keeps a reel cover's frame offset (ms) when it is one:
+// nil for none or a negative value.
+func cleanThumbOffset(o *int) *int {
+	if o == nil || *o < 0 {
+		return nil
+	}
+	v := *o
+	return &v
 }
 
 type UpdatePostInput struct {
@@ -72,6 +84,10 @@ type UpdatePostInput struct {
 	// when present (an empty list clears them) and are left alone when absent.
 	Collaborators *[]string `json:"collaborators,omitempty"`
 	UserTags      *[]string `json:"userTags,omitempty"`
+	// A reel's cover image and frame offset (ms); present replaces, an empty
+	// URL or a negative offset clears.
+	CoverURL    *string `json:"coverUrl,omitempty"`
+	ThumbOffset *int    `json:"thumbOffset,omitempty"`
 }
 
 const (
@@ -226,6 +242,8 @@ func (h *PostHandler) Create(c *gin.Context) {
 		ContentOverrides: input.ContentOverrides,
 		Collaborators:    cleanUsernames(input.Collaborators, 3),
 		UserTags:         cleanUsernames(input.UserTags, 20),
+		CoverURL:         strings.TrimSpace(input.CoverURL),
+		ThumbOffset:      cleanThumbOffset(input.ThumbOffset),
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
@@ -440,10 +458,32 @@ func (h *PostHandler) Update(c *gin.Context) {
 	if input.UserTags != nil {
 		update["userTags"] = cleanUsernames(*input.UserTags, 20)
 	}
+	unset := bson.M{}
+	if input.CoverURL != nil {
+		if u := strings.TrimSpace(*input.CoverURL); u != "" {
+			update["coverUrl"] = u
+		} else {
+			unset["coverUrl"] = ""
+		}
+	}
+	if input.ThumbOffset != nil {
+		if o := cleanThumbOffset(input.ThumbOffset); o != nil {
+			update["thumbOffset"] = *o
+		} else {
+			unset["thumbOffset"] = ""
+		}
+	}
 
 	previousImages := previousUploadURLs(ctx, h.DB.Posts(), filter, update)
 
-	result, err := h.DB.Posts().UpdateOne(ctx, filter, bson.M{"$set": update})
+	if _, ok := unset["coverUrl"]; ok && previousImages == nil {
+		previousImages = collectUploadURLs(ctx, h.DB.Posts(), filter)
+	}
+	change := bson.M{"$set": update}
+	if len(unset) > 0 {
+		change["$unset"] = unset
+	}
+	result, err := h.DB.Posts().UpdateOne(ctx, filter, change)
 	if err != nil || result.MatchedCount == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
 		return

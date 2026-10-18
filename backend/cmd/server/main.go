@@ -157,6 +157,7 @@ func main() {
 	emailService := &services.EmailService{DB: db}
 	inviteHandler := &handlers.InviteHandler{DB: db, Email: emailService, AppURL: cfg.AppURL, JWTSecret: cfg.JWTSecret}
 	growthHandler := &handlers.GrowthHandler{DB: db, Scheduler: scheduler, UploadDir: cfg.UploadDir}
+	transcribeHandler := &handlers.TranscribeHandler{DB: db}
 	mediaHandler := &handlers.MediaHandler{DB: db, UploadDir: cfg.UploadDir}
 	handlers.SetAppBaseURL(cfg.AppURL)
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler, Scheduler: scheduler}
@@ -286,6 +287,7 @@ func main() {
 		auth.GET("/growth/instagram", growthHandler.Overview)
 		auth.POST("/growth/refresh", growthHandler.RefreshInsights)
 		auth.POST("/growth/rewrite-instagram", growthHandler.RewriteInstagram)
+		auth.POST("/transcribe", transcribeHandler.Transcribe)
 		auth.POST("/posts/:id/insights", growthHandler.RefreshPostInsights)
 		auth.GET("/dashboard/stats", adminHandler.DashboardStats)
 

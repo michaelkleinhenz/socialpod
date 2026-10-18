@@ -108,6 +108,11 @@ type Post struct {
 	// UserTags are Instagram usernames tagged on the image (on the first slide
 	// of a carousel, on the video of a reel).
 	UserTags []string `bson:"userTags,omitempty" json:"userTags,omitempty"`
+	// A reel's cover: an image of its own (an upload) or, without one, the
+	// frame at ThumbOffset milliseconds into the video. Neither set leaves
+	// it to Instagram, which takes the first frame.
+	CoverURL    string `bson:"coverUrl,omitempty" json:"coverUrl,omitempty"`
+	ThumbOffset *int   `bson:"thumbOffset,omitempty" json:"thumbOffset,omitempty"`
 	// SourceURL is the web page or BGG entry the post is about, SourceKey its
 	// normalised form (see handlers.sourceKey) for duplicate checks.
 	SourceURL string `bson:"sourceUrl,omitempty" json:"sourceUrl,omitempty"`

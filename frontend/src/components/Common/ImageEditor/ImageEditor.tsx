@@ -4,13 +4,13 @@ import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label,
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
   Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
-  ALargeSmall, Blend, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
+  ALargeSmall, Blend, Captions, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
 import type { ImageDraft, MediaItem } from '../../../types';
 import {
-  applyAdjustments, BLEND_MODES, BUILTIN_FONTS, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
+  applyAdjustments, BLEND_MODES, BUILTIN_FONTS, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, cssFontFamily, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
   instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, SHAPE_KINDS,
   shapeLayerParts, sourceSize, textLayerAttrs, toTemplate,
   type Adjustments, type AudioTrack, type BlendMode, type ClipInfo, type BorderStyle, type CropBox, type EditorCanvas, type EditorDraft, type EditorLayer, type EditorTemplate, type ImageLayer, type ImagePart,
@@ -28,12 +28,27 @@ import {
 import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
 import { BottomSheet, MiniToolbar, PhoneBar, PhoneTray, type BarItem, type TraySub } from './PhoneParts';
-import { canExportVideo, renderVideo } from './videoExport';
+import { canExportVideo, renderVideo, speechAudio } from './videoExport';
+import {
+  CAPTION_LENGTHS, CAPTION_PLACES, CAPTION_STYLES, captionCues, captionLayer, cueOf, isCaption, type CaptionOptions,
+} from './captions';
 import { nearestFormat, SYSTEM_CATEGORIES, SYSTEM_FORMATS, SYSTEM_TEMPLATES, TEMPLATE_ASSETS, type SystemCategory, type SystemFormat, type SystemTemplate } from './systemTemplates';
 import { SystemTemplateTile } from './SystemTemplateTile';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush' | 'animate';
+
+// The languages auto-captions offer; empty lets the transcription tell.
+const CAPTION_LANGUAGES = [
+  { code: '', label: 'Detect the language' },
+  { code: 'de', label: 'German' },
+  { code: 'en', label: 'English' },
+  { code: 'fr', label: 'French' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'it', label: 'Italian' },
+  { code: 'nl', label: 'Dutch' },
+];
+const CAPTION_LANGUAGE_KEY = 'socialpod.imageEditor.captionLanguage';
 
 // Where the editor switches to its phone layout (PhoneParts.tsx).
 const PHONE_QUERY = '(max-width: 768px)';
@@ -232,6 +247,13 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  // Auto-captions: how the next ones are made, and whether they are being.
+  const [captionLanguage, setCaptionLanguage] = useState(() => {
+    try { return localStorage.getItem(CAPTION_LANGUAGE_KEY) ?? ''; } catch { return ''; }
+  });
+  const [captionLength, setCaptionLength] = useState<number>(3);
+  const [captionOptions, setCaptionOptions] = useState<CaptionOptions>({ style: CAPTION_STYLES[0], fontFamily: BUILTIN_FONTS[0].family, place: 'lower' });
+  const [captioning, setCaptioning] = useState(false);
   // A pasted or picked image on its way onto the picture.
   const [placingImage, setPlacingImage] = useState(false);
   // The font size field while it is being typed in, which may not be a valid
@@ -1563,6 +1585,122 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (!isTouch) startTextEdit(base.id, { selectAll: true });
   };
 
+  // --- Captions -------------------------------------------------------------
+
+  const captionCount = layers.filter(isCaption).length;
+
+  // Transcribes the clips' sound and lays the words on the video as caption
+  // texts, replacing any made before. One undo step.
+  const makeCaptions = async () => {
+    if (!crop || captioning) return;
+    setCaptioning(true);
+    try {
+      const audio = await speechAudio(layers, duration, resolveUrl);
+      if (!audio) {
+        toast.error('No clip on the video has any sound to caption');
+        return;
+      }
+      const { words } = await api.transcribe(audio, captionLanguage);
+      const cues = captionCues(words, captionLength, duration);
+      if (!cues.length) {
+        toast.error('No speech was found in the clips');
+        return;
+      }
+      const made = cues.map(cue => captionLayer(cue, captionOptions, crop, newLayerId()));
+      checkpoint();
+      setLayers(prev => [...prev.filter(l => !isCaption(l)), ...made]);
+      if (selectedId && layers.some(l => l.id === selectedId && isCaption(l))) setSelectedId(null);
+      toast.success(`${made.length} caption${made.length === 1 ? '' : 's'} added`);
+    } catch (err) {
+      toast.error(`Captions failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setCaptioning(false);
+    }
+  };
+
+  // Sets how captions look and lays the ones on the video out again in that
+  // look, keeping their (possibly retyped) words and times.
+  const changeCaptionOptions = (patch: Partial<CaptionOptions>) => {
+    const next = { ...captionOptions, ...patch };
+    setCaptionOptions(next);
+    if (!crop || !captionCount) return;
+    checkpoint('captions');
+    setLayers(prev => prev.map(l => (isCaption(l) ? { ...captionLayer(cueOf(l, duration), next, crop, l.id), blend: l.blend } : l)));
+  };
+
+  const removeCaptions = () => {
+    if (!captionCount) return;
+    checkpoint();
+    setLayers(prev => prev.filter(l => !isCaption(l)));
+    if (selectedId && layers.some(l => l.id === selectedId && isCaption(l))) setSelectedId(null);
+  };
+
+  const changeCaptionLanguage = (code: string) => {
+    setCaptionLanguage(code);
+    try { localStorage.setItem(CAPTION_LANGUAGE_KEY, code); } catch { /* per-viewer convenience only */ }
+  };
+
+  const captionControls = () => (
+    <>
+      <span className="ie-label ie-section"><Captions size={14} /> Captions</span>
+      <p className="ie-hint">
+        Turns what is said in the clips into captions that show while the words are spoken. Each one is a text you can retype, move or restyle.
+      </p>
+      <div className="ie-row">
+        <select className="ie-select" value={captionLanguage} onChange={e => changeCaptionLanguage(e.target.value)} aria-label="Spoken language">
+          {CAPTION_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
+      </div>
+      <div className="ie-row ie-scroll">
+        {CAPTION_LENGTHS.map(c => (
+          <button key={c.id} className={`ie-chip ${captionLength === c.id ? 'active' : ''}`} onClick={() => setCaptionLength(c.id)}>{c.label}</button>
+        ))}
+      </div>
+      <div className="ie-row ie-scroll">
+        {CAPTION_STYLES.map(st => (
+          <button
+            key={st.id}
+            className={`ie-chip ${captionOptions.style.id === st.id ? 'active' : ''}`}
+            onClick={() => changeCaptionOptions({ style: st })}
+          >
+            {st.label}
+          </button>
+        ))}
+      </div>
+      <div className="ie-row">
+        <select
+          className="ie-select"
+          value={captionOptions.fontFamily}
+          onChange={e => changeCaptionOptions({ fontFamily: e.target.value })}
+          aria-label="Caption font"
+        >
+          {fonts.map(f => (
+            <option key={f.family} value={f.family} style={{ fontFamily: cssFontFamily(f.family) }}>{f.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="ie-row ie-scroll">
+        {CAPTION_PLACES.map(pl => (
+          <button key={pl.id} className={`ie-chip ${captionOptions.place === pl.id ? 'active' : ''}`} onClick={() => changeCaptionOptions({ place: pl.id })}>
+            {pl.label}
+          </button>
+        ))}
+      </div>
+      <div className="ie-row">
+        <button className="ie-chip" onClick={() => void makeCaptions()} disabled={captioning || !layers.some(l => l.kind === 'image' && l.clip)}>
+          {captioning ? <Loader2 size={14} className="ie-spin" /> : <Captions size={14} />}
+          {captioning ? ' Transcribing…' : captionCount ? ' Redo captions' : ' Make captions'}
+        </button>
+        {captionCount > 0 && (
+          <button className="ie-chip" onClick={removeCaptions} disabled={captioning}><Trash2 size={14} /> Remove captions</button>
+        )}
+      </div>
+      {captionCount > 0 && (
+        <p className="ie-hint">{captionCount} caption{captionCount === 1 ? '' : 's'} on the video. Style, font and place apply to all of them; redoing them replaces them, your edits included.</p>
+      )}
+    </>
+  );
+
   // Instagram's interface covers a full-screen 9:16 frame only, so the zone
   // (and its switch) shows while the crop or canvas has that shape.
   const zone = safeZone && crop && Math.abs(crop.width * 16 - crop.height * 9) <= crop.height * 0.2 ? safeZone : undefined;
@@ -2794,6 +2932,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           {uploadingMedia ? <Loader2 size={14} className="ie-spin" /> : <Upload size={14} />} Upload a clip
         </button>
       </div>
+      {captionControls()}
       {musicControls()}
     </>
   );
@@ -2974,7 +3113,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             body: (
               <div className="ie-row ie-scroll">
                 {fonts.map(f => (
-                  <button key={f.family} className={`ie-chip ${l.fontFamily === f.family ? 'active' : ''}`} style={{ fontFamily: f.family }} onClick={() => updateLayer(l.id, { fontFamily: f.family })}>
+                  <button key={f.family} className={`ie-chip ${l.fontFamily === f.family ? 'active' : ''}`} style={{ fontFamily: cssFontFamily(f.family) }} onClick={() => updateLayer(l.id, { fontFamily: f.family })}>
                     {f.label}
                   </button>
                 ))}
@@ -3318,7 +3457,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                       <option value={selected.fontFamily}>{selected.fontFamily}</option>
                     )}
                     {fonts.map(f => (
-                      <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>{f.label}</option>
+                      <option key={f.family} value={f.family} style={{ fontFamily: cssFontFamily(f.family) }}>{f.label}</option>
                     ))}
                   </select>
                   <input
@@ -3739,7 +3878,7 @@ function InlineTextEditor({ ref, layer, scale, origin, onChange, onDone }: {
         width: m.width * scale + room,
         height: m.height * scale,
         transform: `rotate(${layer.rotation}deg) translateX(${-shift}px)`,
-        fontFamily: layer.fontFamily,
+        fontFamily: cssFontFamily(layer.fontFamily),
         fontSize,
         fontWeight: layer.bold ? 'bold' : 'normal',
         textAlign: align,

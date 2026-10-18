@@ -158,6 +158,17 @@ export const BUILTIN_FONTS: FontOption[] = [
   { label: 'Comic Sans MS', family: 'Comic Sans MS, cursive' },
 ];
 
+// A font family as CSS takes it: every name with a space quoted, as Konva
+// does for the canvas. Unquoted, a library font's family (`SocialPod Media
+// <id>`, the id possibly starting with a digit) is invalid CSS and the
+// browser falls back to its default font.
+export function cssFontFamily(family: string): string {
+  return family.split(',').map(f => {
+    f = f.trim();
+    return f.includes(' ') && !/["']/.test(f) ? `"${f}"` : f;
+  }).join(', ');
+}
+
 export type TextAlign = 'left' | 'center' | 'right';
 
 export interface TextLayer {
@@ -172,6 +183,9 @@ export interface TextLayer {
   shadow: boolean;
   // How the lines of a multi-line text line up; centred when absent.
   align?: TextAlign;
+  // An auto-caption of the video's speech (captions.ts), which the Captions
+  // section restyles and removes together.
+  caption?: boolean;
   x: number;
   y: number;
   rotation: number;
@@ -787,6 +801,7 @@ function templateLayer(l: EditorLayer, crop: CropBox): TemplateLayer {
   return {
     kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
     bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
+    ...(l.caption ? { caption: true } : {}),
   };
 }
 

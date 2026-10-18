@@ -218,6 +218,10 @@ export interface Post {
   episodeNews?: EpisodeNews;
   collaborators?: string[];
   userTags?: string[];
+  /** A reel's own cover image (an upload). */
+  coverUrl?: string;
+  /** A reel's cover frame, in ms into the video, when it has no coverUrl. */
+  thumbOffset?: number;
   /** The page or BGG entry the post is about (set by MCP agents). */
   sourceUrl?: string;
   /** What created the post when not made in the editor: "mcp" or an agent's label. */

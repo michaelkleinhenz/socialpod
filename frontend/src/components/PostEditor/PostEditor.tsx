@@ -10,6 +10,7 @@ import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import toast from 'react-hot-toast';
 import { MentionTextarea } from './MentionTextarea';
+import { ReelCoverPicker, type ReelCover } from './ReelCoverPicker';
 import './PostEditor.css';
 
 // Module-level cache so the SDK is initialized once per page load and login
@@ -554,6 +555,18 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [creatingImage, setCreatingImage] = useState(false);
   // The same editor making a video, for a reel or a story.
   const [creatingVideo, setCreatingVideo] = useState(false);
+  // A reel's cover, and whether its picker is open.
+  const initialCover: ReelCover = { coverUrl: post?.coverUrl ?? '', thumbOffset: post?.thumbOffset ?? null };
+  const [reelCover, setReelCover] = useState<ReelCover>(initialCover);
+  const [pickingCover, setPickingCover] = useState(false);
+  // A frame picked as the cover belongs to the video it was picked in: a new
+  // video drops it (an own cover image stays).
+  const coverVideo = useRef(images[0]);
+  useEffect(() => {
+    if (coverVideo.current === images[0]) return;
+    coverVideo.current = images[0];
+    setReelCover(c => (c.thumbOffset === null ? c : { ...c, thumbOffset: null }));
+  }, [images]);
   // Overlay picked inside the cropper. Starts empty on every open — a post
   // image gets a watermark only when someone asks for one.
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
@@ -1138,6 +1151,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         accountIds,
         collaborators: igSelected ? collaborators : [],
         userTags: igSelected ? userTags : [],
+        // Empty and -1 clear what an edited reel had.
+        ...(isReel ? { coverUrl: reelCover.coverUrl, thumbOffset: reelCover.thumbOffset ?? -1 } : {}),
       };
 
       await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
@@ -1153,7 +1168,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     || images.length !== (post?.imageUrls || []).length
     || JSON.stringify(footerIds) !== JSON.stringify(post?.footerIds || {})
     || JSON.stringify(contentOverrides) !== JSON.stringify(post?.contentOverrides || {})
-    || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || []);
+    || JSON.stringify(collaborators) !== JSON.stringify(post?.collaborators || [])
+    || reelCover.coverUrl !== initialCover.coverUrl || reelCover.thumbOffset !== initialCover.thumbOffset;
 
   // An image-only import leaves the texts alone, so they stay usable meanwhile.
   const fetchingBggText = fetchingBgg && !(bggImageOnly && !isReel);
@@ -1751,6 +1767,26 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                   })}
                 </div>
               )}
+              {isReel && images.length > 0 && (
+                <div className="reel-cover-row">
+                  <div className="reel-cover-thumb">
+                    {reelCover.coverUrl
+                      ? <img src={reelCover.coverUrl.startsWith('/') ? apiUrl + reelCover.coverUrl : reelCover.coverUrl} alt="Reel cover" />
+                      : <video src={`${previewUrl(images[0])}#t=${(reelCover.thumbOffset ?? 0) / 1000}`} muted playsInline preload="metadata" />}
+                  </div>
+                  <div className="reel-cover-info">
+                    <span className="reel-cover-label">Cover</span>
+                    <span>
+                      {reelCover.coverUrl ? 'Your own image'
+                        : reelCover.thumbOffset !== null ? `Frame at ${(reelCover.thumbOffset / 1000).toFixed(1)} s`
+                        : 'Instagram picks the first frame'}
+                    </span>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPickingCover(true)}>
+                    <Image size={14} /> Choose cover
+                  </button>
+                </div>
+              )}
               <input
                 ref={fileRef}
                 type="file"
@@ -1924,6 +1960,16 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
             setCreatingVideo(false);
             toast.success('Video added');
           }}
+        />
+      )}
+
+      {pickingCover && images[0] && (
+        <ReelCoverPicker
+          videoSrc={previewUrl(images[0])}
+          apiUrl={apiUrl}
+          cover={reelCover}
+          onApply={c => { setReelCover(c); setPickingCover(false); }}
+          onClose={() => setPickingCover(false)}
         />
       )}
 

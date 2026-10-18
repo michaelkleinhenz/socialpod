@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,9 +46,28 @@ const igGraphAPIUnversioned = "https://graph.instagram.com"
 type MediaExtras struct {
 	Collaborators []string
 	UserTags      []string
+	// A reel's cover: an image URL, else the frame at ThumbOffset ms.
+	CoverURL    string
+	ThumbOffset *int
 }
 
 func (e MediaExtras) empty() bool { return len(e.Collaborators) == 0 && len(e.UserTags) == 0 }
+
+// reelCoverParams sets a reel container's cover: cover_url for an image of
+// its own (made absolute like the video), else thumb_offset for a frame.
+// Unlike collaborators these are never dropped on a retry, since Instagram
+// does not refuse a container over them.
+func reelCoverParams(params url.Values, e MediaExtras, appURL string) {
+	if e.CoverURL != "" {
+		cover := e.CoverURL
+		if !strings.HasPrefix(cover, "http") {
+			cover = appURL + cover
+		}
+		params.Set("cover_url", cover)
+	} else if e.ThumbOffset != nil {
+		params.Set("thumb_offset", strconv.Itoa(*e.ThumbOffset))
+	}
+}
 
 const (
 	igMaxCollaborators = 3
@@ -460,6 +480,7 @@ func (s *InstagramService) PostReel(ctx context.Context, mediaURL string, captio
 		"video_url":  {fullURL},
 		"caption":    {caption},
 	}
+	reelCoverParams(params, extras, settings.AppURL)
 
 	extraParams := url.Values{}
 	if c := NormalizeIGUsernames(extras.Collaborators, account.AccountName, igMaxCollaborators); len(c) > 0 {
