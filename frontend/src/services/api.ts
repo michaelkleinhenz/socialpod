@@ -660,6 +660,15 @@ class ApiClient {
     return this.request<ClipartSearchResult>(`/clipart/search?q=${encodeURIComponent(q)}`);
   }
 
+  // An OpenClipart file: a PNG comes back stored as an upload, an SVG as
+  // markup to render.
+  importOpenClipart(url: string) {
+    return this.request<{ url?: string; svg?: string }>('/clipart/openclipart/import', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   // Media library
   getMedia(params: { q?: string; tags?: string[]; kind?: MediaKind; limit?: number } = {}) {
     const query = new URLSearchParams();

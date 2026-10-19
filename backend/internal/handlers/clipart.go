@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"socialmedia/internal/database"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -24,6 +26,9 @@ import (
 // The browser never talks to Iconify: the search goes through here, and the
 // answer carries each icon as SVG markup, which the editor recolours, renders
 // to a PNG and uploads, so the picture holds a normal upload.
+//
+// With an OpenClipart token in the settings the search also asks OpenClipart
+// (clipart_openclipart.go), whose results come as a preview and a file URL.
 
 // DefaultIconifyAPIURL is Iconify's public API. ICONIFY_API_URL points the
 // search at a self-hosted copy (github.com/iconify/api) instead.
@@ -57,8 +62,16 @@ const (
 )
 
 type ClipartHandler struct {
-	BaseURL string
-	Client  *http.Client
+	BaseURL   string
+	Client    *http.Client
+	DB        *database.MongoDB
+	UploadDir string
+	// OpenClipartURL and OpenClipartSettings replace openclipart.org and the
+	// settings in tests.
+	OpenClipartURL      string
+	OpenClipartSettings func(context.Context) (openClipartSettings, error)
+
+	ocAuth openClipartAuth
 
 	mu    sync.Mutex
 	cache map[string]clipartCacheEntry
@@ -69,28 +82,35 @@ type clipartCacheEntry struct {
 	res clipartSearchResult
 }
 
-func NewClipartHandler(baseURL string) *ClipartHandler {
+func NewClipartHandler(db *database.MongoDB, uploadDir, baseURL string) *ClipartHandler {
 	if baseURL == "" {
 		baseURL = DefaultIconifyAPIURL
 	}
 	return &ClipartHandler{
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		Client:  &http.Client{Timeout: 15 * time.Second},
-		cache:   map[string]clipartCacheEntry{},
+		BaseURL:   strings.TrimRight(baseURL, "/"),
+		Client:    &http.Client{Timeout: 15 * time.Second},
+		DB:        db,
+		UploadDir: uploadDir,
+		cache:     map[string]clipartCacheEntry{},
 	}
 }
 
-// ClipartIcon is one search result: the SVG's inner markup and its view box,
-// already with the icon's own flips and turns applied.
+// ClipartIcon is one search result. From Iconify: the SVG's inner markup and
+// its view box, already with the icon's own flips and turns applied. From
+// OpenClipart: a preview and the file to import.
 type ClipartIcon struct {
-	ID     string  `json:"id"` // "prefix:name"
+	ID     string  `json:"id"` // "prefix:name", "openclipart:<id>"
+	Source string  `json:"source"`
 	Set    string  `json:"set"`
 	Name   string  `json:"name"`
-	Body   string  `json:"body"`
-	Left   float64 `json:"left"`
-	Top    float64 `json:"top"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
+	Body   string  `json:"body,omitempty"`
+	Left   float64 `json:"left,omitempty"`
+	Top    float64 `json:"top,omitempty"`
+	Width  float64 `json:"width,omitempty"`
+	Height float64 `json:"height,omitempty"`
+	// OpenClipart only.
+	PreviewURL string `json:"previewUrl,omitempty"`
+	FileURL    string `json:"fileUrl,omitempty"`
 	// Recolorable icons draw in currentColor, which the editor sets; the
 	// others (emoji) keep their own colours.
 	Recolorable bool `json:"recolorable"`
@@ -105,6 +125,8 @@ type ClipartSet struct {
 type clipartSearchResult struct {
 	Icons []ClipartIcon         `json:"icons"`
 	Sets  map[string]ClipartSet `json:"sets"`
+	// Errors names the sources that failed while others answered.
+	Errors map[string]string `json:"errors,omitempty"`
 }
 
 // Search answers GET /api/clipart/search?q=&limit=.
@@ -125,19 +147,71 @@ func (h *ClipartHandler) Search(c *gin.Context) {
 	if limit > 128 {
 		limit = 128
 	}
-	key := strings.ToLower(q) + "|" + strconv.Itoa(limit)
-	if res, ok := h.cached(key); ok {
-		c.JSON(http.StatusOK, res)
-		return
-	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 	defer cancel()
-	res, err := h.search(ctx, q, limit)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Clipart search failed: " + err.Error()})
+
+	// Iconify and, when it is set up, OpenClipart at the same time.
+	var wg sync.WaitGroup
+	var iconify, openclipart clipartSearchResult
+	var iconifyErr, ocErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		key := "iconify|" + strings.ToLower(q) + "|" + strconv.Itoa(limit)
+		if res, ok := h.cached(key); ok {
+			iconify = res
+			return
+		}
+		iconify, iconifyErr = h.search(ctx, q, limit)
+		if iconifyErr == nil {
+			h.store(key, iconify)
+		}
+	}()
+	token, tokenErr := h.openClipartToken(ctx)
+	if tokenErr != nil {
+		ocErr = tokenErr
+	} else if token != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			key := "openclipart|" + strings.ToLower(q)
+			if res, ok := h.cached(key); ok {
+				openclipart = res
+				return
+			}
+			icons, err := h.searchOpenClipart(ctx, token, q)
+			if err != nil {
+				ocErr = err
+				return
+			}
+			openclipart = clipartSearchResult{Icons: icons}
+			h.store(key, openclipart)
+		}()
+	}
+	wg.Wait()
+
+	if iconifyErr != nil && (ocErr != nil || token == "") {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Clipart search failed: " + iconifyErr.Error()})
 		return
 	}
-	h.store(key, res)
+	res := clipartSearchResult{Icons: []ClipartIcon{}, Sets: map[string]ClipartSet{}}
+	res.Icons = append(res.Icons, iconify.Icons...)
+	for k, v := range iconify.Sets {
+		res.Sets[k] = v
+	}
+	if len(openclipart.Icons) > 0 {
+		res.Icons = append(res.Icons, openclipart.Icons...)
+		res.Sets["openclipart"] = ClipartSet{Name: "Openclipart", License: "CC0-1.0"}
+	}
+	if iconifyErr != nil || ocErr != nil {
+		res.Errors = map[string]string{}
+		if iconifyErr != nil {
+			res.Errors["iconify"] = iconifyErr.Error()
+		}
+		if ocErr != nil {
+			res.Errors["openclipart"] = ocErr.Error()
+		}
+	}
 	c.JSON(http.StatusOK, res)
 }
 
@@ -249,6 +323,7 @@ func (h *ClipartHandler) search(ctx context.Context, q string, limit int) (clipa
 			continue
 		}
 		icon.ID = pn[0] + ":" + pn[1]
+		icon.Source = "iconify"
 		icon.Set = pn[0]
 		icon.Name = pn[1]
 		res.Icons = append(res.Icons, icon)

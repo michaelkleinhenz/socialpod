@@ -85,7 +85,7 @@ func TestClipartSearchKeepsFreeSetsOnly(t *testing.T) {
 	}))
 	defer iconify.Close()
 
-	h := NewClipartHandler(iconify.URL)
+	h := NewClipartHandler(nil, "", iconify.URL)
 	search := func() clipartSearchResult {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -127,7 +127,7 @@ func TestClipartSearchNeedsQuery(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/clipart/search?q=", nil)
-	NewClipartHandler("http://127.0.0.1:1").Search(c)
+	NewClipartHandler(nil, "", "http://127.0.0.1:1").Search(c)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status %d", w.Code)
 	}

@@ -81,23 +81,29 @@ export type Watermark = MediaItem;
 /** The kinds the media library's list can be narrowed to. */
 export type MediaKind = 'image' | 'video' | 'audio' | 'font' | 'color' | 'template' | 'watermark';
 
-// Clipart from Iconify (GET /api/clipart/search): an SVG body and its view
-// box; recolorable icons draw in currentColor.
+// Clipart (GET /api/clipart/search). From Iconify: an SVG body and its view
+// box; recolorable icons draw in currentColor. From OpenClipart (once an
+// admin has stored a token): a preview and the file to import.
 export interface ClipartIcon {
   id: string;
+  source: 'iconify' | 'openclipart';
   set: string;
   name: string;
-  body: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  recolorable: boolean;
+  body?: string;
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
+  recolorable?: boolean;
+  previewUrl?: string;
+  fileUrl?: string;
 }
 
 export interface ClipartSearchResult {
   icons: ClipartIcon[];
   sets: Record<string, { name: string; author?: string; license: string }>;
+  // The sources that failed while others answered.
+  errors?: Partial<Record<'iconify' | 'openclipart', string>>;
 }
 
 export interface MediaItem {
@@ -387,6 +393,10 @@ export interface AppSettings {
   hasYouTubeClientSecret?: boolean;
   hasOpenRouterKey?: boolean;
   hasBggApiToken?: boolean;
+  openClipartAppId?: string;
+  hasOpenClipartApiKey?: boolean;
+  hasOpenClipartAppSecret?: boolean;
+  openClipartTokenExpiresAt?: string;
   mailgunBaseUrl?: string;
   mailgunDomain?: string;
   mailgunFromEmail?: string;

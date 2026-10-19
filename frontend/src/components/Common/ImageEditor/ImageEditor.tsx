@@ -36,7 +36,7 @@ import {
 } from './captions';
 import { nearestFormat, SYSTEM_CATEGORIES, SYSTEM_FORMATS, SYSTEM_TEMPLATES, TEMPLATE_ASSETS, type SystemCategory, type SystemFormat, type SystemTemplate } from './systemTemplates';
 import { SystemTemplateTile } from './SystemTemplateTile';
-import { CLIPART_SUGGESTIONS, clipartPng, clipartPreviewUrl } from './clipart';
+import { CLIPART_SUGGESTIONS, clipartPng, clipartPreviewUrl, svgDocumentPng } from './clipart';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush' | 'animate';
@@ -266,6 +266,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [clipartView, setClipartView] = useState(false);
   const [clipartQuery, setClipartQuery] = useState('');
   const [clipart, setClipart] = useState<ClipartIcon[] | null>(null);
+  // Why OpenClipart (searched beside Iconify once an admin stored a token)
+  // did not answer.
+  const [openClipartError, setOpenClipartError] = useState<string | null>(null);
   const [clipartLoading, setClipartLoading] = useState(false);
   const [clipartColor, setClipartColor] = useState('#111827');
   const [mediaLoading, setMediaLoading] = useState(false);
@@ -480,7 +483,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const t = setTimeout(() => {
       setClipartLoading(true);
       api.searchClipart(q)
-        .then(res => { if (!cancelled) setClipart(res.icons); })
+        .then(res => { if (!cancelled) { setClipart(res.icons); setOpenClipartError(res.errors?.openclipart ?? null); } })
         .catch(err => { if (!cancelled) { setClipart([]); toast.error(err instanceof Error ? err.message : 'Clipart search failed'); } })
         .finally(() => { if (!cancelled) setClipartLoading(false); });
     }, 350);
@@ -1572,14 +1575,23 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }
   };
 
-  // Renders a piece of clipart in the picked colour, uploads it and puts it
-  // in the middle of the picture at about a third of its shorter side.
+  // Renders a piece of clipart in the picked colour (an OpenClipart one
+  // comes in its own), uploads it and puts it in the middle of the picture
+  // at about a third of its shorter side.
+  const clipartUpload = async (icon: ClipartIcon): Promise<string> => {
+    if (icon.source !== 'openclipart') return (await api.uploadImage(await clipartPng(icon, clipartColor))).url;
+    const res = await api.importOpenClipart(icon.fileUrl ?? '');
+    if (res.url) return res.url;
+    if (!res.svg) throw new Error('OpenClipart sent no image');
+    const name = `openclipart-${icon.id.replace(/^openclipart:/, '').replace(/[^\w-]/g, '')}.png`;
+    return (await api.uploadImage(await svgDocumentPng(res.svg, name))).url;
+  };
+
   const addClipart = async (icon: ClipartIcon) => {
     if (!crop) return;
     setAddingMedia(icon.id);
     try {
-      const file = await clipartPng(icon, clipartColor);
-      const { url } = await api.uploadImage(file);
+      const url = await clipartUpload(icon);
       const img = await loadImage(resolveUrl(url));
       const r = img.naturalWidth / img.naturalHeight;
       const side = Math.min(crop.width, crop.height) * 0.35;
@@ -3041,22 +3053,39 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       ) : clipart.length === 0 ? (
         <p className="ie-hint">No clipart matches that. Try another word in English.</p>
       ) : (
-        <div className="ie-grid">
-          {clipart.map(icon => (
-            <button
-              key={icon.id}
-              className="ie-tile ie-tile-clipart"
-              onClick={() => addClipart(icon)}
-              disabled={addingMedia !== null}
-              title={`Add ${icon.name.replace(/-/g, ' ')}`}
-            >
-              <img src={clipartPreviewUrl(icon, clipartColor)} alt="" loading="lazy" />
-              <span>{addingMedia === icon.id ? 'Adding…' : icon.name.replace(/-/g, ' ')}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          {(['iconify', 'openclipart'] as const).map(source => {
+            const icons = clipart.filter(i => (i.source ?? 'iconify') === source);
+            if (icons.length === 0) return null;
+            return (
+              <Fragment key={source}>
+                {clipart.some(i => i.source === 'openclipart') && (
+                  <span className="ie-label ie-section">{source === 'iconify' ? 'Icons and emoji' : 'Openclipart'}</span>
+                )}
+                <div className="ie-grid">
+                  {icons.map(icon => (
+                    <button
+                      key={icon.id}
+                      className="ie-tile ie-tile-clipart"
+                      onClick={() => addClipart(icon)}
+                      disabled={addingMedia !== null}
+                      title={`Add ${icon.name.replace(/-/g, ' ')}`}
+                    >
+                      <img src={clipartPreviewUrl(icon, clipartColor)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                      <span>{addingMedia === icon.id ? 'Adding…' : icon.name.replace(/-/g, ' ')}</span>
+                    </button>
+                  ))}
+                </div>
+              </Fragment>
+            );
+          })}
+        </>
       )}
-      <p className="ie-hint">Clipart from free icon sets on <a href="https://iconify.design" target="_blank" rel="noopener noreferrer">Iconify</a> (MIT, ISC and Apache licences): use it in posts without a credit.</p>
+      {clipartQuery.trim() && openClipartError && <p className="ie-hint">Openclipart: {openClipartError}</p>}
+      <p className="ie-hint">
+        Clipart from free icon sets on <a href="https://iconify.design" target="_blank" rel="noopener noreferrer">Iconify</a> (MIT, ISC and Apache licences)
+        {clipart?.some(i => i.source === 'openclipart') && <> and from <a href="https://openclipart.org" target="_blank" rel="noopener noreferrer">Openclipart</a> (public domain, in its own colours)</>}: use it in posts without a credit.
+      </p>
     </>
   );
 

@@ -159,7 +159,7 @@ func main() {
 	growthHandler := &handlers.GrowthHandler{DB: db, Scheduler: scheduler, UploadDir: cfg.UploadDir}
 	transcribeHandler := &handlers.TranscribeHandler{DB: db}
 	mediaHandler := &handlers.MediaHandler{DB: db, UploadDir: cfg.UploadDir}
-	clipartHandler := handlers.NewClipartHandler(cfg.IconifyAPIURL)
+	clipartHandler := handlers.NewClipartHandler(db, cfg.UploadDir, cfg.IconifyAPIURL)
 	handlers.SetAppBaseURL(cfg.AppURL)
 	mcpHandler := &handlers.MCPHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler, Scheduler: scheduler}
 	captureHandler := &handlers.CaptureHandler{DB: db, UploadDir: cfg.UploadDir, BGG: bggHandler}
@@ -306,8 +306,9 @@ func main() {
 		auth.PUT("/watermarks/:id", mediaHandler.UpdateWatermark)
 		auth.DELETE("/watermarks/:id", mediaHandler.DeleteWatermark)
 
-		// Clipart for the image editor (Iconify)
+		// Clipart for the image editor (Iconify, OpenClipart)
 		auth.GET("/clipart/search", clipartHandler.Search)
+		auth.POST("/clipart/openclipart/import", clipartHandler.ImportOpenClipart)
 
 		// Media library
 		auth.GET("/media", mediaHandler.List)
