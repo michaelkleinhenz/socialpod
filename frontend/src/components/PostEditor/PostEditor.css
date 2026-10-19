@@ -583,6 +583,24 @@
   background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
 }
 
+.preview-story-sound {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
 .preview-story-avatar {
   width: 32px;
   height: 32px;
