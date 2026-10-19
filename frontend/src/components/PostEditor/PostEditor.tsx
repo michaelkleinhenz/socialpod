@@ -12,6 +12,7 @@ import { parseDraft, type EditorDraft } from '../Common/ImageEditor/editorModel'
 import toast from 'react-hot-toast';
 import { MentionTextarea } from './MentionTextarea';
 import { ReelCoverPicker, type ReelCover } from './ReelCoverPicker';
+import { ADOBE_EXPRESS_ENABLED } from '../../features';
 import './PostEditor.css';
 
 // Module-level cache so the SDK is initialized once per page load and login
@@ -640,7 +641,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   useEffect(() => {
     textareaRef.current?.focus();
     api.getPublicSettings().then(s => {
-      if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
+      if (ADOBE_EXPRESS_ENABLED && s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
       if (s.openRouterEnabled) setAiEnabled(true);
       setBggEnabled(true);
     }).catch(() => {});

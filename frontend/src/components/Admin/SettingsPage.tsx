@@ -4,6 +4,7 @@ import type { AppSettings, UploadSweepReport } from '../../types';
 import { Save, Copy, Check, Smartphone, HardDrive, Search, Trash2, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BackupsCard } from './BackupsCard';
+import { ADOBE_EXPRESS_ENABLED } from '../../features';
 import './Admin.css';
 
 export function SettingsPage() {
@@ -303,24 +304,26 @@ export function SettingsPage() {
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
 
-        <h3>Adobe Express</h3>
+        {ADOBE_EXPRESS_ENABLED && (<>
+          <h3>Adobe Express</h3>
 
-        <div className="settings-grid">
-          <div className="form-group">
-            <label>Adobe Express Client ID</label>
-            <input
-              className="input"
-              placeholder="Your Adobe Express Embed SDK Client ID"
-              value={settings.adobeExpressClientId}
-              onChange={e => setSettings(s => ({ ...s, adobeExpressClientId: e.target.value }))}
-            />
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
-            </span>
+          <div className="settings-grid">
+            <div className="form-group">
+              <label>Adobe Express Client ID</label>
+              <input
+                className="input"
+                placeholder="Your Adobe Express Embed SDK Client ID"
+                value={settings.adobeExpressClientId}
+                onChange={e => setSettings(s => ({ ...s, adobeExpressClientId: e.target.value }))}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
+              </span>
+            </div>
           </div>
-        </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+        </>)}
 
         <h3>BoardGameGeek (BGG) Import</h3>
 

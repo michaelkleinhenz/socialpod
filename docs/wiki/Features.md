@@ -414,6 +414,8 @@ An admin-maintained catalog of publisher, designer, and artist names mapped to t
 
 ## Adobe Express Integration
 
+> **Currently disabled.** The integration is switched off in the frontend (`ADOBE_EXPRESS_ENABLED` in `frontend/src/features.ts`): the "Create Design" buttons and the settings card are hidden and the SDK is never loaded. A stored Client ID is kept. Set the flag to `true` to turn it back on.
+
 SocialPod can integrate the [Adobe Express Embed SDK](https://developer.adobe.com/express/embed-sdk/) to let users create images directly inside the post editor. Enable it by entering your Adobe Express Client ID in **Settings → Adobe Express**.
 
 ### Browser Configuration
