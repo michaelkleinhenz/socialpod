@@ -1,4 +1,4 @@
-import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, ImageDraft, MediaItem, MediaKind, Watermark } from '../types';
+import type { Agent, AgentInput, AgentModel, AgentRun, AgentSettings, ClipartSearchResult, ImageDraft, MediaItem, MediaKind, Watermark } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -653,6 +653,11 @@ class ApiClient {
 
   getAgentRun(id: string, runId: string) {
     return this.request<AgentRun>(`/agents/${id}/runs/${runId}`);
+  }
+
+  // Clipart for the image editor, from Iconify's freely licensed icon sets.
+  searchClipart(q: string) {
+    return this.request<ClipartSearchResult>(`/clipart/search?q=${encodeURIComponent(q)}`);
   }
 
   // Media library

@@ -910,6 +910,14 @@
   border-radius: 4px;
 }
 
+/* Clipart on a light checkerboard, so dark icons show; a little padding
+   keeps them off the edges. */
+.ie-tile-clipart img {
+  padding: 12%;
+  box-sizing: border-box;
+  background: repeating-conic-gradient(#e2e8f0 0% 25%, #f8fafc 0% 50%) 50% / 12px 12px;
+}
+
 /* A built-in template's preview, and its player over it while it plays. */
 .ie-tile-media {
   position: relative;

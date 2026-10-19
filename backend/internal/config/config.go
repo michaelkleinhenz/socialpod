@@ -12,6 +12,8 @@ type Config struct {
 	AppURL      string
 	APIPort     string
 	UploadDir   string
+	// IconifyAPIURL is where clipart is searched (a self-hosted Iconify API).
+	IconifyAPIURL string
 }
 
 func Load() *Config {
@@ -24,12 +26,13 @@ func Load() *Config {
 	}
 
 	return &Config{
-		MongoURI:    mongoURI,
-		MongoDBName: getEnv("MONGO_DATABASE", "socialmedia"),
-		JWTSecret:   getEnv("JWT_SECRET", "change-me-in-production"),
-		AppURL:      getEnv("APP_URL", "http://localhost:8080"),
-		APIPort:     getEnv("API_PORT", "8080"),
-		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
+		MongoURI:      mongoURI,
+		MongoDBName:   getEnv("MONGO_DATABASE", "socialmedia"),
+		JWTSecret:     getEnv("JWT_SECRET", "change-me-in-production"),
+		AppURL:        getEnv("APP_URL", "http://localhost:8080"),
+		APIPort:       getEnv("API_PORT", "8080"),
+		UploadDir:     getEnv("UPLOAD_DIR", "./uploads"),
+		IconifyAPIURL: getEnv("ICONIFY_API_URL", ""),
 	}
 }
 

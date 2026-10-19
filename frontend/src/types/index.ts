@@ -81,6 +81,25 @@ export type Watermark = MediaItem;
 /** The kinds the media library's list can be narrowed to. */
 export type MediaKind = 'image' | 'video' | 'audio' | 'font' | 'color' | 'template' | 'watermark';
 
+// Clipart from Iconify (GET /api/clipart/search): an SVG body and its view
+// box; recolorable icons draw in currentColor.
+export interface ClipartIcon {
+  id: string;
+  set: string;
+  name: string;
+  body: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  recolorable: boolean;
+}
+
+export interface ClipartSearchResult {
+  icons: ClipartIcon[];
+  sets: Record<string, { name: string; author?: string; license: string }>;
+}
+
 export interface MediaItem {
   id: string;
   userId: string;
