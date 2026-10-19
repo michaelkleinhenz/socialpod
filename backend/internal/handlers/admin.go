@@ -486,6 +486,14 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		HasLinkedInClientSecret  bool `json:"hasLinkedInClientSecret"`
 		HasYouTubeClientSecret   bool `json:"hasYouTubeClientSecret"`
 		HasMailgunAPIKey         bool `json:"hasMailgunApiKey"`
+		HasOpenClipartAPIKey     bool `json:"hasOpenClipartApiKey"`
+		HasOpenClipartAppSecret  bool `json:"hasOpenClipartAppSecret"`
+		// When the stored OpenClipart token runs out (they last a day).
+		OpenClipartTokenExpiresAt *time.Time `json:"openClipartTokenExpiresAt,omitempty"`
+	}
+	var ocExpiry *time.Time
+	if exp := jwtExpiry(settings.OpenClipartAPIKey); !exp.IsZero() {
+		ocExpiry = &exp
 	}
 	c.JSON(http.StatusOK, settingsResponse{
 		AppSettings:              settings,
@@ -494,6 +502,9 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 		HasLinkedInClientSecret:  settings.LinkedInClientSecret != "",
 		HasYouTubeClientSecret:   settings.YouTubeClientSecret != "",
 		HasMailgunAPIKey:         settings.MailgunAPIKey != "",
+		HasOpenClipartAPIKey:     settings.OpenClipartAPIKey != "",
+		HasOpenClipartAppSecret:  settings.OpenClipartAppSecret != "",
+		OpenClipartTokenExpiresAt: ocExpiry,
 	})
 }
 
@@ -513,6 +524,9 @@ type UpdateSettingsInput struct {
 	OpenRouterVisionModel *string `json:"openRouterVisionModel,omitempty"`
 	AILanguage            *string `json:"aiLanguage,omitempty"`
 	BGGAPIToken           *string `json:"bggApiToken,omitempty"`
+	OpenClipartAPIKey     *string `json:"openClipartApiKey,omitempty"`
+	OpenClipartAppID      *string `json:"openClipartAppId,omitempty"`
+	OpenClipartAppSecret  *string `json:"openClipartAppSecret,omitempty"`
 	LinkedInClientID      *string `json:"linkedInClientId,omitempty"`
 	LinkedInClientSecret  *string `json:"linkedInClientSecret,omitempty"`
 	YouTubeClientID       *string `json:"youtubeClientId,omitempty"`
@@ -584,6 +598,15 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 	}
 	if input.BGGAPIToken != nil {
 		update["bggApiToken"] = *input.BGGAPIToken
+	}
+	if input.OpenClipartAPIKey != nil {
+		update["openClipartApiKey"] = strings.TrimSpace(*input.OpenClipartAPIKey)
+	}
+	if input.OpenClipartAppID != nil {
+		update["openClipartAppId"] = strings.TrimSpace(*input.OpenClipartAppID)
+	}
+	if input.OpenClipartAppSecret != nil {
+		update["openClipartAppSecret"] = strings.TrimSpace(*input.OpenClipartAppSecret)
 	}
 	if input.LinkedInClientID != nil {
 		update["linkedInClientId"] = *input.LinkedInClientID

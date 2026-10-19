@@ -4,6 +4,7 @@ import type { AppSettings, UploadSweepReport } from '../../types';
 import { Save, Copy, Check, Smartphone, HardDrive, Search, Trash2, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BackupsCard } from './BackupsCard';
+import { ADOBE_EXPRESS_ENABLED } from '../../features';
 import './Admin.css';
 
 export function SettingsPage() {
@@ -32,6 +33,8 @@ export function SettingsPage() {
   const [youtubeClientSecret, setYoutubeClientSecret] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
   const [bggApiToken, setBggApiToken] = useState('');
+  const [openClipartApiKey, setOpenClipartApiKey] = useState('');
+  const [openClipartAppSecret, setOpenClipartAppSecret] = useState('');
   const [mailgunApiKey, setMailgunApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -118,6 +121,9 @@ export function SettingsPage() {
       data.youtubeClientId = settings.youtubeClientId || '';
       if (openRouterKey) data.openRouterApiKey = openRouterKey;
       if (bggApiToken) data.bggApiToken = bggApiToken;
+      if (openClipartApiKey) data.openClipartApiKey = openClipartApiKey;
+      if (openClipartAppSecret) data.openClipartAppSecret = openClipartAppSecret;
+      data.openClipartAppId = settings.openClipartAppId || '';
       if (mailgunApiKey) data.mailgunApiKey = mailgunApiKey;
       data.mailgunBaseUrl = settings.mailgunBaseUrl || '';
       data.mailgunDomain = settings.mailgunDomain || '';
@@ -131,8 +137,11 @@ export function SettingsPage() {
       data.promptHandleLookup = settings.promptHandleLookup || '';
       data.promptSocialPost = settings.promptSocialPost || '';
       data.promptDashboardInsights = settings.promptDashboardInsights || '';
-      const updated = await api.updateSettings(data);
-      setSettings(updated);
+      await api.updateSettings(data);
+      // Read back with the has-secret flags, which the save's answer lacks.
+      setSettings(await api.getSettings());
+      setOpenClipartApiKey('');
+      setOpenClipartAppSecret('');
       toast.success('Settings saved');
     } catch (err: any) {
       toast.error(err.message);
@@ -140,6 +149,23 @@ export function SettingsPage() {
       setSaving(false);
     }
   };
+
+  // Turns the OpenClipart search off again.
+  const removeOpenClipart = async () => {
+    if (!window.confirm('Remove the OpenClipart credentials? The image editor then searches Iconify only.')) return;
+    try {
+      await api.updateSettings({ openClipartApiKey: '', openClipartAppId: '', openClipartAppSecret: '' });
+      setSettings(await api.getSettings());
+      setOpenClipartApiKey('');
+      setOpenClipartAppSecret('');
+      toast.success('OpenClipart removed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove OpenClipart');
+    }
+  };
+
+  const openClipartExpiry = settings.openClipartTokenExpiresAt ? new Date(settings.openClipartTokenExpiresAt) : null;
+  const openClipartConfigured = !!settings.hasOpenClipartApiKey || (!!settings.openClipartAppId && !!settings.hasOpenClipartAppSecret);
 
   return (
     <div className="page">
@@ -303,24 +329,26 @@ export function SettingsPage() {
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
 
-        <h3>Adobe Express</h3>
+        {ADOBE_EXPRESS_ENABLED && (<>
+          <h3>Adobe Express</h3>
 
-        <div className="settings-grid">
-          <div className="form-group">
-            <label>Adobe Express Client ID</label>
-            <input
-              className="input"
-              placeholder="Your Adobe Express Embed SDK Client ID"
-              value={settings.adobeExpressClientId}
-              onChange={e => setSettings(s => ({ ...s, adobeExpressClientId: e.target.value }))}
-            />
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
-            </span>
+          <div className="settings-grid">
+            <div className="form-group">
+              <label>Adobe Express Client ID</label>
+              <input
+                className="input"
+                placeholder="Your Adobe Express Embed SDK Client ID"
+                value={settings.adobeExpressClientId}
+                onChange={e => setSettings(s => ({ ...s, adobeExpressClientId: e.target.value }))}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Get a Client ID from the <a href="https://developer.adobe.com/express/embed-sdk/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Adobe Developer Console</a>. Enables in-app image creation when composing posts.
+              </span>
+            </div>
           </div>
-        </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+        </>)}
 
         <h3>BoardGameGeek (BGG) Import</h3>
 
@@ -340,6 +368,64 @@ export function SettingsPage() {
             </span>
           </div>
         </div>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
+
+        <h3>OpenClipart</h3>
+
+        <div className="settings-grid">
+          <div className="form-group">
+            <label>OpenClipart API Token</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasOpenClipartApiKey ? 'Token configured (enter to update)' : 'Enter your OpenClipart app token (optional)'}
+              value={openClipartApiKey}
+              onChange={e => setOpenClipartApiKey(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              With a token set, the image editor's Clipart search also searches{' '}
+              <a href="https://openclipart.org" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Openclipart</a>{' '}
+              (public domain). Create an app and get its token as in the{' '}
+              <a href="https://openclipart.org/api/tutorial" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>API tutorial</a>.
+              {openClipartExpiry && (
+                <>
+                  {' '}
+                  {openClipartExpiry.getTime() > Date.now()
+                    ? `The stored token is valid until ${openClipartExpiry.toLocaleString()}.`
+                    : `The stored token expired on ${openClipartExpiry.toLocaleString()}.`}
+                </>
+              )}
+            </span>
+          </div>
+          <div className="form-group">
+            <label>OpenClipart App ID</label>
+            <input
+              className="input"
+              placeholder="Optional: renews the token"
+              value={settings.openClipartAppId || ''}
+              onChange={e => setSettings(s => ({ ...s, openClipartAppId: e.target.value }))}
+            />
+          </div>
+          <div className="form-group">
+            <label>OpenClipart App Secret</label>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings.hasOpenClipartAppSecret ? 'Secret configured (enter to update)' : 'Optional: renews the token'}
+              value={openClipartAppSecret}
+              onChange={e => setOpenClipartAppSecret(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              OpenClipart tokens last a day. With the app ID and secret stored, SocialPod gets a new token itself when the stored one runs out.
+            </span>
+          </div>
+        </div>
+        {openClipartConfigured && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={removeOpenClipart} style={{ marginTop: 8 }}>
+            <Trash2 size={14} /> Remove OpenClipart
+          </button>
+        )}
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '28px 0' }} />
 

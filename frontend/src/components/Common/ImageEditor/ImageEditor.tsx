@@ -3,12 +3,12 @@ import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Brush, Circle as CircleIcon, Clapperboard, Crop, Crosshair, FilePen, Film, FolderOpen, Frame, ImageUp, LayoutTemplate, Layers as LayersIcon, Loader2, Magnet,
-  Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
+  Move, Music, Plus, Redo2, Search, Shapes, Smartphone, Smile, Sparkles, Square, Stamp, Trash2, Triangle, Type, Undo2, Upload, X, Maximize,
   ALargeSmall, AudioLines, Blend, BookmarkCheck, Captions, CaseSensitive, ChevronLeft, ChevronRight, Contrast, Diamond, DiamondMinus, DiamondPlus, PaintBucket, Palette, Pencil, Replace, SquareDashed, SquareRoundCorner, Volume2, type LucideIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../../services/api';
-import type { ImageDraft, MediaItem } from '../../../types';
+import type { ClipartIcon, ImageDraft, MediaItem } from '../../../types';
 import {
   applyAdjustments, BLEND_MODES, BUILTIN_FONTS, blendAttrs, BORDER_STYLES, CANVAS_FORMATS, centredCrop, cssFontFamily, DEFAULT_CANVAS, clamp, FILTER_PRESETS, fitLayers, hasAdjustments, imageLayerParts,
   editUploadUrls, instantiateTemplate, isVideoTemplate, loadImage, loadVideo, measureText, newLayerId, NO_ADJUSTMENTS, paintStrokeAttrs, parseDraft, parseTemplate, renderEdit, resizeText, roundable, SHAPE_KINDS,
@@ -36,6 +36,7 @@ import {
 } from './captions';
 import { nearestFormat, SYSTEM_CATEGORIES, SYSTEM_FORMATS, SYSTEM_TEMPLATES, TEMPLATE_ASSETS, type SystemCategory, type SystemFormat, type SystemTemplate } from './systemTemplates';
 import { SystemTemplateTile } from './SystemTemplateTile';
+import { CLIPART_SUGGESTIONS, clipartPng, clipartPreviewUrl, svgDocumentPng } from './clipart';
 import './ImageEditor.css';
 
 type Tab = 'crop' | 'canvas' | 'filters' | 'templates' | 'media' | 'text' | 'shapes' | 'brush' | 'animate';
@@ -261,6 +262,15 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [watermarksOnly, setWatermarksOnly] = useState(false);
   // In a video the Media tab also lists the library's clips (its videos).
   const [clipsView, setClipsView] = useState(false);
+  // Or clipart from Iconify: searched as typed, in the colour picked here.
+  const [clipartView, setClipartView] = useState(false);
+  const [clipartQuery, setClipartQuery] = useState('');
+  const [clipart, setClipart] = useState<ClipartIcon[] | null>(null);
+  // Why OpenClipart (searched beside Iconify once an admin stored a token)
+  // did not answer.
+  const [openClipartError, setOpenClipartError] = useState<string | null>(null);
+  const [clipartLoading, setClipartLoading] = useState(false);
+  const [clipartColor, setClipartColor] = useState('#111827');
   const [mediaLoading, setMediaLoading] = useState(false);
   const [addingMedia, setAddingMedia] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -464,6 +474,21 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
   }, [mediaOpened, mediaQuery, watermarksOnly, clipsView]);
+
+  // Clipart: searched once something is typed (or a suggestion picked).
+  useEffect(() => {
+    const q = clipartQuery.trim();
+    if (!clipartView || !q) { setClipart(null); return; }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      setClipartLoading(true);
+      api.searchClipart(q)
+        .then(res => { if (!cancelled) { setClipart(res.icons); setOpenClipartError(res.errors?.openclipart ?? null); } })
+        .catch(err => { if (!cancelled) { setClipart([]); toast.error(err instanceof Error ? err.message : 'Clipart search failed'); } })
+        .finally(() => { if (!cancelled) setClipartLoading(false); });
+    }, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [clipartView, clipartQuery]);
 
   // Stage size follows the canvas area.
   useLayoutEffect(() => {
@@ -1545,6 +1570,38 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       });
     } catch {
       toast.error('Failed to load that image');
+    } finally {
+      setAddingMedia(null);
+    }
+  };
+
+  // Renders a piece of clipart in the picked colour (an OpenClipart one
+  // comes in its own), uploads it and puts it in the middle of the picture
+  // at about a third of its shorter side.
+  const clipartUpload = async (icon: ClipartIcon): Promise<string> => {
+    if (icon.source !== 'openclipart') return (await api.uploadImage(await clipartPng(icon, clipartColor))).url;
+    const res = await api.importOpenClipart(icon.fileUrl ?? '');
+    if (res.url) return res.url;
+    if (!res.svg) throw new Error('OpenClipart sent no image');
+    const name = `openclipart-${icon.id.replace(/^openclipart:/, '').replace(/[^\w-]/g, '')}.png`;
+    return (await api.uploadImage(await svgDocumentPng(res.svg, name))).url;
+  };
+
+  const addClipart = async (icon: ClipartIcon) => {
+    if (!crop) return;
+    setAddingMedia(icon.id);
+    try {
+      const url = await clipartUpload(icon);
+      const img = await loadImage(resolveUrl(url));
+      const r = img.naturalWidth / img.naturalHeight;
+      const side = Math.min(crop.width, crop.height) * 0.35;
+      const width = r >= 1 ? side : side * r;
+      addLayer({
+        id: newLayerId(), kind: 'image', origin: 'media', src: url, img,
+        x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height: width / r, rotation: 0, opacity: 1,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add the clipart');
     } finally {
       setAddingMedia(null);
     }
@@ -2971,18 +3028,81 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </div>
   );
 
+  // Clipart: search, colour and the grid to add from. The colour is the one
+  // the next piece is drawn in; emoji keep their own.
+  const clipartBrowser = (
+    <>
+      <div className="ie-row ie-sticky">
+        <div className="ie-search">
+          <Search size={16} />
+          <input
+            type="search"
+            value={clipartQuery}
+            onChange={e => setClipartQuery(e.target.value)}
+            placeholder="Search clipart, in English"
+          />
+        </div>
+      </div>
+      {colorRow(clipartColor, c => setClipartColor(c), 'clipart-color')}
+      {!clipartQuery.trim() ? (
+        <div className="ie-row">
+          {CLIPART_SUGGESTIONS.map(q => <button key={q} className="ie-chip" onClick={() => setClipartQuery(q)}>{q}</button>)}
+        </div>
+      ) : clipart === null || (clipartLoading && clipart.length === 0) ? (
+        <p className="ie-hint"><Loader2 size={14} className="ie-spin" /> Searching…</p>
+      ) : clipart.length === 0 ? (
+        <p className="ie-hint">No clipart matches that. Try another word in English.</p>
+      ) : (
+        <>
+          {(['iconify', 'openclipart'] as const).map(source => {
+            const icons = clipart.filter(i => (i.source ?? 'iconify') === source);
+            if (icons.length === 0) return null;
+            return (
+              <Fragment key={source}>
+                {clipart.some(i => i.source === 'openclipart') && (
+                  <span className="ie-label ie-section">{source === 'iconify' ? 'Icons and emoji' : 'Openclipart'}</span>
+                )}
+                <div className="ie-grid">
+                  {icons.map(icon => (
+                    <button
+                      key={icon.id}
+                      className="ie-tile ie-tile-clipart"
+                      onClick={() => addClipart(icon)}
+                      disabled={addingMedia !== null}
+                      title={`Add ${icon.name.replace(/-/g, ' ')}`}
+                    >
+                      <img src={clipartPreviewUrl(icon, clipartColor)} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                      <span>{addingMedia === icon.id ? 'Adding…' : icon.name.replace(/-/g, ' ')}</span>
+                    </button>
+                  ))}
+                </div>
+              </Fragment>
+            );
+          })}
+        </>
+      )}
+      {clipartQuery.trim() && openClipartError && <p className="ie-hint">Openclipart: {openClipartError}</p>}
+      <p className="ie-hint">
+        Clipart from free icon sets on <a href="https://iconify.design" target="_blank" rel="noopener noreferrer">Iconify</a> (MIT, ISC and Apache licences)
+        {clipart?.some(i => i.source === 'openclipart') && <> and from <a href="https://openclipart.org" target="_blank" rel="noopener noreferrer">Openclipart</a> (public domain, in its own colours)</>}: use it in posts without a credit.
+      </p>
+    </>
+  );
+
   // The media library (and in a video its clips): filters, search, upload
   // and the grid to add from.
   const mediaLibrary = (
     <>
       <div className="ie-row">
-        <button className={`ie-chip ${!watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(false); setClipsView(false); }}>All images</button>
-        <button className={`ie-chip ${watermarksOnly && !clipsView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(true); setClipsView(false); }}><Stamp size={14} /> Watermarks</button>
+        <button className={`ie-chip ${!watermarksOnly && !clipsView && !clipartView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(false); setClipsView(false); setClipartView(false); }}>All images</button>
+        <button className={`ie-chip ${watermarksOnly && !clipsView && !clipartView ? 'active' : ''}`} onClick={() => { setWatermarksOnly(true); setClipsView(false); setClipartView(false); }}><Stamp size={14} /> Watermarks</button>
+        <button className={`ie-chip ${clipartView ? 'active' : ''}`} onClick={() => { setClipartView(true); setClipsView(false); setWatermarksOnly(false); }}><Smile size={14} /> Clipart</button>
         {video && (
-          <button className={`ie-chip ${clipsView ? 'active' : ''}`} onClick={() => { setClipsView(true); setWatermarksOnly(false); }}><Film size={14} /> Clips</button>
+          <button className={`ie-chip ${clipsView ? 'active' : ''}`} onClick={() => { setClipsView(true); setWatermarksOnly(false); setClipartView(false); }}><Film size={14} /> Clips</button>
         )}
       </div>
       {clipsView && keepInLibraryToggle}
+      {clipartView ? clipartBrowser : (<>
       <div className="ie-row ie-sticky">
         <div className="ie-search">
           <Search size={16} />
@@ -3033,6 +3153,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           ))}
         </div>
       )}
+      </>)}
       <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={uploadMedia} />
     </>
   );
@@ -3512,6 +3633,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                   {imageLayerControls}
                   <span className="ie-label ie-section">Media library</span>
                 </>
+              ) : clipartView ? (
+                <p className="ie-hint">Tap a piece of clipart to add it in the colour picked below, then place it like an image.</p>
               ) : clipsView ? (
                 <p className="ie-hint">Tap a clip to add it at the playhead, or upload one. Move, resize and turn it like an image; its sound plays along.</p>
               ) : media && media.length > 0 && (

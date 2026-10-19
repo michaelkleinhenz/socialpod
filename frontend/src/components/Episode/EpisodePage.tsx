@@ -12,6 +12,7 @@ import { CaptionChecker, RewriteInstagramButton } from '../PostEditor/InstagramT
 import { extractHandles } from '../../services/instagramGrowth';
 import toast from 'react-hot-toast';
 import '../PostEditor/PostEditor.css';
+import { ADOBE_EXPRESS_ENABLED } from '../../features';
 import '../News/News.css';
 
 const MAX_IMAGE_BYTES = 1_000_000;
@@ -169,7 +170,7 @@ export function EpisodePage() {
     api.getPublicSettings().then((s: PublicSettings) => {
       if (s.openRouterEnabled) setAiEnabled(true);
       if (s.hasBggApiToken) setBggEnabled(true);
-      if (s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
+      if (ADOBE_EXPRESS_ENABLED && s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
     }).catch(() => {});
   }, []);
 

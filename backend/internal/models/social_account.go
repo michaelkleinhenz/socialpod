@@ -70,6 +70,11 @@ type AppSettings struct {
 	OpenRouterVisionModel string             `bson:"openRouterVisionModel" json:"openRouterVisionModel"`
 	AILanguage            string             `bson:"aiLanguage" json:"aiLanguage"`
 	BGGAPIToken           string             `bson:"bggApiToken" json:"-"`
+	// OpenClipart: the app token, and optionally the app's ID and secret to
+	// get a new token when it expires (they last a day).
+	OpenClipartAPIKey     string             `bson:"openClipartApiKey" json:"-"`
+	OpenClipartAppID      string             `bson:"openClipartAppId" json:"openClipartAppId"`
+	OpenClipartAppSecret  string             `bson:"openClipartAppSecret" json:"-"`
 	LinkedInClientID      string             `bson:"linkedInClientId" json:"linkedInClientId"`
 	LinkedInClientSecret  string             `bson:"linkedInClientSecret" json:"-"`
 	YouTubeClientID       string             `bson:"youtubeClientId" json:"youtubeClientId"`
