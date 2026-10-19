@@ -484,7 +484,7 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
             <span className="preview-story-handle">{igHandle}</span>
           </div>
           {content && (
-            <div className="preview-reel-caption">{content}</div>
+            <div className="preview-reel-caption"><div className="preview-reel-caption-text">{content}</div></div>
           )}
         </div>
         <div className="preview-platform-badge instagram" style={{ marginTop: 8, alignSelf: 'center' }}>Instagram Reel</div>
