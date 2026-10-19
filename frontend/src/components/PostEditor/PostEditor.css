@@ -609,10 +609,16 @@
   font-size: 12px;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* The clamp sits on an inner box: on the padded one the cut-off fourth line
+   would show half in the bottom padding. */
+.preview-reel-caption-text {
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .preview-reel-download {
