@@ -58,13 +58,13 @@ class ApiClient {
   // cancels the upload only while the body is still going out: once all of
   // it is sent the server may already have stored it, so the answer is still
   // awaited and the caller learns the URL to let go of.
-  private uploadWithProgress<T>(path: string, form: FormData, onProgress?: (share: number) => void, signal?: AbortSignal): Promise<T> {
+  private uploadWithProgress<T>(path: string, form: FormData, onProgress?: (share: number) => void, signal?: AbortSignal, method = 'POST'): Promise<T> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       let sent = false;
       xhr.upload.onload = () => { sent = true; };
       signal?.addEventListener('abort', () => { if (!sent) xhr.abort(); }, { once: true });
-      xhr.open('POST', `${API_URL}/api${path}`);
+      xhr.open(method, `${API_URL}/api${path}`);
       const token = this.getToken();
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.upload.onprogress = e => {
@@ -133,17 +133,21 @@ class ApiClient {
     return this.request<any[]>(`/posts${qs ? '?' + qs : ''}`);
   }
 
-  createPost(data: any, files?: File[]) {
+  // onProgress, when given, reports how far the files have gone up (a reel's
+  // video can take a while).
+  createPost(data: any, files?: File[], onProgress?: (share: number) => void) {
     const form = new FormData();
     form.append('data', JSON.stringify(data));
     files?.forEach(f => form.append('images', f));
+    if (onProgress) return this.uploadWithProgress<import('../types').Post>('/posts', form, onProgress);
     return this.request<any>('/posts', { method: 'POST', body: form });
   }
 
-  updatePost(id: string, data: any, files?: File[]) {
+  updatePost(id: string, data: any, files?: File[], onProgress?: (share: number) => void) {
     const form = new FormData();
     form.append('data', JSON.stringify(data));
     files?.forEach(f => form.append('images', f));
+    if (onProgress) return this.uploadWithProgress<import('../types').Post>(`/posts/${id}`, form, onProgress, undefined, 'PUT');
     return this.request<any>(`/posts/${id}`, { method: 'PUT', body: form });
   }
 

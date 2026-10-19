@@ -10,7 +10,7 @@ import { api } from '../../services/api';
 import type { Post, PostType, Platform, SocialAccount, GrowthSettings, WeeklyPlanSlot } from '../../types';
 import { openSlotsForDay, weekMix } from '../../services/instagramGrowth';
 import { PlanSlotGhost, WeekMixBar } from './PlanSlots';
-import { PostEditor } from '../PostEditor/PostEditor';
+import { PostEditor, type SaveOptions } from '../PostEditor/PostEditor';
 import { CalendarPost } from './CalendarPost';
 import { DraggablePost } from './DraggablePost';
 import { DroppableDay } from './DroppableDay';
@@ -288,14 +288,14 @@ export function CalendarPage() {
     setEditorOpen(true);
   };
 
-  const handleSavePost = async (data: any, files?: File[]) => {
+  const handleSavePost = async (data: any, files?: File[], opts?: SaveOptions) => {
     try {
       if (editingPost) {
-        const updated = await api.updatePost(editingPost.id, data, files);
+        const updated = await api.updatePost(editingPost.id, data, files, opts?.onProgress);
         setPosts(prev => prev.map(p => p.id === editingPost.id ? updated : p));
         toast.success('Post updated');
       } else {
-        const created = await api.createPost(data, files);
+        const created = await api.createPost(data, files, opts?.onProgress);
         setPosts(prev => [...prev, created]);
         toast.success('Post created');
       }
