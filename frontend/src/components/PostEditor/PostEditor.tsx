@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { api } from '../../services/api';
 import type { Post, PostDesign, Platform, PostType, Footer, SocialAccount, MentionEntry, Watermark } from '../../types';
-import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette, Clapperboard, Download } from 'lucide-react';
+import { X, Image, Send, Zap, Trash2, Clock, Wand2, MessageSquare, Sparkles, BadgeCheck, Film, Pencil, Crop, Loader, AlertTriangle, Save, Upload, ChevronLeft, ChevronRight, Palette, Clapperboard, Download, Volume2, VolumeX } from 'lucide-react';
 import { CaptionChecker, InsightsStrip, InstagramPeople } from './InstagramTools';
 import { extractHandles } from '../../services/instagramGrowth';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -386,6 +386,31 @@ function PostPreview({ content, contentOverrides, platforms, imageUrls, schedule
   );
 }
 
+// A story or reel video plays muted, as browsers only autoplay without
+// sound, with a button to turn the sound on like Instagram's own.
+function PreviewVideo({ src }: { src: string }) {
+  const [muted, setMuted] = useState(true);
+  const ref = useRef<HTMLVideoElement>(null);
+
+  const toggle = () => {
+    const v = ref.current;
+    if (!v) return;
+    v.muted = !muted;
+    setMuted(!muted);
+    if (!v.muted) v.play().catch(() => {});
+  };
+
+  return (
+    <>
+      <video ref={ref} src={src} className="preview-story-media" muted={muted} autoPlay loop playsInline />
+      <button type="button" className="preview-story-sound" onClick={toggle}
+        aria-label={muted ? 'Turn sound on' : 'Turn sound off'} title={muted ? 'Turn sound on' : 'Turn sound off'}>
+        {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+      </button>
+    </>
+  );
+}
+
 interface StoryPreviewProps {
   imageUrl: string;
   apiUrl: string;
@@ -403,7 +428,7 @@ function StoryPreview({ imageUrl, apiUrl, instagramAccount, isVideo }: StoryPrev
       <div className="preview-story">
         <div className="preview-story-frame">
           {isVideo ? (
-            <video src={src} className="preview-story-media" muted autoPlay loop playsInline />
+            <PreviewVideo src={src} />
           ) : imageUrl ? (
             <img src={src} alt="" className="preview-story-media" />
           ) : (
@@ -470,7 +495,7 @@ function ReelPreview({ videoUrl, apiUrl, instagramAccount, content }: ReelPrevie
       <div className="preview-story">
         <div className="preview-story-frame">
           {videoUrl ? (
-            <video src={src} className="preview-story-media" muted autoPlay loop playsInline />
+            <PreviewVideo src={src} />
           ) : (
             <div className="preview-story-empty">
               <Film size={32} />

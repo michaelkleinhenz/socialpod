@@ -109,6 +109,16 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
     };
   }, []);
 
+  // The finished reel starts with its sound; a browser that refuses to
+  // autoplay that gets it muted, and the controls turn the sound on.
+  const playWithSound = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const v = e.currentTarget;
+    v.play().catch(() => {
+      v.muted = true;
+      v.play().catch(() => {});
+    });
+  };
+
   // The clip's length, read from the local file while it uploads.
   const readLength = (url: string) => new Promise<number>(resolve => {
     const v = document.createElement('video');
@@ -287,7 +297,8 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
 
         {(step === 'review' || step === 'publishing') && reelUrl && (
           <>
-            <video className="qr-video" src={reelUrl} controls playsInline loop autoPlay muted />
+            <video className="qr-video" src={reelUrl} controls playsInline loop
+              onLoadedData={playWithSound} />
             <div className="qr-caption-head">
               <label className="qr-label" htmlFor="qr-caption">Caption</label>
               <button className="btn btn-ghost btn-sm" onClick={writeCaption} disabled={captionBusy || step === 'publishing'}>
