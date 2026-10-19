@@ -17,7 +17,17 @@ import './PostEditor.css';
 
 // Module-level cache so the SDK is initialized once per page load and login
 // state persists across PostEditor open/close cycles.
-let _ccEditor: any = null;
+interface CCEditor {
+  create: (docConfig: object, appConfig: object, exportConfig: object[]) => void;
+}
+interface CCEverywhereSDK {
+  initialize: (host: object, config: object) => Promise<{ editor: CCEditor }>;
+}
+type CCWindow = Window & { CCEverywhere?: CCEverywhereSDK };
+type CCPublishParams = { asset?: { data?: string }[] } | undefined;
+const CC_SDK_URL = 'https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js';
+
+let _ccEditor: CCEditor | null = null;
 let _ccClientId = '';
 
 // Shape of the autosaved draft (text fields only; images can't be serialized).
@@ -31,6 +41,9 @@ interface PostDraft {
   footerIds?: Record<string, string>;
 }
 
+// The post as the editor sends it to createPost/updatePost.
+export type PostSaveData = Record<string, unknown>;
+
 export interface SaveOptions {
   postNow?: boolean;
   // Reports how far the request's files have gone up, 0 to 1; given only
@@ -42,7 +55,7 @@ interface Props {
   post?: Post | null;
   postType?: PostType;
   defaultDate?: Date | null;
-  onSave: (data: any, files?: File[], opts?: SaveOptions) => void | Promise<void>;
+  onSave: (data: PostSaveData, files?: File[], opts?: SaveOptions) => void | Promise<void>;
   onDelete?: () => void;
   onClose: () => void;
   /** Hide the title header and tighten edge padding — used by the mobile
@@ -664,6 +677,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   }, []);
 
   useEffect(() => {
+    const cache = objUrlCache.current;
     textareaRef.current?.focus();
     api.getPublicSettings().then(s => {
       if (ADOBE_EXPRESS_ENABLED && s.adobeExpressClientId) setAdobeClientId(s.adobeExpressClientId);
@@ -677,7 +691,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     return () => {
       document.body.classList.remove('adobe-express-open');
       document.getElementById('adobe-zindex-fix')?.remove();
-      objUrlCache.current.forEach(url => URL.revokeObjectURL(url));
+      cache.forEach(url => URL.revokeObjectURL(url));
     };
   }, [loadAccounts]);
 
@@ -761,10 +775,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     try {
       // Re-initialize only if the client ID changed or SDK was never loaded.
       if (!_ccEditor || _ccClientId !== adobeClientId) {
-        if (!(window as any).CCEverywhere) {
-          await import('https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js' as any);
+        const w = window as CCWindow;
+        if (!w.CCEverywhere) {
+          await import(/* @vite-ignore */ CC_SDK_URL);
         }
-        const { editor } = await (window as any).CCEverywhere.initialize(
+        if (!w.CCEverywhere) throw new Error('Adobe Express SDK did not load');
+        const { editor } = await w.CCEverywhere.initialize(
           { clientId: adobeClientId, appName: 'SocialPod' },
           { loginMode: 'delayed' },
         );
@@ -780,9 +796,9 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         },
         {
           callbacks: {
-            onPublish: async (...args: any[]) => {
+            onPublish: async (...args: CCPublishParams[]) => {
               // Find the object that contains .asset (could be first or second arg).
-              const params = args.find((a: any) => a?.asset) || args[args.length - 1];
+              const params = args.find(a => a?.asset) || args[args.length - 1];
               const assetData = params?.asset?.[0]?.data;
               if (!assetData) {
                 console.warn('Adobe Express onPublish args:', args);
@@ -816,14 +832,14 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                 }
                 closeAdobe();
                 toast.success('Design added');
-              } catch (err: any) {
+              } catch (err) {
                 console.error('Adobe Express design save failed:', err);
                 closeAdobe();
-                toast.error(err.message || 'Failed to save design');
+                toast.error((err instanceof Error && err.message) || 'Failed to save design');
               }
             },
             onCancel: closeAdobe,
-            onError: (err: any) => {
+            onError: (err: { message?: string } | undefined) => {
               console.error('Adobe Express onError:', err);
               closeAdobe();
               toast.error('Adobe Express error: ' + (err?.message || err?.toString() || 'Unknown error'));
@@ -845,7 +861,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     } finally {
       setAdobeLoading(false);
     }
-  }, [adobeClientId, platforms, isStory]);
+  }, [adobeClientId, isStory, isReel]);
 
   const generateText = useCallback(async (platform?: Platform) => {
     const prompt = platform ? (contentOverrides[platform] || '').trim() : content.trim();
@@ -858,8 +874,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       } else {
         setContent(text);
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Text generation failed');
+    } catch (err) {
+      toast.error((err instanceof Error && err.message) || 'Text generation failed');
     } finally {
       setGenerating(false);
     }
@@ -1224,7 +1240,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
 
     setSaving(true);
     try {
-      const postData: any = {
+      const postData: PostSaveData = {
         content: content || '',
         postType,
         firstComment: (isStory || isReel) ? undefined : (firstComment.trim() || undefined),
@@ -1376,8 +1392,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           toast.success('BGG data imported');
         }
       }
-    } catch (e: any) {
-      setBggError(e.message || 'Failed to fetch BGG data');
+    } catch (e) {
+      setBggError((e instanceof Error && e.message) || 'Failed to fetch BGG data');
     } finally {
       setFetchingBgg(false);
     }
@@ -1573,7 +1589,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                                         try {
                                           const { text } = await api.generateText(textForP, [p]);
                                           setContentOverrides(prev => ({ ...prev, [p]: addHashtags(text, p) }));
-                                        } catch {}
+                                        } catch { /* keeps the imported text */ }
                                         setGenerating(false);
                                       }
                                     }
@@ -2138,7 +2154,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       {croppingImageIdx !== null && images[croppingImageIdx] && (
         <ImageCropper
           imageUrl={previewUrl(images[croppingImageIdx])}
-          onApply={(blob, _size) => {
+          onApply={blob => {
             const idx = croppingImageIdx;
             const ext = 'jpg';
             const file = new File([blob], `cropped.${ext}`, { type: 'image/jpeg' });
