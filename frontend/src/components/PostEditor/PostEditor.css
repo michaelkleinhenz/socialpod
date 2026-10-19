@@ -61,6 +61,14 @@
   margin-top: 8px;
 }
 
+.save-progress { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+
+.save-progress-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-secondary); }
+
+.save-progress-track { height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden; }
+
+.save-progress-fill { height: 100%; background: var(--accent); transition: width 0.2s; }
+
 .editor-footer {
   display: flex;
   align-items: center;

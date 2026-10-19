@@ -30,11 +30,18 @@ interface PostDraft {
   footerIds?: Record<string, string>;
 }
 
+export interface SaveOptions {
+  postNow?: boolean;
+  // Reports how far the request's files have gone up, 0 to 1; given only
+  // when the save carries files.
+  onProgress?: (share: number) => void;
+}
+
 interface Props {
   post?: Post | null;
   postType?: PostType;
   defaultDate?: Date | null;
-  onSave: (data: any, files?: File[], opts?: { postNow?: boolean }) => void;
+  onSave: (data: any, files?: File[], opts?: SaveOptions) => void | Promise<void>;
   onDelete?: () => void;
   onClose: () => void;
   /** Hide the title header and tighten edge padding — used by the mobile
@@ -570,6 +577,8 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [bggSuggestedByPlatform, setBggSuggestedByPlatform] = useState<Record<string, string>>({});
   const [bggHashtagSuffix, setBggHashtagSuffix] = useState('');
   const [saving, setSaving] = useState(false);
+  // How far the files of a save have gone up; null when it carries none.
+  const [uploadShare, setUploadShare] = useState<number | null>(null);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [accountsError, setAccountsError] = useState(false);
@@ -1208,9 +1217,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
         designs,
       };
 
-      await onSave(postData, imageFiles.length > 0 ? imageFiles : undefined, { postNow });
+      const hasFiles = imageFiles.length > 0;
+      setUploadShare(hasFiles ? 0 : null);
+      await onSave(postData, hasFiles ? imageFiles : undefined, { postNow, onProgress: hasFiles ? setUploadShare : undefined });
     } finally {
       setSaving(false);
+      setUploadShare(null);
     }
   };
 
@@ -1942,6 +1954,18 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
           </div>
         </div>
 
+        {saving && uploadShare !== null && (
+          <div className="save-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(uploadShare * 100)}>
+            <div className="save-progress-label">
+              {/* Once the body is sent the server still stores the files. */}
+              <span>{uploadShare < 1 ? isReel ? 'Uploading the video' : 'Uploading' : 'Storing…'}</span>
+              <span>{Math.round(uploadShare * 100)}%</span>
+            </div>
+            <div className="save-progress-track">
+              <div className="save-progress-fill" style={{ width: `${uploadShare * 100}%` }} />
+            </div>
+          </div>
+        )}
         <div className="editor-footer">
           <div className="footer-left">
             <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>

@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import {
   X, ArrowLeft, Image as ImageIcon, Clapperboard, Circle, Zap,
 } from 'lucide-react';
-import { PostEditor } from '../PostEditor/PostEditor';
+import { PostEditor, type SaveOptions } from '../PostEditor/PostEditor';
 import './MobileCreate.css';
 
 const TYPE_META: Record<PostType, { label: string; blurb: string; icon: typeof ImageIcon }> = {
@@ -72,9 +72,9 @@ export function MobileCreatePage() {
 
   const backToTypes = () => setPostType(null);
 
-  const handleSave = async (data: any, files?: File[], opts?: { postNow?: boolean }) => {
+  const handleSave = async (data: any, files?: File[], opts?: SaveOptions) => {
     try {
-      await api.createPost(data, files);
+      await api.createPost(data, files, opts?.onProgress);
       toast.success(opts?.postNow ? 'Posting now…' : 'Post scheduled!');
       // Draft is now committed — discard it so the next quick post starts blank.
       if (postType) {

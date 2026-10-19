@@ -26,11 +26,13 @@ type Step = 'pick' | 'uploading' | 'hints' | 'working' | 'review' | 'publishing'
 
 const percent = (share: number) => `${Math.round(share * 100)}%`;
 
-function ProgressBar({ share, label }: { share: number; label: string }) {
+// done, when given, replaces the label once the bar is full: an upload's
+// body is sent, but the server is still storing it.
+function ProgressBar({ share, label, done }: { share: number; label: string; done?: string }) {
   return (
     <div className="qr-progress">
       <div className="qr-progress-label">
-        <span>{label}</span>
+        <span>{done && share >= 1 ? done : label}</span>
         <span>{percent(share)}</span>
       </div>
       <div className="qr-progress-track">
@@ -248,7 +250,7 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
           </>
         )}
 
-        {step === 'uploading' && <ProgressBar share={uploadShare} label="Uploading the clip" />}
+        {step === 'uploading' && <ProgressBar share={uploadShare} label="Uploading the clip" done="Storing the clip…" />}
 
         {step === 'hints' && (
           <>
@@ -304,7 +306,7 @@ export function QuickReel({ queue, onClose }: { queue: ConventionQueue; onClose:
             />
             <p className={`qr-count ${captionLength > INSTAGRAM_LIMIT ? 'over' : ''}`}>{captionLength}/{INSTAGRAM_LIMIT}</p>
             {step === 'publishing' ? (
-              <ProgressBar share={publishShare} label={savingDraft ? 'Saving the draft' : 'Uploading the reel'} />
+              <ProgressBar share={publishShare} label={savingDraft ? 'Saving the draft' : 'Uploading the reel'} done="Storing the reel…" />
             ) : (
               <div className="qr-actions">
                 <button className="btn btn-secondary qr-main" onClick={() => publish(true)} disabled={captionBusy}>
