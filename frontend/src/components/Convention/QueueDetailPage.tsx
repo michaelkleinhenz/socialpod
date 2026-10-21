@@ -35,7 +35,10 @@ import {
   Crop,
   Clapperboard,
   GalleryHorizontalEnd,
+  Plus,
+  Palette,
 } from 'lucide-react';
+import { arrayMove } from '@dnd-kit/sortable';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
 import { QueueFormModal } from './ConventionPage';
@@ -44,6 +47,7 @@ import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { QuickReel } from './QuickReel';
 import { GallerySection } from './GallerySection';
+import { SortableTiles, SortableTile } from '../Common/SortableTiles';
 import '../PostEditor/PostEditor.css';
 import './Convention.css';
 
@@ -83,6 +87,7 @@ function QueueItemCard({
   onAnalyze,
   onEditImage,
   onCropImage,
+  onCreatePage,
   onPostNow,
 }: {
   item: ConventionQueueItem;
@@ -97,6 +102,8 @@ function QueueItemCard({
   onAnalyze: () => Promise<void>;
   onEditImage: (imageIndex: number) => void;
   onCropImage: (imageIndex: number) => void;
+  /** Opens the image editor for a new carousel page at imageIndex. */
+  onCreatePage: (imageIndex: number) => void;
   onPostNow: () => Promise<void>;
 }) {
   const [caption, setCaption] = useState(item.caption ?? '');
@@ -112,6 +119,10 @@ function QueueItemCard({
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const bggSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const footerSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Where a new carousel page goes while the add choices are open.
+  const [addPageAt, setAddPageAt] = useState<number | null>(null);
+  const [savingPages, setSavingPages] = useState(false);
+  const pageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCaption(item.caption ?? '');
@@ -275,6 +286,57 @@ function QueueItemCard({
     el.scrollTo({ left: idx * el.clientWidth, behavior: 'smooth' });
   };
 
+  // Sortable IDs for the pages: the URL, numbered should one repeat.
+  const pageIds = galleryImages.map((url, i) => {
+    const n = galleryImages.slice(0, i).filter(u => u === url).length;
+    return n ? `${url}#${n}` : url;
+  });
+
+  const savePages = async (next: string[]) => {
+    const before = item;
+    // Show the new order at once; the server's answer replaces it.
+    onUpdate({ ...item, imageUrls: next, imageUrl: next[0] });
+    setSavingPages(true);
+    try {
+      onUpdate(await api.setConventionItemImages(queueId, item.id, next));
+    } catch (err) {
+      onUpdate(before);
+      toast.error(err instanceof Error ? err.message : 'Failed to save the pages');
+    } finally {
+      setSavingPages(false);
+    }
+  };
+
+  const movePage = (from: number, to: number) => {
+    savePages(arrayMove(galleryImages, from, to));
+    setGalleryIndex(to);
+    scrollToImage(to);
+  };
+
+  const removePage = (idx: number) => {
+    if (!confirm('Remove this page from the carousel?')) return;
+    savePages(galleryImages.filter((_, i) => i !== idx));
+  };
+
+  // Uploads the picked photos as pages from addPageAt on, in the picked order.
+  const uploadPages = async (files: File[]) => {
+    const at = addPageAt ?? galleryImages.length;
+    setAddPageAt(null);
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    setSavingPages(true);
+    try {
+      for (const [n, file] of imageFiles.entries()) {
+        onUpdate(await api.addConventionItemImage(queueId, item.id, file, at + n));
+      }
+      toast.success(imageFiles.length === 1 ? 'Page added' : `${imageFiles.length} pages added`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add the page');
+    } finally {
+      setSavingPages(false);
+    }
+  };
+
   return (
     <div className={`conv-item-card ${item.status}`}>
       <div className="conv-item-thumb-wrap">
@@ -342,6 +404,84 @@ function QueueItemCard({
           </>
         )}
       </div>
+
+      {isGallery && !isLocked && (
+        <div className="conv-pages">
+          <div className="conv-pages-row">
+            <button
+              type="button"
+              className={`conv-page-add ${addPageAt === 0 ? 'active' : ''}`}
+              onClick={() => setAddPageAt(addPageAt === 0 ? null : 0)}
+              disabled={savingPages}
+              title="Add a front page"
+            >
+              <Plus size={14} />
+            </button>
+            <SortableTiles ids={pageIds} onMove={movePage} className="conv-pages-list">
+              {galleryImages.map((src, i) => (
+                <SortableTile
+                  key={pageIds[i]}
+                  id={pageIds[i]}
+                  className={`conv-page ${i === galleryIndex ? 'current' : ''}`}
+                  title="Drag to reorder"
+                >
+                  <img src={src} alt="" loading="lazy" draggable={false} onClick={() => scrollToImage(i)} />
+                  <span className="conv-page-num">{i + 1}</span>
+                  {galleryImages.length > 1 && (
+                    <button
+                      type="button"
+                      className="conv-page-remove"
+                      onClick={() => removePage(i)}
+                      disabled={savingPages}
+                      title="Remove this page"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </SortableTile>
+              ))}
+            </SortableTiles>
+            <button
+              type="button"
+              className={`conv-page-add ${addPageAt === galleryImages.length ? 'active' : ''}`}
+              onClick={() => setAddPageAt(addPageAt === galleryImages.length ? null : galleryImages.length)}
+              disabled={savingPages}
+              title="Add a back page"
+            >
+              <Plus size={14} />
+            </button>
+            {savingPages && <Loader size={14} className="spin conv-pages-busy" />}
+          </div>
+          {addPageAt !== null && (
+            <div className="conv-pages-add-choices">
+              <span>{addPageAt === 0 ? 'New front page:' : 'New back page:'}</span>
+              <button type="button" className="btn btn-sm btn-secondary" onClick={() => pageInputRef.current?.click()}>
+                <Upload size={13} /> Upload photo
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => { const at = addPageAt; setAddPageAt(null); onCreatePage(at); }}
+              >
+                <Palette size={13} /> Create in editor
+              </button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAddPageAt(null)}>Cancel</button>
+            </div>
+          )}
+          <input
+            ref={pageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={e => {
+              if (e.target.files) uploadPages(Array.from(e.target.files));
+              e.target.value = '';
+            }}
+          />
+          <p className="conv-upload-hint">Drag the pages to reorder them · + adds a front or back page</p>
+        </div>
+      )}
 
       <div className="conv-item-body">
         {item.aiError && (
@@ -575,6 +715,8 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   // a gallery item carries several.
   const [editingImage, setEditingImage] = useState<ItemImage | null>(null);
   const [croppingImage, setCroppingImage] = useState<ItemImage | null>(null);
+  // A carousel page being made in the image editor: the item and where it goes.
+  const [creatingPage, setCreatingPage] = useState<ItemImage | null>(null);
   const [overlayImg, setOverlayImg] = useState<HTMLImageElement | null>(null);
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1133,6 +1275,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
               onAnalyze={() => handleAnalyzeItem(item)}
               onEditImage={index => setEditingImage({ item, index })}
               onCropImage={index => setCroppingImage({ item, index })}
+              onCreatePage={index => setCreatingPage({ item, index })}
               onPostNow={() => handlePostItemNow(item)}
             />
           ))}
@@ -1196,6 +1339,24 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
           watermarkImg={overlayImg}
           watermarkName={overlayImg ? queueWatermark?.name : undefined}
           bakeWatermark={false}
+        />
+      )}
+
+      {creatingPage && (
+        <ImageEditor
+          canvas={{ width: 1080, height: 1080, background: '#ffffff' }}
+          title={creatingPage.index === 0 ? 'Create front page' : 'Create carousel page'}
+          guideOverlay={overlayImg}
+          onCancel={() => setCreatingPage(null)}
+          onSave={async blob => {
+            const { item, index } = creatingPage;
+            const file = new File([blob], 'page.jpg', { type: 'image/jpeg' });
+            // A failed upload is reported by the editor, which stays open for a retry.
+            const updated = await api.addConventionItemImage(queue.id, item.id, file, index);
+            handleUpdateItem(updated);
+            setCreatingPage(null);
+            toast.success('Page added');
+          }}
         />
       )}
 

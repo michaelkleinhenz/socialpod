@@ -846,6 +846,22 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}/image`, { method: 'PUT', body: form });
   }
 
+  /** Adds an image as a carousel page: at index (0 = front page), or at the end without one. */
+  addConventionItemImage(queueId: string, itemId: string, file: File, index?: number) {
+    const form = new FormData();
+    form.append('image', file);
+    if (index !== undefined) form.append('index', String(index));
+    return this.request<import('../types').ConventionQueueItem>(`/convention/queues/${queueId}/items/${itemId}/images`, { method: 'POST', body: form });
+  }
+
+  /** Sets a carousel's pages: its own images in a new order, those left out removed. */
+  setConventionItemImages(queueId: string, itemId: string, imageUrls: string[]) {
+    return this.request<import('../types').ConventionQueueItem>(`/convention/queues/${queueId}/items/${itemId}/images`, {
+      method: 'PUT',
+      body: JSON.stringify({ imageUrls }),
+    });
+  }
+
   deleteConventionItem(queueId: string, itemId: string) {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'DELETE' });
   }

@@ -38,7 +38,7 @@ curl http://localhost:8080/api/health
 | `postType` | string | No | `post` (default), `story`, or `reel` |
 | `scheduledAt` | string | Yes | ISO 8601 datetime (e.g. `2025-06-01T09:00:00Z`) |
 | `status` | string | No | `scheduled` (default) or `draft` |
-| `imageUrls` | array | No | Pre-uploaded image/video URLs |
+| `imageUrls` | array | No | Pre-uploaded image/video URLs, in the order the post shows them. Attached `images` files go after them, unless an entry `upload:<n>` places the n-th attached file (`upload:0` the first) at that position |
 | `firstComment` | string | No | Posted as the first comment after publishing |
 | `footerIds` | object | No | `{"bluesky":"<id>","instagram":"<id>"}` |
 | `accountIds` | object | No | `{"bluesky":"<id>"}` — specific account to use per platform |

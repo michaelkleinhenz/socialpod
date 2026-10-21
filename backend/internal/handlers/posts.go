@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -216,7 +217,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Upload any attached image files and append their URLs to the post.
+	// Upload any attached image files and put their URLs into the post.
 	var uploaded []string
 	if form, err := c.MultipartForm(); err == nil {
 		for _, fh := range form.File["images"] {
@@ -227,8 +228,12 @@ func (h *PostHandler) Create(c *gin.Context) {
 				return
 			}
 			uploaded = append(uploaded, url)
-			input.ImageURLs = append(input.ImageURLs, url)
 		}
+	}
+	if input.ImageURLs, err = placeUploadedImages(input.ImageURLs, uploaded); err != nil {
+		cleanupUploads(h.DB, h.UploadDir, uploaded)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	designs, designURLs, err := buildPostDesigns(input.Designs, uploaded, input.ImageURLs)
@@ -420,7 +425,7 @@ func (h *PostHandler) Update(c *gin.Context) {
 	filter := postFilter(c)
 	filter["_id"] = postID
 
-	// Upload any attached image files and append their URLs.
+	// Upload any attached image files and put their URLs into the post.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -434,8 +439,12 @@ func (h *PostHandler) Update(c *gin.Context) {
 				return
 			}
 			uploaded = append(uploaded, url)
-			input.ImageURLs = append(input.ImageURLs, url)
 		}
+	}
+	if input.ImageURLs, err = placeUploadedImages(input.ImageURLs, uploaded); err != nil {
+		cleanupUploads(h.DB, h.UploadDir, uploaded)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	update := bson.M{"updatedAt": time.Now()}
@@ -546,6 +555,43 @@ func (h *PostHandler) Delete(c *gin.Context) {
 	cleanupUploads(h.DB, h.UploadDir, urls)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Post deleted"})
+}
+
+// uploadPlaceholder in imageUrls stands for the n-th file of the request
+// ("upload:0" the first), so a client can put uploaded files anywhere among
+// the images it keeps, e.g. a new first page of a carousel.
+const uploadPlaceholder = "upload:"
+
+// placeUploadedImages puts the URLs of a request's uploaded files into its
+// imageUrls: in place of their placeholders, the rest after the last image (as
+// before placeholders existed). A placeholder naming no file, or a file
+// twice, is an error.
+func placeUploadedImages(urls, uploaded []string) ([]string, error) {
+	placed := make([]bool, len(uploaded))
+	hasPlaceholder := false
+	out := make([]string, 0, len(urls)+len(uploaded))
+	for _, u := range urls {
+		if !strings.HasPrefix(u, uploadPlaceholder) {
+			out = append(out, u)
+			continue
+		}
+		hasPlaceholder = true
+		n, err := strconv.Atoi(strings.TrimPrefix(u, uploadPlaceholder))
+		if err != nil || n < 0 || n >= len(uploaded) || placed[n] {
+			return nil, fmt.Errorf("invalid image placeholder %q", u)
+		}
+		placed[n] = true
+		out = append(out, uploaded[n])
+	}
+	for i, u := range uploaded {
+		if !placed[i] {
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 && urls == nil && !hasPlaceholder {
+		return nil, nil // no images given: an update keeps the stored ones
+	}
+	return out, nil
 }
 
 // saveUpload validates and stores a multipart file on disk, returning its URL.

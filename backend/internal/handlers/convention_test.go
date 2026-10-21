@@ -350,3 +350,32 @@ func TestOrderGalleryPhotos(t *testing.T) {
 		t.Fatal("orderGalleryPhotos accepted an id with no photo")
 	}
 }
+
+func TestInsertImage(t *testing.T) {
+	images := []string{"/a", "/b"}
+	if got := strings.Join(insertImage(images, 0, "/f"), ","); got != "/f,/a,/b" {
+		t.Fatalf("front page: %s", got)
+	}
+	if got := strings.Join(insertImage(images, 2, "/z"), ","); got != "/a,/b,/z" {
+		t.Fatalf("back page: %s", got)
+	}
+	if strings.Join(images, ",") != "/a,/b" {
+		t.Fatalf("insertImage changed its input: %v", images)
+	}
+}
+
+func TestDroppedImages(t *testing.T) {
+	current := []string{"/a", "/b", "/c"}
+	if d, ok := droppedImages(current, []string{"/c", "/a", "/b"}); !ok || len(d) != 0 {
+		t.Fatalf("reorder: %v %v", d, ok)
+	}
+	if d, ok := droppedImages(current, []string{"/c", "/a"}); !ok || strings.Join(d, ",") != "/b" {
+		t.Fatalf("drop: %v %v", d, ok)
+	}
+	if _, ok := droppedImages(current, []string{"/a", "/x"}); ok {
+		t.Fatal("accepted an image the item does not have")
+	}
+	if _, ok := droppedImages(current, []string{"/a", "/a"}); ok {
+		t.Fatal("accepted an image twice")
+	}
+}

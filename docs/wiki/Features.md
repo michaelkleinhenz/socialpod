@@ -78,6 +78,13 @@ On screens up to 768 px wide the editor switches to a phone layout: a bottom bar
 
 ---
 
+### Carousels in the post editor
+
+A post with several images is a carousel. In the post editor, drag the images into the order they
+should appear (on a phone, hold one a moment, then drag). The **Photo** and **Create** tiles after the
+images add another photo, or a page designed in the image editor, such as a front or back page; drag
+it into place afterwards.
+
 ## Video Editor
 
 **Create Video** in the post editor (reels and stories) opens the editor in video mode on a blank 9:16 canvas. A video has a length (3–90 s) and optional music; every layer can be animated.
@@ -199,6 +206,10 @@ button), then:
 - **Carousel…**: the picked photos go into a carousel, in the order you picked them (the numbers on
   the tiles). Start a new carousel, or add them to the end of a carousel already in the queue that
   isn't scheduled yet.
+
+A carousel's pages show as a strip under its picture until it is scheduled. Drag them into another
+order, remove one with its ×, or use the **+** before the first or after the last page to add a front
+or back page: upload a photo, or **Create in editor** to design one (e.g. a title or "follow us" page).
 
 A moved photo leaves the gallery. Photos you never move can be deleted from the photo view; deleting
 the queue deletes its gallery too.

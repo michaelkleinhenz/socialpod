@@ -375,6 +375,8 @@ func main() {
 		auth.PUT("/convention/queues/:id/items/:iid", conventionHandler.UpdateItem)
 		auth.PUT("/convention/queues/:id/items/:iid/image", conventionHandler.ReplaceItemImage)
 		auth.DELETE("/convention/queues/:id/items/:iid", conventionHandler.DeleteItem)
+		auth.POST("/convention/queues/:id/items/:iid/images", conventionHandler.AddItemImage)
+		auth.PUT("/convention/queues/:id/items/:iid/images", conventionHandler.SetItemImages)
 		auth.POST("/convention/queues/:id/items/:iid/analyze", conventionHandler.AnalyzeItem)
 		auth.POST("/convention/queues/:id/items/:iid/post-now", conventionHandler.PostItemNow)
 		auth.POST("/convention/queues/:id/analyze-all", conventionHandler.AnalyzeAll)
