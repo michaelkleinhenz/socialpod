@@ -315,7 +315,7 @@ func (h *ConventionHandler) GetQueue(c *gin.Context) {
 		items = []models.ConventionQueueItem{}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"queue": queue, "items": items})
+	c.JSON(http.StatusOK, gin.H{"queue": queue, "items": items, "gallery": h.listGallery(ctx, queueID)})
 }
 
 func (h *ConventionHandler) UpdateQueue(c *gin.Context) {
@@ -396,6 +396,8 @@ func (h *ConventionHandler) DeleteQueue(c *gin.Context) {
 	itemFilter := bson.M{"queueId": queueID}
 	urls := collectUploadURLs(ctx, h.DB.ConventionQueueItems(), itemFilter)
 	h.DB.ConventionQueueItems().DeleteMany(ctx, itemFilter)
+	urls = append(urls, collectUploadURLs(ctx, h.DB.ConventionGallery(), itemFilter)...)
+	h.DB.ConventionGallery().DeleteMany(ctx, itemFilter)
 	cleanupUploads(h.DB, h.UploadDir, urls)
 	c.JSON(http.StatusOK, gin.H{"message": "Queue deleted"})
 }

@@ -273,7 +273,7 @@
 /* Upload zones: single-photo posts and gallery posts side by side */
 .conv-upload-zones {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -282,8 +282,205 @@
   margin-bottom: 0;
 }
 
+@media (max-width: 900px) {
+  .conv-upload-zones { grid-template-columns: 1fr 1fr; }
+  .conv-upload-zones .conv-upload-zone:last-child { grid-column: 1 / -1; }
+}
+
 @media (max-width: 640px) {
   .conv-upload-zones { grid-template-columns: 1fr; }
+}
+
+/* Gallery: photos waiting to become single posts or part of a carousel */
+.conv-gallery {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.conv-gallery-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conv-gallery-header h2 { font-size: 15px; margin: 0; }
+
+.conv-gallery-count { font-size: 13px; color: var(--text-muted); }
+
+.conv-gallery-clear { margin-left: auto; }
+
+.conv-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.conv-gallery-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition: outline-color 0.15s;
+}
+
+.conv-gallery-tile.picked { outline-color: var(--accent); }
+
+.conv-gallery-pick {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.conv-gallery-pick img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.15s;
+}
+
+.conv-gallery-tile.picked .conv-gallery-pick img { opacity: 0.8; }
+
+.conv-gallery-order {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.conv-gallery-tile:hover .conv-gallery-view-btn,
+.conv-gallery-view-btn:focus-visible {
+  opacity: 1;
+}
+
+.conv-gallery-actions {
+  position: sticky;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+
+.conv-gallery-selected { font-size: 13px; font-weight: 600; margin-right: auto; }
+
+.conv-gallery-viewer { max-width: 720px; width: 100%; }
+
+.conv-gallery-viewer-body {
+  padding: 0 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.conv-gallery-viewer-body img {
+  max-width: 100%;
+  max-height: 65vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.conv-gallery-viewer .modal-footer { flex-wrap: wrap; }
+
+.conv-gallery-viewer .modal-footer .icon-btn { margin-right: auto; }
+
+.conv-carousel-picker { max-width: 520px; width: 100%; }
+
+.conv-carousel-picker-list {
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.conv-carousel-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.conv-carousel-option:hover,
+.conv-carousel-option:focus-visible { border-color: var(--accent); }
+
+.conv-carousel-option-thumbs {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.conv-carousel-option.new .conv-carousel-option-thumbs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.conv-carousel-option-thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* One or two thumbnails fill the square rather than a corner of it */
+.conv-carousel-option-thumbs img:only-child { grid-column: 1 / -1; grid-row: 1 / -1; }
+
+.conv-carousel-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.conv-carousel-option-text span {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Upload zone */
@@ -1169,3 +1366,121 @@
 .qr-trim-times { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 .qr-trim-times strong { color: var(--text-primary); }
+
+/* A carousel item's pages: dragged into order, with + for a front or back page */
+.conv-pages {
+  padding: 10px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conv-pages-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conv-pages-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+.conv-page {
+  position: relative;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.conv-page.current { outline-color: var(--accent); }
+
+.conv-page.sortable-dragging {
+  opacity: 0.85;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  cursor: grabbing;
+}
+
+.conv-page img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: auto;
+}
+
+.conv-page-num {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.conv-page-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.75);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.conv-page-remove:hover { background: var(--danger); }
+
+.conv-page-add {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 52px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.conv-page-add:hover,
+.conv-page-add.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.conv-pages-busy { flex-shrink: 0; color: var(--text-muted); }
+
+.conv-pages-add-choices {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}

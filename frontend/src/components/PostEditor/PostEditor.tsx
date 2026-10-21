@@ -13,6 +13,8 @@ import toast from 'react-hot-toast';
 import { MentionTextarea } from './MentionTextarea';
 import { ReelCoverPicker, type ReelCover } from './ReelCoverPicker';
 import { ADOBE_EXPRESS_ENABLED } from '../../features';
+import { SortableTiles, SortableTile } from '../Common/SortableTiles';
+import { arrayMove } from '@dnd-kit/sortable';
 import './PostEditor.css';
 
 // Module-level cache so the SDK is initialized once per page load and login
@@ -604,6 +606,19 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
   const [images, setImages] = useState<ImageItem[]>(initialImages);
   // Cache for object URLs so we don't create a new one on every render.
   const objUrlCache = useRef<Map<File, string>>(new Map());
+  // Stable keys for the image tiles, so dragging them into another order
+  // moves the tiles rather than their contents. An edited image is a new item
+  // and gets a new key.
+  const imageKeys = useRef<WeakMap<ImageItem, string>>(new WeakMap());
+  const nextImageKey = useRef(0);
+  const imageKey = (item: ImageItem) => {
+    let key = imageKeys.current.get(item);
+    if (!key) {
+      key = `img-${nextImageKey.current++}`;
+      imageKeys.current.set(item, key);
+    }
+    return key;
+  };
   const [tags] = useState<string[]>(post?.tags || []);
   const [footers, setFooters] = useState<Footer[]>([]);
   const [footerIds, setFooterIds] = useState<Record<string, string>>(draft?.footerIds ?? post?.footerIds ?? {});
@@ -1067,6 +1082,10 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
     addFiles(Array.from(e.dataTransfer.files), { alwaysCrop: true });
   };
 
+  // Only a post holds several images; a story or reel holds one.
+  const canReorder = !isStory && !isReel;
+  const moveImage = (from: number, to: number) => setImages(prev => arrayMove(prev, from, to));
+
   const removeImage = (idx: number) => {
     setImages(prev => {
       const item = prev[idx];
@@ -1214,8 +1233,12 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
       }
     }
 
-    const imageUrls = images.flatMap(i => (i.kind === 'url' ? [i.url] : []));
     const imageFiles = images.flatMap(i => (i.kind === 'file' ? [i.file] : []));
+    // A file uploaded with this request is named by its place among the files
+    // ("upload:n"), so the images keep the order they have here.
+    const imageUrls = images.flatMap(i => (
+      i.kind === 'url' ? [i.url] : i.kind === 'file' ? [`upload:${imageFiles.indexOf(i.file)}`] : []
+    ));
     // The edits of what was made in the image editor; an export uploaded in
     // this request is named by its place among the files.
     type DesignInput = { imageUrl?: string; file?: number; previewUrl?: string; design: string };
@@ -1870,47 +1893,68 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
               )}
               {images.length > 0 && (
                 <div
-                  className={`image-preview-grid${dragOver ? ' dragover' : ''}`}
+                  className={`image-preview-drop${dragOver ? ' dragover' : ''}`}
                   onDragOver={onDragOver}
                   onDragLeave={onDragLeave}
                   onDrop={onDrop}
                 >
-                  {images.map((item, i) => {
-                    const isVid = isVideoItem(item);
-                    const src = previewUrl(item);
-                    return (
-                      <div key={i} className="image-preview">
-                        {item.kind === 'design'
-                          ? (src
-                            ? <img src={src} alt="" />
-                            : <div className="image-preview-pending">{isVid ? <Clapperboard size={24} /> : <Palette size={24} />}</div>)
-                          : isVid
-                          ? <video src={src} muted className="image-preview-video" />
-                          : <img src={src} alt="" />}
-                        {!isVid && item.kind !== 'design' && (
-                          <button className="edit-btn" onClick={() => setCroppingImageIdx(i)} title="Crop image" style={{ left: 8, right: 'auto' }}>
-                            <Crop size={12} />
-                          </button>
-                        )}
-                        {(!isVid || item.design) && (
-                          <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title={item.design ? `Edit the design${item.kind === 'design' ? ' and export it' : ''}` : 'Edit image'}>
-                            <Pencil size={12} />
-                          </button>
-                        )}
-                        {item.design && (
-                          <span
-                            className={`image-preview-badge${item.kind === 'design' ? ' pending' : ''}`}
-                            title={item.kind === 'design'
-                              ? 'Not exported yet: open it with the pencil and export it before the post is scheduled'
-                              : 'Made in the image editor: the pencil opens the design as it was'}
-                          >
-                            {item.kind === 'design' ? 'Not exported' : 'Editable'}
-                          </span>
-                        )}
-                        <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
-                      </div>
-                    );
-                  })}
+                  <SortableTiles ids={images.map(imageKey)} onMove={moveImage} className="image-preview-grid">
+                    {images.map((item, i) => {
+                      const isVid = isVideoItem(item);
+                      const src = previewUrl(item);
+                      const tile = (<>
+                          {item.kind === 'design'
+                            ? (src
+                              ? <img src={src} alt="" />
+                              : <div className="image-preview-pending">{isVid ? <Clapperboard size={24} /> : <Palette size={24} />}</div>)
+                            : isVid
+                            ? <video src={src} muted className="image-preview-video" />
+                            : <img src={src} alt="" />}
+                          {!isVid && item.kind !== 'design' && (
+                            <button className="edit-btn" onClick={() => setCroppingImageIdx(i)} title="Crop image" style={{ left: 8, right: 'auto' }}>
+                              <Crop size={12} />
+                            </button>
+                          )}
+                          {(!isVid || item.design) && (
+                            <button className="edit-btn" onClick={() => setEditingImageIdx(i)} title={item.design ? `Edit the design${item.kind === 'design' ? ' and export it' : ''}` : 'Edit image'}>
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                          {item.design && (
+                            <span
+                              className={`image-preview-badge${item.kind === 'design' ? ' pending' : ''}`}
+                              title={item.kind === 'design'
+                                ? 'Not exported yet: open it with the pencil and export it before the post is scheduled'
+                                : 'Made in the image editor: the pencil opens the design as it was'}
+                            >
+                              {item.kind === 'design' ? 'Not exported' : 'Editable'}
+                            </span>
+                          )}
+                          <button className="remove-btn" onClick={() => removeImage(i)}>x</button>
+                      </>);
+                      // A post's images are its carousel pages, dragged into order.
+                      return canReorder ? (
+                        <SortableTile key={imageKey(item)} id={imageKey(item)} className="image-preview" title="Drag to reorder">
+                          {tile}
+                        </SortableTile>
+                      ) : (
+                        <div key={imageKey(item)} className="image-preview">{tile}</div>
+                      );
+                    })}
+                    {canReorder && (
+                      <>
+                        <button type="button" className="image-preview-add" onClick={() => fileRef.current?.click()} title="Add a photo">
+                          <Upload size={18} /> Photo
+                        </button>
+                        <button type="button" className="image-preview-add" onClick={() => setCreatingImage(true)} title="Design a page, e.g. a front or back page">
+                          <Palette size={18} /> Create
+                        </button>
+                      </>
+                    )}
+                  </SortableTiles>
+                  {canReorder && images.length > 1 && (
+                    <div className="image-preview-hint">Drag the images to reorder the carousel</div>
+                  )}
                 </div>
               )}
               {isReel && images.length > 0 && images[0].kind !== 'design' && (

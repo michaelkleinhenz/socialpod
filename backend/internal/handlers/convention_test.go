@@ -7,10 +7,13 @@ import (
 	"image/color"
 	"image/jpeg"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"socialmedia/internal/models"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func TestEffectivePostsPerDay_DelayTakesPrecedence(t *testing.T) {
@@ -311,5 +314,68 @@ func TestReplaceItemImageAt_Gallery(t *testing.T) {
 		if _, _, ok := replaceItemImageAt(item, idx, "/api/uploads/x.jpg"); ok {
 			t.Errorf("index %d should be out of range", idx)
 		}
+	}
+}
+
+func TestAppendCarouselImages(t *testing.T) {
+	// A plain item becomes a carousel that starts with its image.
+	set := appendCarouselImages(models.ConventionQueueItem{ImageURL: "/a"}, []string{"/b", "/c"})
+	if got := set["imageUrls"].([]string); strings.Join(got, ",") != "/a,/b,/c" {
+		t.Fatalf("plain item: imageUrls = %v", got)
+	}
+	if set["imageUrl"] != "/a" {
+		t.Fatalf("plain item: imageUrl = %v", set["imageUrl"])
+	}
+
+	// A carousel gets the images at the end, and its own list is not touched.
+	item := models.ConventionQueueItem{ImageURL: "/a", ImageURLs: []string{"/a", "/b"}}
+	set = appendCarouselImages(item, []string{"/c"})
+	if got := set["imageUrls"].([]string); strings.Join(got, ",") != "/a,/b,/c" {
+		t.Fatalf("carousel: imageUrls = %v", got)
+	}
+	if len(item.ImageURLs) != 2 {
+		t.Fatalf("carousel: item's own list changed to %v", item.ImageURLs)
+	}
+}
+
+func TestOrderGalleryPhotos(t *testing.T) {
+	a, b, c := primitive.NewObjectID(), primitive.NewObjectID(), primitive.NewObjectID()
+	photos := []models.ConventionGalleryPhoto{{ID: a, ImageURL: "/a"}, {ID: b, ImageURL: "/b"}}
+
+	got, ok := orderGalleryPhotos(photos, []primitive.ObjectID{b, a})
+	if !ok || len(got) != 2 || got[0].ImageURL != "/b" || got[1].ImageURL != "/a" {
+		t.Fatalf("orderGalleryPhotos = %v, %v; want /b, /a in the order asked", got, ok)
+	}
+	if _, ok := orderGalleryPhotos(photos, []primitive.ObjectID{a, c}); ok {
+		t.Fatal("orderGalleryPhotos accepted an id with no photo")
+	}
+}
+
+func TestInsertImage(t *testing.T) {
+	images := []string{"/a", "/b"}
+	if got := strings.Join(insertImage(images, 0, "/f"), ","); got != "/f,/a,/b" {
+		t.Fatalf("front page: %s", got)
+	}
+	if got := strings.Join(insertImage(images, 2, "/z"), ","); got != "/a,/b,/z" {
+		t.Fatalf("back page: %s", got)
+	}
+	if strings.Join(images, ",") != "/a,/b" {
+		t.Fatalf("insertImage changed its input: %v", images)
+	}
+}
+
+func TestDroppedImages(t *testing.T) {
+	current := []string{"/a", "/b", "/c"}
+	if d, ok := droppedImages(current, []string{"/c", "/a", "/b"}); !ok || len(d) != 0 {
+		t.Fatalf("reorder: %v %v", d, ok)
+	}
+	if d, ok := droppedImages(current, []string{"/c", "/a"}); !ok || strings.Join(d, ",") != "/b" {
+		t.Fatalf("drop: %v %v", d, ok)
+	}
+	if _, ok := droppedImages(current, []string{"/a", "/x"}); ok {
+		t.Fatal("accepted an image the item does not have")
+	}
+	if _, ok := droppedImages(current, []string{"/a", "/a"}); ok {
+		t.Fatal("accepted an image twice")
 	}
 }
