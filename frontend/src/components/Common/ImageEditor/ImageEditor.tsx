@@ -1804,12 +1804,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     if (!crop || captioning) return;
     setCaptioning(true);
     try {
-      const audio = await speechAudio(layers, audio, duration, resolveUrl);
-      if (!audio) {
+      const speech = await speechAudio(layers, audio, duration, resolveUrl);
+      if (!speech) {
         toast.error('Neither the clips nor the music have any sound to caption');
         return;
       }
-      const { words } = await api.transcribe(audio, captionLanguage);
+      const { words } = await api.transcribe(speech, captionLanguage);
       const cues = captionCues(words, captionLength, duration);
       if (!cues.length) {
         toast.error('No speech was found in the video');
