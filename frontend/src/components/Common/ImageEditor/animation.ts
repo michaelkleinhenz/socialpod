@@ -184,9 +184,9 @@ export const LOOP_EFFECTS: { id: LoopEffect; label: string }[] = [
   { id: 'slow-zoom', label: 'Slow zoom' },
 ];
 
-// Instagram takes reels of 3 seconds and more; 90 is plenty for a design.
+// Instagram's app records reels of 3 seconds to 3 minutes, so a design stays within that.
 export const MIN_DURATION = 3;
-export const MAX_DURATION = 90;
+export const MAX_DURATION = 180;
 export const DEFAULT_DURATION = 10;
 export const DURATION_PRESETS = [5, 10, 15, 30];
 export const FPS = LEVELS_FPS;
