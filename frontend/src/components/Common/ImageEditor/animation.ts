@@ -54,6 +54,23 @@ export const KEY_EASES: { id: KeyEase; label: string }[] = [
   { id: 'hold', label: 'Hold' },
 ];
 
+// How one clip of the sequence takes over from the one before it.
+export type TransitionKind = 'cut' | 'crossfade' | 'dip' | 'push-left' | 'push-right' | 'push-up' | 'push-down' | 'wipe-right' | 'wipe-left' | 'zoom' | 'cover';
+
+export const TRANSITIONS: { id: TransitionKind; label: string }[] = [
+  { id: 'cut', label: 'Cut' },
+  { id: 'crossfade', label: 'Crossfade' },
+  { id: 'dip', label: 'Dip' },
+  { id: 'push-left', label: 'Push left' },
+  { id: 'push-right', label: 'Push right' },
+  { id: 'push-up', label: 'Push up' },
+  { id: 'push-down', label: 'Push down' },
+  { id: 'wipe-right', label: 'Wipe right' },
+  { id: 'wipe-left', label: 'Wipe left' },
+  { id: 'zoom', label: 'Zoom' },
+  { id: 'cover', label: 'Slide over' },
+];
+
 export const KEY_IDENTITY: KeyValues = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
 
 // Two keys closer than this are the same moment: a playhead on a key edits
@@ -270,6 +287,7 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
     s.rotation = k.rotation;
     s.opacity = clamp(k.opacity, 0, 1);
   }
+  if (l.kind === 'image' && l.clip) applyTransitions(s, l.clip, t, start, end, box);
   const travel = Math.min(box.width, box.height) * 0.25;
   const seed = layerSeed(l);
   const length = end - start;
@@ -366,6 +384,45 @@ export function animStateAt(l: EditorLayer, t: number, duration: number, box: Cr
     case 'slow-zoom': s.scale *= 1 + 0.1 * clamp(since / Math.max(length, 0.1), 0, 1); break;
   }
   return s;
+}
+
+const easeInOut = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+
+// A sequence clip's transitions: the one it comes in with, over the start of
+// its span, and the next clip's, over its end. The incoming clip lies on top
+// (it is stacked above), so a crossfade only fades it in; a push moves both
+// clips a whole frame, together.
+function applyTransitions(s: AnimState, c: NonNullable<ImageLayer['clip']>, t: number, start: number, end: number, box: CropBox) {
+  const { into, out } = c;
+  if (into && into.duration > 0 && t < start + into.duration) {
+    const p = clamp((t - start) / into.duration, 0, 1);
+    const k = 1 - easeInOut(p);
+    switch (into.kind) {
+      case 'crossfade': s.opacity *= p; break;
+      // Out of the clip before, which fades over the first half, to this
+      // one, over the second.
+      case 'dip': s.opacity *= clamp(p * 2 - 1, 0, 1); break;
+      case 'push-left': case 'cover': s.dx += box.width * k; break;
+      case 'push-right': s.dx -= box.width * k; break;
+      case 'push-up': s.dy += box.height * k; break;
+      case 'push-down': s.dy -= box.height * k; break;
+      case 'wipe-right': s.reveal = { from: 'left', share: 1 - k }; break;
+      case 'wipe-left': s.reveal = { from: 'right', share: 1 - k }; break;
+      case 'zoom': s.scale *= 0.8 + 0.2 * (1 - k); s.opacity *= p; break;
+    }
+  }
+  if (out && out.duration > 0 && t > end - out.duration) {
+    const q = clamp((t - (end - out.duration)) / out.duration, 0, 1);
+    const e = easeInOut(q);
+    switch (out.kind) {
+      case 'dip': s.opacity *= clamp(1 - q * 2, 0, 1); break;
+      case 'push-left': s.dx -= box.width * e; break;
+      case 'push-right': s.dx += box.width * e; break;
+      case 'push-up': s.dy -= box.height * e; break;
+      case 'push-down': s.dy += box.height * e; break;
+      case 'zoom': s.scale *= 1 + 0.25 * e; break;
+    }
+  }
 }
 
 // A layer's centre in picture pixels, which effects scale and turn about.
@@ -516,14 +573,20 @@ export function clipGainAt(l: ImageLayer, t: number, duration: number): number {
   return c.volume * edgeFade(t, start, end, clipFadeIn(l, start, end), clipFadeOut(l, start, end));
 }
 
+// A sequence clip's sound crosses over with the next one's for the length
+// of the transition between them, whichever it is (but a cut).
 export function clipFadeIn(l: EditorLayer, start: number, end: number): number {
   const a = layerAnim(l);
-  return a.enter === 'none' ? 0 : Math.min(a.enterDuration, (end - start) / 2);
+  const own = a.enter === 'none' ? 0 : Math.min(a.enterDuration, (end - start) / 2);
+  const into = l.kind === 'image' ? l.clip?.into : undefined;
+  return Math.max(own, into?.duration ?? 0);
 }
 
 export function clipFadeOut(l: EditorLayer, start: number, end: number): number {
   const a = layerAnim(l);
-  return a.exit === 'none' ? 0 : Math.min(a.exitDuration, (end - start) / 2);
+  const own = a.exit === 'none' ? 0 : Math.min(a.exitDuration, (end - start) / 2);
+  const out = l.kind === 'image' ? l.clip?.out : undefined;
+  return Math.max(own, out?.duration ?? 0);
 }
 
 // The span the music plays for: from its start until the video or the file

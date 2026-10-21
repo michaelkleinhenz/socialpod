@@ -1,6 +1,6 @@
 import Konva from 'konva';
 import type { Filter } from 'konva/lib/Node';
-import type { LayerAnim } from './animation';
+import type { LayerAnim, TransitionKind } from './animation';
 import { barCount, equalizerBars, restLevels } from './equalizer';
 
 // Everything the editor holds is in source-image pixels: the crop is a window
@@ -61,6 +61,21 @@ export type LayerSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElemen
 export interface ClipInfo {
   trimStart: number;
   volume: number;
+  duration: number;
+  // In the clip sequence: the clips that play one after the other, in the
+  // order they are stacked, each where the one before it ends
+  // (sequence.ts). Its layer's span is then laid out, not chosen.
+  seq?: boolean;
+  // How a sequence clip takes over from the one before it.
+  transition?: ClipTransition;
+  // Set by layoutSequence, never chosen: the transitions the clip actually
+  // comes in and goes out with, shortened to fit both clips.
+  into?: ClipTransition;
+  out?: ClipTransition;
+}
+
+export interface ClipTransition {
+  kind: TransitionKind;
   duration: number;
 }
 

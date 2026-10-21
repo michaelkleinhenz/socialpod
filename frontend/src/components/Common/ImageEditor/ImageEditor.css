@@ -436,6 +436,58 @@
   background: #0ea5e9;
 }
 
+/* The clip sequence: one bar per clip, back to back, the selected one solid,
+   a mark between two clips for their transition. */
+.ie-track.clip.ie-seq-track .ie-track-span {
+  background: color-mix(in srgb, #0ea5e9 45%, transparent);
+  cursor: grab;
+}
+
+.ie-track.clip.ie-seq-track .ie-track-span.selected {
+  background: #0ea5e9;
+}
+
+.ie-seq-clip.held {
+  cursor: grabbing;
+  opacity: 0.85;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.ie-seq-label {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #ffffff;
+  pointer-events: none;
+}
+
+.ie-seq-transition {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid #0ea5e9;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ie-seq-transition.set {
+  background: #0ea5e9;
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
 .ie-track-span.music {
   background: color-mix(in srgb, #22c55e 55%, transparent);
   border-color: #22c55e;
