@@ -5,6 +5,7 @@ import type {
   ConventionQueue,
   ConventionQueueItem,
   ConventionQueueItemStatus,
+  ConventionGalleryPhoto,
   SchedulePreview,
   SocialAccount,
   Platform,
@@ -33,6 +34,7 @@ import {
   Images,
   Crop,
   Clapperboard,
+  GalleryHorizontalEnd,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PlatformIcon } from '../Common/PlatformIcon';
@@ -41,6 +43,7 @@ import { Modal } from '../Common/Modal';
 import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { QuickReel } from './QuickReel';
+import { GallerySection } from './GallerySection';
 import '../PostEditor/PostEditor.css';
 import './Convention.css';
 
@@ -253,7 +256,9 @@ function QueueItemCard({
 
   // Gallery items carry multiple images; fall back to the single primary image.
   const galleryImages = item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : [item.imageUrl];
-  const isGallery = galleryImages.length > 1;
+  // An item with an image list is a carousel even while it has one image, so
+  // it shows as one that gallery photos can still be added to.
+  const isGallery = (item.imageUrls?.length ?? 0) > 0;
 
   // Track the visible slide while the user swipes horizontally so the counter
   // and dots reflect the current image.
@@ -549,6 +554,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
 
   const [queue, setQueue] = useState<ConventionQueue | null>(null);
   const [items, setItems] = useState<ConventionQueueItem[]>([]);
+  const [gallery, setGallery] = useState<ConventionGalleryPhoto[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [footers, setFooters] = useState<Footer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -558,6 +564,8 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [dragOver, setDragOver] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [galleryDragOver, setGalleryDragOver] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [photosDragOver, setPhotosDragOver] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showQuickReel, setShowQuickReel] = useState(false);
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
@@ -571,6 +579,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const [watermarks, setWatermarks] = useState<Watermark[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const photosInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const loadQueue = useCallback(async () => {
@@ -579,6 +588,7 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
       const [data, accs] = await Promise.all([api.getConventionQueue(id), api.getActiveAccounts()]);
       setQueue(data.queue);
       setItems(data.items);
+      setGallery(data.gallery ?? []);
       setAccounts(accs);
     } catch {
       toast.error('Failed to load queue');
@@ -658,8 +668,8 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     e.target.value = '';
   };
 
-  // Gallery upload: every selected image is combined into a single queue item,
-  // which is published as one post with multiple images.
+  // Carousel upload: every selected image is combined into a single queue
+  // item, which is published as one post with multiple images.
   const uploadGallery = async (files: File[]) => {
     if (!id || files.length === 0) return;
     const imageFiles = files.filter(f => f.type.startsWith('image/'));
@@ -671,9 +681,9 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     try {
       const item = await api.addConventionGalleryItem(id, imageFiles);
       setItems(prev => [...prev, item]);
-      toast.success(`Created a gallery post with ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''}`);
+      toast.success(`Created a carousel post with ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''}`);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create gallery post');
+      toast.error(err.message || 'Failed to create carousel post');
     } finally {
       setUploadingGallery(false);
     }
@@ -688,6 +698,47 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
     e.preventDefault();
     setGalleryDragOver(false);
     if (e.dataTransfer.files) uploadGallery(Array.from(e.dataTransfer.files));
+  };
+
+  // Gallery upload: the photos go into the queue's gallery, to be moved into
+  // single posts or carousels later.
+  const uploadPhotos = async (files: File[]) => {
+    if (!id || files.length === 0) return;
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      toast.error('Only image files are supported');
+      return;
+    }
+    setUploadingPhotos(true);
+    try {
+      const photos = await api.addConventionGalleryPhotos(id, imageFiles);
+      setGallery(prev => [...prev, ...photos]);
+      toast.success(`Added ${photos.length} photo${photos.length > 1 ? 's' : ''} to the gallery`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to upload to the gallery');
+    } finally {
+      setUploadingPhotos(false);
+    }
+  };
+
+  const handlePhotosInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) uploadPhotos(Array.from(e.target.files));
+    e.target.value = '';
+  };
+
+  const handlePhotosDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setPhotosDragOver(false);
+    if (e.dataTransfer.files) uploadPhotos(Array.from(e.dataTransfer.files));
+  };
+
+  // Items a gallery move created or added photos to.
+  const handleGalleryItems = (changed: ConventionQueueItem[]) => {
+    setItems(prev => {
+      const next = prev.map(i => changed.find(c => c.id === i.id) ?? i);
+      const added = changed.filter(c => !prev.some(i => i.id === c.id));
+      return [...next, ...added];
+    });
   };
 
   const handleBGGImport = async () => {
@@ -922,7 +973,8 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         </span>
       </button>
 
-      {/* Upload zones: one post per photo, or one gallery post from many photos */}
+      {/* Upload zones: one post per photo, one carousel post from many photos, or
+          the gallery, to decide later */}
       <div className="conv-upload-zones">
         <div
           className={`conv-upload-zone ${dragOver ? 'drag-over' : ''} ${uploading ? 'uploading' : ''}`}
@@ -976,12 +1028,49 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
           ) : (
             <>
               <Images size={28} color="var(--text-muted)" />
-              <p>Drop photos for one gallery post</p>
+              <p>Drop photos for one carousel post</p>
               <p className="conv-upload-hint">All photos become a single post with multiple images</p>
             </>
           )}
         </div>
+
+        <div
+          className={`conv-upload-zone ${photosDragOver ? 'drag-over' : ''} ${uploadingPhotos ? 'uploading' : ''}`}
+          onDragOver={e => { e.preventDefault(); setPhotosDragOver(true); }}
+          onDragLeave={() => setPhotosDragOver(false)}
+          onDrop={handlePhotosDrop}
+          onClick={() => photosInputRef.current?.click()}
+        >
+          <input
+            ref={photosInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handlePhotosInput}
+          />
+          {uploadingPhotos ? (
+            <>
+              <Loader size={28} className="spin" color="var(--accent)" />
+              <p>Uploading…</p>
+            </>
+          ) : (
+            <>
+              <GalleryHorizontalEnd size={28} color="var(--text-muted)" />
+              <p>Drop photos into the gallery</p>
+              <p className="conv-upload-hint">Decide later: move them into single posts or carousels</p>
+            </>
+          )}
+        </div>
       </div>
+
+      <GallerySection
+        queueId={queue.id}
+        photos={gallery}
+        items={items}
+        onPhotosRemoved={ids => setGallery(prev => prev.filter(p => !ids.includes(p.id)))}
+        onItemsChanged={handleGalleryItems}
+      />
 
       {/* BGG import */}
       <div className="conv-bgg-import">

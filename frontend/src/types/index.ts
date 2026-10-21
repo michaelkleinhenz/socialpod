@@ -491,6 +491,14 @@ export interface ConventionQueueItem {
   updatedAt: string;
 }
 
+/** A photo in a convention queue's gallery, not yet a single post or part of a carousel. */
+export interface ConventionGalleryPhoto {
+  id: string;
+  queueId: string;
+  imageUrl: string;
+  createdAt: string;
+}
+
 export interface SchedulePreviewSlot {
   scheduledAt: string;
 }

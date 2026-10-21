@@ -183,8 +183,25 @@ Convention Mode is designed for events (trade shows, gaming conventions, fan exp
 ### Adding and Managing Photos
 
 1. Open the queue from the Convention list.
-2. Drag and drop image files onto the upload zone.
-3. Each photo becomes a queue item with status **Pending**.
+2. Drag and drop image files onto one of the three upload zones:
+   - **One post per photo**: each photo becomes a queue item with status **Pending**.
+   - **One carousel post**: all the photos become a single carousel item.
+   - **Gallery**: the photos wait in the queue's gallery until you decide what they become.
+
+### The Gallery
+
+Upload a whole batch to the gallery when you'd rather sort the photos once you see them together. The
+gallery appears under the upload zones. Tap photos to pick them (or open one large with its expand
+button), then:
+
+- **Single post(s)**: each picked photo becomes its own **Pending** item, exactly as if it had been
+  uploaded directly.
+- **Carousel…**: the picked photos go into a carousel, in the order you picked them (the numbers on
+  the tiles). Start a new carousel, or add them to the end of a carousel already in the queue that
+  isn't scheduled yet.
+
+A moved photo leaves the gallery. Photos you never move can be deleted from the photo view; deleting
+the queue deletes its gallery too.
 
 Per-item actions:
 

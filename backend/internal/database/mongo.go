@@ -116,6 +116,10 @@ func (m *MongoDB) EnsureIndexes() {
 		{Keys: bson.D{{Key: "queueId", Value: 1}, {Key: "sortOrder", Value: 1}}},
 	})
 
+	m.ConventionGallery().Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "queueId", Value: 1}, {Key: "createdAt", Value: 1}},
+	})
+
 	m.PublisherHandles().Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{{Key: "name", Value: 1}},
 	})
@@ -224,6 +228,10 @@ func (m *MongoDB) ConventionQueues() *mongo.Collection {
 
 func (m *MongoDB) ConventionQueueItems() *mongo.Collection {
 	return m.Database.Collection("convention_queue_items")
+}
+
+func (m *MongoDB) ConventionGallery() *mongo.Collection {
+	return m.Database.Collection("convention_gallery")
 }
 
 func (m *MongoDB) PublisherHandles() *mongo.Collection {

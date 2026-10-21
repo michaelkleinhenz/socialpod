@@ -56,6 +56,7 @@ func TestUploadReferencesCoverOwningCollections(t *testing.T) {
 		"episode_drafts.imageUrls",
 		"convention_queue_items.imageUrl",
 		"convention_queue_items.imageUrls",
+		"convention_gallery.imageUrl",
 		"watermarks.url",
 		"media.url",
 		"media.templateUrls",

@@ -787,7 +787,7 @@ class ApiClient {
   }
 
   getConventionQueue(id: string) {
-    return this.request<{ queue: any; items: any[] }>(`/convention/queues/${id}`);
+    return this.request<{ queue: any; items: any[]; gallery: import('../types').ConventionGalleryPhoto[] }>(`/convention/queues/${id}`);
   }
 
   updateConventionQueue(id: string, data: any) {
@@ -815,6 +815,24 @@ class ApiClient {
       `/convention/queues/${queueId}/items/bgg`,
       { method: 'POST', body: JSON.stringify({ urls }) },
     );
+  }
+
+  addConventionGalleryPhotos(queueId: string, files: File[]) {
+    const form = new FormData();
+    files.forEach(f => form.append('images', f));
+    return this.request<import('../types').ConventionGalleryPhoto[]>(`/convention/queues/${queueId}/gallery`, { method: 'POST', body: form });
+  }
+
+  /** Moves gallery photos into the queue: a single post each, or all into one carousel (a new one, or itemId's). */
+  moveConventionGalleryPhotos(queueId: string, photoIds: string[], target: 'single' | 'carousel', itemId?: string) {
+    return this.request<{ items: import('../types').ConventionQueueItem[] }>(`/convention/queues/${queueId}/gallery/move`, {
+      method: 'POST',
+      body: JSON.stringify({ photoIds, target, itemId }),
+    });
+  }
+
+  deleteConventionGalleryPhoto(queueId: string, photoId: string) {
+    return this.request<any>(`/convention/queues/${queueId}/gallery/${photoId}`, { method: 'DELETE' });
   }
 
   updateConventionItem(queueId: string, itemId: string, data: any) {

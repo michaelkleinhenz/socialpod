@@ -80,3 +80,14 @@ type ConventionQueueItem struct {
 	CreatedAt  time.Time           `bson:"createdAt" json:"createdAt"`
 	UpdatedAt  time.Time           `bson:"updatedAt" json:"updatedAt"`
 }
+
+// ConventionGalleryPhoto is a photo uploaded to a queue's gallery: a holding
+// area for photos that are not yet a post. The user browses the gallery and
+// moves photos out of it, each into a single-post item or into a carousel item
+// of the queue; the move hands the image to the item and removes the photo.
+type ConventionGalleryPhoto struct {
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	QueueID   primitive.ObjectID `bson:"queueId" json:"queueId"`
+	ImageURL  string             `bson:"imageUrl" json:"imageUrl"`
+	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
+}

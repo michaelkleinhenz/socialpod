@@ -380,6 +380,9 @@ func main() {
 		auth.POST("/convention/queues/:id/analyze-all", conventionHandler.AnalyzeAll)
 		auth.GET("/convention/queues/:id/preview", conventionHandler.PreviewSchedule)
 		auth.POST("/convention/queues/:id/schedule", conventionHandler.ScheduleItems)
+		auth.POST("/convention/queues/:id/gallery", conventionHandler.AddGalleryPhotos)
+		auth.POST("/convention/queues/:id/gallery/move", conventionHandler.MoveGalleryPhotos)
+		auth.DELETE("/convention/queues/:id/gallery/:pid", conventionHandler.DeleteGalleryPhoto)
 		auth.POST("/convention/queues/:id/reel/caption", conventionHandler.QuickReelCaption)
 		auth.POST("/convention/queues/:id/reel", conventionHandler.PublishQuickReel)
 	}
