@@ -87,7 +87,7 @@ it into place afterwards.
 
 ## Video Editor
 
-**Create Video** in the post editor (reels and stories) opens the editor in video mode on a blank 9:16 canvas. A video has a length (3–90 s) and optional music; every layer can be animated.
+**Create Video** in the post editor (reels and stories) opens the editor in video mode on a blank 9:16 canvas. A video has a length (3–180 s) and optional music; every layer can be animated.
 
 - **Clips**: add videos from the media library (Media → Clips) or upload one; clips move, resize, turn and take corners, borders and blend modes like images, and have their own trim and volume. Uploads that aren't kept in the library are temporary and cleaned up automatically.
 - **Music**: a sound from the library or an upload, with start, trim, volume and fades (Animate tab with nothing selected).
@@ -250,7 +250,7 @@ Quick Reel turns a phone clip into an Instagram reel in about a minute, straight
 
 1. In the queue's settings, pick a **Quick Reel template**: a video template from the media library.
 2. On the queue page, click **Quick Reel** and pick a clip. It uploads with a progress bar.
-3. Drag the two handles on the filmstrip to choose where the reel cuts into the clip and out of it (3–90 s; arrow keys nudge, Shift for a second). The kept part sets the reel's length; the template's animations play over its own length and its music plays on.
+3. Drag the two handles on the filmstrip to choose where the reel cuts into the clip and out of it (3–180 s; arrow keys nudge, Shift for a second). The kept part sets the reel's length; the template's animations play over its own length and its music plays on.
 4. Add a few words of hints. The reel renders in the browser while the AI writes the caption (the team's "Rewrite for Instagram" prompt plus the queue's hashtags).
 5. Review the reel and edit the caption, then **Publish**: it is scheduled on the queue's Instagram account and footer 30 minutes after the clip was uploaded, or right away once that has passed. **Save as draft** keeps it as a draft to finish in the post editor instead.
 

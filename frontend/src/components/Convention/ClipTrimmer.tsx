@@ -14,7 +14,7 @@ export interface ClipRange {
   end: number;
 }
 
-// A reel is 3 to 90 s, as far as the clip allows.
+// A reel is 3 to 180 s, as far as the clip allows.
 const minLength = (duration: number) => Math.min(MIN_DURATION, duration);
 
 const THUMBS = 10;

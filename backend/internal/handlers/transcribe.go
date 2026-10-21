@@ -35,7 +35,7 @@ var openRouterTranscribeURL = "https://openrouter.ai/api/v1/audio/transcriptions
 var transcribeModels = []string{"openai/whisper-1", "openai/whisper-large-v3"}
 
 // maxTranscribeBytes is OpenRouter's limit for an upload; the editor sends
-// 16 kHz mono WAV, about 2.9 MB for the longest (90 s) video.
+// 16 kHz mono WAV, about 5.8 MB for the longest (180 s) video.
 const maxTranscribeBytes = 25 << 20
 
 var languageCodeRe = regexp.MustCompile(`^[a-z]{2}$`)
