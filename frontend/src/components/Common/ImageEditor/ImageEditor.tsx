@@ -1797,21 +1797,22 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
 
   const captionCount = layers.filter(isCaption).length;
 
-  // Transcribes the clips' sound and lays the words on the video as caption
-  // texts, replacing any made before. One undo step.
+  // Transcribes the clips' sound (the music when the clips have none, see
+  // speechAudio) and lays the words on the video as caption texts, replacing
+  // any made before. One undo step.
   const makeCaptions = async () => {
     if (!crop || captioning) return;
     setCaptioning(true);
     try {
-      const audio = await speechAudio(layers, duration, resolveUrl);
+      const audio = await speechAudio(layers, audio, duration, resolveUrl);
       if (!audio) {
-        toast.error('No clip on the video has any sound to caption');
+        toast.error('Neither the clips nor the music have any sound to caption');
         return;
       }
       const { words } = await api.transcribe(audio, captionLanguage);
       const cues = captionCues(words, captionLength, duration);
       if (!cues.length) {
-        toast.error('No speech was found in the clips');
+        toast.error('No speech was found in the video');
         return;
       }
       const made = cues.map(cue => captionLayer(cue, captionOptions, crop, newLayerId()));
@@ -1852,7 +1853,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     <>
       <span className="ie-label ie-section"><Captions size={14} /> Captions</span>
       <p className="ie-hint">
-        Turns what is said in the clips into captions that show while the words are spoken. Each one is a text you can retype, move or restyle.
+        Turns what is said in the clips into captions that show while the words are spoken; without a clip with sound, what is said in the music. Each one is a text you can retype, move or restyle.
       </p>
       <div className="ie-row">
         <select className="ie-select" value={captionLanguage} onChange={e => changeCaptionLanguage(e.target.value)} aria-label="Spoken language">
@@ -1895,7 +1896,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         ))}
       </div>
       <div className="ie-row">
-        <button className="ie-chip" onClick={() => void makeCaptions()} disabled={captioning || !layers.some(l => l.kind === 'image' && l.clip)}>
+        <button className="ie-chip" onClick={() => void makeCaptions()} disabled={captioning || (!audio && !layers.some(l => l.kind === 'image' && l.clip))}>
           {captioning ? <Loader2 size={14} className="ie-spin" /> : <Captions size={14} />}
           {captioning ? ' Transcribing…' : captionCount ? ' Redo captions' : ' Make captions'}
         </button>

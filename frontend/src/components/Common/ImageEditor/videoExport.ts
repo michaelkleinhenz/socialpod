@@ -157,12 +157,19 @@ async function mixAudio(
   return any ? ctx.startRendering() : null;
 }
 
-// The clips' sound alone, as the video plays it, without the music: what
-// auto-captions transcribe, so the words' times are times of the video.
+// What auto-captions transcribe, as the video plays it, so the words' times
+// are times of the video: the clips' sound alone, without the music, which is
+// usually a song. A video whose clips are silent (or that has none, a reel of
+// only sound such as a podcast snippet) has its music transcribed instead.
 // 16 kHz mono WAV, which speech recognition needs no more than. Null when
-// no clip has any sound.
-export async function speechAudio(layers: EditorLayer[], duration: number, resolve: (url: string) => string, signal?: AbortSignal): Promise<Blob | null> {
-  const buffer = await mixAudio(layers, null, duration, plainClock(duration), fetcher(resolve, signal), { channels: 1, sampleRate: 16000 });
+// neither has any sound.
+export async function speechAudio(
+  layers: EditorLayer[], audio: AudioTrack | null | undefined, duration: number, resolve: (url: string) => string, signal?: AbortSignal,
+): Promise<Blob | null> {
+  const load = fetcher(resolve, signal);
+  const options = { channels: 1, sampleRate: 16000 };
+  let buffer = await mixAudio(layers, null, duration, plainClock(duration), load, options);
+  if ((!buffer || isSilent(buffer)) && audio) buffer = await mixAudio([], audio, duration, plainClock(duration), load, options);
   if (!buffer || isSilent(buffer)) return null;
   return wavBlob(buffer);
 }
