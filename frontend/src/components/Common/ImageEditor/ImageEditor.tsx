@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode, type Ref, type SetStateAction } from 'react';
 import Konva from 'konva';
 import { Stage, Layer, Group, Image as KImage, Text as KText, Rect, Line, Label, Tag, Transformer, Ellipse, Shape, Circle } from 'react-konva';
 import {
@@ -24,8 +24,12 @@ import {
   animatedTextAttrs, animGroupAttrs, animStateAt, DEFAULT_DURATION, DURATION_PRESETS, ENTER_EFFECTS, EXIT_EFFECTS, formatTime, layerAnim, layersAt, openingTime, settledAt,
   layerSpan, LOOP_EFFECTS, MAX_DURATION, MIN_DURATION, musicSpan, NO_ANIM, type LayerAnim,
   hasKeys, KEY_EASES, keyIndexAt, keyValuesAt, setKeyAt, type Keyframe, type KeyValues,
-  equalizerLevels, isEqualizer,
+  equalizerLevels, isEqualizer, TRANSITIONS,
 } from './animation';
+import {
+  clipLength, DEFAULT_TRANSITION, insertIntoSequence, isSeqClip, layoutSequence, MAX_TRANSITION, MIN_CLIP, MIN_TRANSITION, moveInSequence, seqClips, sequenceEnd,
+  setInSequence, setTransition, trimClip, type SeqClip,
+} from './sequence';
 import { audioLevels, barCount, DEFAULT_BARS, MAX_BARS, MIN_BARS, type AudioLevels } from './equalizer';
 import { soundDuration, stopMedia, syncMedia } from './mediaSync';
 import { Timeline } from './Timeline';
@@ -203,7 +207,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
   const [crop, setCrop] = useState<CropBox | null>(() => (canvas ? { x: 0, y: 0, width: canvas.width, height: canvas.height } : null));
   const [aspectId, setAspectId] = useState('free');
   const [adjustments, setAdjustments] = useState<Adjustments>(NO_ADJUSTMENTS);
-  const [layers, setLayers] = useState<EditorLayer[]>([]);
+  const [layers, setLayersRaw] = useState<EditorLayer[]>([]);
+  // Every change of the layers lays the clip sequence out again, so a clip
+  // removed, restacked or restored leaves no gap.
+  const setLayers = useCallback((next: SetStateAction<EditorLayer[]>) => {
+    setLayersRaw(prev => layoutSequence(typeof next === 'function' ? next(prev) : next));
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // A video's length, where its playhead is and whether it plays; and how far
   // an export has got, in percent.
@@ -740,27 +749,42 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     return url;
   };
 
-  // Puts a clip on the picture at the playhead, shown whole (filling the
-  // frame when it has its shape) and for as long as it runs.
+  // A clip's layer, shown whole (filling the frame when it has its shape),
+  // to join the clip sequence.
+  const clipLayer = async (url: string): Promise<ImageLayer | null> => {
+    if (!crop) return null;
+    const v = await loadVideo(resolveUrl(url));
+    const own = sourceSize(v);
+    const r = own.width / own.height;
+    let width = crop.width;
+    let height = width / r;
+    if (height > crop.height) { height = crop.height; width = height * r; }
+    const length = Number.isFinite(v.duration) ? v.duration : 0;
+    return {
+      id: newLayerId(), kind: 'image', origin: 'media', src: url, img: v,
+      x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
+      clip: { trimStart: 0, volume: 1, duration: length, seq: true, transition: DEFAULT_TRANSITION },
+      anim: { ...NO_ANIM },
+    };
+  };
+
+  // Adds clips at the end of the clip sequence, in one undo step. The video
+  // grows to hold them, and shrinks with them when it was as long as the
+  // clips before.
+  const addClips = (added: ImageLayer[]) => {
+    if (added.length === 0) return;
+    checkpoint();
+    const next = insertIntoSequence(layers, added);
+    setLayers(next);
+    fitToSequence(layers, next);
+    setSelectedId(added[added.length - 1].id);
+  };
+
   const addClip = async (url: string, busyKey: string) => {
-    if (!crop) return;
     setAddingMedia(busyKey);
     try {
-      const v = await loadVideo(resolveUrl(url));
-      const own = sourceSize(v);
-      const r = own.width / own.height;
-      let width = crop.width;
-      let height = width / r;
-      if (height > crop.height) { height = crop.height; width = height * r; }
-      const length = Number.isFinite(v.duration) ? v.duration : 0;
-      const start = timeRef.current < duration - 0.5 ? Math.round(timeRef.current * 10) / 10 : 0;
-      const end = length > 0 ? Math.round((start + length) * 10) / 10 : duration;
-      addLayer({
-        id: newLayerId(), kind: 'image', origin: 'media', src: url, img: v,
-        x: crop.x + crop.width / 2, y: crop.y + crop.height / 2, width, height, rotation: 0, opacity: 1,
-        clip: { trimStart: 0, volume: 1, duration: length },
-        anim: { ...NO_ANIM, start, ...(end < duration ? { end } : {}) },
-      });
+      const l = await clipLayer(url);
+      if (l) addClips([l]);
     } catch {
       toast.error('Failed to load that clip');
     } finally {
@@ -768,25 +792,62 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     }
   };
 
-  // A clip from a file: for this video only, or kept in the library.
+  // Clips from files, one after the other in the order picked: for this
+  // video only, or kept in the library.
   const uploadClip = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = [...(e.target.files ?? [])];
     e.target.value = '';
-    if (!file) return;
+    if (files.length === 0) return;
     setUploadingMedia(true);
+    const added: ImageLayer[] = [];
     try {
-      if (keepInLibrary) {
-        const item = await api.uploadMedia(file);
-        setMedia(prev => [item, ...(prev ?? []).filter(m => m.id !== item.id)]);
-        await addClip(item.url, item.id);
-      } else {
-        await addClip(await uploadTemp(file), 'upload');
+      for (const file of files) {
+        try {
+          let url: string;
+          if (keepInLibrary) {
+            const item = await api.uploadMedia(file);
+            setMedia(prev => [item, ...(prev ?? []).filter(m => m.id !== item.id)]);
+            url = item.url;
+          } else {
+            url = await uploadTemp(file);
+          }
+          const l = await clipLayer(url);
+          if (l) added.push(l);
+        } catch (err) {
+          toast.error(`${file.name}: ${err instanceof Error ? err.message : 'upload failed'}`);
+        }
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
+      addClips(added);
+      if (added.length > 1) toast.success(`Added ${added.length} clips one after the other`);
     } finally {
       setUploadingMedia(false);
     }
+  };
+
+  // After a change of the clip sequence (from before to after, the undo step
+  // already taken): the video grows to hold the clips, and follows them when
+  // it was as long as they were.
+  const fitToSequence = (before: EditorLayer[], after: EditorLayer[]) => {
+    const was = sequenceEnd(before);
+    const now = sequenceEnd(after);
+    if (now <= 0) return;
+    const fitted = seqClips(before).length > 0 && Math.abs(duration - was) < 0.05;
+    if (now > duration + 1e-6 || fitted) {
+      const next = Math.round(clamp(now, MIN_DURATION, MAX_DURATION) * 10) / 10;
+      setDuration(next);
+      if (timeRef.current > next) seek(next);
+    }
+  };
+
+  // Changes the clip sequence in one undo step (one per key).
+  const changeSequence = (change: (prev: EditorLayer[]) => EditorLayer[], key?: string) => {
+    const next = change(layers);
+    // A drag keeps going from the layers it started on, so one back where
+    // it began still has to be set.
+    if (next === layers && !key) return;
+    checkpoint(key);
+    setLayers(next);
+    fitToSequence(layers, next);
   };
 
   const changeAudio = (next: AudioTrack | null, key?: string) => {
@@ -2441,7 +2502,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     const shows = (p: AnimPart) => !part || part === p;
     return (
       <>
-        {shows('timing') && (
+        {shows('timing') && isSeqClip(l) && sequenceControls(l, !!part)}
+        {shows('timing') && !isSeqClip(l) && (
           <>
             {!part && <span className="ie-label">Shows</span>}
             <div className="ie-row">
@@ -2517,6 +2579,115 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     </label>
   );
 
+  // Where a clip starts in its video. A sequence clip keeps its length as far
+  // as the video allows, the clips after it following.
+  const setClipStart = (l: ImageLayer, trimStart: number) => {
+    const c = l.clip;
+    if (!c) return;
+    if (isSeqClip(l)) changeSequence(prev => trimClip(prev, l.id, trimStart, clipLength(l)), `clip-trim:${l.id}`);
+    else updateLayer(l.id, { clip: { ...c, trimStart } }, `clip-trim:${l.id}`);
+  };
+
+  // Picks the transition into a sequence clip: selects the clip and opens
+  // the controls that set it, at the moment it starts.
+  const pickTransition = (l: EditorLayer) => {
+    if (editingTextId) finishTextEdit();
+    setSelectedId(l.id);
+    seek(Math.max(0, layerSpan(l, duration).start - 0.3));
+    if (phone) {
+      if (phoneTool === 'clip') setPhoneSub('transition');
+      else openPhoneTool('clip', 'transition');
+      if (tab === 'crop') setTab(restTab);
+    } else if (tab !== 'animate' && tab !== 'media') {
+      setTab('media');
+    }
+  };
+
+  // Plays a transition just picked: from a little before it to a little after.
+  const previewTransition = (l: EditorLayer) => {
+    const { start } = layerSpan(l, duration);
+    playFrom(Math.max(0, start - 0.6));
+  };
+
+  // A sequence clip's transition in: the kinds as chips and how long it lasts.
+  const transitionControls = (l: SeqClip, compact: boolean) => {
+    const t = l.clip.transition ?? DEFAULT_TRANSITION;
+    return (
+      <>
+        <div className={`ie-row ${compact ? 'ie-scroll' : ''}`}>
+          {TRANSITIONS.map(k => (
+            <button
+              key={k.id}
+              className={`ie-chip ${t.kind === k.id ? 'active' : ''}`}
+              onClick={() => { changeSequence(prev => setTransition(prev, l.id, { kind: k.id })); if (k.id !== 'cut') previewTransition(l); }}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+        {t.kind !== 'cut' && (
+          <label className="ie-slider">
+            <span>Duration</span>
+            <input
+              type="range"
+              min={Math.round(MIN_TRANSITION * 10)}
+              max={Math.round(MAX_TRANSITION * 10)}
+              value={Math.round(t.duration * 10)}
+              onChange={e => changeSequence(prev => setTransition(prev, l.id, { duration: Number(e.target.value) / 10 }), `transition:${l.id}`)}
+            />
+            <span className="ie-value">{formatTime(l.clip.into?.duration ?? t.duration)}</span>
+          </label>
+        )}
+      </>
+    );
+  };
+
+  // A sequence clip: its place in the sequence, how long it plays and the
+  // transition it comes in with.
+  const sequenceControls = (l: SeqClip, compact: boolean) => {
+    const clips = seqClips(layers);
+    const index = clips.findIndex(c => c.id === l.id);
+    const length = clipLength(l);
+    const maxLength = l.clip.duration > 0 ? Math.min(MAX_DURATION, l.clip.duration - l.clip.trimStart) : MAX_DURATION;
+    const seqEnd = sequenceEnd(layers);
+    return (
+      <>
+        {!compact && <span className="ie-label ie-section">Clip {index + 1} of {clips.length} in the sequence</span>}
+        <div className={`ie-row ${compact ? 'ie-scroll' : ''}`}>
+          <button className="ie-chip" onClick={() => changeSequence(prev => moveInSequence(prev, l.id, index - 1))} disabled={index <= 0} title="Play it before the clip before it">
+            <ChevronLeft size={14} /> Earlier
+          </button>
+          <button className="ie-chip" onClick={() => changeSequence(prev => moveInSequence(prev, l.id, index + 1))} disabled={index >= clips.length - 1} title="Play it after the clip after it">
+            Later <ChevronRight size={14} />
+          </button>
+          {Math.abs(seqEnd - duration) >= 0.1 && seqEnd >= MIN_DURATION && (
+            <button className="ie-chip" onClick={() => changeDuration(seqEnd)} title="Make the video as long as the clips play">
+              Video as long as the clips ({formatTime(Math.min(seqEnd, MAX_DURATION))})
+            </button>
+          )}
+        </div>
+        <label className="ie-slider">
+          <span>Length</span>
+          <input
+            type="range"
+            min={Math.round(MIN_CLIP * 10)}
+            max={Math.max(Math.round(MIN_CLIP * 10), Math.floor(maxLength * 10))}
+            value={Math.round(length * 10)}
+            onChange={e => changeSequence(prev => trimClip(prev, l.id, l.clip.trimStart, Number(e.target.value) / 10), `clip-length:${l.id}`)}
+          />
+          <span className="ie-value">{formatTime(length)}</span>
+        </label>
+        {index > 0 && (
+          <>
+            {!compact && <span className="ie-label ie-section">Transition from clip {index}</span>}
+            {transitionControls(l, compact)}
+          </>
+        )}
+        {!compact && <p className="ie-hint">The clips play one after the other. In the timeline, drag a clip to move it and its ends to trim it; the mark between two clips picks their transition.</p>}
+      </>
+    );
+  };
+
   // Where a clip starts playing, how loud, and how long its layer shows.
   const clipControls = (l: ImageLayer, c: ClipInfo) => {
     const { start, end } = layerSpan(l, duration);
@@ -2532,7 +2703,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               min={0}
               max={Math.max(0, Math.floor((c.duration - 0.1) * 10))}
               value={Math.round(c.trimStart * 10)}
-              onChange={e => updateLayer(l.id, { clip: { ...c, trimStart: Number(e.target.value) / 10 } }, `clip-trim:${l.id}`)}
+              onChange={e => setClipStart(l, Number(e.target.value) / 10)}
             />
             <span className="ie-value">{formatTime(c.trimStart)}</span>
           </label>
@@ -2552,7 +2723,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           <button className="ie-chip" onClick={() => updateLayer(l.id, { clip: { ...c, volume: c.volume > 0 ? 0 : 1 } })}>
             {c.volume > 0 ? 'Mute' : 'Unmute'}
           </button>
-          {runs > 0 && (
+          {runs > 0 && !c.seq && (
             <button
               className="ie-chip"
               onClick={() => { const to = Math.round((start + runs) * 10) / 10; updateAnim(l, { end: to >= duration ? undefined : to }); }}
@@ -2562,7 +2733,12 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             </button>
           )}
         </div>
-        {runs > 0 && end - start > runs + 0.05 && (
+        <label className="ie-check">
+          <input type="checkbox" checked={!!c.seq} onChange={e => changeSequence(prev => setInSequence(prev, l.id, e.target.checked))} />
+          <span>Play in the clip sequence</span>
+        </label>
+        {isSeqClip(l) && sequenceControls(l, false)}
+        {runs > 0 && !c.seq && end - start > runs + 0.05 && (
           <p className="ie-hint">The clip runs {formatTime(runs)} from its start point; its last frame stays for the rest of the {formatTime(end - start)}.</p>
         )}
         <span className="ie-label ie-section">Picture</span>
@@ -3117,7 +3293,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           className="ie-icon-btn"
           onClick={() => (clipsView ? clipInputRef : mediaInputRef).current?.click()}
           disabled={uploadingMedia}
-          title={clipsView ? (keepInLibrary ? 'Upload a clip into the library' : 'Upload a clip for this video') : 'Add an image to the library'}
+          title={clipsView ? (keepInLibrary ? 'Upload clips into the library' : 'Upload clips for this video') : 'Add an image to the library'}
         >
           {uploadingMedia ? <Loader2 size={16} className="ie-spin" /> : <Upload size={16} />}
         </button>
@@ -3193,10 +3369,10 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           : 'Add texts, images and shapes, then animate them here. Each shows the whole video until you change it.'}
       </p>
       <span className="ie-label ie-section"><Film size={14} /> Clips</span>
-      <p className="ie-hint">Put a video clip on the picture at the playhead, from a file (mp4, mov, webm) or from the library under Media. An upload is kept for this video only, unless you keep uploads in the media library below.</p>
+      <p className="ie-hint">Add video clips from files (mp4, mov, webm; pick several at once) or from the library under Media. They play one after the other: reorder and trim them in the timeline and pick a transition between them. An upload is kept for this video only, unless you keep uploads in the media library below.</p>
       <div className="ie-row">
         <button className="ie-chip" onClick={() => clipInputRef.current?.click()} disabled={uploadingMedia || addingMedia !== null}>
-          {uploadingMedia ? <Loader2 size={14} className="ie-spin" /> : <Upload size={14} />} Upload a clip
+          {uploadingMedia ? <Loader2 size={14} className="ie-spin" /> : <Upload size={14} />} Upload clips
         </button>
       </div>
       {captionControls()}
@@ -3420,10 +3596,22 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         case 'clip': {
           const c = l.clip;
           if (!c) return null;
-          const subs = c.duration > 0 ? [{ id: 'volume', label: 'Volume' }, { id: 'start', label: 'Start at' }] : [{ id: 'volume', label: 'Volume' }];
-          const body = pick(subs) === 'start'
-            ? traySlider('Start at', 0, Math.max(0, Math.floor((c.duration - 0.1) * 10)), Math.round(c.trimStart * 10), v => updateLayer(l.id, { clip: { ...c, trimStart: v / 10 } }, `clip-trim:${l.id}`), formatTime(c.trimStart))
-            : (
+          const seq = isSeqClip(l);
+          const first = seq && seqClips(layers)[0]?.id === l.id;
+          const subs = [
+            { id: 'volume', label: 'Volume' },
+            ...(c.duration > 0 ? [{ id: 'start', label: 'Start at' }] : []),
+            ...(seq ? [{ id: 'sequence', label: 'Sequence' }] : []),
+            ...(seq && !first ? [{ id: 'transition', label: 'Transition' }] : []),
+          ];
+          const sub = pick(subs);
+          const body = sub === 'start'
+            ? traySlider('Start at', 0, Math.max(0, Math.floor((c.duration - 0.1) * 10)), Math.round(c.trimStart * 10), v => setClipStart(l, v / 10), formatTime(c.trimStart))
+            : sub === 'sequence' && isSeqClip(l)
+              ? sequenceControls(l, true)
+              : sub === 'transition' && isSeqClip(l)
+                ? transitionControls(l, true)
+                : (
               <div className="ie-row ie-tray-line">
                 {traySlider('Volume', 0, 100, Math.round(c.volume * 100), v => updateLayer(l.id, { clip: { ...c, volume: v / 100 } }, `clip-volume:${l.id}`), `${Math.round(c.volume * 100)}%`)}
                 <button className="ie-chip" onClick={() => updateLayer(l.id, { clip: { ...c, volume: c.volume > 0 ? 0 : 1 } })}>{c.volume > 0 ? 'Mute' : 'Unmute'}</button>
@@ -3636,7 +3824,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
               ) : clipartView ? (
                 <p className="ie-hint">Tap a piece of clipart to add it in the colour picked below, then place it like an image.</p>
               ) : clipsView ? (
-                <p className="ie-hint">Tap a clip to add it at the playhead, or upload one. Move, resize and turn it like an image; its sound plays along.</p>
+                <p className="ie-hint">Tap a clip to add it after the others, or upload some. Move, resize and turn it like an image; its sound plays along.</p>
               ) : media && media.length > 0 && (
                 <p className="ie-hint">Tap an image to add it, or paste one (Ctrl+V), then drag it, pull its corners or turn it on the picture.</p>
               )}
@@ -4043,6 +4231,9 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
                 audio={audio}
                 onMusicStart={(start, key) => { if (audio) changeAudio({ ...audio, start }, key); }}
                 onSelectMusic={() => { if (!loop) setPlaying(false); setSelectedId(null); if (phone) openSheet('video'); else setTab('animate'); }}
+                onReorderClip={(id, index, key) => changeSequence(prev => moveInSequence(prev, id, index), key)}
+                onTrimClip={(id, trimStart, length, key) => changeSequence(prev => trimClip(prev, id, trimStart, length), key)}
+                onPickTransition={l => { if (!loop) setPlaying(false); pickTransition(l); }}
               />
             )}
           </div>
@@ -4083,7 +4274,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
       )}
 
       <input ref={placeInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={pickPlaceFile} />
-      <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden onChange={uploadClip} />
+      <input ref={clipInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" multiple hidden onChange={uploadClip} />
     </div>
   );
 }

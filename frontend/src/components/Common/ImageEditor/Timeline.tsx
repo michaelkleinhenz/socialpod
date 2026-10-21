@@ -1,7 +1,8 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
-import { Music, Pause, Play, Repeat, SkipBack } from 'lucide-react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Film, Music, Pause, Play, Repeat, SkipBack } from 'lucide-react';
 import { formatTime, KEY_SNAP, layerAnim, layerSpan, musicSpan, sortKeys, type LayerAnim } from './animation';
 import { clamp, layerName, type AudioTrack, type EditorLayer } from './editorModel';
+import { clipLength, isSeqClip, MIN_CLIP, seqClips, transitionLabel, type SeqClip } from './sequence';
 
 interface Props {
   // In drawing order, like the Objects list; shown top first.
@@ -23,6 +24,12 @@ interface Props {
   audio: AudioTrack | null;
   onMusicStart: (start: number, key: string) => void;
   onSelectMusic: () => void;
+  // The clip sequence, a track of its own: a clip dragged to another place
+  // in it, or trimmed by its ends (trimStart into its video, for length).
+  onReorderClip: (id: string, index: number, key: string) => void;
+  onTrimClip: (id: string, trimStart: number, length: number, key: string) => void;
+  // The mark between two clips: picks the transition into the second.
+  onPickTransition: (layer: EditorLayer) => void;
 }
 
 // Spans snap to a tenth of a second.
@@ -31,9 +38,16 @@ const snap = (v: number) => Math.round(v / STEP) * STEP;
 
 // The video's timeline under the picture: play and scrub, and a bar per layer
 // for the span it shows, dragged to move it or by its ends to change it.
-export function Timeline({ layers, duration, time, playing, loop, selectedId, onSeek, onTogglePlay, onToggleLoop, onSelect, onTiming, onDragStart, audio, onMusicStart, onSelectMusic }: Props) {
+export function Timeline({
+  layers, duration, time, playing, loop, selectedId, onSeek, onTogglePlay, onToggleLoop, onSelect, onTiming, onDragStart, audio, onMusicStart, onSelectMusic,
+  onReorderClip, onTrimClip, onPickTransition,
+}: Props) {
   const tracksRef = useRef<HTMLDivElement>(null);
-  const topFirst = [...layers].reverse();
+  // Sequence clips have the sequence's track instead of bars of their own.
+  const topFirst = [...layers].reverse().filter(l => !isSeqClip(l));
+  const clips = seqClips(layers);
+  // The clip being dragged to another place, and where it is held now.
+  const [held, setHeld] = useState<{ id: string; start: number } | null>(null);
 
   // Seconds per screen pixel along the tracks.
   const secondsPerPx = () => {
@@ -140,6 +154,83 @@ export function Timeline({ layers, duration, time, playing, loop, selectedId, on
     window.addEventListener('pointercancel', up);
   };
 
+  // A sequence clip dragged along its track: it follows the pointer and takes
+  // the place in the sequence nearest to where it is held, the others making
+  // room as it goes. A press that does not move only selects it.
+  const startClipMove = (e: ReactPointerEvent, l: SeqClip) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect(l);
+    const others = clips.filter(c => c.id !== l.id).map(clipLength);
+    let index = clips.findIndex(c => c.id === l.id);
+    const from = layerSpan(l, duration).start;
+    const x0 = e.clientX;
+    const perPx = secondsPerPx();
+    const key = `gesture:sequence:${l.id}`;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+      if (!moved) onDragStart();
+      moved = true;
+      const at = clamp(from + (ev.clientX - x0) * perPx, 0, duration);
+      setHeld({ id: l.id, start: at });
+      // The place whose start is nearest.
+      let best = 0;
+      let bestGap = Infinity;
+      let pos = 0;
+      for (let i = 0; i <= others.length; i++) {
+        if (Math.abs(pos - at) < bestGap) { bestGap = Math.abs(pos - at); best = i; }
+        pos += others[i] ?? 0;
+      }
+      if (best !== index) {
+        index = best;
+        onReorderClip(l.id, best, key);
+      }
+    };
+    const up = () => {
+      setHeld(null);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  // A sequence clip's end dragged: the start trims its head (it starts later
+  // in its video), the end its tail; the clips after it follow.
+  const startClipTrim = (e: ReactPointerEvent, l: SeqClip, edge: 'start' | 'end') => {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect(l);
+    onDragStart();
+    const trim0 = l.clip.trimStart;
+    const len0 = clipLength(l);
+    const max = l.clip.duration > 0 ? l.clip.duration : Infinity;
+    const x0 = e.clientX;
+    const perPx = secondsPerPx();
+    const key = `gesture:trim:${l.id}`;
+    const move = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - x0) < 3) return;
+      const d = snap((ev.clientX - x0) * perPx);
+      if (edge === 'start') {
+        const trim = clamp(trim0 + d, 0, trim0 + len0 - MIN_CLIP);
+        onTrimClip(l.id, trim, len0 - (trim - trim0), key);
+      } else {
+        onTrimClip(l.id, trim0, clamp(len0 + d, MIN_CLIP, max - trim0), key);
+      }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
   // A press on the ruler or an empty part of a lane moves the playhead.
   const seekAt = (e: ReactPointerEvent<HTMLDivElement>) => {
     // Nor start a text selection while dragging.
@@ -203,7 +294,52 @@ export function Timeline({ layers, duration, time, playing, loop, selectedId, on
             </div>
           );
         })()}
-        {topFirst.length === 0 && <p className="ie-hint">Add texts, images and shapes; each gets a bar here for when it shows.</p>}
+        {clips.length > 0 && (
+          <div className={`ie-track clip ie-seq-track ${clips.some(c => c.id === selectedId) ? 'active' : ''}`}>
+            <span className="ie-track-name" title="The clips play one after the other: drag one to move it, drag its ends to trim it"><Film size={11} /> Clips</span>
+            <div className="ie-track-lane" onPointerDown={seekAt}>
+              {clips.map((c, i) => {
+                const { start, end } = layerSpan(c, duration);
+                const left = held?.id === c.id ? held.start : start;
+                const t = c.clip.into;
+                return (
+                  <div
+                    key={c.id}
+                    className={`ie-track-span ie-seq-clip${c.id === selectedId ? ' selected' : ''}${held?.id === c.id ? ' held' : ''}`}
+                    style={{ left: pct(left), width: pct(Math.max(0.05, end - start)), zIndex: held?.id === c.id ? 3 : 1 }}
+                    onPointerDown={e => startClipMove(e, c)}
+                    title={`${layerName(c)} ${i + 1}: ${formatTime(end - start)} from ${formatTime(c.clip.trimStart)} into the clip. Drag to move it, drag an end to trim it`}
+                  >
+                    <span className="ie-seq-label">{i + 1}</span>
+                    {t && <span className="ie-track-fx in" style={{ width: `${Math.min(1, t.duration / Math.max(0.1, end - start)) * 100}%` }} />}
+                    <span className="ie-track-handle start" onPointerDown={e => startClipTrim(e, c, 'start')} />
+                    <span className="ie-track-handle end" onPointerDown={e => startClipTrim(e, c, 'end')} />
+                  </div>
+                );
+              })}
+              {!held && clips.slice(1).map(c => {
+                const { start } = layerSpan(c, duration);
+                const t = c.clip.into;
+                const label = transitionLabel(c.clip.transition?.kind);
+                return (
+                  <button
+                    key={`t-${c.id}`}
+                    className={`ie-seq-transition${t ? ' set' : ''}`}
+                    style={{ left: pct(start + (t?.duration ?? 0) / 2) }}
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => onPickTransition(c)}
+                    title={`Transition: ${label}. Click to change it`}
+                    aria-label={`Transition: ${label}`}
+                  >
+                    {t ? '⇄' : '|'}
+                  </button>
+                );
+              })}
+              <span className="ie-playhead" style={{ left: pct(time) }} />
+            </div>
+          </div>
+        )}
+        {topFirst.length === 0 && clips.length === 0 && <p className="ie-hint">Add texts, images and shapes; each gets a bar here for when it shows.</p>}
         {topFirst.map(l => {
           const { start, end } = layerSpan(l, duration);
           const a = layerAnim(l);
