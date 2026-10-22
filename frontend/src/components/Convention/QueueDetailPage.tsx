@@ -48,6 +48,7 @@ import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { QuickReel } from './QuickReel';
 import { GallerySection } from './GallerySection';
 import { SortableTiles, SortableTile } from '../Common/SortableTiles';
+import { RewriteInstagramButton } from '../PostEditor/InstagramTools';
 import '../PostEditor/PostEditor.css';
 import './Convention.css';
 
@@ -115,7 +116,12 @@ function QueueItemCard({
   const [saving, setSaving] = useState(false);
   const [posting, setPosting] = useState(false);
   const [captionSaved, setCaptionSaved] = useState(false);
+  // "Customize per platform": a text per platform instead of the one caption.
+  const [overrides, setOverrides] = useState<Record<string, string>>(item.contentOverrides ?? {});
+  const [customize, setCustomize] = useState(Object.keys(item.contentOverrides ?? {}).length > 0);
+  const [rewriting, setRewriting] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const overridesSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const bggSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const footerSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -131,6 +137,20 @@ function QueueItemCard({
   useEffect(() => {
     setBggUrl(item.bggUrl ?? '');
   }, [item.bggUrl]);
+
+  // Follow the stored texts, e.g. after a new AI caption cleared them.
+  const overridesKey = JSON.stringify(item.contentOverrides ?? {});
+  useEffect(() => {
+    const stored: Record<string, string> = JSON.parse(overridesKey);
+    setOverrides(stored);
+    setCustomize(Object.keys(stored).length > 0);
+  }, [overridesKey]);
+
+  const flashSaved = () => {
+    setCaptionSaved(true);
+    clearTimeout(savedFlashTimer.current);
+    savedFlashTimer.current = setTimeout(() => setCaptionSaved(false), 2000);
+  };
 
   const debouncedSaveBggUrl = (value: string) => {
     setBggUrl(value);
@@ -155,18 +175,77 @@ function QueueItemCard({
         const updated = await api.updateConventionItem(queueId, item.id, { caption: value });
         onUpdate(updated);
         // Briefly surface a subtle confirmation that the caption was saved.
-        setCaptionSaved(true);
-        clearTimeout(savedFlashTimer.current);
-        savedFlashTimer.current = setTimeout(() => setCaptionSaved(false), 2000);
+        flashSaved();
       } catch {
         // silently fail
       }
     }, 800);
   };
 
+  const debouncedSaveOverride = (platform: string, value: string) => {
+    const next = { ...overrides, [platform]: value };
+    setOverrides(next);
+    setCaptionSaved(false);
+    clearTimeout(overridesSaveTimer.current);
+    overridesSaveTimer.current = setTimeout(async () => {
+      try {
+        onUpdate(await api.updateConventionItem(queueId, item.id, { contentOverrides: next }));
+        flashSaved();
+      } catch {
+        // silently fail
+      }
+    }, 800);
+  };
+
+  // Turning it on starts every platform from the caption; turning it off
+  // keeps the longest text as the caption, like the News form.
+  const toggleCustomize = async (on: boolean) => {
+    clearTimeout(saveTimer.current);
+    clearTimeout(overridesSaveTimer.current);
+    let data: { caption?: string; contentOverrides: Record<string, string> };
+    if (on) {
+      const next: Record<string, string> = {};
+      for (const p of effectivePlatforms) next[p] = caption;
+      setOverrides(next);
+      data = { caption, contentOverrides: next };
+    } else {
+      let longest = caption;
+      for (const p of effectivePlatforms) {
+        const val = overrides[p] ?? '';
+        if (val.length > longest.length) longest = val;
+      }
+      setCaption(longest);
+      setOverrides({});
+      data = { caption: longest, contentOverrides: {} };
+    }
+    setCustomize(on);
+    try {
+      onUpdate(await api.updateConventionItem(queueId, item.id, data));
+      flashSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const rewriteForInstagram = async () => {
+    const source = (overrides.instagram ?? '').trim() || (overrides.bluesky ?? '').trim() || caption.trim();
+    if (!source) { toast.error('Write a text first'); return; }
+    setRewriting(true);
+    try {
+      const { text } = await api.rewriteForInstagram(source);
+      debouncedSaveOverride('instagram', text);
+      toast.success('Instagram caption rewritten');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Rewrite failed');
+    } finally {
+      setRewriting(false);
+    }
+  };
+
   // Clear pending timers on unmount so no state updates fire afterwards.
   useEffect(() => () => {
     clearTimeout(saveTimer.current);
+    clearTimeout(overridesSaveTimer.current);
     clearTimeout(savedFlashTimer.current);
     clearTimeout(bggSaveTimer.current);
     clearTimeout(footerSaveTimer.current);
@@ -197,7 +276,7 @@ function QueueItemCard({
     // Block approving a caption that exceeds the character limit, matching the
     // PostEditor which refuses to schedule over-limit content.
     if (item.status !== 'approved' && overLimit) {
-      toast.error(`Caption exceeds the ${charLimit} character limit`);
+      toast.error(overLimitMessage);
       return;
     }
     const newStatus = item.status === 'approved' ? 'pending' : 'approved';
@@ -223,7 +302,7 @@ function QueueItemCard({
 
   const handlePostNow = async () => {
     if (overLimit) {
-      toast.error(`Caption exceeds the ${charLimit} character limit`);
+      toast.error(overLimitMessage);
       return;
     }
     if (!confirm('Post this photo now? It will go out on the next scheduler run.')) return;
@@ -233,6 +312,15 @@ function QueueItemCard({
     } finally {
       setPosting(false);
     }
+  };
+
+  const footerPlatformLabels: Record<string, string> = {
+    bluesky: 'Bluesky',
+    instagram: 'Instagram',
+    twitter: 'X/Twitter',
+    mastodon: 'Mastodon',
+    threads: 'Threads',
+    linkedin: 'LinkedIn',
   };
 
   const effectivePlatforms = item.platforms && item.platforms.length > 0 ? item.platforms : queuePlatforms;
@@ -248,22 +336,22 @@ function QueueItemCard({
     ? effectiveLimit('instagram')
     : Math.min(...effectivePlatforms.map(effectiveLimit));
   const charCount = caption.length;
-  const overLimit = charCount > charLimit;
+  const perPlatform = customize && effectivePlatforms.length > 1;
+  // A platform's text: its own, or the caption when it has none.
+  const platformText = (platform: Platform) => overrides[platform] || caption;
+  const overPlatform = perPlatform
+    ? effectivePlatforms.find(p => platformText(p).length > effectiveLimit(p))
+    : undefined;
+  const overLimit = perPlatform ? overPlatform !== undefined : charCount > charLimit;
+  const overLimitMessage = overPlatform
+    ? `The ${footerPlatformLabels[overPlatform] ?? overPlatform} text exceeds the ${effectiveLimit(overPlatform)} character limit`
+    : `Caption exceeds the ${charLimit} character limit`;
   const charClass = overLimit ? 'danger' : charCount > charLimit * 0.9 ? 'warning' : '';
 
   // Scheduled items are locked from editing/approval, but can still be pulled
   // back from the queue (which cancels the pending post). Once a post is
   // published its item is removed from the queue entirely.
   const isLocked = item.status === 'scheduled';
-
-  const footerPlatformLabels: Record<string, string> = {
-    bluesky: 'Bluesky',
-    instagram: 'Instagram',
-    twitter: 'X/Twitter',
-    mastodon: 'Mastodon',
-    threads: 'Threads',
-    linkedin: 'LinkedIn',
-  };
 
   // Gallery items carry multiple images; fall back to the single primary image.
   const galleryImages = item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : [item.imageUrl];
@@ -502,20 +590,70 @@ function QueueItemCard({
           />
         </div>
 
-        <textarea
-          className="conv-caption-input"
-          value={caption}
-          onChange={e => debouncedSaveCaption(e.target.value)}
-          placeholder="Caption will appear here after AI analysis, or type your own…"
-          rows={4}
-          disabled={isLocked}
-        />
+        {effectivePlatforms.length > 1 && (
+          <div className="conv-customize-row">
+            <label className="conv-customize-toggle">
+              <input
+                type="checkbox"
+                checked={customize}
+                onChange={e => toggleCustomize(e.target.checked)}
+                disabled={isLocked}
+              />
+              Customize per platform
+            </label>
+          </div>
+        )}
+
+        {perPlatform ? (
+          effectivePlatforms.map(platform => {
+            const text = overrides[platform] ?? '';
+            const limit = effectiveLimit(platform);
+            const cls = text.length > limit ? 'danger' : text.length > limit * 0.9 ? 'warning' : '';
+            return (
+              <div key={platform} className="conv-platform-text">
+                <div className="conv-platform-text-head">
+                  <PlatformIcon platform={platform} size={11} />
+                  <span>{footerPlatformLabels[platform] ?? platform}</span>
+                  {platform === 'instagram' && !isLocked && (
+                    <RewriteInstagramButton
+                      style={{ marginLeft: 'auto', padding: '2px 8px' }}
+                      rewriting={rewriting}
+                      disabled={!text.trim() && !(overrides.bluesky ?? '').trim() && !caption.trim()}
+                      onRewrite={rewriteForInstagram}
+                    />
+                  )}
+                </div>
+                <textarea
+                  className="conv-caption-input"
+                  value={text}
+                  onChange={e => debouncedSaveOverride(platform, e.target.value)}
+                  placeholder={caption ? 'Empty: the caption is used' : `Text for ${footerPlatformLabels[platform] ?? platform}…`}
+                  rows={4}
+                  disabled={isLocked}
+                />
+                <div className="conv-caption-meta">
+                  <span />
+                  <span className={`char-counter ${cls}`}>{text.length} / {limit}</span>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <textarea
+            className="conv-caption-input"
+            value={caption}
+            onChange={e => debouncedSaveCaption(e.target.value)}
+            placeholder="Caption will appear here after AI analysis, or type your own…"
+            rows={4}
+            disabled={isLocked}
+          />
+        )}
 
         <div className="conv-caption-meta">
           <span className={`conv-caption-saved ${captionSaved ? 'visible' : ''}`} aria-live="polite">
             <Check size={11} /> Saved
           </span>
-          <span className={`char-counter ${charClass}`}>{charCount} / {charLimit}</span>
+          {!perPlatform && <span className={`char-counter ${charClass}`}>{charCount} / {charLimit}</span>}
         </div>
 
         <div className="conv-item-platforms">

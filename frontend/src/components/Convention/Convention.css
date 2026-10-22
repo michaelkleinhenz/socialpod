@@ -827,6 +827,36 @@
 .conv-caption-input:disabled { opacity: 0.6; }
 
 /* Row under the caption: subtle "saved" indicator + character counter */
+.conv-customize-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conv-customize-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin: 0;
+}
+
+.conv-platform-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conv-platform-text-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  min-height: 26px;
+}
+
 .conv-caption-meta {
   display: flex;
   align-items: center;

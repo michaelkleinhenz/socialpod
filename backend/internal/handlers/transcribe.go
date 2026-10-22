@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"socialmedia/internal/database"
@@ -73,7 +74,15 @@ func transcriptWords(r transcriptionResponse) []TranscriptWord {
 				out = append(out, TranscriptWord{Word: t, Start: w.Start, End: max(w.End, w.Start)})
 			}
 		}
-		return out
+		text := r.Text
+		if strings.TrimSpace(text) == "" {
+			parts := make([]string, len(r.Segments))
+			for i, s := range r.Segments {
+				parts[i] = s.Text
+			}
+			text = strings.Join(parts, " ")
+		}
+		return punctuateWords(out, text)
 	}
 	for _, s := range r.Segments {
 		words := strings.Fields(s.Text)
@@ -91,6 +100,84 @@ func transcriptWords(r transcriptionResponse) []TranscriptWord {
 			out = append(out, TranscriptWord{Word: w, Start: at, End: at + length})
 			at += length
 		}
+	}
+	return out
+}
+
+// punctuateWords gives the timed words back the punctuation and spelling of
+// the transcript's text. Whisper's word timestamps come without it ("Hello
+// world" for "Hello, world."), so each word is found in the text by its
+// letters and digits and takes the whole whitespace-separated piece of text
+// it lies in: its commas, full stops and quotes along. Words that fall into
+// the same piece ("well" and "known" in "well-known") become one word over
+// both their times. A word the text does not hold within a short look-ahead
+// stays as it was; the look-ahead grows with the word, so a short word the
+// text lacks ("a", "um") does not latch onto one further on and pull every
+// word after it out of place.
+func punctuateWords(words []TranscriptWord, text string) []TranscriptWord {
+	type char struct {
+		r     rune
+		token int
+	}
+	var tokens []string
+	var stream []char
+	for i, tok := range strings.Fields(text) {
+		tokens = append(tokens, tok)
+		for _, r := range strings.ToLower(tok) {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				stream = append(stream, char{r, i})
+			}
+		}
+	}
+	if len(stream) == 0 {
+		return words
+	}
+
+	out := make([]TranscriptWord, 0, len(words))
+	// The text pieces the last word of out covers, -1 when it was not found.
+	lastFirst, lastLast := -1, -1
+	cursor := 0
+	for _, w := range words {
+		var norm []rune
+		for _, r := range strings.ToLower(w.Word) {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				norm = append(norm, r)
+			}
+		}
+		at := -1
+		lookAhead := 6 + 4*len(norm)
+		if len(norm) > 0 {
+			for i := cursor; i <= cursor+lookAhead && i+len(norm) <= len(stream); i++ {
+				match := true
+				for j, r := range norm {
+					if stream[i+j].r != r {
+						match = false
+						break
+					}
+				}
+				if match {
+					at = i
+					break
+				}
+			}
+		}
+		if at < 0 {
+			out = append(out, w)
+			lastFirst, lastLast = -1, -1
+			continue
+		}
+		first, last := stream[at].token, stream[at+len(norm)-1].token
+		cursor = at + len(norm)
+		if lastLast >= 0 && first <= lastLast {
+			// The same piece of text as the previous word: one word.
+			prev := &out[len(out)-1]
+			lastLast = max(last, lastLast)
+			prev.Word = strings.Join(tokens[lastFirst:lastLast+1], " ")
+			prev.End = max(prev.End, w.End)
+			continue
+		}
+		lastFirst, lastLast = first, last
+		out = append(out, TranscriptWord{Word: strings.Join(tokens[first:last+1], " "), Start: w.Start, End: w.End})
 	}
 	return out
 }
