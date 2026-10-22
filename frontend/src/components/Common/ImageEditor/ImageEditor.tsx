@@ -36,7 +36,7 @@ import { Timeline } from './Timeline';
 import { BottomSheet, MiniToolbar, PhoneBar, PhoneTray, type BarItem, type TraySub } from './PhoneParts';
 import { canExportVideo, renderVideo, speechAudio } from './videoExport';
 import {
-  CAPTION_LENGTHS, CAPTION_PLACES, CAPTION_STYLES, captionCues, captionLayer, cueOf, isCaption, type CaptionOptions,
+  CAPTION_LENGTHS, CAPTION_PLACES, CAPTION_SIZES, CAPTION_STYLES, captionCues, styleOptions, captionLayer, cueOf, isCaption, type CaptionOptions,
 } from './captions';
 import { nearestFormat, SYSTEM_CATEGORIES, SYSTEM_FORMATS, SYSTEM_TEMPLATES, TEMPLATE_ASSETS, type SystemCategory, type SystemFormat, type SystemTemplate } from './systemTemplates';
 import { SystemTemplateTile } from './SystemTemplateTile';
@@ -288,7 +288,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
     try { return localStorage.getItem(CAPTION_LANGUAGE_KEY) ?? ''; } catch { return ''; }
   });
   const [captionLength, setCaptionLength] = useState<number>(3);
-  const [captionOptions, setCaptionOptions] = useState<CaptionOptions>({ style: CAPTION_STYLES[0], fontFamily: BUILTIN_FONTS[0].family, place: 'lower' });
+  const [captionOptions, setCaptionOptions] = useState<CaptionOptions>({ ...styleOptions(CAPTION_STYLES[0]), fontFamily: BUILTIN_FONTS[0].family, place: 'lower', size: 1 });
   const [captioning, setCaptioning] = useState(false);
   // A pasted or picked image on its way onto the picture.
   const [placingImage, setPlacingImage] = useState(false);
@@ -1870,7 +1870,8 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
           <button
             key={st.id}
             className={`ie-chip ${captionOptions.style.id === st.id ? 'active' : ''}`}
-            onClick={() => changeCaptionOptions({ style: st })}
+            onClick={() => changeCaptionOptions(styleOptions(st))}
+            title="Sets the colour, the text style and how the captions come in"
           >
             {st.label}
           </button>
@@ -1887,6 +1888,28 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
             <option key={f.family} value={f.family} style={{ fontFamily: cssFontFamily(f.family) }}>{f.label}</option>
           ))}
         </select>
+      </div>
+      {colorRow(captionOptions.fill, c => changeCaptionOptions({ fill: c }), 'caption-fill')}
+      <div className="ie-row ie-scroll">
+        <button className={`ie-chip ${captionOptions.bold ? 'active' : ''}`} onClick={() => changeCaptionOptions({ bold: !captionOptions.bold })} aria-pressed={captionOptions.bold}>
+          <Bold size={14} /> Bold
+        </button>
+        <button className={`ie-chip ${captionOptions.outline ? 'active' : ''}`} onClick={() => changeCaptionOptions({ outline: !captionOptions.outline })} aria-pressed={captionOptions.outline}>
+          Outline
+        </button>
+        <button className={`ie-chip ${captionOptions.shadow ? 'active' : ''}`} onClick={() => changeCaptionOptions({ shadow: !captionOptions.shadow })} aria-pressed={captionOptions.shadow}>
+          Shadow
+        </button>
+        <button className={`ie-chip ${captionOptions.upper ? 'active' : ''}`} onClick={() => changeCaptionOptions({ upper: !captionOptions.upper })} aria-pressed={captionOptions.upper}>
+          ALL CAPS
+        </button>
+      </div>
+      <div className="ie-row ie-scroll">
+        {CAPTION_SIZES.map(sz => (
+          <button key={sz.id} className={`ie-chip ${captionOptions.size === sz.id ? 'active' : ''}`} onClick={() => changeCaptionOptions({ size: sz.id })}>
+            {sz.label}
+          </button>
+        ))}
       </div>
       <div className="ie-row ie-scroll">
         {CAPTION_PLACES.map(pl => (
@@ -1905,7 +1928,7 @@ export function ImageEditor({ imageUrl, canvas: initialCanvas, template, title, 
         )}
       </div>
       {captionCount > 0 && (
-        <p className="ie-hint">{captionCount} caption{captionCount === 1 ? '' : 's'} on the video. Style, font and place apply to all of them; redoing them replaces them, your edits included.</p>
+        <p className="ie-hint">{captionCount} caption{captionCount === 1 ? '' : 's'} on the video. Style, font, colour, text style, size and place apply to all of them; redoing them replaces them, your edits included.</p>
       )}
     </>
   );

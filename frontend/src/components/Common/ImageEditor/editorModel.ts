@@ -202,6 +202,9 @@ export interface TextLayer {
   // An auto-caption of the video's speech (captions.ts), which the Captions
   // section restyles and removes together.
   caption?: boolean;
+  // A caption's words as spoken, before a style upper-cased them, so turning
+  // all caps off again restores them; ignored once the text is retyped.
+  spoken?: string;
   x: number;
   y: number;
   rotation: number;
@@ -850,6 +853,7 @@ function templateLayer(l: EditorLayer, crop: CropBox): TemplateLayer {
     kind: 'text', text: l.text, fontFamily: l.fontFamily, fontSize: l.fontSize, fill: l.fill,
     bold: l.bold, outline: l.outline, shadow: l.shadow, align: l.align ?? 'center', x, y, rotation: l.rotation,
     ...(l.caption ? { caption: true } : {}),
+    ...(l.caption && l.spoken ? { spoken: l.spoken } : {}),
   };
 }
 

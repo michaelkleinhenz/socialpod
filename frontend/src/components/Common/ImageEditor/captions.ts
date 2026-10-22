@@ -182,26 +182,46 @@ export const CAPTION_STYLES: CaptionStyle[] = [
   { id: 'typewriter', label: 'Typewriter', fill: '#ffffff', bold: false, outline: true, shadow: false, upper: false, enter: 'typewriter' },
 ];
 
+// Caption text sizes, as a factor of the default size.
+export const CAPTION_SIZES = [
+  { id: 0.8, label: 'Small' },
+  { id: 1, label: 'Medium' },
+  { id: 1.25, label: 'Large' },
+] as const;
+
+// How captions look. A style preset sets the colour and the text styles and
+// brings its enter effect; each of them can then be changed on its own.
 export interface CaptionOptions {
   style: CaptionStyle;
   fontFamily: string;
   place: CaptionPlace;
+  fill: string;
+  bold: boolean;
+  outline: boolean;
+  shadow: boolean;
+  upper: boolean;
+  size: number;
+}
+
+// The options a style preset sets.
+export function styleOptions(style: CaptionStyle): Pick<CaptionOptions, 'style' | 'fill' | 'bold' | 'outline' | 'shadow' | 'upper'> {
+  return { style, fill: style.fill, bold: style.bold, outline: style.outline, shadow: style.shadow, upper: style.upper };
 }
 
 // Captions stay within this share of the frame's width, which on a reel
 // keeps them clear of Instagram's icon column.
 const MAX_WIDTH = 0.74;
 
-// A caption's text layer: its words in the style, broken into two lines
+// A caption's text layer: its words in the options' look, broken into two lines
 // when one would be too wide and shrunk if even that is, centred across the
 // frame at the place, showing for the cue's time.
 export function captionLayer(cue: CaptionCue, o: CaptionOptions, frame: CropBox, id: string): TextLayer {
-  let text = o.style.upper ? cue.text.toLocaleUpperCase() : cue.text;
+  let text = o.upper ? cue.text.toLocaleUpperCase() : cue.text;
   const base: TextLayer = {
-    id, kind: 'text', caption: true, text,
+    id, kind: 'text', caption: true, text, spoken: cue.text,
     fontFamily: o.fontFamily,
-    fontSize: Math.round(frame.width * 0.075),
-    fill: o.style.fill, bold: o.style.bold, outline: o.style.outline, shadow: o.style.shadow,
+    fontSize: Math.round(frame.width * 0.075 * (o.size || 1)),
+    fill: o.fill, bold: o.bold, outline: o.outline, shadow: o.shadow,
     align: 'center', x: 0, y: 0, rotation: 0,
   };
   const maxWidth = frame.width * MAX_WIDTH;
@@ -248,8 +268,11 @@ export function twoLines(text: string): string {
 
 export const isCaption = (l: EditorLayer): l is TextLayer => l.kind === 'text' && !!l.caption;
 
-// A caption layer's cue: its text on one line again (a style may have
-// upper-cased it, which a restyle keeps) and its time.
+// A caption layer's cue: its text on one line again and its time. The
+// words as spoken while the text is still them (all caps or not), otherwise
+// the text as retyped.
 export function cueOf(l: TextLayer, duration: number): CaptionCue {
-  return { text: l.text.replace(/\s*\n\s*/g, ' '), start: l.anim?.start ?? 0, end: l.anim?.end ?? duration };
+  const text = l.text.replace(/\s*\n\s*/g, ' ');
+  const spoken = l.spoken && (text === l.spoken || text === l.spoken.toLocaleUpperCase()) ? l.spoken : text;
+  return { text: spoken, start: l.anim?.start ?? 0, end: l.anim?.end ?? duration };
 }
