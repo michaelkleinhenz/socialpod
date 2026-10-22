@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,46 @@ func TestTranscriptWordsUsesWordTimestamps(t *testing.T) {
 	}
 	if got[1].End != 0.7 {
 		t.Errorf("an end before the start is clamped to it, got %v", got[1].End)
+	}
+}
+
+func TestTranscriptWordsTakePunctuationFromTheText(t *testing.T) {
+	ws := func(words ...string) []TranscriptWord {
+		out := make([]TranscriptWord, len(words))
+		for i, w := range words {
+			out[i] = TranscriptWord{Word: w, Start: float64(i), End: float64(i) + 0.5}
+		}
+		return out
+	}
+	cases := []struct {
+		name  string
+		text  string
+		words []TranscriptWord
+		want  []string
+	}{
+		{"commas and stops", " Hello, world. How are you?", ws("Hello", "world", "How", "are", "you"),
+			[]string{"Hello,", "world.", "How", "are", "you?"}},
+		{"quotes and case", `Wir spielen „Wingspan“ heute!`, ws("wir", "spielen", "Wingspan", "heute"),
+			[]string{"Wir", "spielen", "„Wingspan“", "heute!"}},
+		{"split piece joins", "A well-known game, 1,000 copies.", ws("A", "well", "known", "game", "1", "000", "copies"),
+			[]string{"A", "well-known", "game,", "1,000", "copies."}},
+		{"word missing from text", "Hello there.", ws("Hello", "um", "there"),
+			[]string{"Hello", "um", "there."}},
+		{"no text", "", ws("Hello", "there"), []string{"Hello", "there"}},
+	}
+	for _, c := range cases {
+		got := punctuateWords(c.words, c.text)
+		var words []string
+		for _, w := range got {
+			words = append(words, w.Word)
+		}
+		if strings.Join(words, "|") != strings.Join(c.want, "|") {
+			t.Errorf("%s: got %q, want %q", c.name, words, c.want)
+		}
+	}
+	got := punctuateWords(ws("well", "known"), "well-known")
+	if len(got) != 1 || got[0].Start != 0 || got[0].End != 1.5 {
+		t.Errorf("joined word = %+v, want 0–1.5", got)
 	}
 }
 
