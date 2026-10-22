@@ -521,13 +521,16 @@ func (h *ConventionHandler) AddGalleryItem(c *gin.Context) {
 }
 
 type UpdateItemInput struct {
-	Caption    *string           `json:"caption,omitempty"`
-	Status     *string           `json:"status,omitempty"`
-	SortOrder  *int              `json:"sortOrder,omitempty"`
-	BGGURL     *string           `json:"bggUrl,omitempty"`
-	Platforms  []models.Platform `json:"platforms,omitempty"`
-	AccountIDs map[string]string `json:"accountIds"`
-	FooterIDs  map[string]string `json:"footerIds"`
+	Caption *string `json:"caption,omitempty"`
+	// ContentOverrides replaces the per-platform texts; an empty object
+	// clears them, absent leaves them as they are.
+	ContentOverrides map[string]string `json:"contentOverrides"`
+	Status           *string           `json:"status,omitempty"`
+	SortOrder        *int              `json:"sortOrder,omitempty"`
+	BGGURL           *string           `json:"bggUrl,omitempty"`
+	Platforms        []models.Platform `json:"platforms,omitempty"`
+	AccountIDs       map[string]string `json:"accountIds"`
+	FooterIDs        map[string]string `json:"footerIds"`
 }
 
 func (h *ConventionHandler) UpdateItem(c *gin.Context) {
@@ -554,6 +557,15 @@ func (h *ConventionHandler) UpdateItem(c *gin.Context) {
 	update := bson.M{"updatedAt": time.Now()}
 	if input.Caption != nil {
 		update["caption"] = *input.Caption
+	}
+	if input.ContentOverrides != nil {
+		overrides := map[string]string{}
+		for p, text := range input.ContentOverrides {
+			if text != "" {
+				overrides[p] = text
+			}
+		}
+		update["contentOverrides"] = overrides
 	}
 	if input.Status != nil {
 		update["status"] = *input.Status
@@ -764,9 +776,14 @@ func (h *ConventionHandler) AnalyzeItem(c *gin.Context) {
 		return
 	}
 
+	// A new caption replaces the per-platform texts too: they were written
+	// from the old one.
 	h.DB.ConventionQueueItems().UpdateOne(ctx,
 		bson.M{"_id": itemID},
-		bson.M{"$set": bson.M{"caption": caption, "aiError": "", "updatedAt": now}},
+		bson.M{
+			"$set":   bson.M{"caption": caption, "aiError": "", "updatedAt": now},
+			"$unset": bson.M{"contentOverrides": ""},
+		},
 	)
 
 	h.DB.ConventionQueueItems().FindOne(ctx, bson.M{"_id": itemID}).Decode(&item)
@@ -1192,18 +1209,19 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 	}
 
 	post := models.Post{
-		UserID:      queue.UserID,
-		TeamID:      queue.TeamID,
-		PostType:    models.PostTypePost,
-		Content:     item.Caption,
-		ImageURLs:   imageURLs,
-		Platforms:   platforms,
-		ScheduledAt: scheduledAt,
-		Status:      models.PostStatusScheduled,
-		AccountIDs:  accountIDs,
-		FooterIDs:   footerIDs,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		UserID:           queue.UserID,
+		TeamID:           queue.TeamID,
+		PostType:         models.PostTypePost,
+		Content:          item.Caption,
+		ContentOverrides: item.ContentOverrides,
+		ImageURLs:        imageURLs,
+		Platforms:        platforms,
+		ScheduledAt:      scheduledAt,
+		Status:           models.PostStatusScheduled,
+		AccountIDs:       accountIDs,
+		FooterIDs:        footerIDs,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 
 	res, err := h.DB.Posts().InsertOne(ctx, post)

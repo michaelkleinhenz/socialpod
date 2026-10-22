@@ -481,6 +481,8 @@ export interface ConventionQueueItem {
   imageUrls?: string[];
   bggUrl?: string;
   caption?: string;
+  /** A separate text per platform; a platform without one gets the caption. */
+  contentOverrides?: Record<string, string>;
   status: ConventionQueueItemStatus;
   aiError?: string;
   sortOrder: number;

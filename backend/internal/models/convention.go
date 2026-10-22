@@ -60,25 +60,29 @@ type ConventionQueue struct {
 }
 
 type ConventionQueueItem struct {
-	ID         primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	QueueID    primitive.ObjectID  `bson:"queueId" json:"queueId"`
-	PostID     *primitive.ObjectID `bson:"postId,omitempty" json:"postId,omitempty"`
-	ImageURL   string              `bson:"imageUrl" json:"imageUrl"`
+	ID       primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	QueueID  primitive.ObjectID  `bson:"queueId" json:"queueId"`
+	PostID   *primitive.ObjectID `bson:"postId,omitempty" json:"postId,omitempty"`
+	ImageURL string              `bson:"imageUrl" json:"imageUrl"`
 	// ImageURLs holds every image for a gallery item (a single post with multiple
 	// images). When empty the item is a single-image post backed by ImageURL,
 	// which for a gallery item mirrors the first entry here for thumbnails and AI
 	// analysis.
-	ImageURLs  []string            `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`
-	BGGURL     string              `bson:"bggUrl,omitempty" json:"bggUrl,omitempty"`
-	Caption    string              `bson:"caption,omitempty" json:"caption,omitempty"`
-	Status     string              `bson:"status" json:"status"`
-	AIError    string              `bson:"aiError,omitempty" json:"aiError,omitempty"`
-	SortOrder  int                 `bson:"sortOrder" json:"sortOrder"`
-	Platforms  []Platform          `bson:"platforms,omitempty" json:"platforms,omitempty"`
-	AccountIDs map[string]string   `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
-	FooterIDs  map[string]string   `bson:"footerIds,omitempty" json:"footerIds,omitempty"`
-	CreatedAt  time.Time           `bson:"createdAt" json:"createdAt"`
-	UpdatedAt  time.Time           `bson:"updatedAt" json:"updatedAt"`
+	ImageURLs []string `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`
+	BGGURL    string   `bson:"bggUrl,omitempty" json:"bggUrl,omitempty"`
+	Caption   string   `bson:"caption,omitempty" json:"caption,omitempty"`
+	// ContentOverrides holds a separate text per platform ("Customize per
+	// platform" on the item card). A platform without one gets Caption. The
+	// post the item becomes carries them as its own contentOverrides.
+	ContentOverrides map[string]string `bson:"contentOverrides,omitempty" json:"contentOverrides,omitempty"`
+	Status           string            `bson:"status" json:"status"`
+	AIError          string            `bson:"aiError,omitempty" json:"aiError,omitempty"`
+	SortOrder        int               `bson:"sortOrder" json:"sortOrder"`
+	Platforms        []Platform        `bson:"platforms,omitempty" json:"platforms,omitempty"`
+	AccountIDs       map[string]string `bson:"accountIds,omitempty" json:"accountIds,omitempty"`
+	FooterIDs        map[string]string `bson:"footerIds,omitempty" json:"footerIds,omitempty"`
+	CreatedAt        time.Time         `bson:"createdAt" json:"createdAt"`
+	UpdatedAt        time.Time         `bson:"updatedAt" json:"updatedAt"`
 }
 
 // ConventionGalleryPhoto is a photo uploaded to a queue's gallery: a holding
