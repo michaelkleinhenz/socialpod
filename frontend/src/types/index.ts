@@ -480,6 +480,8 @@ export interface ConventionQueueItem {
   /** All images for a gallery item (a single post with multiple images). */
   imageUrls?: string[];
   bggUrl?: string;
+  /** Made from gallery photos: deleting it puts its images back into the gallery. */
+  fromGallery?: boolean;
   caption?: string;
   /** A separate text per platform; a platform without one gets the caption. */
   contentOverrides?: Record<string, string>;

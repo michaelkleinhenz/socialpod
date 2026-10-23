@@ -70,7 +70,11 @@ type ConventionQueueItem struct {
 	// analysis.
 	ImageURLs []string `bson:"imageUrls,omitempty" json:"imageUrls,omitempty"`
 	BGGURL    string   `bson:"bggUrl,omitempty" json:"bggUrl,omitempty"`
-	Caption   string   `bson:"caption,omitempty" json:"caption,omitempty"`
+	// FromGallery marks an item made from, or added to with, photos of the
+	// queue's gallery. Deleting it puts its images back into the gallery
+	// instead of freeing them.
+	FromGallery bool   `bson:"fromGallery,omitempty" json:"fromGallery,omitempty"`
+	Caption     string `bson:"caption,omitempty" json:"caption,omitempty"`
 	// ContentOverrides holds a separate text per platform ("Customize per
 	// platform" on the item card). A platform without one gets Caption. The
 	// post the item becomes carries them as its own contentOverrides.

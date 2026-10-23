@@ -721,8 +721,10 @@ func (h *ConventionHandler) DeleteItem(c *gin.Context) {
 	// A scheduled item has a real Post waiting to be published by the shared
 	// scheduler. Deleting the item from the queue should cancel that post too,
 	// otherwise it would still go out even though it's gone from the queue.
+	// The post's own files (the watermarked or squared copies) go with it.
+	var postURLs []string
 	if item.Status == models.ConventionQueueItemStatusScheduled && item.PostID != nil {
-		h.DB.Posts().DeleteOne(ctx, bson.M{"_id": *item.PostID, "status": models.PostStatusScheduled})
+		postURLs, _ = deleteOneAndCollectUploadURLs(ctx, h.DB.Posts(), bson.M{"_id": *item.PostID, "status": models.PostStatusScheduled})
 	}
 
 	result, err := h.DB.ConventionQueueItems().DeleteOne(ctx, bson.M{"_id": itemID, "queueId": queueID})
@@ -730,9 +732,27 @@ func (h *ConventionHandler) DeleteItem(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
 		return
 	}
-	cleanupUploads(h.DB, h.UploadDir, append([]string{item.ImageURL}, item.ImageURLs...))
 
-	c.JSON(http.StatusOK, gin.H{"message": "Item deleted"})
+	// An item made from gallery photos gives them back to the gallery, so
+	// cancelling it undoes the move; any other item's images are freed.
+	images := itemImages(item)
+	returned := []models.ConventionGalleryPhoto{}
+	if item.FromGallery {
+		photos, err := h.returnToGallery(ctx, queueID, images)
+		if err != nil {
+			// Keep the files rather than lose the photos; the sweep frees
+			// them should nothing take them up again.
+			log.Printf("convention: failed to return item %s's images to the gallery: %v", item.ID.Hex(), err)
+			cleanupUploads(h.DB, h.UploadDir, postURLs)
+			c.JSON(http.StatusOK, gin.H{"message": "Item deleted", "gallery": returned})
+			return
+		}
+		returned = photos
+	}
+	// cleanupUploads keeps whatever the gallery now holds.
+	cleanupUploads(h.DB, h.UploadDir, append(images, postURLs...))
+
+	c.JSON(http.StatusOK, gin.H{"message": "Item deleted", "gallery": returned})
 }
 
 func (h *ConventionHandler) AnalyzeItem(c *gin.Context) {

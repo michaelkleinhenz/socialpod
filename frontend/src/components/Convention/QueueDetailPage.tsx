@@ -47,6 +47,7 @@ import { ImageCropper } from '../Common/ImageCropper';
 import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { QuickReel } from './QuickReel';
 import { GallerySection } from './GallerySection';
+import { NOT_SQUARE_HINT, isSquare } from './square';
 import { SortableTiles, SortableTile } from '../Common/SortableTiles';
 import { RewriteInstagramButton } from '../PostEditor/InstagramTools';
 import '../PostEditor/PostEditor.css';
@@ -129,6 +130,19 @@ function QueueItemCard({
   const [addPageAt, setAddPageAt] = useState<number | null>(null);
   const [savingPages, setSavingPages] = useState(false);
   const pageInputRef = useRef<HTMLInputElement>(null);
+  // URLs of the pages whose loaded image is not square.
+  const [notSquare, setNotSquare] = useState<Set<string>>(new Set());
+
+  const measurePage = (url: string, img: HTMLImageElement) => {
+    const off = !isSquare(img);
+    setNotSquare(prev => {
+      if (prev.has(url) === off) return prev;
+      const next = new Set(prev);
+      if (off) next.add(url);
+      else next.delete(url);
+      return next;
+    });
+  };
 
   useEffect(() => {
     setCaption(item.caption ?? '');
@@ -358,6 +372,9 @@ function QueueItemCard({
   // An item with an image list is a carousel even while it has one image, so
   // it shows as one that gallery photos can still be added to.
   const isGallery = (item.imageUrls?.length ?? 0) > 0;
+  // A carousel goes out square, so its pages get the gallery's warning.
+  const offSquare = isGallery ? galleryImages.filter(url => notSquare.has(url)).length : 0;
+  const currentOffSquare = isGallery && notSquare.has(galleryImages[galleryIndex]);
 
   // Track the visible slide while the user swipes horizontally so the counter
   // and dots reflect the current image.
@@ -441,6 +458,7 @@ function QueueItemCard({
                 alt=""
                 className="conv-item-thumb conv-item-gallery-slide"
                 loading="lazy"
+                onLoad={e => measurePage(src, e.currentTarget)}
               />
             ))}
           </div>
@@ -460,6 +478,11 @@ function QueueItemCard({
             <span className="conv-item-gallery-badge" title={`${galleryImages.length} images`}>
               <Images size={11} /> {galleryIndex + 1} / {galleryImages.length}
             </span>
+            {currentOffSquare && (
+              <span className="conv-gallery-not-square conv-item-not-square" title={NOT_SQUARE_HINT} aria-label={NOT_SQUARE_HINT}>
+                <AlertTriangle size={12} /> Not square
+              </span>
+            )}
             <div className="conv-item-gallery-dots" aria-hidden="true">
               {galleryImages.map((_, i) => (
                 <button
@@ -513,8 +536,20 @@ function QueueItemCard({
                   className={`conv-page ${i === galleryIndex ? 'current' : ''}`}
                   title="Drag to reorder"
                 >
-                  <img src={src} alt="" loading="lazy" draggable={false} onClick={() => scrollToImage(i)} />
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    draggable={false}
+                    onClick={() => scrollToImage(i)}
+                    onLoad={e => measurePage(src, e.currentTarget)}
+                  />
                   <span className="conv-page-num">{i + 1}</span>
+                  {notSquare.has(src) && (
+                    <span className="conv-page-not-square" title={NOT_SQUARE_HINT} aria-label={NOT_SQUARE_HINT}>
+                      <AlertTriangle size={10} />
+                    </span>
+                  )}
                   {galleryImages.length > 1 && (
                     <button
                       type="button"
@@ -567,7 +602,14 @@ function QueueItemCard({
               e.target.value = '';
             }}
           />
-          <p className="conv-upload-hint">Drag the pages to reorder them · + adds a front or back page</p>
+          <p className="conv-upload-hint">
+            Drag the pages to reorder them · + adds a front or back page
+            {offSquare > 0 && (
+              <span className="conv-gallery-not-square-note" title={NOT_SQUARE_HINT}>
+                <AlertTriangle size={12} /> {offSquare} not cropped square
+              </span>
+            )}
+          </p>
         </div>
       )}
 
@@ -718,7 +760,10 @@ function QueueItemCard({
           <button
             className="icon-btn danger"
             onClick={onDelete}
-            title={item.status === 'scheduled' ? 'Remove from queue and cancel the pending post' : 'Remove from queue'}
+            title={
+              (item.status === 'scheduled' ? 'Remove from queue and cancel the pending post' : 'Remove from queue')
+              + (item.fromGallery ? '; the photos go back to the gallery' : '')
+            }
           >
             <Trash2 size={14} />
           </button>
@@ -1080,8 +1125,13 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
   const handleDeleteItem = async (item: ConventionQueueItem) => {
     if (!id) return;
     try {
-      await api.deleteConventionItem(id, item.id);
+      const res = await api.deleteConventionItem(id, item.id);
       setItems(prev => prev.filter(i => i.id !== item.id));
+      const returned = res.gallery ?? [];
+      if (returned.length > 0) {
+        setGallery(prev => [...prev, ...returned]);
+        toast.success(returned.length === 1 ? 'Photo returned to the gallery' : `${returned.length} photos returned to the gallery`);
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete item');
     }
