@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"image"
 	"image/draw"
 	"image/jpeg"
@@ -16,34 +15,16 @@ import (
 // costly on a full-size phone photo.
 const maxFittedSide = 2160
 
-// imageAspect returns the width/height ratio of the image in data as it is
-// shown, EXIF orientation applied, or 0 when it cannot be read.
-func imageAspect(data []byte) float64 {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || cfg.Width == 0 || cfg.Height == 0 {
-		return 0
-	}
-	w, h := cfg.Width, cfg.Height
-	if o := services.ReadExifOrientation(data); o >= 5 && o <= 8 {
-		w, h = h, w
-	}
-	return float64(w) / float64(h)
-}
-
-// carouselAspect is the shape every page of a carousel item is posted in: the
-// first page's. Instagram frames a whole carousel by its first image and
-// squeezes the others into that frame, so a page cropped square behind an
-// uncropped portrait photo would go out distorted. 0 for a single image or a
-// first page that cannot be read.
-func (h *ConventionHandler) carouselAspect(ctx context.Context, srcURLs []string) float64 {
+// carouselAspect is the shape every page of a carousel item is posted in:
+// square, like the queue's crop and overlays. Instagram frames a whole
+// carousel by its first image and squeezes the others into that frame, so
+// pages of mixed shapes would go out distorted. 0 for a single image, which
+// keeps its own shape.
+func carouselAspect(srcURLs []string) float64 {
 	if len(srcURLs) < 2 {
 		return 0
 	}
-	data, _, err := h.readImageData(ctx, srcURLs[0])
-	if err != nil {
-		return 0
-	}
-	return imageAspect(data)
+	return 1
 }
 
 // fitToAspect fits img whole into a frame of the given width/height ratio over

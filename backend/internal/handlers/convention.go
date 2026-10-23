@@ -1166,7 +1166,7 @@ func (h *ConventionHandler) postRandomApprovedItem(ctx context.Context, queue mo
 	return h.postItem(ctx, queue, picked[0], scheduledAt, models.ConventionQueueItemStatusApproved)
 }
 
-// postItem fits a carousel's pages into the first one's shape, composites
+// postItem fits a carousel's pages into a square, composites
 // the queue watermark if configured, creates a Post
 // scheduled for scheduledAt (the shared scheduler then publishes it), and marks
 // the item as consumed so it is never picked again. The consume is guarded on
@@ -1194,8 +1194,8 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 	if len(srcURLs) == 0 {
 		srcURLs = []string{item.ImageURL}
 	}
-	// A carousel's pages all go out in the first page's shape (carouselAspect).
-	aspect := h.carouselAspect(ctx, srcURLs)
+	// A carousel's pages all go out square (carouselAspect).
+	aspect := carouselAspect(srcURLs)
 	imageURLs := make([]string, 0, len(srcURLs))
 	for idx, src := range srcURLs {
 		imageURL := src

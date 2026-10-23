@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import type { ConventionGalleryPhoto, ConventionQueueItem } from '../../types';
-import { GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../Common/Modal';
 
@@ -14,6 +14,16 @@ import { Modal } from '../Common/Modal';
 // that have not been handed to a post yet.
 function carouselTargets(items: ConventionQueueItem[]) {
   return items.filter(i => i.status !== 'scheduled' && (i.imageUrls?.length ?? 0) > 0);
+}
+
+// A carousel goes out square: a page of another shape is fitted into the square
+// over a blurred fill of itself. The tiles crop to a square, so a picked photo
+// that is not square already gets a warning.
+const NOT_SQUARE_HINT = 'Not cropped square: in a carousel it is fitted into a square with blurred edges. Crop it on its queue card after moving it to pick the framing.';
+
+function isSquare(img: HTMLImageElement) {
+  const { naturalWidth: w, naturalHeight: h } = img;
+  return w > 0 && h > 0 && Math.abs(w - h) / Math.max(w, h) < 0.01;
 }
 
 function CarouselPickerModal({
@@ -82,10 +92,24 @@ export function GallerySection({
   // The photos the carousel picker is open for.
   const [carouselFor, setCarouselFor] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // IDs of the photos whose loaded image is not square.
+  const [notSquare, setNotSquare] = useState<Set<string>>(new Set());
+
+  const measure = (id: string, img: HTMLImageElement) => {
+    const off = !isSquare(img);
+    setNotSquare(prev => {
+      if (prev.has(id) === off) return prev;
+      const next = new Set(prev);
+      if (off) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   // A photo moved or deleted elsewhere (another device) leaves the selection.
   const selection = picked.filter(id => photos.some(p => p.id === id));
   const carousels = carouselTargets(items);
+  const uncropped = selection.filter(id => notSquare.has(id)).length;
 
   const togglePick = (id: string) => {
     setPicked(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
@@ -160,9 +184,19 @@ export function GallerySection({
                 aria-pressed={order >= 0}
                 title={order >= 0 ? 'Unpick' : 'Pick'}
               >
-                <img src={photo.imageUrl} alt="" loading="lazy" />
+                <img
+                  src={photo.imageUrl}
+                  alt=""
+                  loading="lazy"
+                  onLoad={e => measure(photo.id, e.currentTarget)}
+                />
               </button>
               {order >= 0 && <span className="conv-gallery-order">{order + 1}</span>}
+              {order >= 0 && notSquare.has(photo.id) && (
+                <span className="conv-gallery-not-square" title={NOT_SQUARE_HINT} aria-label={NOT_SQUARE_HINT}>
+                  <AlertTriangle size={12} /> Not square
+                </span>
+              )}
               <button
                 type="button"
                 className="conv-item-edit-btn conv-gallery-view-btn"
@@ -178,7 +212,14 @@ export function GallerySection({
 
       {selection.length > 0 && (
         <div className="conv-gallery-actions">
-          <span className="conv-gallery-selected">{selection.length} picked</span>
+          <span className="conv-gallery-selected">
+            {selection.length} picked
+            {uncropped > 0 && (
+              <span className="conv-gallery-not-square-note" title={NOT_SQUARE_HINT}>
+                <AlertTriangle size={12} /> {uncropped} not cropped square
+              </span>
+            )}
+          </span>
           <button className="btn btn-sm btn-secondary" disabled={busy} onClick={() => move(selection, 'single')}>
             {busy ? <Loader size={13} className="spin" /> : <ImageIcon size={13} />}
             {selection.length === 1 ? 'Single post' : 'Single posts'}

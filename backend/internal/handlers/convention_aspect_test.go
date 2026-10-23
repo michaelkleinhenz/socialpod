@@ -23,12 +23,28 @@ func solidJPEG(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
-func TestImageAspect(t *testing.T) {
-	if got := imageAspect(solidJPEG(t, 300, 400)); got != 0.75 {
-		t.Fatalf("aspect = %v, want 0.75", got)
+func TestCarouselAspect(t *testing.T) {
+	if got := carouselAspect([]string{"a"}); got != 0 {
+		t.Fatalf("single image aspect = %v, want 0", got)
 	}
-	if got := imageAspect([]byte("junk")); got != 0 {
-		t.Fatalf("aspect of junk = %v, want 0", got)
+	if got := carouselAspect([]string{"a", "b"}); got != 1 {
+		t.Fatalf("carousel aspect = %v, want 1", got)
+	}
+}
+
+// A portrait page of a carousel is fitted into a square, not stretched: same
+// height, wider frame.
+func TestPrepareQueueImage_FitsSquare(t *testing.T) {
+	out, ct, ok := prepareQueueImage(solidJPEG(t, 120, 160), 1, nil)
+	if !ok || ct != "image/jpeg" {
+		t.Fatalf("expected a fitted JPEG, got ok=%v ct=%q", ok, ct)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if cfg.Width != 160 || cfg.Height != 160 {
+		t.Fatalf("fitted size = %dx%d, want 160x160", cfg.Width, cfg.Height)
 	}
 }
 
