@@ -371,6 +371,31 @@
   pointer-events: none;
 }
 
+.conv-gallery-not-square {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--warning);
+  color: #000;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.conv-gallery-not-square-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: var(--warning);
+  font-weight: 500;
+}
+
 .conv-gallery-tile:hover .conv-gallery-view-btn,
 .conv-gallery-view-btn:focus-visible {
   opacity: 1;

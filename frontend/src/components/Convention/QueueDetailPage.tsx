@@ -1349,7 +1349,10 @@ export function QueueDetailPage({ mobile = false }: { mobile?: boolean } = {}) {
         photos={gallery}
         items={items}
         onPhotosRemoved={ids => setGallery(prev => prev.filter(p => !ids.includes(p.id)))}
+        onPhotoUpdated={photo => setGallery(prev => prev.map(p => (p.id === photo.id ? photo : p)))}
         onItemsChanged={handleGalleryItems}
+        overlayImg={overlayImg}
+        overlayName={queueWatermark?.name}
       />
 
       {/* BGG import */}

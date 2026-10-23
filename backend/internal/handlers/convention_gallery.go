@@ -143,6 +143,52 @@ func (h *ConventionHandler) DeleteGalleryPhoto(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Photo deleted"})
 }
 
+// ReplaceGalleryPhoto swaps a gallery photo's image for the uploaded one
+// (multipart "image"), a crop of it, and frees the old file.
+func (h *ConventionHandler) ReplaceGalleryPhoto(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	queue, ok := h.findOwnQueue(c, ctx)
+	if !ok {
+		return
+	}
+	photoID, err := primitive.ObjectIDFromHex(c.Param("pid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid photo ID"})
+		return
+	}
+	_, fh, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No image file provided"})
+		return
+	}
+
+	ph := &PostHandler{DB: h.DB, UploadDir: h.UploadDir}
+	imageURL, err := ph.saveUpload(ctx, fh)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Image upload failed: " + err.Error()})
+		return
+	}
+
+	// The photo may have been moved out or deleted meanwhile; then the new
+	// file belongs to nothing.
+	var previous models.ConventionGalleryPhoto
+	filter := bson.M{"_id": photoID, "queueId": queue.ID}
+	if err := h.DB.ConventionGallery().FindOneAndUpdate(ctx, filter,
+		bson.M{"$set": bson.M{"imageUrl": imageURL}},
+	).Decode(&previous); err != nil {
+		cleanupUploads(h.DB, h.UploadDir, []string{imageURL})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+	cleanupUploads(h.DB, h.UploadDir, []string{previous.ImageURL})
+
+	photo := previous
+	photo.ImageURL = imageURL
+	c.JSON(http.StatusOK, photo)
+}
+
 type MoveGalleryPhotosInput struct {
 	PhotoIDs []string `json:"photoIds" binding:"required,min=1"`
 	// Target is "single" (one pending single-post item per photo) or
