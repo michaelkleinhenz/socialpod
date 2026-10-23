@@ -1510,6 +1510,26 @@
 
 .conv-page-remove:hover { background: var(--danger); }
 
+.conv-page-not-square {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--warning);
+  color: #000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Above the slide dots, clear of the status badge. */
+.conv-item-not-square {
+  bottom: 32px;
+  z-index: 2;
+}
+
 .conv-page-add {
   flex: 0 0 auto;
   width: 30px;

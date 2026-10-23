@@ -305,14 +305,15 @@ func (h *ConventionHandler) placeGalleryPhotos(ctx context.Context, queueID prim
 	now := time.Now()
 	newItem := func(imageURLs []string, sortOrder int) models.ConventionQueueItem {
 		return models.ConventionQueueItem{
-			ID:        primitive.NewObjectID(),
-			QueueID:   queueID,
-			ImageURL:  imageURLs[0],
-			ImageURLs: imageURLs,
-			Status:    models.ConventionQueueItemStatusPending,
-			SortOrder: sortOrder,
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:          primitive.NewObjectID(),
+			QueueID:     queueID,
+			ImageURL:    imageURLs[0],
+			ImageURLs:   imageURLs,
+			Status:      models.ConventionQueueItemStatusPending,
+			FromGallery: true,
+			SortOrder:   sortOrder,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 	}
 
@@ -342,6 +343,7 @@ func (h *ConventionHandler) placeGalleryPhotos(ctx context.Context, queueID prim
 
 	default:
 		set := appendCarouselImages(*target, urls)
+		set["fromGallery"] = true
 		set["updatedAt"] = now
 		res, err := h.DB.ConventionQueueItems().UpdateOne(ctx,
 			bson.M{"_id": target.ID, "status": bson.M{"$ne": models.ConventionQueueItemStatusScheduled}},
@@ -366,6 +368,45 @@ func (h *ConventionHandler) restoreGalleryPhotos(ctx context.Context, photos []m
 	for _, p := range photos {
 		h.DB.ConventionGallery().ReplaceOne(ctx, bson.M{"_id": p.ID}, p, options.Replace().SetUpsert(true))
 	}
+}
+
+// returnToGallery puts the images of a deleted item back into the queue's
+// gallery, each once, in the item's order, and returns the new photos.
+func (h *ConventionHandler) returnToGallery(ctx context.Context, queueID primitive.ObjectID, urls []string) ([]models.ConventionGalleryPhoto, error) {
+	urls = uniqueURLs(urls)
+	photos := make([]models.ConventionGalleryPhoto, 0, len(urls))
+	if len(urls) == 0 {
+		return photos, nil
+	}
+	docs := make([]interface{}, 0, len(urls))
+	now := time.Now()
+	for i, url := range urls {
+		photo := models.ConventionGalleryPhoto{
+			ID:        primitive.NewObjectID(),
+			QueueID:   queueID,
+			ImageURL:  url,
+			CreatedAt: now.Add(time.Duration(i) * time.Millisecond),
+		}
+		photos = append(photos, photo)
+		docs = append(docs, photo)
+	}
+	if _, err := h.DB.ConventionGallery().InsertMany(ctx, docs); err != nil {
+		return nil, err
+	}
+	return photos, nil
+}
+
+// uniqueURLs returns the non-empty urls, each once, in their first order.
+func uniqueURLs(urls []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(urls))
+	for _, u := range urls {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 // orderGalleryPhotos returns the photos in the order of ids, and false when one

@@ -869,8 +869,9 @@ class ApiClient {
     });
   }
 
+  /** Deletes an item; an item made from gallery photos gives them back, as `gallery`. */
   deleteConventionItem(queueId: string, itemId: string) {
-    return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'DELETE' });
+    return this.request<{ message: string; gallery?: import('../types').ConventionGalleryPhoto[] }>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'DELETE' });
   }
 
   analyzeConventionItem(queueId: string, itemId: string) {

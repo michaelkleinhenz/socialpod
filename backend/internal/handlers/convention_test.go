@@ -379,3 +379,16 @@ func TestDroppedImages(t *testing.T) {
 		t.Fatal("accepted an image twice")
 	}
 }
+
+func TestUniqueURLs(t *testing.T) {
+	got := uniqueURLs([]string{"/a", "", "/b", "/a", "/c", "/b"})
+	want := []string{"/a", "/b", "/c"}
+	if len(got) != len(want) {
+		t.Fatalf("uniqueURLs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("uniqueURLs = %v, want %v", got, want)
+		}
+	}
+}

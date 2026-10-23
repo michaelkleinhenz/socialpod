@@ -5,6 +5,7 @@ import { AlertTriangle, Crop, GalleryHorizontalEnd, Image as ImageIcon, Images, 
 import toast from 'react-hot-toast';
 import { Modal } from '../Common/Modal';
 import { ImageCropper } from '../Common/ImageCropper';
+import { NOT_SQUARE_HINT, isSquare } from './square';
 
 // The queue's photo gallery: photos uploaded without deciding yet what they
 // become. Photos are picked (the order they are picked in is the order they
@@ -15,16 +16,6 @@ import { ImageCropper } from '../Common/ImageCropper';
 // that have not been handed to a post yet.
 function carouselTargets(items: ConventionQueueItem[]) {
   return items.filter(i => i.status !== 'scheduled' && (i.imageUrls?.length ?? 0) > 0);
-}
-
-// A carousel goes out square: a page of another shape is fitted into the square
-// over a blurred fill of itself. The tiles crop to a square, so a picked photo
-// that is not square already gets a warning.
-const NOT_SQUARE_HINT = 'Not cropped square: in a carousel it is fitted into a square with blurred edges. Crop it to pick the framing.';
-
-function isSquare(img: HTMLImageElement) {
-  const { naturalWidth: w, naturalHeight: h } = img;
-  return w > 0 && h > 0 && Math.abs(w - h) / Math.max(w, h) < 0.01;
 }
 
 function CarouselPickerModal({
