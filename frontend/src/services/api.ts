@@ -835,6 +835,13 @@ class ApiClient {
     return this.request<any>(`/convention/queues/${queueId}/gallery/${photoId}`, { method: 'DELETE' });
   }
 
+  /** Replaces a gallery photo's image, e.g. with a crop of it. */
+  replaceConventionGalleryPhoto(queueId: string, photoId: string, file: File) {
+    const form = new FormData();
+    form.append('image', file);
+    return this.request<import('../types').ConventionGalleryPhoto>(`/convention/queues/${queueId}/gallery/${photoId}/image`, { method: 'PUT', body: form });
+  }
+
   updateConventionItem(queueId: string, itemId: string, data: any) {
     return this.request<any>(`/convention/queues/${queueId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
   }

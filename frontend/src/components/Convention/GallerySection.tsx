@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import type { ConventionGalleryPhoto, ConventionQueueItem } from '../../types';
-import { AlertTriangle, GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Crop, GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../Common/Modal';
+import { ImageCropper } from '../Common/ImageCropper';
 
 // The queue's photo gallery: photos uploaded without deciding yet what they
 // become. Photos are picked (the order they are picked in is the order they
@@ -19,7 +20,7 @@ function carouselTargets(items: ConventionQueueItem[]) {
 // A carousel goes out square: a page of another shape is fitted into the square
 // over a blurred fill of itself. The tiles crop to a square, so a picked photo
 // that is not square already gets a warning.
-const NOT_SQUARE_HINT = 'Not cropped square: in a carousel it is fitted into a square with blurred edges. Crop it on its queue card after moving it to pick the framing.';
+const NOT_SQUARE_HINT = 'Not cropped square: in a carousel it is fitted into a square with blurred edges. Crop it to pick the framing.';
 
 function isSquare(img: HTMLImageElement) {
   const { naturalWidth: w, naturalHeight: h } = img;
@@ -78,13 +79,19 @@ export function GallerySection({
   photos,
   items,
   onPhotosRemoved,
+  onPhotoUpdated,
   onItemsChanged,
+  overlayImg,
+  overlayName,
 }: {
   queueId: string;
   photos: ConventionGalleryPhoto[];
   items: ConventionQueueItem[];
   onPhotosRemoved: (ids: string[]) => void;
+  onPhotoUpdated: (photo: ConventionGalleryPhoto) => void;
   onItemsChanged: (items: ConventionQueueItem[]) => void;
+  overlayImg?: HTMLImageElement | null;
+  overlayName?: string;
 }) {
   // Picked photo IDs in the order they were picked.
   const [picked, setPicked] = useState<string[]>([]);
@@ -92,6 +99,7 @@ export function GallerySection({
   // The photos the carousel picker is open for.
   const [carouselFor, setCarouselFor] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cropping, setCropping] = useState<ConventionGalleryPhoto | null>(null);
   // IDs of the photos whose loaded image is not square.
   const [notSquare, setNotSquare] = useState<Set<string>>(new Set());
 
@@ -147,6 +155,23 @@ export function GallerySection({
     }
   };
 
+  // Like a queue item's crop, the crop is uploaded without the queue's overlay,
+  // which the backend stamps on when it posts the image.
+  const applyCrop = async (blob: Blob) => {
+    const photo = cropping;
+    if (!photo) return;
+    setCropping(null);
+    try {
+      const updated = await api.replaceConventionGalleryPhoto(
+        queueId, photo.id, new File([blob], 'cropped.jpg', { type: 'image/jpeg' }),
+      );
+      onPhotoUpdated(updated);
+      toast.success('Photo cropped');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to crop the photo');
+    }
+  };
+
   // With no carousel to add to, "Carousel" makes a new one straight away.
   const toCarousel = (ids: string[]) => {
     if (carousels.length === 0) move(ids, 'carousel');
@@ -199,6 +224,14 @@ export function GallerySection({
               )}
               <button
                 type="button"
+                className="conv-item-edit-btn conv-item-crop-btn conv-gallery-view-btn"
+                onClick={() => setCropping(photo)}
+                title="Crop photo"
+              >
+                <Crop size={12} />
+              </button>
+              <button
+                type="button"
                 className="conv-item-edit-btn conv-gallery-view-btn"
                 onClick={() => setViewing(photo)}
                 title="View photo"
@@ -244,6 +277,9 @@ export function GallerySection({
             <button className="icon-btn danger" onClick={() => remove(viewing)} title="Delete from the gallery">
               <Trash2 size={14} />
             </button>
+            <button className="btn btn-secondary" onClick={() => { setCropping(viewing); setViewing(null); }}>
+              <Crop size={14} /> Crop
+            </button>
             <button className="btn btn-secondary" onClick={() => togglePick(viewing.id)}>
               {selection.includes(viewing.id) ? 'Unpick' : 'Pick'}
             </button>
@@ -255,6 +291,17 @@ export function GallerySection({
             </button>
           </div>
         </Modal>
+      )}
+
+      {cropping && (
+        <ImageCropper
+          imageUrl={cropping.imageUrl}
+          onApply={applyCrop}
+          onCancel={() => setCropping(null)}
+          watermarkImg={overlayImg}
+          watermarkName={overlayImg ? overlayName : undefined}
+          bakeWatermark={false}
+        />
       )}
 
       {carouselFor && (

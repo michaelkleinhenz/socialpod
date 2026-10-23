@@ -385,6 +385,7 @@ func main() {
 		auth.POST("/convention/queues/:id/gallery", conventionHandler.AddGalleryPhotos)
 		auth.POST("/convention/queues/:id/gallery/move", conventionHandler.MoveGalleryPhotos)
 		auth.DELETE("/convention/queues/:id/gallery/:pid", conventionHandler.DeleteGalleryPhoto)
+		auth.PUT("/convention/queues/:id/gallery/:pid/image", conventionHandler.ReplaceGalleryPhoto)
 		auth.POST("/convention/queues/:id/reel/caption", conventionHandler.QuickReelCaption)
 		auth.POST("/convention/queues/:id/reel", conventionHandler.PublishQuickReel)
 	}
