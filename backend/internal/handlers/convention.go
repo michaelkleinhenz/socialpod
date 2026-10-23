@@ -1166,7 +1166,8 @@ func (h *ConventionHandler) postRandomApprovedItem(ctx context.Context, queue mo
 	return h.postItem(ctx, queue, picked[0], scheduledAt, models.ConventionQueueItemStatusApproved)
 }
 
-// postItem composites the queue watermark if configured, creates a Post
+// postItem fits a carousel's pages into the first one's shape, composites
+// the queue watermark if configured, creates a Post
 // scheduled for scheduledAt (the shared scheduler then publishes it), and marks
 // the item as consumed so it is never picked again. The consume is guarded on
 // expectedStatus so a concurrent trigger can't double-post the same photo; on a
@@ -1193,15 +1194,18 @@ func (h *ConventionHandler) postItem(ctx context.Context, queue models.Conventio
 	if len(srcURLs) == 0 {
 		srcURLs = []string{item.ImageURL}
 	}
+	// A carousel's pages all go out in the first page's shape (carouselAspect).
+	aspect := h.carouselAspect(ctx, srcURLs)
 	imageURLs := make([]string, 0, len(srcURLs))
 	for idx, src := range srcURLs {
 		imageURL := src
-		if overlay != nil {
+		if overlay != nil || aspect > 0 {
 			if data, _, err := h.readImageData(ctx, src); err == nil {
-				watermarked, ct := applyWatermarkOverlay(data, overlay)
-				filename := fmt.Sprintf("conv-wm-%s-%d-%d.jpg", item.ID.Hex(), idx, time.Now().UnixNano())
-				if storedURL, err := ph.storeFile(filename, ct, watermarked); err == nil {
-					imageURL = storedURL
+				if prepared, ct, ok := prepareQueueImage(data, aspect, overlay); ok {
+					filename := fmt.Sprintf("conv-wm-%s-%d-%d.jpg", item.ID.Hex(), idx, time.Now().UnixNano())
+					if storedURL, err := ph.storeFile(filename, ct, prepared); err == nil {
+						imageURL = storedURL
+					}
 				}
 			}
 		}
@@ -1628,17 +1632,21 @@ func applyWatermarkOverlay(baseData []byte, overlay image.Image) ([]byte, string
 	// it before compositing — the JPEG re-encode below strips the EXIF tag, so
 	// the orientation fix in ResizeImageIfNeeded can no longer rescue it later.
 	base = services.ApplyOrientation(base, services.ReadExifOrientation(baseData))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, stampOverlay(base, overlay), &jpeg.Options{Quality: 90}); err != nil {
+		return baseData, http.DetectContentType(baseData)
+	}
+	return buf.Bytes(), "image/jpeg"
+}
+
+// stampOverlay draws overlay, stretched to the full canvas, over base.
+func stampOverlay(base image.Image, overlay image.Image) image.Image {
 	bounds := base.Bounds()
 	dst := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	draw.Draw(dst, dst.Bounds(), base, bounds.Min, draw.Src)
 	wmScaled := resizeImage(overlay, bounds.Dx(), bounds.Dy())
 	draw.Draw(dst, dst.Bounds(), wmScaled, image.Point{}, draw.Over)
-
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 90}); err != nil {
-		return baseData, http.DetectContentType(baseData)
-	}
-	return buf.Bytes(), "image/jpeg"
+	return dst
 }
 
 func (h *ConventionHandler) readImageData(ctx context.Context, imageURL string) ([]byte, string, error) {
