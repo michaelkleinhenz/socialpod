@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import type { ConventionGalleryPhoto, ConventionQueueItem } from '../../types';
-import { AlertTriangle, Check, Crop, GalleryHorizontalEnd, Grid2x2, Grid3x3, Image as ImageIcon, Images, Loader, Maximize2, Plus, Square, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, Crop, GalleryHorizontalEnd, Grid2x2, Grid3x3, Image as ImageIcon, Images, Loader, Maximize2, Pencil, Plus, Square, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../Common/Modal';
 import { ImageCropper } from '../Common/ImageCropper';
+import { ImageEditor } from '../Common/ImageEditor/ImageEditor';
 import { NOT_SQUARE_HINT, isSquare } from './square';
 import { thumbnailUrl } from './thumbnail';
 
@@ -110,6 +111,7 @@ export function GallerySection({
   const [carouselFor, setCarouselFor] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [cropping, setCropping] = useState<ConventionGalleryPhoto | null>(null);
+  const [editing, setEditing] = useState<ConventionGalleryPhoto | null>(null);
   // Whether each photo's loaded image is square; absent until it has loaded.
   const [square, setSquare] = useState<Record<string, boolean>>({});
   const [zoomId, setZoomId] = useState<ZoomId>(storedZoom);
@@ -181,6 +183,20 @@ export function GallerySection({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to crop the photo');
     }
+  };
+
+  // Like the crop, the edit is uploaded without the queue's overlay, which the
+  // editor only shows for reference.
+  const applyEdit = async (blob: Blob) => {
+    const photo = editing;
+    if (!photo) return;
+    // A failed upload is reported by the editor, which stays open for a retry.
+    const updated = await api.replaceConventionGalleryPhoto(
+      queueId, photo.id, new File([blob], 'edited.jpg', { type: 'image/jpeg' }),
+    );
+    onPhotoUpdated(updated);
+    setEditing(null);
+    toast.success('Photo updated');
   };
 
   // With no carousel to add to, "Carousel" makes a new one straight away.
@@ -258,6 +274,14 @@ export function GallerySection({
               )}
               <button
                 type="button"
+                className="conv-item-edit-btn conv-gallery-edit-btn conv-gallery-view-btn"
+                onClick={() => setEditing(photo)}
+                title="Edit photo"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                type="button"
                 className="conv-item-edit-btn conv-item-crop-btn conv-gallery-view-btn"
                 onClick={() => setCropping(photo)}
                 title="Crop photo"
@@ -314,6 +338,9 @@ export function GallerySection({
             <button className="btn btn-secondary" onClick={() => { setCropping(viewing); setViewing(null); }}>
               <Crop size={14} /> Crop
             </button>
+            <button className="btn btn-secondary" onClick={() => { setEditing(viewing); setViewing(null); }}>
+              <Pencil size={14} /> Edit
+            </button>
             <button className="btn btn-secondary" onClick={() => togglePick(viewing.id)}>
               {selection.includes(viewing.id) ? 'Unpick' : 'Pick'}
             </button>
@@ -335,6 +362,15 @@ export function GallerySection({
           watermarkImg={overlayImg}
           watermarkName={overlayImg ? overlayName : undefined}
           bakeWatermark={false}
+        />
+      )}
+
+      {editing && (
+        <ImageEditor
+          imageUrl={editing.imageUrl}
+          guideOverlay={overlayImg}
+          onSave={applyEdit}
+          onCancel={() => setEditing(null)}
         />
       )}
 
