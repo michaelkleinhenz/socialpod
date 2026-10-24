@@ -440,6 +440,11 @@
   font-weight: 500;
 }
 
+/* Left of the crop button, which sits left of the view button */
+.conv-gallery-edit-btn {
+  right: 62px;
+}
+
 .conv-gallery-tile:hover .conv-gallery-view-btn,
 .conv-gallery-view-btn:focus-visible {
   opacity: 1;
