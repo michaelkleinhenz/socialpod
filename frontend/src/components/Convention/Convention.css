@@ -305,6 +305,7 @@
 .conv-gallery-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -313,6 +314,33 @@
 .conv-gallery-count { font-size: 13px; color: var(--text-muted); }
 
 .conv-gallery-clear { margin-left: auto; }
+
+.conv-gallery-zoom {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Pushed right like the Clear button, which it follows when that shows. */
+.conv-gallery-count + .conv-gallery-zoom { margin-left: auto; }
+
+.conv-gallery-zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.conv-gallery-zoom button + button { border-left: 1px solid var(--border); }
+
+.conv-gallery-zoom button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.conv-gallery-zoom button.active { background: var(--accent); color: #fff; }
 
 .conv-gallery-grid {
   display: grid;

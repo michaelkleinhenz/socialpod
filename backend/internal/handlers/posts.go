@@ -828,6 +828,10 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
 
+	if size, ok := thumbnailSize(c); ok && h.serveThumbnail(c, filename, size) {
+		return
+	}
+
 	// The disk cache, served as a file so range requests (video) work.
 	if p, ok := uploadstore.CachePath(h.UploadDir, filename); ok {
 		c.File(p)
