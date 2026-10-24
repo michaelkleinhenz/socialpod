@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import type { ConventionGalleryPhoto, ConventionQueueItem } from '../../types';
-import { AlertTriangle, Crop, GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, Crop, GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../Common/Modal';
 import { ImageCropper } from '../Common/ImageCropper';
@@ -91,24 +91,18 @@ export function GallerySection({
   const [carouselFor, setCarouselFor] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [cropping, setCropping] = useState<ConventionGalleryPhoto | null>(null);
-  // IDs of the photos whose loaded image is not square.
-  const [notSquare, setNotSquare] = useState<Set<string>>(new Set());
+  // Whether each photo's loaded image is square; absent until it has loaded.
+  const [square, setSquare] = useState<Record<string, boolean>>({});
 
   const measure = (id: string, img: HTMLImageElement) => {
-    const off = !isSquare(img);
-    setNotSquare(prev => {
-      if (prev.has(id) === off) return prev;
-      const next = new Set(prev);
-      if (off) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+    const sq = isSquare(img);
+    setSquare(prev => (prev[id] === sq ? prev : { ...prev, [id]: sq }));
   };
 
   // A photo moved or deleted elsewhere (another device) leaves the selection.
   const selection = picked.filter(id => photos.some(p => p.id === id));
   const carousels = carouselTargets(items);
-  const uncropped = selection.filter(id => notSquare.has(id)).length;
+  const uncropped = selection.filter(id => square[id] === false).length;
 
   const togglePick = (id: string) => {
     setPicked(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
@@ -208,7 +202,12 @@ export function GallerySection({
                 />
               </button>
               {order >= 0 && <span className="conv-gallery-order">{order + 1}</span>}
-              {order >= 0 && notSquare.has(photo.id) && (
+              {square[photo.id] && (
+                <span className="conv-gallery-square" title="Already square (1:1)" aria-label="Already square (1:1)">
+                  <Check size={12} /> 1:1
+                </span>
+              )}
+              {order >= 0 && square[photo.id] === false && (
                 <span className="conv-gallery-not-square" title={NOT_SQUARE_HINT} aria-label={NOT_SQUARE_HINT}>
                   <AlertTriangle size={12} /> Not square
                 </span>
