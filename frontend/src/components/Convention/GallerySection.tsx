@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { api } from '../../services/api';
 import type { ConventionGalleryPhoto, ConventionQueueItem } from '../../types';
-import { AlertTriangle, Check, Crop, GalleryHorizontalEnd, Image as ImageIcon, Images, Loader, Maximize2, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, Crop, GalleryHorizontalEnd, Grid2x2, Grid3x3, Image as ImageIcon, Images, Loader, Maximize2, Plus, Square, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Modal } from '../Common/Modal';
 import { ImageCropper } from '../Common/ImageCropper';
 import { NOT_SQUARE_HINT, isSquare } from './square';
+import { thumbnailUrl } from './thumbnail';
 
 // The queue's photo gallery: photos uploaded without deciding yet what they
 // become. Photos are picked (the order they are picked in is the order they
@@ -16,6 +17,24 @@ import { NOT_SQUARE_HINT, isSquare } from './square';
 // that have not been handed to a post yet.
 function carouselTargets(items: ConventionQueueItem[]) {
   return items.filter(i => i.status !== 'scheduled' && (i.imageUrls?.length ?? 0) > 0);
+}
+
+// The grid's zoom levels: the smallest tile width, in CSS pixels (tiles grow to
+// fill the row, up to about twice that). Remembered per browser.
+const ZOOM_LEVELS = [
+  { id: 'small', label: 'Small tiles', tile: 90, Icon: Grid3x3 },
+  { id: 'medium', label: 'Medium tiles', tile: 140, Icon: Grid2x2 },
+  { id: 'large', label: 'Large tiles', tile: 260, Icon: Square },
+] as const;
+type ZoomId = typeof ZOOM_LEVELS[number]['id'];
+const ZOOM_KEY = 'convGalleryZoom';
+
+function storedZoom(): ZoomId {
+  try {
+    const v = localStorage.getItem(ZOOM_KEY);
+    if (ZOOM_LEVELS.some(z => z.id === v)) return v as ZoomId;
+  } catch { /* storage unavailable */ }
+  return 'medium';
 }
 
 function CarouselPickerModal({
@@ -48,7 +67,7 @@ function CarouselPickerModal({
           return (
             <button key={item.id} className="conv-carousel-option" onClick={() => onPick(item.id)}>
               <span className="conv-carousel-option-thumbs">
-                {images.slice(0, 4).map((src, i) => <img key={i} src={src} alt="" loading="lazy" />)}
+                {images.slice(0, 4).map((src, i) => <img key={i} src={thumbnailUrl(src, 60)} alt="" loading="lazy" />)}
               </span>
               <span className="conv-carousel-option-text">
                 <strong>{images.length} photo{images.length !== 1 ? 's' : ''} · {item.status}</strong>
@@ -93,6 +112,13 @@ export function GallerySection({
   const [cropping, setCropping] = useState<ConventionGalleryPhoto | null>(null);
   // Whether each photo's loaded image is square; absent until it has loaded.
   const [square, setSquare] = useState<Record<string, boolean>>({});
+  const [zoomId, setZoomId] = useState<ZoomId>(storedZoom);
+  const zoom = ZOOM_LEVELS.find(z => z.id === zoomId) ?? ZOOM_LEVELS[1];
+
+  const changeZoom = (id: ZoomId) => {
+    setZoomId(id);
+    try { localStorage.setItem(ZOOM_KEY, id); } catch { /* storage unavailable */ }
+  };
 
   const measure = (id: string, img: HTMLImageElement) => {
     const sq = isSquare(img);
@@ -176,13 +202,30 @@ export function GallerySection({
             Clear selection
           </button>
         )}
+        <div className="conv-gallery-zoom" role="group" aria-label="Tile size">
+          {ZOOM_LEVELS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className={zoomId === id ? 'active' : ''}
+              onClick={() => changeZoom(id)}
+              aria-pressed={zoomId === id}
+              title={label}
+            >
+              <Icon size={14} />
+            </button>
+          ))}
+        </div>
       </div>
       <p className="conv-upload-hint">
         Tap photos to pick them, then move them into the queue as single posts or into a carousel.
         A carousel takes them in the order you picked them.
       </p>
 
-      <div className="conv-gallery-grid">
+      <div
+        className="conv-gallery-grid"
+        style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${zoom.tile}px, 1fr))` }}
+      >
         {photos.map(photo => {
           const order = selection.indexOf(photo.id);
           return (
@@ -195,9 +238,10 @@ export function GallerySection({
                 title={order >= 0 ? 'Unpick' : 'Pick'}
               >
                 <img
-                  src={photo.imageUrl}
+                  src={thumbnailUrl(photo.imageUrl, zoom.tile * 1.6)}
                   alt=""
                   loading="lazy"
+                  decoding="async"
                   onLoad={e => measure(photo.id, e.currentTarget)}
                 />
               </button>
