@@ -84,7 +84,10 @@ func cleanupUploads(db *database.MongoDB, uploadDir string, urls []string) int {
 		return 0
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Each file is a bucket request of its own, so a long list (a convention
+	// gallery) gets time for every file rather than running out half way and
+	// leaving the rest behind.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second+time.Duration(len(candidates))*time.Second)
 	defer cancel()
 
 	// One query per referencing field rather than one per file, so clearing a

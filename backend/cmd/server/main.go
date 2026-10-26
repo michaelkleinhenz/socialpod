@@ -98,6 +98,16 @@ func main() {
 		log.Printf("Moved %d watermarks into the media library", n)
 	}
 
+	// Gallery photos and items of deleted convention queues, left over from
+	// before a queue's deletion reliably took them along.
+	go func() {
+		if n, err := handlers.PurgeOrphanedConventionData(context.Background(), db, cfg.UploadDir); err != nil {
+			log.Printf("WARNING: deleting leftovers of deleted convention queues: %v", err)
+		} else if n > 0 {
+			log.Printf("Deleted %d gallery photos and items of deleted convention queues", n)
+		}
+	}()
+
 	// Start scheduler
 	scheduler := services.NewScheduler(db, cfg.UploadDir)
 	scheduler.Start()

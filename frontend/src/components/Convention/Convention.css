@@ -226,7 +226,9 @@
 
 /* ── Detail page ──────────────────────────────────────────── */
 
-.conv-detail-page { padding-bottom: 130px; }
+/* .page (global.css, loaded after this file) sets padding too, so this needs
+   the extra class to keep room under the last item for the fixed schedule bar. */
+.page.conv-detail-page { padding-bottom: 130px; }
 
 .conv-detail-header {
   display: flex;
@@ -1278,7 +1280,7 @@
 
   .conv-modal { max-height: 100svh; border-radius: 0; }
 
-  .conv-detail-page { padding-bottom: 160px; }
+  .page.conv-detail-page { padding-bottom: 160px; }
 
   .conv-bgg-import-row { flex-direction: column; align-items: stretch; }
 

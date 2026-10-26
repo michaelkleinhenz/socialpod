@@ -31,6 +31,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -384,22 +385,58 @@ func (h *ConventionHandler) DeleteQueue(c *gin.Context) {
 	filter := conventionQueueFilter(c)
 	filter["_id"] = queueID
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := h.DB.ConventionQueues().DeleteOne(ctx, filter)
-	if err != nil || result.DeletedCount == 0 {
+	if err := h.DB.ConventionQueues().FindOne(ctx, filter).Err(); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Queue not found"})
 		return
 	}
 
-	itemFilter := bson.M{"queueId": queueID}
-	urls := collectUploadURLs(ctx, h.DB.ConventionQueueItems(), itemFilter)
-	h.DB.ConventionQueueItems().DeleteMany(ctx, itemFilter)
-	urls = append(urls, collectUploadURLs(ctx, h.DB.ConventionGallery(), itemFilter)...)
-	h.DB.ConventionGallery().DeleteMany(ctx, itemFilter)
-	cleanupUploads(h.DB, h.UploadDir, urls)
+	// The items and the gallery go before the queue: once the queue is gone
+	// nothing in the UI can reach what a failed delete left behind.
+	childFilter := bson.M{"queueId": queueID}
+	urls := collectUploadURLs(ctx, h.DB.ConventionQueueItems(), childFilter)
+	urls = append(urls, collectUploadURLs(ctx, h.DB.ConventionGallery(), childFilter)...)
+	if _, err := h.DB.ConventionQueueItems().DeleteMany(ctx, childFilter); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete the queue's items"})
+		return
+	}
+	if _, err := h.DB.ConventionGallery().DeleteMany(ctx, childFilter); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete the queue's gallery"})
+		return
+	}
+	if _, err := h.DB.ConventionQueues().DeleteOne(ctx, filter); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete queue"})
+		return
+	}
+	// A convention's gallery can hold hundreds of photos, more than the
+	// request should wait for, so the files are freed in the background.
+	go cleanupUploads(h.DB, h.UploadDir, urls)
 	c.JSON(http.StatusOK, gin.H{"message": "Queue deleted"})
+}
+
+// PurgeOrphanedConventionData deletes the items and gallery photos of queues
+// that no longer exist, and frees their files: what a queue deleted before its
+// children were deleted with it, or a delete that failed half way, left behind.
+func PurgeOrphanedConventionData(ctx context.Context, db *database.MongoDB, uploadDir string) (int, error) {
+	queueIDs, err := db.ConventionQueues().Distinct(ctx, "_id", bson.M{})
+	if err != nil {
+		return 0, err
+	}
+	orphans := bson.M{"queueId": bson.M{"$nin": queueIDs}}
+	urls := collectUploadURLs(ctx, db.ConventionQueueItems(), orphans)
+	urls = append(urls, collectUploadURLs(ctx, db.ConventionGallery(), orphans)...)
+	removed := 0
+	for _, coll := range []*mongo.Collection{db.ConventionQueueItems(), db.ConventionGallery()} {
+		res, err := coll.DeleteMany(ctx, orphans)
+		if err != nil {
+			return removed, err
+		}
+		removed += int(res.DeletedCount)
+	}
+	cleanupUploads(db, uploadDir, urls)
+	return removed, nil
 }
 
 func (h *ConventionHandler) AddItem(c *gin.Context) {
