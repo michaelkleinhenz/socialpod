@@ -1553,7 +1553,7 @@ export function PostEditor({ post, postType: propPostType, defaultDate, onSave, 
                     </button>
                     {!isReel && (
                       <label
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap', margin: 0, cursor: 'pointer' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', whiteSpace: 'nowrap', margin: 0, cursor: 'pointer' }}
                         title="Import only the processed cover image; all other fields stay untouched"
                       >
                         <input
