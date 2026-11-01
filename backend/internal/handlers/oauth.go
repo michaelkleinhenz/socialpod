@@ -66,7 +66,13 @@ const (
 	oauthCodeTTL         = 10 * time.Minute
 	oauthAccessTokenTTL  = time.Hour
 	oauthRefreshTokenTTL = 90 * 24 * time.Hour
-	oauthDefaultScope    = "mcp"
+	// oauthRefreshGrace is how long a refresh token still works after it has
+	// been exchanged. Without it, two refreshes racing with the same token
+	// (two sessions of one connector starting together), or a refresh whose
+	// answer never reached the client, leave the client with a dead token and
+	// the connector disconnected until the user signs in again.
+	oauthRefreshGrace = 2 * time.Minute
+	oauthDefaultScope = "mcp"
 )
 
 // oauthScopes are the scopes this server grants. "mcp" is the access to the
@@ -692,17 +698,35 @@ func (h *OAuthHandler) refresh(ctx context.Context, c *gin.Context, client *mode
 		return
 	}
 
-	// Rotation: the presented refresh token is consumed and a new one issued.
+	// Rotation: every exchange issues a new refresh token. The presented one
+	// is not deleted but marked rotated and cut to a short grace period, so a
+	// racing or retried refresh with it still succeeds (see oauthRefreshGrace).
+	now := time.Now()
 	var old models.OAuthToken
-	err := h.DB.OAuthTokens().FindOneAndDelete(ctx, bson.M{
+	err := h.DB.OAuthTokens().FindOne(ctx, bson.M{
 		"tokenHash": middleware.HashOAuthToken(rt),
 		"kind":      models.OAuthTokenRefresh,
 		"clientId":  client.ClientID,
-		"expiresAt": bson.M{"$gt": time.Now()},
+		"expiresAt": bson.M{"$gt": now},
 	}).Decode(&old)
-	if err != nil {
+	if err != nil || !refreshTokenUsable(&old, now) {
 		tokenError(c, http.StatusBadRequest, "invalid_grant", "refresh token is invalid or expired")
 		return
+	}
+	if old.RotatedAt == nil {
+		// Only the first exchange starts the grace period; a concurrent one
+		// finds rotatedAt set and leaves it alone.
+		graceEnd := now.Add(oauthRefreshGrace)
+		if old.ExpiresAt.Before(graceEnd) {
+			graceEnd = old.ExpiresAt
+		}
+		if _, err := h.DB.OAuthTokens().UpdateOne(ctx,
+			bson.M{"_id": old.ID, "rotatedAt": bson.M{"$exists": false}},
+			bson.M{"$set": bson.M{"rotatedAt": now, "expiresAt": graceEnd}},
+		); err != nil {
+			tokenError(c, http.StatusInternalServerError, "server_error", "failed to rotate refresh token")
+			return
+		}
 	}
 
 	var user models.User
@@ -728,6 +752,16 @@ func (h *OAuthHandler) refresh(ctx context.Context, c *gin.Context, client *mode
 	}
 
 	h.issueTokens(ctx, c, client, &user, scope, old.Resource, "", time.Time{})
+}
+
+// refreshTokenUsable reports whether a stored, unexpired refresh token may be
+// exchanged at now: always before its first exchange, and for
+// oauthRefreshGrace after it.
+func refreshTokenUsable(tok *models.OAuthToken, now time.Time) bool {
+	if !now.Before(tok.ExpiresAt) {
+		return false
+	}
+	return tok.RotatedAt == nil || now.Sub(*tok.RotatedAt) < oauthRefreshGrace
 }
 
 func (h *OAuthHandler) issueTokens(ctx context.Context, c *gin.Context, client *models.OAuthClient, user *models.User, scope, resource, nonce string, authTime time.Time) {
