@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"socialmedia/internal/models"
 )
 
 func TestValidRedirectURI(t *testing.T) {
@@ -104,6 +107,27 @@ func TestNegotiateProtocolVersion(t *testing.T) {
 	for in, want := range cases {
 		if got := negotiateProtocolVersion(json.RawMessage(in)); got != want {
 			t.Errorf("negotiateProtocolVersion(%s) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRefreshTokenUsable(t *testing.T) {
+	now := time.Now()
+	ago := func(d time.Duration) *time.Time { t := now.Add(-d); return &t }
+	cases := []struct {
+		name string
+		tok  models.OAuthToken
+		want bool
+	}{
+		{"fresh", models.OAuthToken{ExpiresAt: now.Add(time.Hour)}, true},
+		{"expired", models.OAuthToken{ExpiresAt: now.Add(-time.Second)}, false},
+		{"just rotated", models.OAuthToken{ExpiresAt: now.Add(time.Minute), RotatedAt: ago(10 * time.Second)}, true},
+		{"rotated past grace", models.OAuthToken{ExpiresAt: now.Add(time.Hour), RotatedAt: ago(oauthRefreshGrace)}, false},
+		{"rotated, expiry passed", models.OAuthToken{ExpiresAt: now.Add(-time.Second), RotatedAt: ago(time.Second)}, false},
+	}
+	for _, c := range cases {
+		if got := refreshTokenUsable(&c.tok, now); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
 	}
 }

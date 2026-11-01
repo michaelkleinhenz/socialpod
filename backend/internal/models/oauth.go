@@ -58,6 +58,10 @@ type OAuthToken struct {
 	Resource  string             `bson:"resource,omitempty"`
 	CreatedAt time.Time          `bson:"createdAt"`
 	ExpiresAt time.Time          `bson:"expiresAt"`
+	// RotatedAt is set on a refresh token once it has been exchanged. It
+	// stays usable for a short grace period after that (see the token
+	// endpoint), then expires.
+	RotatedAt *time.Time `bson:"rotatedAt,omitempty"`
 }
 
 // OAuthSigningKey is the RSA key that signs OpenID Connect ID tokens. Its
