@@ -519,10 +519,11 @@ class ApiClient {
   }
 
   // AI text generation
-  generateText(prompt: string, platforms: string[]) {
+  // kind 'scene' writes an episode's audio play (WavePod format) instead of a post.
+  generateText(prompt: string, platforms: string[], kind?: 'scene') {
     return this.request<{ text: string }>('/generate-text', {
       method: 'POST',
-      body: JSON.stringify({ prompt, platforms }),
+      body: JSON.stringify({ prompt, platforms, kind }),
     });
   }
 

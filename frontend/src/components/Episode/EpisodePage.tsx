@@ -757,7 +757,7 @@ export function EpisodePage() {
       : scene;
     setGeneratingScene(true);
     try {
-      const { text } = await api.generateText(prompt, []);
+      const { text } = await api.generateText(prompt, [], 'scene');
       setScene(text);
       toast.success('Scene text generated');
     } catch (err: any) {

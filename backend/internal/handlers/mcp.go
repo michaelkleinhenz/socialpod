@@ -2708,7 +2708,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"linkPublisher":     map[string]any{"type": "string", "description": "Publisher link (review type)"},
 					"linkBGG":           map[string]any{"type": "string", "description": "BoardGameGeek link (review type)"},
 					"rules":             map[string]any{"type": "string", "description": "Rules text (review type)"},
-					"scene":             map[string]any{"type": "string", "description": "Scene description (review type)"},
+					"scene":             map[string]any{"type": "string", "description": "Audio play scene (review type), in WavePod format: only dialogue lines \"NAME: text\", one per row, an optional direction in brackets after the colon (\"Jutta: (whispering) Hello?\"), roles Michael and Jutta only, no other lines"},
 					"introText":         map[string]any{"type": "string", "description": "Introduction text (review type)"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
@@ -2765,7 +2765,7 @@ func (h *MCPHandler) baseToolDefinitions() []mcpTool {
 					"linkPublisher":     map[string]any{"type": "string", "description": "Publisher link"},
 					"linkBGG":           map[string]any{"type": "string", "description": "BGG link"},
 					"rules":             map[string]any{"type": "string", "description": "Rules text"},
-					"scene":             map[string]any{"type": "string", "description": "Scene description"},
+					"scene":             map[string]any{"type": "string", "description": "Audio play scene, in WavePod format: only dialogue lines \"NAME: text\", one per row, an optional direction in brackets after the colon, roles Michael and Jutta only"},
 					"introText":         map[string]any{"type": "string", "description": "Introduction text"},
 					"imageUrls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URLs of previously uploaded images"},
 					"images": map[string]any{"type": "array", "items": map[string]any{
