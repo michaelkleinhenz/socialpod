@@ -59,7 +59,7 @@ For "episode":
   "linkPublisher": "Publisher URL - only for review type",
   "linkBGG": "BoardGameGeek URL - only for review type",
   "rules": "Game rules overview in German - only for review type",
-  "scene": "Humorous radio play scene with Jutta and Michael - only for review type",
+  "scene": "Humorous audio play scene with Michael and Jutta in WavePod format (see below) - only for review type",
   "episodeDate": "YYYY-MM-DDTHH:MM format"
 }
 
@@ -306,6 +306,7 @@ func buildSystemPrompt(teamPrompt, aiLanguage string) string {
 		prompt = defaultSystemPrompt
 	}
 	prompt += "\n\n" + gameNameQuotingRule
+	prompt += "\n\n" + audioPlayFormatRule
 	if aiLanguage != "" {
 		prompt += fmt.Sprintf("\n\nWrite in %s.", aiLanguage)
 	}
@@ -699,7 +700,7 @@ func (h *CaptureHandler) createEpisodeDraft(ctx context.Context, aiContent strin
 		LinkPublisher:     parsed.LinkPublisher,
 		LinkBGG:           parsed.LinkBGG,
 		Rules:             enforceQuotedGameName(parsed.Rules, gameName),
-		Scene:             enforceQuotedGameName(parsed.Scene, gameName),
+		Scene:             enforceQuotedGameName(normalizeAudioPlay(parsed.Scene), gameName),
 		Content:           enforceQuotedGameName(parsed.Content, gameName),
 		ImageURLs:         imageURLs,
 		CreatedAt:         time.Now(),

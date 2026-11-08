@@ -1557,11 +1557,15 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 	var input struct {
 		Prompt    string   `json:"prompt" binding:"required"`
 		Platforms []string `json:"platforms,omitempty"`
+		// Kind "scene" writes the Episode form's audio play in WavePod's
+		// format instead of a social media post.
+		Kind string `json:"kind,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	scene := input.Kind == "scene"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -1580,6 +1584,10 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 	systemPrompt := settings.PromptSocialPost
 	if systemPrompt == "" {
 		systemPrompt = "You are a social media copywriter. The user gives you a prompt (which may include URLs for context). Write a ready-to-post social media post based on the prompt. Reply with ONLY the post text, no quotes, no commentary, no labels."
+	}
+	if scene {
+		systemPrompt = audioPlaySystemPrompt
+		input.Platforms = nil
 	}
 	hasBluesky := false
 	if len(input.Platforms) > 0 {
@@ -1635,7 +1643,11 @@ func (h *AdminHandler) GenerateText(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"text": result.Choices[0].Message.Content})
+	text := result.Choices[0].Message.Content
+	if scene {
+		text = normalizeAudioPlay(text)
+	}
+	c.JSON(http.StatusOK, gin.H{"text": text})
 }
 
 func (h *AdminHandler) DashboardInsights(c *gin.Context) {

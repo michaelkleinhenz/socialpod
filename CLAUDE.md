@@ -79,6 +79,8 @@ A queue's watermark (`watermarkId`) is composited onto each image by `postItem` 
 ### AI requests (`handlers/ai_prompt.go`)
 Every AI call (all go to OpenRouter's chat completions) builds its `messages` with `chatMessages(system, user)`, which appends `noDashRule` to the system prompt: the em dash is banned in all generated text, whatever prompt an admin or team configured. A new AI call must use `chatMessages` too; `TestEveryAIRequestUsesChatMessages` fails otherwise. Keep em dashes out of the built-in prompt texts as well, since they prime the model to use them.
 
+A review episode's `scene` is an audio play imported into WavePod (`handlers/audio_play.go`): plain dialogue lines `NAME: text`, an optional direction in brackets after the colon, roles Michael and Jutta only, nothing else. `audioPlayFormatRule` is appended to every capture prompt (`buildSystemPrompt`, team override included), the Episode form's "Generate with AI" on the Scene field calls `POST /api/generate-text` with `kind: "scene"` (system prompt `audioPlaySystemPrompt` instead of the social post one; the team's scene prompt template still goes first in the user message), and `normalizeAudioPlay` strips whatever else a model adds (blank lines, cast or gender lines, narrator, markdown) from both.
+
 ### Instagram growth (`handlers/growth*.go`, `services/growth_jobs.go`)
 Tools for growing an Instagram account against a follower goal. The Instagram login asks for `instagram_business_manage_insights` (`instagramAuthURL` in `admin.go`); accounts connected before that need a reconnect for Insights.
 
